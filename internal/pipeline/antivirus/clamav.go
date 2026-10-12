@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/bongo-project/bongo/internal/pipeline"
@@ -47,12 +48,17 @@ const (
 // quarantined (default) or delivered unscanned ("accept"); either way the
 // failure is logged at ERROR. Mail is never silently delivered unscanned
 // without that ERROR log line.
+//
+// The OnFailure policy can be changed at runtime through SetOnFailure; it is
+// held atomically so a reload never races an in-flight scan.
 type ClamAVProcessor struct {
-	network   string
-	address   string
-	timeout   time.Duration
-	logger    *slog.Logger
-	onFailure OnFailure
+	network string
+	address string
+	timeout time.Duration
+	logger  *slog.Logger
+	// acceptOnFailure is true only for OnFailureAccept. The zero value means
+	// quarantine, so any other state fails closed.
+	acceptOnFailure atomic.Bool
 }
 
 // Option is a functional option for ClamAVProcessor.
@@ -90,11 +96,35 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 // WithOnFailure sets the policy applied when clamd is unreachable or returns
-// an error response. Defaults to OnFailureQuarantine.
+// an error response. Defaults to OnFailureQuarantine; any value other than
+// OnFailureAccept means quarantine. Use SetOnFailure to change it after
+// construction.
 func WithOnFailure(policy OnFailure) Option {
 	return func(p *ClamAVProcessor) {
-		p.onFailure = policy
+		p.acceptOnFailure.Store(policy == OnFailureAccept)
 	}
+}
+
+// SetOnFailure changes the policy applied when clamd is unreachable or
+// returns an error response. It is safe to call while scans are running.
+// An unknown policy returns an error and leaves the current policy unchanged.
+func (p *ClamAVProcessor) SetOnFailure(policy OnFailure) error {
+	switch policy {
+	case OnFailureAccept, OnFailureQuarantine:
+		p.acceptOnFailure.Store(policy == OnFailureAccept)
+		return nil
+	default:
+		return fmt.Errorf("antivirus: unknown on_failure policy %q (valid: %s, %s)",
+			string(policy), OnFailureQuarantine, OnFailureAccept)
+	}
+}
+
+// policy returns the current on_failure policy with a single atomic load.
+func (p *ClamAVProcessor) policy() OnFailure {
+	if p.acceptOnFailure.Load() {
+		return OnFailureAccept
+	}
+	return OnFailureQuarantine
 }
 
 // NewClamAVProcessor returns a ClamAVProcessor configured with opts.
@@ -102,11 +132,10 @@ func WithOnFailure(policy OnFailure) Option {
 // quarantine.
 func NewClamAVProcessor(opts ...Option) *ClamAVProcessor {
 	p := &ClamAVProcessor{
-		network:   "unix",
-		address:   defaultSocket,
-		timeout:   defaultTimeout,
-		logger:    slog.Default(),
-		onFailure: OnFailureQuarantine,
+		network: "unix",
+		address: defaultSocket,
+		timeout: defaultTimeout,
+		logger:  slog.Default(),
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -191,20 +220,22 @@ func (p *ClamAVProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 }
 
 // failureResult logs a scan failure at ERROR and builds the StageResult for
-// it per the configured OnFailure policy. reason is used verbatim as the
+// it per the current OnFailure policy, which is loaded exactly once so the
+// action and the logged policy always agree. reason is used verbatim as the
 // sole entry in Reasons — it is rendered directly in the admin quarantine UI
 // (internal/web/handlers/quarantine.go), so it must never read like a virus
 // was found (the runner sets the same MsgFlagVirus audit flag for any
 // quarantine action, scan failure or genuine infection alike; the Reasons
 // text is what tells the two apart for an operator).
 func (p *ClamAVProcessor) failureResult(start time.Time, env *bongov1.QueueEnvelope, reason string, logArgs ...any) *bongov1.StageResult {
+	policy := p.policy()
 	action := "pass"
-	if p.onFailure != OnFailureAccept {
+	if policy != OnFailureAccept {
 		action = "quarantine"
 	}
 
 	p.logger.Error("antivirus: scan failed, applying on_failure policy",
-		append([]any{"policy", string(p.onFailure), "action", action, "sender", env.GetSender()}, logArgs...)...,
+		append([]any{"policy", string(policy), "action", action, "sender", env.GetSender()}, logArgs...)...,
 	)
 
 	return &bongov1.StageResult{

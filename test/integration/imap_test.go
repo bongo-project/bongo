@@ -4,7 +4,6 @@ package integration
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"net"
 	smtplib "net/smtp"
@@ -15,7 +14,6 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
-	"github.com/bongo-project/bongo/internal/agent"
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/config"
 )
@@ -28,29 +26,8 @@ func TestIMAPFullRoundTrip(t *testing.T) {
 	cfg.SMTP.Enabled = true
 	cfg.IMAP.Enabled = true
 
-	logger := sharedTestLogger()
-
-	a, err := agent.NewAgent(cfg, logger)
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
+	a, cancel, done := sharedStartAgent(t, cfg)
 	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- a.Run(ctx)
-	}()
-
-	// Wait for agent to be ready.
-	deadline := time.Now().Add(15 * time.Second)
-	for !a.Ready() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !a.Ready() {
-		t.Fatal("agent not ready in time")
-	}
 
 	// Create a test user with default mailboxes.
 	userID, err := auth.CreateUser(a, a.Metadata, "imaptest@localhost", "IMAP Test", "testpass", false)

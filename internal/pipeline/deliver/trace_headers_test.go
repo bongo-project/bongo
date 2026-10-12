@@ -17,6 +17,7 @@ import (
 	"github.com/emersion/go-msgauth/dkim"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -82,7 +83,12 @@ func traceProc(t *testing.T, hostname string, threshold float32) (*DeliverProces
 	resolver := &mockResolver{mapping: map[string]string{"alice@example.com": "user-alice"}}
 	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
 	proc.SetAttachmentDedup(bs, 1<<20) // large threshold: keeps whole-raw storage for these small messages
-	proc.SetTraceHeaders(hostname, threshold)
+	proc.SetTraceHeaders(hostname)
+	holder, err := pipeline.NewSpamThresholdHolder(pipeline.SpamThresholds{Tag: threshold, High: 1})
+	if err != nil {
+		t.Fatalf("NewSpamThresholdHolder: %v", err)
+	}
+	proc.SetSpamThresholds(holder)
 	return proc, applier, bs
 }
 
@@ -331,7 +337,7 @@ func TestDeliverSplitRoundTripAfterStamping(t *testing.T) {
 	resolver := &mockResolver{mapping: map[string]string{"alice@example.com": "user-alice"}}
 	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
 	proc.SetAttachmentDedup(bs, 1024) // low threshold: forces a split
-	proc.SetTraceHeaders("mail.example.com", 0.5)
+	proc.SetTraceHeaders("mail.example.com")
 
 	att := strings.Repeat("QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5Cg", 60) // ~3 KB
 	raw := multipartWithAttachment("has attachment", att)
@@ -370,7 +376,7 @@ func TestDeliverNoBlobStoreDegradesGracefully(t *testing.T) {
 	applier := &mockApplier{}
 	resolver := &mockResolver{mapping: map[string]string{"alice@example.com": "user-alice"}}
 	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
-	proc.SetTraceHeaders("mail.example.com", 0.5) // configured, but no blob store to persist into
+	proc.SetTraceHeaders("mail.example.com") // configured, but no blob store to persist into
 
 	raw := minimalMessage("x@example.com", "alice@example.com", "test", "body\r\n")
 	env := &bongov1.QueueEnvelope{
@@ -411,7 +417,7 @@ func TestDeliverBlobPutFailureFallsBackToOriginal(t *testing.T) {
 	resolver := &mockResolver{mapping: map[string]string{"alice@example.com": "user-alice"}}
 	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
 	proc.SetAttachmentDedup(bs, 1<<20)
-	proc.SetTraceHeaders("mail.example.com", 0.5)
+	proc.SetTraceHeaders("mail.example.com")
 
 	raw := minimalMessage("x@example.com", "alice@example.com", "test", "body\r\n")
 	env := &bongov1.QueueEnvelope{
@@ -559,5 +565,64 @@ func TestDeliverDKIMSignaturePreservedAfterStamping(t *testing.T) {
 	// Sanity check: trace headers were actually added to the stored bytes.
 	if !bytes.HasPrefix(stored, []byte("Authentication-Results: mail.example.com;")) {
 		t.Errorf("stored message does not begin with the expected Authentication-Results header:\n%s", stored[:min(200, len(stored))])
+	}
+}
+
+// TestDeliverFollowsThresholdSource publishes a new pair to the shared holder
+// and asserts both Junk routing and X-Spam-Status move with it, in both
+// directions, without rebuilding the processor.
+func TestDeliverFollowsThresholdSource(t *testing.T) {
+	holder, err := pipeline.NewSpamThresholdHolder(pipeline.SpamThresholds{Tag: 0.5, High: 0.9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc, _, bs := traceProc(t, "", 0.5)
+	proc.SetSpamThresholds(holder)
+
+	deliverOne := func(id string) (mailbox, status string) {
+		t.Helper()
+		env := &bongov1.QueueEnvelope{
+			Id:         id,
+			Sender:     "x@example.com",
+			Recipients: []string{"alice@example.com"},
+			ReceivedAt: time.Now().Unix(),
+			BlobHash:   "hash-" + id,
+			Stages:     []*bongov1.StageResult{{Stage: "antispam", Action: "pass", Score: 0.62}},
+		}
+		raw := minimalMessage("x@example.com", "alice@example.com", "Scored "+id, "body\r\n")
+		meta := deliverTrace(t, proc, env, raw)
+		stored, err := store.RawMessageBytes(bs, meta)
+		if err != nil {
+			t.Fatalf("RawMessageBytes: %v", err)
+		}
+		switch {
+		case bytes.Contains(stored, []byte("X-Spam-Status: Yes")):
+			status = "Yes"
+		case bytes.Contains(stored, []byte("X-Spam-Status: No")):
+			status = "No"
+		default:
+			status = "missing"
+		}
+		return meta.TargetMailbox, status
+	}
+
+	steps := []struct {
+		id         string
+		pair       pipeline.SpamThresholds
+		wantBox    string
+		wantStatus string
+	}{
+		{"a", pipeline.SpamThresholds{Tag: 0.5, High: 0.9}, "Junk", "Yes"},
+		{"b", pipeline.SpamThresholds{Tag: 0.7, High: 0.9}, "INBOX", "No"},
+		{"c", pipeline.SpamThresholds{Tag: 0.5, High: 0.9}, "Junk", "Yes"},
+	}
+	for _, s := range steps {
+		if err := holder.Store(s.pair); err != nil {
+			t.Fatal(err)
+		}
+		box, status := deliverOne(s.id)
+		if box != s.wantBox || status != s.wantStatus {
+			t.Errorf("tag %.1f, score 0.62: mailbox %q status %q, want %s/%s", s.pair.Tag, box, status, s.wantBox, s.wantStatus)
+		}
 	}
 }

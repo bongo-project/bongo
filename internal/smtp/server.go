@@ -8,8 +8,10 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -69,11 +71,10 @@ type Backend struct {
 	authFail *authlimit.Limiter
 
 	// trustedNets holds the operator-configured trusted-network CIDRs, parsed
-	// once at startup by config.SMTPConfig.ParseTrustedNetworks. nil (the
-	// default) means the feature is disabled: no address is trusted
-	// implicitly. Written once before Listen/Serve start (see
-	// SetTrustedNetworks); read concurrently by sessions thereafter.
-	trustedNets []*net.IPNet
+	// by config.SMTPConfig.ParseTrustedNetworks. nil (the default) means the
+	// feature is disabled: no address is trusted implicitly. Swapped
+	// atomically by SetTrustedNetworks; the published slice is never mutated.
+	trustedNets atomic.Pointer[[]*net.IPNet]
 }
 
 // NewBackend creates a new SMTP backend.
@@ -115,12 +116,15 @@ func (b *Backend) SetRelayQueue(q RelayQueuer) {
 // SetTrustedNetworks sets the CIDR ranges whose connecting source IP is
 // treated as an operator-trusted internal submitter, equivalent to an
 // authenticated submission session (see inboundMeta). nets should be parsed
-// once at startup via config.SMTPConfig.ParseTrustedNetworks.
+// via config.SMTPConfig.ParseTrustedNetworks.
 //
-// Unlike the other setters in this block, this one is NOT safe to call after
-// Listen/Serve: it writes an unsynchronized field that sessions subsequently
-// read from other goroutines. Call it before a.SMTP.Listen(), as the other
-// backend construction sites in internal/agent/agent.go do.
+// Safe to call at any time, including while sessions are running. The set is
+// swapped atomically and each trust decision loads it once. inboundMeta makes
+// that decision per message, so a swap applies to the next message on
+// connections that are already established; a message already being
+// classified keeps whichever set it loaded. nets is copied, so later changes
+// to the caller's slice do not affect the live set. nil or empty trusts
+// nothing.
 //
 // Security note: when smtp.proxy_protocol is enabled, the effective source IP
 // can be asserted by any peer connecting from a loopback/private/link-local
@@ -128,15 +132,21 @@ func (b *Backend) SetRelayQueue(q RelayQueuer) {
 // trusted_networks is only as trustworthy as the set of hosts that can reach
 // the SMTP listener from such an address.
 func (b *Backend) SetTrustedNetworks(nets []*net.IPNet) {
-	b.trustedNets = nets
+	if len(nets) == 0 {
+		b.trustedNets.Store(nil)
+		return
+	}
+	cp := slices.Clone(nets)
+	b.trustedNets.Store(&cp)
 }
 
-// isTrustedSource reports whether ip falls inside one of the configured
+// IsTrustedSource reports whether ip falls inside one of the configured
 // trusted networks. Fail-closed by construction: no networks configured, an
 // empty ip, or an unparseable ip all report false. This must never default to
 // true on any error path.
-func (b *Backend) isTrustedSource(ip string) bool {
-	if len(b.trustedNets) == 0 {
+func (b *Backend) IsTrustedSource(ip string) bool {
+	p := b.trustedNets.Load()
+	if p == nil || len(*p) == 0 {
 		return false
 	}
 	if ip == "" {
@@ -146,7 +156,7 @@ func (b *Backend) isTrustedSource(ip string) bool {
 	if parsed == nil {
 		return false
 	}
-	for _, n := range b.trustedNets {
+	for _, n := range *p {
 		if n == nil {
 			continue
 		}
@@ -405,7 +415,7 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 //     true on the submission port (see AuthMechanisms, which returns nil
 //     unless s.submission), so an unauthenticated MX-port session can never
 //     become trusted this way.
-//  2. b.isTrustedSource(sourceIP) — the connecting source IP falls inside an
+//  2. b.IsTrustedSource(sourceIP) — the connecting source IP falls inside an
 //     operator-configured trusted_networks CIDR (config.SMTPConfig). Empty by
 //     default, so no address is trusted implicitly, not even loopback or
 //     RFC 1918 ranges.
@@ -418,7 +428,7 @@ func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
 	return &InboundMeta{
 		SPFResult: s.spfResult,
 		SourceIP:  sourceIP,
-		Trusted:   s.authed || s.backend.isTrustedSource(sourceIP),
+		Trusted:   s.authed || s.backend.IsTrustedSource(sourceIP),
 	}
 }
 

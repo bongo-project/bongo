@@ -36,11 +36,40 @@ type BuiltinProcessor struct {
 	resolver      RecipientResolver     // may be nil; resolves recipient email -> user ID
 	threshold     float32               // score >= this -> tag as spam (move to Junk)
 	highThreshold float32               // score >= this -> quarantine
+	thresholds    ThresholdSource       // when set, supersedes threshold/highThreshold; read once per message
 	dmarc         *mail.DMARCEvaluator  // may be nil; inbound DMARC policy enforcement
 	dmarcEnforce  bool                  // when false, DMARC is evaluated and logged but not applied
 	dnsbl         *dnsbl.Checker        // may be nil; DNS blocklist checks
 	dnsblWeights  map[string]float64    // zone name -> score contribution; written once at construction, read concurrently
 	logger        *slog.Logger
+}
+
+// ThresholdSource supplies the tag/quarantine pair. The agent shares one
+// *pipeline.SpamThresholdHolder between this processor and the deliver
+// processor so a published pair reaches both.
+type ThresholdSource interface {
+	Thresholds() pipeline.SpamThresholds
+}
+
+// WithThresholdSource makes the processor read its tag and quarantine
+// thresholds from src, once per message, instead of the fixed values set by
+// WithThreshold and WithHighThreshold. A nil src leaves the fixed values.
+func WithThresholdSource(src ThresholdSource) Option {
+	return func(p *BuiltinProcessor) {
+		p.thresholds = src
+	}
+}
+
+// ThresholdSource returns the source set by WithThresholdSource, or nil.
+// Tests use it to prove the antispam and deliver stages share one holder.
+func (p *BuiltinProcessor) ThresholdSource() ThresholdSource { return p.thresholds }
+
+// currentThresholds returns the pair to apply to one message.
+func (p *BuiltinProcessor) currentThresholds() pipeline.SpamThresholds {
+	if p.thresholds != nil {
+		return p.thresholds.Thresholds()
+	}
+	return pipeline.SpamThresholds{Tag: p.threshold, High: p.highThreshold}
 }
 
 // RecipientResolver resolves an envelope recipient email address to a local
@@ -272,11 +301,14 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	score, reasons = p.applyDNSBL(ctx, env, trusted, score, reasons)
 
 	// Determine action based on thresholds.
+	// Load the pair once so one message is judged against a single published
+	// pair even if a new one lands mid-Process.
+	th := p.currentThresholds()
 	action := "pass"
 	switch {
-	case score >= p.highThreshold:
+	case score >= th.High:
 		action = "quarantine"
-	case score >= p.threshold:
+	case score >= th.Tag:
 		action = "tag"
 		if env != nil {
 			env.TargetMailbox = "Junk"

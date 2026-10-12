@@ -17,7 +17,6 @@ import (
 
 	"github.com/pquerna/otp/totp"
 
-	"github.com/bongo-project/bongo/internal/agent"
 	"github.com/bongo-project/bongo/internal/config"
 )
 
@@ -32,26 +31,7 @@ func startSecurityTestAgent(t *testing.T) (baseURL, smtpAddr string, cancel cont
 	cfg.SMTP.Enabled = true
 	cfg.IMAP.Enabled = true
 
-	logger := sharedTestLogger()
-
-	a, err := agent.NewAgent(cfg, logger)
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-
-	ctx, cancelFn := context.WithCancel(context.Background())
-	go func() {
-		a.Run(ctx)
-	}()
-
-	deadline := time.Now().Add(15 * time.Second)
-	for !a.Ready() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !a.Ready() {
-		cancelFn()
-		t.Fatal("agent not ready in time")
-	}
+	_, cancelFn, _ := sharedStartAgent(t, cfg)
 
 	return fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port),
 		fmt.Sprintf("127.0.0.1:%d", cfg.SMTP.Port),

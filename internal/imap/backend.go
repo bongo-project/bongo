@@ -2,6 +2,7 @@ package imap
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -127,6 +128,81 @@ var errMailboxReadOnly = &imap.Error{
 	Text: "Mailbox is read-only (opened with EXAMINE)",
 }
 
+// errNoSuchMailbox answers a command naming a mailbox that does not exist
+// (RFC 3501 section 6.3.1/6.3.4, RFC 9051 NONEXISTENT). go-imap sends an
+// *imap.Error as-is and logs nothing; any other error becomes "NO internal
+// server error" plus a log line. The text is fixed so the client-supplied name
+// is never echoed into a status line.
+var errNoSuchMailbox = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Code: imap.ResponseCodeNonExistent,
+	Text: "No such mailbox",
+}
+
+// errAlreadyExists answers CREATE or RENAME naming a mailbox that already
+// exists (RFC 3501 sections 6.3.3 and 6.3.5, RFC 5530 ALREADYEXISTS). The text
+// is fixed so the client-supplied name is never echoed.
+var errAlreadyExists = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Code: imap.ResponseCodeAlreadyExists,
+	Text: "Mailbox already exists",
+}
+
+// errTryCreate answers APPEND, COPY and MOVE to a destination that does not
+// exist (RFC 3501 section 6.3.11). Clients react by sending CREATE and
+// retrying.
+var errTryCreate = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Code: imap.ResponseCodeTryCreate,
+	Text: "No such mailbox",
+}
+
+// mailboxLookupError maps an error from a mailbox lookup. Only a genuine
+// not-found becomes notFound; any other failure (corrupt record, I/O error)
+// stays an ordinary wrapped error so it is logged and reported as a server
+// error rather than blamed on the client.
+//
+// Callers pre-check existence with GetMailbox rather than classifying errors
+// that come back through ApplyCommand: under real Raft the error chain may not
+// survive forwarding to the leader. A pre-check followed by a write is not
+// atomic, so a mailbox deleted in between still surfaces as a generic apply
+// error; that is an acceptable rare race, since only the status code is at
+// stake.
+func mailboxLookupError(name string, err error, notFound *imap.Error) error {
+	if errors.Is(err, store.ErrNotFound) {
+		return notFound
+	}
+	return fmt.Errorf("looking up mailbox %q: %w", name, err)
+}
+
+// requireMailbox returns nil when the named mailbox exists, and otherwise the
+// error mailboxLookupError chooses.
+func (s *session) requireMailbox(name string, notFound *imap.Error) error {
+	if _, err := s.mailboxes.GetMailbox(s.userID, name); err != nil {
+		return mailboxLookupError(name, err, notFound)
+	}
+	return nil
+}
+
+// requireNoMailbox returns errAlreadyExists when the named mailbox exists
+// (INBOX in any case always does), nil when it is genuinely absent, and a
+// wrapped error for any other lookup failure. Sessions are called directly in
+// tests without the decoder's INBOX normalisation, hence the EqualFold.
+func (s *session) requireNoMailbox(name string) error {
+	if strings.EqualFold(name, "INBOX") {
+		return errAlreadyExists
+	}
+	_, err := s.mailboxes.GetMailbox(s.userID, name)
+	switch {
+	case err == nil:
+		return errAlreadyExists
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	default:
+		return fmt.Errorf("looking up mailbox %q: %w", name, err)
+	}
+}
+
 // Login authenticates the user, throttling brute-force attempts per source IP.
 func (s *session) Login(username, password string) error {
 	ip := ""
@@ -157,7 +233,7 @@ func (s *session) Login(username, password string) error {
 func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.SelectData, error) {
 	meta, err := s.mailboxes.GetMailbox(s.userID, mailbox)
 	if err != nil {
-		return nil, fmt.Errorf("mailbox %q not found", mailbox)
+		return nil, mailboxLookupError(mailbox, err, errNoSuchMailbox)
 	}
 
 	s.selectedMailbox = mailbox
@@ -197,6 +273,9 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 
 // Create creates a new mailbox.
 func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
+	if err := s.requireNoMailbox(mailbox); err != nil {
+		return err
+	}
 	if err := s.mailboxes.CreateMailbox(s.userID, mailbox); err != nil {
 		s.logger.Warn("imap: create mailbox failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return err
@@ -207,6 +286,10 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 
 // Delete deletes a mailbox.
 func (s *session) Delete(mailbox string) error {
+	// RFC 3501 section 6.3.4: deleting a nonexistent mailbox is an error.
+	if err := s.requireMailbox(mailbox, errNoSuchMailbox); err != nil {
+		return err
+	}
 	if err := s.mailboxes.DeleteMailbox(s.userID, mailbox); err != nil {
 		s.logger.Warn("imap: delete mailbox failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return err
@@ -217,6 +300,14 @@ func (s *session) Delete(mailbox string) error {
 
 // Rename renames a mailbox.
 func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) error {
+	if err := s.requireMailbox(mailbox, errNoSuchMailbox); err != nil {
+		return err
+	}
+	// The store refuses to overwrite too; this pre-check is what yields the
+	// ALREADYEXISTS code, which cannot be recovered from a Raft apply error.
+	if err := s.requireNoMailbox(newName); err != nil {
+		return err
+	}
 	if err := s.mailboxes.RenameMailbox(s.userID, mailbox, newName); err != nil {
 		s.logger.Warn("imap: rename mailbox failed", "old_name", mailbox, "new_name", newName, "user", s.userID, "error", err)
 		return err
@@ -228,6 +319,10 @@ func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) e
 // Subscribe adds a mailbox to the user's subscription set.
 func (s *session) Subscribe(mailbox string) error {
 	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, true); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// Client error, not worth a WARN.
+			return errNoSuchMailbox
+		}
 		s.logger.Warn("imap: subscribe failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return err
 	}
@@ -238,6 +333,11 @@ func (s *session) Subscribe(mailbox string) error {
 // Unsubscribe removes a mailbox from the user's subscription set.
 func (s *session) Unsubscribe(mailbox string) error {
 	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, false); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// RFC 3501 section 6.3.7: UNSUBSCRIBE of a name that no longer
+			// exists succeeds. There is no subscription left to remove.
+			return nil
+		}
 		s.logger.Warn("imap: unsubscribe failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return err
 	}
@@ -344,7 +444,7 @@ func (s *session) Status(mailbox string, options *imap.StatusOptions) (*imap.Sta
 func (s *session) statusForMailbox(mailbox string, options *imap.StatusOptions) (*imap.StatusData, error) {
 	meta, err := s.mailboxes.GetMailbox(s.userID, mailbox)
 	if err != nil {
-		return nil, fmt.Errorf("mailbox %q not found", mailbox)
+		return nil, mailboxLookupError(mailbox, err, errNoSuchMailbox)
 	}
 
 	data := &imap.StatusData{
@@ -393,6 +493,12 @@ func (s *session) AppendLimit() uint32 {
 
 // Append stores a message in the specified mailbox.
 func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
+	// RFC 3501 section 6.3.11: the server MUST NOT create the mailbox
+	// implicitly. Checked before any blob work; go-imap drains the literal.
+	if err := s.requireMailbox(mailbox, errTryCreate); err != nil {
+		return nil, err
+	}
+
 	// Store raw message as a blob.
 	hash, size, err := s.blobs.PutReader(r)
 	if err != nil {
@@ -1363,6 +1469,9 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 	if s.selectedMailbox == "" {
 		return nil, fmt.Errorf("no mailbox selected")
 	}
+	if err := s.requireMailbox(dest, errTryCreate); err != nil {
+		return nil, err
+	}
 
 	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
 	if err != nil {
@@ -1422,6 +1531,9 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 	// leaves the selected mailbox untouched, which EXAMINE permits.
 	if s.readOnly {
 		return errMailboxReadOnly
+	}
+	if err := s.requireMailbox(dest, errTryCreate); err != nil {
+		return err
 	}
 
 	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)

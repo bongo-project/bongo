@@ -180,3 +180,10 @@ func (as *AddressStore) ListByUser(userID string) ([]string, error) {
 	}
 	return addrs, nil
 }
+
+// NormaliseAddress returns the form of an email address that every lookup
+// path (AddressStore, RecipientResolver, login fallback) expects: trimmed and
+// lower-cased. Account write paths must store this form.
+func NormaliseAddress(addr string) string {
+	return strings.ToLower(strings.TrimSpace(addr))
+}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/antispam"
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/pipeline"
 	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -36,7 +37,7 @@ func TestBuildAntispamProcessorBuiltinDefault(t *testing.T) {
 	cfg := config.Defaults()
 	for _, backend := range []string{"", "builtin"} {
 		t.Run("backend="+backend, func(t *testing.T) {
-			proc := buildAntispamProcessor(cfg, backend, antispam.NewScorer(), nil, nil, testLogger())
+			proc := buildAntispamProcessor(cfg, backend, antispam.NewScorer(), nil, nil, testLogger(), nil)
 			if _, ok := proc.(*pipelineantispam.BuiltinProcessor); !ok {
 				t.Errorf("buildAntispamProcessor(backend=%q) = %T, want *pipelineantispam.BuiltinProcessor", backend, proc)
 			}
@@ -51,7 +52,7 @@ func TestBuildAntispamProcessorRspamdComposesWithBuiltin(t *testing.T) {
 	cfg.Antispam.Rspamd.Enabled = true
 	cfg.Antispam.Rspamd.URL = "http://127.0.0.1:19999" // unreachable; not exercised here
 
-	proc := buildAntispamProcessor(cfg, "rspamd", antispam.NewScorer(), nil, nil, testLogger())
+	proc := buildAntispamProcessor(cfg, "rspamd", antispam.NewScorer(), nil, nil, testLogger(), nil)
 	if _, ok := proc.(*pipelineantispam.CompositeProcessor); !ok {
 		t.Errorf("buildAntispamProcessor(backend=rspamd) = %T, want *pipelineantispam.CompositeProcessor", proc)
 	}
@@ -63,7 +64,7 @@ func TestBuildAntispamProcessorSpamAssassinComposesWithBuiltin(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Antispam.SpamAssassin = &config.SpamAssassinConfig{Enabled: true}
 
-	proc := buildAntispamProcessor(cfg, "spamassassin", antispam.NewScorer(), nil, nil, testLogger())
+	proc := buildAntispamProcessor(cfg, "spamassassin", antispam.NewScorer(), nil, nil, testLogger(), nil)
 	if _, ok := proc.(*pipelineantispam.CompositeProcessor); !ok {
 		t.Errorf("buildAntispamProcessor(backend=spamassassin) = %T, want *pipelineantispam.CompositeProcessor", proc)
 	}
@@ -78,7 +79,7 @@ func TestBuildAntispamProcessorSpamAssassinNilBlock(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Antispam.SpamAssassin = nil
 
-	proc := buildAntispamProcessor(cfg, "spamassassin", antispam.NewScorer(), nil, nil, testLogger())
+	proc := buildAntispamProcessor(cfg, "spamassassin", antispam.NewScorer(), nil, nil, testLogger(), nil)
 	if _, ok := proc.(*pipelineantispam.BuiltinProcessor); !ok {
 		t.Errorf("buildAntispamProcessor(backend=spamassassin, nil block) = %T, want *pipelineantispam.BuiltinProcessor — an absent block is not enabled", proc)
 	}
@@ -104,7 +105,7 @@ func TestBuildAntispamProcessorDisabledBlockWinsOverBackend(t *testing.T) {
 		t.Run(tc.backend, func(t *testing.T) {
 			cfg := config.Defaults()
 			tc.modify(cfg)
-			proc := buildAntispamProcessor(cfg, tc.backend, antispam.NewScorer(), nil, nil, testLogger())
+			proc := buildAntispamProcessor(cfg, tc.backend, antispam.NewScorer(), nil, nil, testLogger(), nil)
 			if _, ok := proc.(*pipelineantispam.BuiltinProcessor); !ok {
 				t.Errorf("backend=%q with enabled=false = %T, want *pipelineantispam.BuiltinProcessor", tc.backend, proc)
 			}
@@ -118,7 +119,7 @@ func TestBuildAntispamProcessorDisabledBlockWinsOverBackend(t *testing.T) {
 // function directly. It must never drop mail - fall back to the builtin.
 func TestBuildAntispamProcessorUnknownBackendFallsBackToBuiltin(t *testing.T) {
 	cfg := config.Defaults()
-	proc := buildAntispamProcessor(cfg, "not-a-real-backend", antispam.NewScorer(), nil, nil, testLogger())
+	proc := buildAntispamProcessor(cfg, "not-a-real-backend", antispam.NewScorer(), nil, nil, testLogger(), nil)
 	if _, ok := proc.(*pipelineantispam.BuiltinProcessor); !ok {
 		t.Errorf("buildAntispamProcessor(backend=bogus) = %T, want *pipelineantispam.BuiltinProcessor (fail-safe default)", proc)
 	}
@@ -142,7 +143,7 @@ func TestBuildAntispamProcessorHonoursResolver(t *testing.T) {
 	}
 
 	spy := &spyResolver{target: "resolved-user-id"}
-	proc := buildAntispamProcessor(config.Defaults(), "builtin", antispam.NewScorer(), bayesFilter, spy, testLogger())
+	proc := buildAntispamProcessor(config.Defaults(), "builtin", antispam.NewScorer(), bayesFilter, spy, testLogger(), nil)
 
 	env := &bongov1.QueueEnvelope{
 		Sender:     "sender@example.com",
@@ -243,7 +244,7 @@ func TestBuildAntispamProcessorDMARCWiring(t *testing.T) {
 			cfg := config.Defaults()
 			tc.modify(cfg)
 
-			proc := buildAntispamProcessor(cfg, "builtin", antispam.NewScorer(), nil, nil, testLogger())
+			proc := buildAntispamProcessor(cfg, "builtin", antispam.NewScorer(), nil, nil, testLogger(), nil)
 			result, err := proc.Process(ctx, newEnv(), strings.NewReader(msg))
 			if err != nil {
 				t.Fatalf("Process: %v", err)
@@ -285,7 +286,7 @@ func TestBuildAntispamProcessorTrustedStillScanned(t *testing.T) {
 	cfg.Antispam.Rspamd.Enabled = true
 	cfg.Antispam.Rspamd.URL = srv.URL
 
-	proc := buildAntispamProcessor(cfg, "rspamd", antispam.NewScorer(), nil, nil, testLogger())
+	proc := buildAntispamProcessor(cfg, "rspamd", antispam.NewScorer(), nil, nil, testLogger(), nil)
 	env := &bongov1.QueueEnvelope{Sender: "user@example.com", Trusted: true}
 	msg := antispamTestMessage("user@example.com", "Hello", "Body")
 
@@ -369,7 +370,7 @@ func TestBuildAntispamProcessorDNSBLWiring(t *testing.T) {
 	}
 
 	t.Run("enabled config wires a checker", func(t *testing.T) {
-		proc := buildAntispamProcessor(dnsblCfg(true), "builtin", antispam.NewScorer(), nil, nil, testLogger())
+		proc := buildAntispamProcessor(dnsblCfg(true), "builtin", antispam.NewScorer(), nil, nil, testLogger(), nil)
 		builtin, ok := proc.(*pipelineantispam.BuiltinProcessor)
 		if !ok {
 			t.Fatalf("buildAntispamProcessor returned %T, want *BuiltinProcessor for the builtin backend", proc)
@@ -380,7 +381,7 @@ func TestBuildAntispamProcessorDNSBLWiring(t *testing.T) {
 	})
 
 	t.Run("disabled config wires nothing", func(t *testing.T) {
-		proc := buildAntispamProcessor(dnsblCfg(false), "builtin", antispam.NewScorer(), nil, nil, testLogger())
+		proc := buildAntispamProcessor(dnsblCfg(false), "builtin", antispam.NewScorer(), nil, nil, testLogger(), nil)
 		builtin := proc.(*pipelineantispam.BuiltinProcessor)
 		if builtin.HasDNSBL() {
 			t.Error("HasDNSBL() = true for a disabled dnsbl block: `enabled` must actually disable the thing")
@@ -388,7 +389,7 @@ func TestBuildAntispamProcessorDNSBLWiring(t *testing.T) {
 	})
 
 	t.Run("absent block wires nothing", func(t *testing.T) {
-		proc := buildAntispamProcessor(config.Defaults(), "builtin", antispam.NewScorer(), nil, nil, testLogger())
+		proc := buildAntispamProcessor(config.Defaults(), "builtin", antispam.NewScorer(), nil, nil, testLogger(), nil)
 		builtin := proc.(*pipelineantispam.BuiltinProcessor)
 		if builtin.HasDNSBL() {
 			t.Error("HasDNSBL() = true with no dnsbl block at all")
@@ -430,4 +431,45 @@ func TestStartProcessorAgentDNSBLWiring(t *testing.T) {
 			t.Error("HasDNSBL() = true for a disabled dnsbl block on an agent-role node")
 		}
 	})
+}
+
+// TestSpamThresholdHolderSharedByBuilders asserts the process has one holder
+// and that the server-role and agent-role builtin processors both follow a
+// published pair.
+func TestSpamThresholdHolderSharedByBuilders(t *testing.T) {
+	a := &Agent{Config: config.Defaults(), logger: testLogger()}
+	h := a.spamThresholdHolder()
+	if h == nil || h != a.spamThresholdHolder() {
+		t.Fatal("spamThresholdHolder must return one stable holder")
+	}
+	if got := h.Thresholds(); got != (pipeline.SpamThresholds{Tag: 0.5, High: 0.9}) {
+		t.Fatalf("startup pair = %+v, want defaults", got)
+	}
+
+	server := buildAntispamProcessor(a.Config, "builtin", antispam.NewScorer(), nil, nil, testLogger(), h)
+	agentProc := a.buildAgentAntispamProcessor()
+
+	run := func(p pipeline.Processor) string {
+		t.Helper()
+		env := &bongov1.QueueEnvelope{Sender: "s@example.com", Recipients: []string{"r@example.com"}, SpfResult: "fail"}
+		res, err := p.Process(context.Background(), env, strings.NewReader(antispamTestMessage("s@example.com", "", "Buy now!")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Action
+	}
+	for name, p := range map[string]pipeline.Processor{"server": server, "agent": agentProc} {
+		if err := h.Store(pipeline.SpamThresholds{Tag: 1, High: 1}); err != nil {
+			t.Fatal(err)
+		}
+		if got := run(p); got != "pass" {
+			t.Errorf("%s with tag=1: action %q, want pass", name, got)
+		}
+		if err := h.Store(pipeline.SpamThresholds{Tag: 0.0001, High: 0.0002}); err != nil {
+			t.Fatal(err)
+		}
+		if got := run(p); got != "quarantine" {
+			t.Errorf("%s with tiny thresholds: action %q, want quarantine", name, got)
+		}
+	}
 }

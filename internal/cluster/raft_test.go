@@ -182,8 +182,8 @@ func TestApplyRaftTuningDefaults(t *testing.T) {
 }
 
 // TestApplyRaftTuningRejectsInvalidPairing pins the enforcement point. The
-// check also lives in config.Validate(), which is not wired into the startup
-// path (task B8), so this is the copy that actually runs in production.
+// check is defence in depth: config.Validate() also rejects the pairing on the
+// serve startup path (cmd/bongo-go/agent.go).
 func TestApplyRaftTuningRejectsInvalidPairing(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 

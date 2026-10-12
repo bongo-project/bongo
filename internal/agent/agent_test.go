@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,10 +10,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime/pprof"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/config"
@@ -161,11 +164,10 @@ func TestSweepOrphanedUsers(t *testing.T) {
 		t.Fatal("user row should exist after creation")
 	}
 
-	// Orphan the user: remove only its Pebble profile, leaving the SQLite row.
-	if err := a.ApplyCommand(&bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: []byte("/user/" + uid + "/profile"),
-	}, 5*time.Second); err != nil {
+	// Orphan the user the way older nodes left it: remove only the Pebble
+	// profile, bypassing the FSM. A profile delete through Raft now also
+	// removes the users row on every node, so it can no longer make an orphan.
+	if err := a.Store.Delete([]byte("/user/" + uid + "/profile")); err != nil {
 		t.Fatalf("delete profile: %v", err)
 	}
 
@@ -256,6 +258,7 @@ func TestHealthEndpoints(t *testing.T) {
 	cfg.Web.Port = port
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
+	cfg.Cluster.Gossip.Port = freePort(t)
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -280,13 +283,13 @@ func TestHealthEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /health/live: %v", err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("/health/live status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
 	var body map[string]string
 	json.NewDecoder(resp.Body).Decode(&body)
+	resp.Body.Close()
 	if body["status"] != "alive" {
 		t.Errorf("/health/live status = %q, want %q", body["status"], "alive")
 	}
@@ -296,20 +299,35 @@ func TestHealthEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /health/ready: %v", err)
 	}
-	defer resp2.Body.Close()
+	resp2.Body.Close()
 	if resp2.StatusCode != http.StatusOK {
 		t.Errorf("/health/ready status = %d, want %d", resp2.StatusCode, http.StatusOK)
 	}
 
+	// net/http only treats a server connection that has not yet received a
+	// request (StateNew) as idle once it is 5s old, and Server.Shutdown waits
+	// for every connection to go idle. The client transport can dial a spare
+	// connection while waitForHTTPS and the GETs above race for one, then park
+	// it unused in its idle pool. Left open, that connection makes Shutdown
+	// block ~5s - exactly this test's budget - so Run overran it under load
+	// (observed 5.1-7.3s against ~9ms when the machine is quiet), and the late
+	// shutdown still held the fixed IMAP/POP3 ports when the next test started.
+	// Closing the client's idle connections lets Shutdown return immediately.
+	client.CloseIdleConnections()
+
+	cancelAt := time.Now()
 	cancel()
 
 	select {
 	case err := <-done:
+		t.Logf("Run returned %s after cancel", time.Since(cancelAt))
 		if err != nil {
 			t.Fatalf("Run returned error: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return after context cancellation")
+		var buf bytes.Buffer
+		_ = pprof.Lookup("goroutine").WriteTo(&buf, 1)
+		t.Fatalf("Run did not return after context cancellation; goroutines:\n%s", buf.String())
 	}
 }
 
@@ -476,9 +494,10 @@ func TestSweepGhostUserTrees(t *testing.T) {
 	}, 5*time.Second); err != nil {
 		t.Fatalf("seed row-only mail: %v", err)
 	}
-	if err := a.ApplyCommand(&bongov1.RaftCommand{
-		Op: bongov1.Op_OP_DELETE, Key: []byte("/user/" + rowOnlyID + "/profile"),
-	}, 5*time.Second); err != nil {
+	// Orphan the user the way older nodes left it: remove only the Pebble
+	// profile, bypassing the FSM. A profile delete through Raft now also
+	// removes the users row on every node, so it can no longer make an orphan.
+	if err := a.Store.Delete([]byte("/user/" + rowOnlyID + "/profile")); err != nil {
 		t.Fatalf("delete row-only profile: %v", err)
 	}
 
@@ -520,5 +539,95 @@ func TestSweepGhostUserTrees(t *testing.T) {
 	}
 	if _, gErr := a.Store.Get(rowOnlyMail); gErr != nil {
 		t.Error("BUG: mail belonging to a row-only orphan was deleted by the ghost sweep")
+	}
+}
+
+// orphanLogLines returns the decoded JSON log lines whose msg equals msg.
+func orphanLogLines(t *testing.T, buf *syncBuffer, msg string) []map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader([]byte(buf.String())))
+	var out []map[string]any
+	for dec.More() {
+		var m map[string]any
+		if err := dec.Decode(&m); err != nil {
+			t.Fatalf("decode log line: %v", err)
+		}
+		if m["msg"] == msg {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func TestSweepOrphanedUsersLogsReclaimedUser(t *testing.T) {
+	buf := &syncBuffer{}
+	a := blobGCLeaderTestAgentWithLogger(t, slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	uid, err := auth.CreateUser(a, a.Metadata, "ghost2@localhost", "Ghost", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	// Orphan the user the way older nodes left it: remove only the Pebble
+	// profile, bypassing the FSM. A profile delete through Raft now also
+	// removes the users row on every node, so it can no longer make an orphan.
+	if err := a.Store.Delete([]byte("/user/" + uid + "/profile")); err != nil {
+		t.Fatalf("delete profile: %v", err)
+	}
+
+	const msg = "orphan-gc: user row reclaimed"
+	prev := a.sweepOrphanedUsers(map[string]bool{})
+	if n := len(orphanLogLines(t, buf, msg)); n != 0 {
+		t.Fatalf("per-item line after first pass: %d, want 0", n)
+	}
+	a.sweepOrphanedUsers(prev)
+	lines := orphanLogLines(t, buf, msg)
+	if len(lines) != 1 || lines[0]["user"] != uid {
+		t.Fatalf("lines after second pass = %v, want one for user %s", lines, uid)
+	}
+	if lines[0]["level"] != "INFO" {
+		t.Errorf("level = %v, want INFO", lines[0]["level"])
+	}
+	if _, ok := lines[0]["aliases_deleted"]; !ok {
+		t.Error("aliases_deleted missing")
+	}
+	if n := len(orphanLogLines(t, buf, "orphan-gc: reclaimed orphaned user rows")); n != 1 {
+		t.Errorf("summary line count = %d, want 1 (unchanged)", n)
+	}
+}
+
+func TestSweepOrphanedMailLogsReclaimedGUID(t *testing.T) {
+	buf := &syncBuffer{}
+	a := blobGCLeaderTestAgentWithLogger(t, slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	uid, err := auth.CreateUser(a, a.Metadata, "ghost3@localhost", "Ghost", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	const guid = "orphan-guid-1"
+	key := "/user/" + uid + "/mail/" + guid
+	val, err := proto.Marshal(&bongov1.MailMeta{Guid: guid})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: []byte(key), Value: val}, 5*time.Second); err != nil {
+		t.Fatalf("put meta: %v", err)
+	}
+
+	const msg = "orphan-gc: mail meta reclaimed"
+	prev := a.sweepOrphanedMail(map[string]bool{}, 0)
+	if !prev[uid+"/"+guid] {
+		t.Fatalf("orphan not detected on first pass: %v", prev)
+	}
+	if n := len(orphanLogLines(t, buf, msg)); n != 0 {
+		t.Fatalf("per-item line after first pass: %d, want 0", n)
+	}
+	a.sweepOrphanedMail(prev, 0)
+	lines := orphanLogLines(t, buf, msg)
+	if len(lines) != 1 || lines[0]["user"] != uid || lines[0]["guid"] != guid || lines[0]["key"] != key {
+		t.Fatalf("lines after second pass = %v", lines)
 	}
 }

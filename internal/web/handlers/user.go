@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -65,6 +66,10 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := auth.CreateUser(h.applier, h.metadata, req.Email, req.DisplayName, req.Password, req.Admin)
 	if err != nil {
+		if errors.Is(err, auth.ErrAccountExists) {
+			http.Error(w, "an account or alias already uses that address", http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

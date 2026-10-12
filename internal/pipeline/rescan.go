@@ -77,8 +77,9 @@ func PrepareForRescan(env *bongov1.QueueEnvelope) {
 //
 //   - Empty is the common case. The deliver stage would then fall back to
 //     spamScoreFromStages(env.Stages) — reading the very StageResult this
-//     function retains for audit — and because config guarantees
-//     high_threshold >= junk_threshold, that score is always above the Junk
+//     function retains for audit — and because the thresholds are
+//     clamped by config and checked by SpamThresholds.Validate, and published
+//     as one pair (pipeline.SpamThresholdHolder), high >= tag, so that score is always above the Junk
 //     line (see deliver.go's targetMailbox fallback).
 //   - "Junk" arises when the scorer put the message in the tag band (setting
 //     TargetMailbox = "Junk", antispam/builtin.go) and DMARC then escalated

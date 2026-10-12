@@ -13,8 +13,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -42,6 +44,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/pipeline"
+	pipelineantivirus "github.com/bongo-project/bongo/internal/pipeline/antivirus"
 	pipelinedeliver "github.com/bongo-project/bongo/internal/pipeline/deliver"
 	pipelinerules "github.com/bongo-project/bongo/internal/pipeline/rules"
 	bongopop3 "github.com/bongo-project/bongo/internal/pop3"
@@ -89,7 +92,21 @@ const (
 
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
-	Config       *config.Config
+	Config *config.Config
+
+	// spamThresholds is the one tag/quarantine holder shared by every antispam
+	// stage and the deliver stage; see spamThresholdHolder.
+	spamThresholds *pipeline.SpamThresholdHolder
+
+	// reloadMu guards the consumer lists below. Run registers consumers on
+	// its own goroutine while a reload may already be running, so both sides
+	// take it.
+	reloadMu     sync.Mutex
+	smtpBackends []*bongosmtp.Backend
+	clamavProcs  []*pipelineantivirus.ClamAVProcessor
+	// reloader is set by EnableReload; nil means reload is not configured.
+	reloader *Reloader
+
 	Store        *store.PebbleStore
 	Blobs        *store.BlobStore
 	Metadata     *store.MetadataManager
@@ -129,6 +146,12 @@ type Agent struct {
 
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
+
+	// LogLevel is the live process log level. Set changes it for the logger,
+	// the admin log sink and all With children. It is assigned before Run, so
+	// it is read without a lock; a reloader must call Set on this LevelVar and
+	// never replace the pointer.
+	LogLevel *slog.LevelVar
 
 	// AgentGRPC is the gRPC client used to register with and heartbeat the server.
 	// In agent mode this is the primary registration client. For processor roles
@@ -229,6 +252,17 @@ func (a *Agent) GetKey(key []byte) ([]byte, error) {
 	return a.Store.Get(key)
 }
 
+// pebbleStoreOptions returns the options the agent opens its Pebble store with.
+// Pebble's own log output goes through the process logger, not stdlib log.
+// A cacheBytes of zero leaves Pebble's built-in default block cache.
+func pebbleStoreOptions(logger *slog.Logger, cacheBytes int64) []store.Option {
+	opts := []store.Option{store.WithLogger(logger.With("component", "pebble"))}
+	if cacheBytes > 0 {
+		opts = append(opts, store.WithCacheSize(cacheBytes))
+	}
+	return opts
+}
+
 // NewAgent creates and initializes an Agent with the given config.
 // In dev mode, storage is opened in a temporary directory.
 // In agent mode, no local storage is initialized.
@@ -240,6 +274,14 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		Config: cfg,
 		logger: logger,
 	}
+
+	// Create the shared threshold holder now, before any goroutine can reach
+	// it, so a reload never races a lazy first use in Run.
+	holder, err := newSpamThresholdHolder(cfg)
+	if err != nil {
+		return nil, err
+	}
+	a.spamThresholds = holder
 
 	// Agent role does not use local storage -- return early.
 	if cfg.Server.Role == "agent" {
@@ -269,7 +311,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		return nil, fmt.Errorf("creating pebble dir: %w", err)
 	}
 
-	pebbleStore, err := store.NewPebbleStore(pebbleDir)
+	cacheBytes, err := cfg.Storage.Pebble.CacheBytes()
+	if err != nil {
+		return nil, fmt.Errorf("storage.pebble.cache_size: %w", err)
+	}
+	pebbleStore, err := store.NewPebbleStore(pebbleDir, pebbleStoreOptions(logger, cacheBytes)...)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble store: %w", err)
 	}
@@ -356,13 +402,218 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	return a, nil
 }
 
+// buildPipelineStages constructs the inbound pipeline stages from
+// Pipeline.Stages, with the deliver processor as the final stage. It is a
+// named method so a test can prove the deliver and antispam stages share the
+// agent's one SpamThresholdHolder.
+func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeline.Processor, *pipelinedeliver.DeliverProcessor) {
+	var stages []pipeline.Processor
+
+	for _, stageCfg := range a.Config.Pipeline.Stages {
+		if !stageCfg.Enabled {
+			continue
+		}
+		switch stageCfg.Name {
+		case "antispam":
+			scorer := antispam.NewScorer()
+			bayesFilter := antispam.NewBayesFilter(a.Store, a)
+			antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger, a.spamThresholdHolder())
+			stages = append(stages, antispamProc)
+		case "rules":
+			if a.Rules != nil {
+				rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
+				rulesProc.SetResolver(resolver)
+				stages = append(stages, rulesProc)
+			}
+		case "antivirus":
+			// Ordering note: antispam (above) runs before antivirus, and
+			// the runner returns immediately once a stage quarantines a
+			// message (runner.go, processMessage) — a message quarantined
+			// by antispam is never virus-scanned. Do not reorder stages
+			// to "fix" this; see buildAntivirusProcessor's doc comment.
+			if antivirusProc := buildAntivirusProcessor(a.Config, stageCfg.Backend, a.logger); antivirusProc != nil {
+				a.registerClamAV(antivirusProc)
+				stages = append(stages, antivirusProc)
+			}
+		}
+	}
+
+	// Deliver processor is always the final stage.
+	deliverProc := pipelinedeliver.NewDeliverProcessor(a, resolver, a.logger)
+	if a.Preferences != nil {
+		deliverProc.SetPreferences(a.Preferences)
+	}
+	// Attachment deduplication: store large attachments as separate
+	// content-addressed blobs + a message skeleton, reconstructed byte-exact
+	// on read. The self-check inside the deliver stage falls back to whole-raw
+	// storage for anything that cannot be reproduced exactly.
+	if a.Blobs != nil {
+		deliverProc.SetAttachmentDedup(a.Blobs, int(a.Config.Storage.AttachmentDedupMinBytes()))
+	}
+	// Trace-header stamping: records SPF/DKIM/DMARC results and the spam
+	// decision on the stored message itself, so a raw message view can show
+	// why it was filed as spam without relying solely on the antispam log
+	// line. The tag threshold comes from the same
+	// holder as the antispam stages and drives Junk routing, so X-Spam-Status
+	// never disagrees with where the message landed.
+	deliverProc.SetTraceHeaders(a.Config.SMTP.Hostname)
+	if h := a.spamThresholdHolder(); h != nil {
+		deliverProc.SetSpamThresholds(h)
+	}
+	stages = append(stages, deliverProc)
+	return stages, deliverProc
+}
+
+// validateSessionSecret applies the session-secret rules shared by startup
+// and reload. Every session/2FA/setup cookie is HMAC'd with a key derived from
+// this value; a weak secret is offline-guessable from a single observed
+// cookie, after which an attacker can forge any cookie. Outside dev a secret
+// is required and must be at least minSessionSecretLen bytes. The error never
+// contains the secret.
+func validateSessionSecret(role, secret string) error {
+	const minSessionSecretLen = 32
+	if secret == "" {
+		if role != "dev" {
+			return fmt.Errorf("web.session_secret is required outside dev mode")
+		}
+		return nil
+	}
+	if role != "dev" && len(secret) < minSessionSecretLen {
+		return fmt.Errorf("web.session_secret must be at least %d bytes (got %d); generate one with `openssl rand -base64 32`", minSessionSecretLen, len(secret))
+	}
+	return nil
+}
+
+// currentHotConfig runs fn with the config that holds the live hot values.
+// With reload enabled that is the reloader's baseline, read under the lock
+// Reload holds for its whole run, so a registration cannot interleave with a
+// reload: it sees either the values before it or the values after it, and a
+// reload that follows finds the consumer already in the list. Without reload
+// it is a.Config, which never changes after startup. Lock order is r.mu then
+// reloadMu, the same as Reload; fn must not call Reload.
+func (a *Agent) currentHotConfig(fn func(src *config.Config) error) error {
+	if r := a.reloader; r != nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return fn(r.baseline)
+	}
+	return fn(a.Config)
+}
+
+// registerSMTPBackend records a backend so a reload reaches it and gives it
+// the current trusted networks. It returns how many networks were applied.
+func (a *Agent) registerSMTPBackend(b *bongosmtp.Backend) (int, error) {
+	var n int
+	err := a.currentHotConfig(func(src *config.Config) error {
+		nets, err := src.SMTP.ParseTrustedNetworks()
+		if err != nil {
+			return fmt.Errorf("smtp trusted networks: %w", err)
+		}
+		b.SetTrustedNetworks(nets)
+		n = len(nets)
+		a.reloadMu.Lock()
+		defer a.reloadMu.Unlock()
+		a.smtpBackends = append(a.smtpBackends, b)
+		return nil
+	})
+	return n, err
+}
+
+// registerClamAV records a ClamAV processor so a reload reaches it and gives
+// it the current on_failure policy. Other processor types (and a nil
+// interface) are ignored.
+func (a *Agent) registerClamAV(proc pipeline.Processor) {
+	cp, ok := proc.(*pipelineantivirus.ClamAVProcessor)
+	if !ok || cp == nil {
+		return
+	}
+	_ = a.currentHotConfig(func(src *config.Config) error {
+		policy := pipelineantivirus.OnFailure(src.Antivirus.ClamAV.FailurePolicy())
+		if err := cp.SetOnFailure(policy); err != nil {
+			// Startup and reload validation make this unreachable; keep the
+			// policy the processor was built with.
+			a.logger.Error("antivirus: applying on_failure policy", "error", err)
+		}
+		a.reloadMu.Lock()
+		defer a.reloadMu.Unlock()
+		a.clamavProcs = append(a.clamavProcs, cp)
+		return nil
+	})
+}
+
+// newServerSMTPBackend builds the server-role SMTP backend and registers it as
+// a reload consumer (which also sets its trusted networks).
+func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *store.RecipientResolver) (*bongosmtp.Backend, error) {
+	backend := bongosmtp.NewBackend(a.Auth, deliverer, a.logger)
+	// Operator-configured trusted networks: a connecting source IP inside one
+	// of these CIDRs is treated as trusted the same as an authenticated
+	// submission session (see (*smtp.Session).inboundMeta). Registration
+	// applies the current set atomically with joining the reload list.
+	n, err := a.registerSMTPBackend(backend)
+	if err != nil {
+		return nil, err
+	}
+	if n > 0 {
+		a.logger.Info("smtp: trusted networks configured", "count", n)
+	}
+
+	// SPF checker for inbound mail.
+	a.SPFChecker = mail.NewSPFChecker()
+	backend.SetSPFChecker(a.SPFChecker)
+
+	// Relay policy: accept mail for local recipients from anyone (inbound MX),
+	// but only relay to external recipients for authenticated submission.
+	// Uses the same shared resolver as the pipeline so RCPT accept and
+	// deliver-stage resolution are always consistent.
+	backend.SetResolver(resolver)
+
+	// Storage quota enforcement at RCPT: reject inbound mail permanently when
+	// the recipient's primary domain is at or over its max_storage_bytes
+	// limit. Nil when quota store is unavailable (dev/edge/agent — all
+	// nil-checked inside the SMTP session).
+	if a.DomainQuota != nil {
+		backend.SetQuotaChecker(a.DomainQuota)
+	}
+	return backend, nil
+}
+
+// newAgentSMTPBackend builds the agent-role SMTP backend and registers it as a
+// reload consumer.
+func (a *Agent) newAgentSMTPBackend(deliverer bongosmtp.Deliverer) (*bongosmtp.Backend, error) {
+	// Agent mode: no local auth required for inbound MX; use nil authenticator.
+	// Submission port authentication is handled by the server after deposit.
+	backend := bongosmtp.NewBackend(nil, deliverer, a.logger)
+
+	// Trusted networks are wired for future-correctness consistency only:
+	// internal/agent/grpc/server.go DepositMessage unconditionally strips
+	// Trusted (env.Trusted = false) because the deposit channel is not yet
+	// authenticated, so this has no behavioural effect today. Do not remove
+	// that strip here or in grpc/server.go; that is a separate trust-boundary
+	// change.
+	if _, err := a.registerSMTPBackend(backend); err != nil {
+		return nil, err
+	}
+
+	spfChecker := mail.NewSPFChecker()
+	backend.SetSPFChecker(spfChecker)
+	a.SPFChecker = spfChecker
+	return backend, nil
+}
+
+// reloadConsumers returns copies of the registered consumer lists.
+func (a *Agent) reloadConsumers() ([]*bongosmtp.Backend, []*pipelineantivirus.ClamAVProcessor) {
+	a.reloadMu.Lock()
+	defer a.reloadMu.Unlock()
+	return slices.Clone(a.smtpBackends), slices.Clone(a.clamavProcs)
+}
+
 // Run starts the HTTP server and blocks until the context is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	// Validate the optional antispam.dnsbl block before anything else, so a
 	// malformed value (bad zone name, out-of-range weight, unparseable
 	// timeout/cache_ttl) fails startup with a clear message on every role,
-	// not just SMTP-enabled server nodes. This is deliberately point-of-use
-	// validation, not cfg.Validate() (see CLAUDE.md and
+	// not just SMTP-enabled server nodes. This is point-of-use
+	// validation, separate from cfg.Validate() (see
 	// SMTPConfig.ParseTrustedNetworks below for the same pattern). The
 	// checker itself is not constructed here — see dnsblOption.
 	if err := a.Config.Antispam.DNSBL.Validate(); err != nil {
@@ -405,19 +656,16 @@ func (a *Agent) Run(ctx context.Context) error {
 	// derived from this value; a weak secret is offline-guessable from a single
 	// observed cookie, after which an attacker can forge any cookie. Require a
 	// meaningful minimum length outside dev.
-	const minSessionSecretLen = 32
+	if err := validateSessionSecret(a.Config.Server.Role, a.Config.Web.SessionSecret); err != nil {
+		return err
+	}
 	sessionSecret := []byte(a.Config.Web.SessionSecret)
 	if len(sessionSecret) == 0 {
-		if a.Config.Server.Role != "dev" {
-			return fmt.Errorf("web.session_secret is required outside dev mode")
-		}
 		sessionSecret = make([]byte, 32)
 		if _, err := rand.Read(sessionSecret); err != nil {
 			return fmt.Errorf("generating session secret: %w", err)
 		}
 		a.logger.Info("web: auto-generated session secret for dev mode")
-	} else if a.Config.Server.Role != "dev" && len(sessionSecret) < minSessionSecretLen {
-		return fmt.Errorf("web.session_secret must be at least %d bytes (got %d); generate one with `openssl rand -base64 32`", minSessionSecretLen, len(sessionSecret))
 	}
 
 	// The outbound queue store and rate limiter must exist before any HTTP
@@ -1035,56 +1283,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.Spool = spool
 
 		// Build pipeline processors from PipelineConfig stage list.
-		resolver := sharedResolver
 		var stages []pipeline.Processor
-
-		for _, stageCfg := range a.Config.Pipeline.Stages {
-			if !stageCfg.Enabled {
-				continue
-			}
-			switch stageCfg.Name {
-			case "antispam":
-				scorer := antispam.NewScorer()
-				bayesFilter := antispam.NewBayesFilter(a.Store, a)
-				antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger)
-				stages = append(stages, antispamProc)
-			case "rules":
-				if a.Rules != nil {
-					rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
-					rulesProc.SetResolver(resolver)
-					stages = append(stages, rulesProc)
-				}
-			case "antivirus":
-				// Ordering note: antispam (above) runs before antivirus, and
-				// the runner returns immediately once a stage quarantines a
-				// message (runner.go, processMessage) — a message quarantined
-				// by antispam is never virus-scanned. Do not reorder stages
-				// to "fix" this; see buildAntivirusProcessor's doc comment.
-				if antivirusProc := buildAntivirusProcessor(a.Config, stageCfg.Backend, a.logger); antivirusProc != nil {
-					stages = append(stages, antivirusProc)
-				}
-			}
-		}
-
-		// Deliver processor is always the final stage.
-		deliverProc = pipelinedeliver.NewDeliverProcessor(a, resolver, a.logger)
-		if a.Preferences != nil {
-			deliverProc.SetPreferences(a.Preferences)
-		}
-		// Attachment deduplication: store large attachments as separate
-		// content-addressed blobs + a message skeleton, reconstructed byte-exact
-		// on read. The self-check inside the deliver stage falls back to whole-raw
-		// storage for anything that cannot be reproduced exactly.
-		if a.Blobs != nil {
-			deliverProc.SetAttachmentDedup(a.Blobs, int(a.Config.Storage.AttachmentDedupMinBytes()))
-		}
-		// Trace-header stamping: records SPF/DKIM/DMARC results and the spam
-		// decision on the stored message itself, so a raw message view can show
-		// why it was filed as spam without relying solely on the antispam log
-		// line. The threshold is shared with Junk routing
-		// above so X-Spam-Status never disagrees with where the message landed.
-		deliverProc.SetTraceHeaders(a.Config.SMTP.Hostname, a.Config.Antispam.Builtin.SpamThreshold())
-		stages = append(stages, deliverProc)
+		stages, deliverProc = a.buildPipelineStages(sharedResolver)
 
 		// Create blob reader adapter and start the Runner with config-driven options.
 		blobReader := &bongosmtp.BlobStoreAdapter{Blobs: a.Blobs}
@@ -1106,11 +1306,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			"poll_interval", a.Config.Pipeline.PollInterval,
 		)
 
-		// Start quarantine auto-purge (default 30-day retention, hourly checks).
+		// Start quarantine auto-purge (pipeline.quarantine_retention, hourly checks).
 		purgeCtx, purgeCancel := context.WithCancel(ctx)
 		a.quarantinePurgeCancel = purgeCancel
-		go handlers.RunAutoPurge(purgeCtx, spool, a.Blobs, 30*24*time.Hour, time.Hour, a.logger)
-		a.logger.Info("quarantine: auto-purge started")
+		startQuarantinePurge(purgeCtx, spool, a.Blobs, a.Config, a.logger, handlers.RunAutoPurge)
+		// Error-spool purge (pipeline.error_retention). Per node, like the
+		// quarantine purge: the spool is local disk. Stopped by the same cancel.
+		startErrorPurge(purgeCtx, spool, a.Config, a.logger, pipeline.RunErrorPurge)
 
 		// Register quarantine admin routes (spool is now available).
 		r.Group(func(r chi.Router) {
@@ -1135,38 +1337,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Start SMTP server.
 	if a.Config.SMTP.Enabled && a.Raft != nil && smtpPipeline != nil {
 		isDev := a.Config.Server.Role == "dev"
-		backend := bongosmtp.NewBackend(a.Auth, smtpPipeline, a.logger)
-
-		// SPF checker for inbound mail.
-		a.SPFChecker = mail.NewSPFChecker()
-		backend.SetSPFChecker(a.SPFChecker)
-
-		// Relay policy: accept mail for local recipients from anyone (inbound MX),
-		// but only relay to external recipients for authenticated submission.
-		// Uses the same shared resolver as the pipeline so RCPT accept and
-		// deliver-stage resolution are always consistent.
-		backend.SetResolver(sharedResolver)
-
-		// Storage quota enforcement at RCPT: reject
-		// inbound mail permanently when the recipient's primary domain is at or
-		// over its max_storage_bytes limit. Nil when quota store is unavailable
-		// (dev/edge/agent — all nil-checked inside the SMTP session).
-		if a.DomainQuota != nil {
-			backend.SetQuotaChecker(a.DomainQuota)
-		}
-
-		// Operator-configured trusted networks: a connecting source IP
-		// inside one of these CIDRs is treated as trusted the same as an
-		// authenticated submission session (see (*smtp.Session).inboundMeta).
-		// Parsed once here and set before Listen — SetTrustedNetworks is not
-		// safe to call after Listen starts serving sessions.
-		trustedNets, err := a.Config.SMTP.ParseTrustedNetworks()
+		backend, err := a.newServerSMTPBackend(smtpPipeline, sharedResolver)
 		if err != nil {
-			return fmt.Errorf("smtp trusted networks: %w", err)
-		}
-		backend.SetTrustedNetworks(trustedNets)
-		if len(trustedNets) > 0 {
-			a.logger.Info("smtp: trusted networks configured", "count", len(trustedNets))
+			return err
 		}
 
 		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
@@ -1612,16 +1785,14 @@ func (a *Agent) blobGCPass(prev map[string]bool, prevMode string, minAge time.Du
 // mode, not one confirmation each under two different ones.
 //
 // This is defence-in-depth, not a fix for a live bug: BlobGCMode() is read
-// from Config, which is assigned once in NewAgent (agent.go:240) and never
-// mutated outside tests; the only signal.Notify in the tree is SIGINT/SIGTERM
-// for shutdown (cmd/bongo-go/agent.go:178); there is no SIGHUP config reload.
-// So the mode is constant for the life of a process, changing it requires a
-// restart, and a restart already gives runOrphanGC a fresh empty prevBlobs --
-// this guard cannot currently fire. It exists for backlog item B9, which
-// proposes exactly that reload: if B9 lands, a mode flip happens mid-process
-// and, without this, a candidate confirmed under one mode (e.g. dryrun) would
-// be deleted on the first pass under a newly-enabled one, with no fresh
-// confirmation. Implementing it now means B9 does not have to remember to.
+// from Config, which is assigned once in NewAgent and never mutated outside
+// tests, and the SIGHUP config reload deliberately treats storage.blob_gc as
+// restart-only (config.Diff classifies it so). The mode is therefore constant
+// for the life of a process, and a restart already gives runOrphanGC a fresh
+// empty prevBlobs, so this guard cannot currently fire. It exists so that if
+// blob_gc ever becomes reloadable, a candidate confirmed under one mode (e.g.
+// dryrun) is not deleted on the first pass under a newly-enabled one with no
+// fresh confirmation.
 func blobGCCandidatesAcrossModeChange(prev map[string]bool, mode, prevMode string) map[string]bool {
 	if mode != prevMode {
 		return map[string]bool{}
@@ -2085,9 +2256,13 @@ func (a *Agent) sweepOrphanedUsers(prev map[string]bool) map[string]bool {
 			continue
 		}
 		// Aliases pointing at a now-gone user are undeliverable; drop them too.
-		if _, err := db.Exec("DELETE FROM aliases WHERE target_user_id = ?", userID); err != nil {
+		aliasesDeleted := int64(0)
+		if res, err := db.Exec("DELETE FROM aliases WHERE target_user_id = ?", userID); err != nil {
 			a.logger.Warn("orphan-gc: deleting aliases for orphaned user failed", "user", userID, "error", err)
+		} else if n, err := res.RowsAffected(); err == nil {
+			aliasesDeleted = n
 		}
+		a.logger.Info("orphan-gc: user row reclaimed", "user", userID, "aliases_deleted", aliasesDeleted)
 		deleted++
 	}
 	if deleted > 0 {
@@ -2246,6 +2421,7 @@ func (a *Agent) sweepOrphanedMail(prev map[string]bool, minAge time.Duration) ma
 				a.logger.Warn("orphan-gc: deleting mail meta failed", "user", userID, "guid", guid, "error", err)
 				continue
 			}
+			a.logger.Info("orphan-gc: mail meta reclaimed", "user", userID, "guid", guid, "key", string(key))
 			deleted++
 		}
 	}
@@ -2725,24 +2901,10 @@ func (a *Agent) startSMTPAgent() error {
 
 	pipeline := bongosmtp.NewAgentDeliveryPipeline(grpcClient, a.logger)
 
-	// Agent mode: no local auth required for inbound MX; use nil authenticator.
-	// Submission port authentication is handled by the server after deposit.
-	backend := bongosmtp.NewBackend(nil, pipeline, a.logger)
-
-	spfChecker := mail.NewSPFChecker()
-	backend.SetSPFChecker(spfChecker)
-	a.SPFChecker = spfChecker
-
-	// Wired for future-correctness consistency only: internal/agent/grpc/server.go
-	// DepositMessage unconditionally strips Trusted (env.Trusted = false) because
-	// the deposit channel is not yet authenticated, so this has no behavioural
-	// effect today. Do not remove that strip here or in grpc/server.go — that is
-	// a separate trust-boundary change.
-	trustedNets, err := a.Config.SMTP.ParseTrustedNetworks()
+	backend, err := a.newAgentSMTPBackend(pipeline)
 	if err != nil {
-		return fmt.Errorf("smtp trusted networks: %w", err)
+		return err
 	}
-	backend.SetTrustedNetworks(trustedNets)
 
 	isDev := false // agents are never in dev mode
 	a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
@@ -2781,6 +2943,7 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 		if proc == nil {
 			return fmt.Errorf("agent: antivirus processor role requires antivirus.clamav.enabled = true")
 		}
+		a.registerClamAV(proc)
 	default:
 		return fmt.Errorf("unknown processor role: %s", role)
 	}
@@ -3187,4 +3350,26 @@ func newRedirectServer(addr string, h http.Handler, logger *slog.Logger) *http.S
 		IdleTimeout:       30 * time.Second,
 		ErrorLog:          observability.HTTPLibraryLogger(logger),
 	}
+}
+
+// autoPurgeFunc is the shape of handlers.RunAutoPurge, injectable for tests.
+type autoPurgeFunc func(context.Context, *pipeline.SpoolStore, *store.BlobStore, time.Duration, time.Duration, *slog.Logger)
+
+// startQuarantinePurge launches the quarantine auto-purge with the configured
+// retention. Blobs are left to the blob GC.
+func startQuarantinePurge(ctx context.Context, spool *pipeline.SpoolStore, blobs *store.BlobStore, cfg *config.Config, logger *slog.Logger, run autoPurgeFunc) {
+	retention := cfg.Pipeline.QuarantineRetentionDuration()
+	go run(ctx, spool, blobs, retention, time.Hour, logger)
+	logger.Info("quarantine: auto-purge started", "retention", retention.String())
+}
+
+// errorPurgeFunc is the shape of pipeline.RunErrorPurge, injectable for tests.
+type errorPurgeFunc func(context.Context, *pipeline.SpoolStore, time.Duration, time.Duration, *slog.Logger)
+
+// startErrorPurge launches the error-spool auto-purge with the configured
+// retention. Blobs are left to the blob GC.
+func startErrorPurge(ctx context.Context, spool *pipeline.SpoolStore, cfg *config.Config, logger *slog.Logger, run errorPurgeFunc) {
+	retention := cfg.Pipeline.ErrorRetentionDuration()
+	go run(ctx, spool, retention, time.Hour, logger)
+	logger.Info("pipeline: error-spool purge started", "retention", retention.String())
 }

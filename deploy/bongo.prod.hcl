@@ -105,7 +105,7 @@ storage {
   #
   # If a sweep ever proposes a candidate you did not expect, set this back to
   # "dryrun" and run scripts/verify-blob-candidates.sh before anything else.
-  # See US-005 in prds/active/prd-blob-gc-reference-integrity.md.
+  # See US-005 in prds/done/prd-blob-gc-reference-integrity.md.
   blob_gc = "on"
 
   pebble {

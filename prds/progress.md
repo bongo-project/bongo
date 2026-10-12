@@ -1027,3 +1027,213 @@ To answer the operator's question, recorded here because it will come up again: 
 check sending IPs against DNS blocklists, but in the antispam pipeline stage AFTER the message is
 accepted (`smtp: message accepted` at :05.167, `antispam: scored` at :06.026), not on connect. A
 slow or unreachable blocklist cannot delay the SMTP banner or stall a connection.
+
+## 2026-10-11 — 15.3: IMAP missing mailbox answers NONEXISTENT / TRYCREATE
+
+`mailboxLookupError` maps only `store.ErrNotFound` to an `*imap.Error`; every other store error is
+wrapped with %w, so a corrupt record is no longer blamed on the client as "not found". go-imap sends
+an `*imap.Error` as-is and logs nothing, which removes the biggest stdout line in prod (Apple Notes
+polling SELECT "Notes"). Existence is pre-checked in the session before any Raft write rather than
+by classifying errors returned through `ApplyCommand`, whose error chain may not survive leader
+forwarding. The pre-check plus write is not atomic; a racing delete just surfaces as a generic error.
+
+Two client-visible changes, both required by RFC 3501: APPEND to a missing mailbox returns TRYCREATE
+instead of silently creating it, and DELETE of a missing mailbox is NO instead of OK. SMTP delivery
+still auto-creates via `readOrInitMailboxMeta`.
+
+Advisor review: MINOR. Orchestrator mutation re-check: restoring the blanket wrap turned four tests
+red (TestMailboxLookupError, TestMissingMailboxIsNonexistent, TestMissingDestinationIsTryCreate,
+TestSelectNonexistentDoesNotLogServerError).
+
+15.5 decided by the operator: do nothing. No auto-create of Notes.
+
+PATTERN: [imap] Map to an IMAP status only on errors.Is(err, store.ErrNotFound); wrap everything else.
+PATTERN: [raft] Pre-check existence before ApplyCommand rather than classifying errors returned through
+Raft; the chain may not survive forwarding to the leader.
+PATTERN: [testing] An e2e test asserting a log line is ABSENT needs a positive control at the same
+level (here a corrupt-meta SELECT that does produce imap.command_error) or it passes vacuously.
+PATTERN: [norman] Parallel worktree workers running the integration suite at once starve each other
+("agent not ready in time") and one ran pkill on integration.test. Run the integration gate once,
+from the orchestrator, after merging. Locally the full suite also flakes on this Mac on clean main
+(6 readiness timeouts, each passing alone) while Linux CI is green.
+
+## 2026-10-11 — 15.4: gRPC logs through slog
+
+`observability.GRPCLogger` implements grpclog.LoggerV2 with stable msg keys and the text in
+`line`. It is installed once in `newServeLogger`, extracted from `runServe` so the wiring is testable
+and runs before `agent.NewAgent` constructs any gRPC object (SetLoggerV2 is not goroutine-safe).
+The Depth variants are deliberately not implemented so grpclog falls back to the *ln methods, which
+carry `[component] text`. Advisor review: MINOR (infra doc should note GRPC_GO_LOG_* env vars stop
+applying). Orchestrator mutation re-check: replacing the install call with a no-op turned
+TestNewServeLoggerInstallsGRPCLogger red.
+
+PATTERN: [testing] Deleting a call to mutation-test wiring often just fails the build on an unused
+import. Replace it with a harmless no-op instead, so the test, not the compiler, goes red.
+
+## 2026-10-11 — 15.6: Pebble logs through slog; Phase 15 complete
+
+`store.WithLogger` wires an slog adapter into `pebble.Options.Logger` at both construction sites.
+The advisor revised the task: Pebble v1.1.5's Logger has no Errorf, and background errors arrive
+through Infof, so the adapter classifies on the compile-time format string and promotes
+`background error:` to ERROR. Advisor review: MINOR (the NewAgent call site is covered by the
+extracted `pebbleStoreOptions` test, not by a full Agent). Orchestrator mutation re-check:
+`pebbleStoreOptions` returning nil turned TestPebbleStoreOptionsRouteLogsThroughSlog red.
+
+Gate with 15.3, 15.4 and 15.6 applied: fmt-check clean; `go test -race ./...` green (TestHealthEndpoints
+passed this time); integration had 3 "agent not ready in time" timeouts (TestI18nFallback,
+TestLoginRateLimit, TestRemoteImageBlocking). The clean baseline had 6 of the same kind, the set
+changes run to run, and each passes alone. Linux CI on main is green.
+
+PATTERN: [pebble] v1.1.5 Logger is Infof + Fatalf only; classify on the format string, not the
+formatted text, and assert with log.SetOutput (the default logger uses stdlib log, stderr).
+PATTERN: [pebble] Under -race, invariants finalizers exit the process on an unclosed DB; every test
+must Close its stores.
+NOTE (for B16): integration startup readiness flakes locally under the full suite, beyond the three
+tests B16 names. The integration helpers discard Run()'s error (`go func() { a.Run(ctx) }()`), so a
+failed start shows only as a 15s timeout. Surfacing that error is the first step to diagnosing it.
+
+## 2026-10-11 — 16.1 (B16): the integration flakes were a fixed port, hidden by a discarded error
+
+Every dev-mode agent bound memberlist's default gossip port 8301 (`sharedAssignFreePorts` randomised
+every port but that one). Tests cancelled their agent without waiting for Run to return, so the next
+test's agent started while 8301 was still held; gossip is the first step after "leadership
+acquired", Run returned the bind error, and 14 helpers discarded it. The symptom was a 15s "agent
+not ready" whose victim set changed run to run -- indistinguishable from load flakiness.
+
+Evidence, not inference: with the new fail-fast helper and the fix reverted, ~15 tests failed in
+under a second with `listen tcp 127.0.0.1:8301: bind: address already in use`.
+
+TestHealthEndpoints was a different mechanism: the client transport parked an unused connection,
+which the server sees in StateNew, and `http.Server.Shutdown` only treats StateNew as idle after 5s.
+Measured 7/25 failures under load before, 0/25 after `client.CloseIdleConnections()`.
+
+Advisor review: MINOR (port-race retry could hide an intermittent overlap; agent-package tests still
+use fixed IMAP/POP3 ports). Orchestrator gate: `go test -race ./...` and uncached integration both
+green (345.8s), the first clean local integration run of the day.
+
+PATTERN: [testing] A helper that discards a goroutine's error turns every failure into the same
+timeout. Before diagnosing a "flaky timeout", make the thing that failed report why.
+PATTERN: [testing] "Randomise every port" must include library-default ports (memberlist 8301) the
+config struct sets on your behalf.
+PATTERN: [testing] Wait for the previous test's server to stop (Cleanup waiting on Run) before the
+next starts; cancelling is not stopping.
+PATTERN: [testing] http.Server.Shutdown waits up to 5s on a client connection that sent nothing;
+call CloseIdleConnections on the test client before shutting the server down.
+
+## 2026-10-11 — 16.2-16.6 batch
+
+Five tasks in parallel worktrees, each fast-forwarded to the branch head first (worktrees are
+created from an older commit; 16.4 depended on 15.3's IMAP code). Workers ran only package-level
+tests; the orchestrator ran one full gate after applying all five patches in order: fmt, vet,
+`go test -race ./...`, uncached integration 337.7s -- all green. Committed one task per commit by
+re-applying each patch to the index (`git apply --cached`), since 16.3 and 16.5 both touch agent.go.
+
+- 16.2 advisor REVISE caught three wrong premises in the task text: no shared normaliser existed,
+  the admin UI used a hand copy of CreateUser (stale "import cycle" comment), and login did not
+  lower-case at all -- so AC4 needed a code change, not a check. Review MINOR.
+- 16.3 review MINOR (fixed 100ms waits in runner tests; failure-path sites untested).
+- 16.4 review PASS. Reviewer corrected the worker's report: the session RENAME pre-check is not
+  redundant with the FSM guard -- removing it turns its test red.
+- 16.5 review MINOR (stale comment and env isolation, both fixed by the orchestrator).
+- 16.6 design, review MINOR (contradictory heading fixed). The worker ran one `pkill -HUP` against a
+  pattern-matched scratch binary despite the no-pkill rule; no collateral damage found.
+
+Orchestrator follow-ups applied before the gate: stale Validate comment in raft_test.go; BONGO_BIND,
+BONGO_JOIN and BONGO_LOG-LEVEL cleared in the serve config test; envIdentity on the shutdown
+return-envelope line; design doc bullet moved.
+
+PATTERN: [norman] Advisor REVISE earns its cost when the task text names helpers or behaviour that do
+not exist. Write task descriptions as hypotheses to verify, not settled facts.
+PATTERN: [raft] A new refusal inside FSM apply changes how OLD log entries replay. Note it whenever an
+apply path starts rejecting something it used to accept.
+PATTERN: [testing] A worker's claim that a guard is "redundant, so not mutation-tested" must itself be
+tested; here removing the "redundant" guard turned four subtests red.
+
+## 2026-10-11 — Phase 16 complete: config reload increment 1 and the gap fixes
+
+Reload increment 1 shipped as 16.7-16.14: holders for log level, trusted networks, the spam threshold
+pair and the ClamAV policy; `config.Diff` with a reflection-checked classification; `Agent.Reload`
+(validate, prepare, apply all-or-nothing, report); SIGHUP wiring with registration that applies the
+reloader's current values; and an end-to-end integration test. Operator decisions: widened trusted
+networks apply with a WARN; blob_gc stays restart-only; unread group-1 keys connected (16.18-16.20),
+group 2 left alone, group 3 kept for future features (B21).
+
+Gaps closed: 16.15 duplicate accounts refused before any write, 16.16 alias normalisation, 16.17
+failure-path log tests, 16.21 FSM cleans up users rows and GAL entries on profile delete (plus the
+orchestrator's exact-match fix in rebuildProfiles).
+
+Final gate on cd27b9a: fmt, vet (with integration tag), `go test -race ./...`, uncached integration
+343.1s, all green. gosec: 68 findings, all pre-existing, none on lines this branch changed.
+
+Process notes:
+- Twice, agents treated a mid-run user message (a question) as the whole request and refused the
+  scheduled work. Quoting the user's actual instruction in the agent context fixed it; telling agents
+  to "ignore" a user message was correctly blocked by the safety classifier and must not be repeated.
+- 16.21 changed a behaviour three older tests relied on (a Raft profile delete left an orphan row).
+  The tests were changed to build the orphan the way a pre-16.21 node left it, not loosened.
+
+PATTERN: [norman] When the user sends a message mid-run, agents may read it as the latest and only
+request. Give agents the user's own words for the task they are running; never instruct them to
+disregard a user message.
+PATTERN: [testing] When a fix removes the way a test manufactured its precondition, rebuild the
+precondition the way real legacy state arises (here: delete the Pebble key directly), rather than
+deleting or weakening the test.
+PATTERN: [reload] Registration of a reloadable consumer must apply the reloader's current values under
+the reload lock; setting values from the startup config after registering re-opens a race.
+
+Open backlog from this phase: B21 (reserved config keys), B22 (follower orphan rows), B23 (log config
+mtime on reload), B24 (bounded signal-test teardown), B25 (SMTP ignores bind_addr).
+
+## 2026-10-12 — Sweep of Phase 16 (invariants + comments)
+
+**Invariants.** 22 Phase 16 guarantees broken one at a time through `go test -overlay` (working tree
+never touched; clean after every run). Harness proven first by hand: breaking the error-purge cutoff
+turned TestPurgeErrorSpool red. Result: 20 fully guarded, 2 partially unguarded (confirmed by an
+independent refuter), 0 refuted, 1 structural (cannot break).
+
+Confirmed gaps (coverage, not bugs):
+1. **register-applies-current-values, the locking half (medium).** Removing `r.mu.Lock()` from
+   `currentHotConfig` (internal/agent/agent.go) passes the agent package under -race and the
+   integration reload test. Without the lock a backend registered while a reload is in flight can
+   read the old baseline, miss the reload's consumer snapshot, and keep stale trusted networks until
+   the next change. The value half (registration applies the reloader's current values) IS guarded.
+   A test needs a deterministic interleaving (a seam pausing reloadLocked after reloadConsumers()).
+2. **diff-flags-secrets, smtp.relay.username only (low).** Dropping it from `secretKeys` keeps every
+   test green: TestSecretLookingKeysAreFlagged matches by name pattern and "username" matches none.
+   A table over the exact required secret set would close it.
+
+Structural: the error purge cannot delete a blob; it holds no blob store handle (TestPurgeErrorSpoolLeavesBlob
+also asserts it).
+
+**Comments.** Phase 16 left little scaffolding: three test comments citing "pre-16.21" reworded; one
+over-long line reflowed in auth/create.go; and the blob-GC mode-change comment in agent.go corrected,
+since it said there was no SIGHUP reload and pointed at backlog B9; it now gives the real reason the
+guard cannot fire (blob_gc is restart-only under reload). Three long Phase 16 blocks (shared start
+helper, CreateUser partial-failure semantics, SetSubscribed) left alone: each carries distinct claims.
+Out-of-scope references left: `task 14.9` and `B7` in agent.go, `B21` in diff.go (open backlog).
+Comment ratio across the 82 Phase 16 files: 0.18.
+
+PATTERN: [sweep] Run the whole owning package under a break, not a -run filter: test names rarely
+match the feature (`-run ErrorPurge` missed TestPurgeErrorSpool and reported a false gap).
+PATTERN: [sweep] Locking guarantees survive -race when both sides already share another mutex; the
+race detector sees happens-before edges and the bad interleaving is logical, not a data race. They
+need a deterministic interleaving test, not a stress loop.
+
+## 2026-10-12 — Phase 17: both sweep gaps closed
+
+17.1 reload-lock test (deterministic: test-only hook pauses the reload, runtime.Stack proves the
+registration is parked on the lock) and 17.2 exact secret-key table. Both mutation-checked by the
+orchestrator through overlays. Release gate on the final tree: fmt, vet (with integration tag),
+`go test -race ./...`, uncached integration 341.8s, all green.
+
+PATTERN: [testing] To prove a goroutine is blocked on a specific lock without sleeping, poll
+runtime.Stack(buf, true), split per goroutine, and match the lock frame plus the calling function.
+
+## 2026-10-12 — Release PR #34: CI lint caught what the local gate skipped
+
+CI failed only on golangci-lint (govet inline: `reflect.Ptr` should be `reflect.Pointer`, three sites
+from 16.11/16.12). Tests, integration, security and build were green on Linux. The local gate ran
+fmt, vet, race and integration but never `make lint`, and config.md names gosec as the lint command.
+
+PATTERN: [gate] The release gate must include `make lint` (golangci-lint), which CI runs and which
+catches things `go vet` alone does not.

@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-project/bongo/internal/agent"
 	"github.com/bongo-project/bongo/internal/config"
 )
 
@@ -26,28 +24,8 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 	cfg.SMTP.Enabled = true
 	cfg.IMAP.Enabled = true
 
-	logger := sharedTestLogger()
-
-	a, err := agent.NewAgent(cfg, logger)
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
+	a, cancel, _ := sharedStartAgent(t, cfg)
 	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- a.Run(ctx)
-	}()
-
-	deadline := time.Now().Add(15 * time.Second)
-	for !a.Ready() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !a.Ready() {
-		t.Fatal("agent not ready in time")
-	}
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port)
 

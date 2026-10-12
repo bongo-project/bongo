@@ -30,27 +30,7 @@ func setupRenderingAgent(t *testing.T) (*agent.Agent, string, *http.Client, cont
 	cfg.SMTP.Enabled = true
 	cfg.IMAP.Enabled = true
 
-	logger := sharedTestLogger()
-
-	a, err := agent.NewAgent(cfg, logger)
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		_ = a.Run(ctx)
-	}()
-
-	deadline := time.Now().Add(15 * time.Second)
-	for !a.Ready() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !a.Ready() {
-		cancel()
-		t.Fatal("agent not ready in time")
-	}
+	a, cancel, _ := sharedStartAgent(t, cfg)
 
 	// Dev mode serves the web UI over plain HTTP (like every other integration
 	// test agent), so use http:// rather than https://.

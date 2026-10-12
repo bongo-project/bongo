@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
@@ -79,11 +81,18 @@ func (a *LocalAuth) lookupUserID(username string) (string, error) {
 		return "", fmt.Errorf("metadata not available")
 	}
 
+	const q = "SELECT id FROM users WHERE username = ? AND enabled = 1"
+	db := a.metadata.System.DB()
+
+	// Exact match first so legacy mixed-case accounts keep working, and so a
+	// legacy "Bob@x" is not shadowed by a newer lower-case "bob@x".
 	var userID string
-	err := a.metadata.System.DB().QueryRow(
-		"SELECT id FROM users WHERE username = ? AND enabled = 1",
-		username,
-	).Scan(&userID)
+	err := db.QueryRow(q, username).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		if norm := store.NormaliseAddress(username); norm != username {
+			err = db.QueryRow(q, norm).Scan(&userID)
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("looking up user: %w", err)
 	}

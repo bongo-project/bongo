@@ -197,8 +197,8 @@ func applyRaftTuning(raftCfg *raft.Config, rc *config.RaftConfig, logger *slog.L
 	if rc == nil {
 		rc = &config.RaftConfig{}
 	}
-	// Enforced here rather than relying on config.Validate(), which is not
-	// wired into the startup path (task B8) -- see cmd/bongo-go/agent.go.
+	// Enforced here as defence in depth; config.Validate() also checks this
+	// on the serve startup path (cmd/bongo-go/agent.go).
 	if err := rc.Validate(); err != nil {
 		return err
 	}
