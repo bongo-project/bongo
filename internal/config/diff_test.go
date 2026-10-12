@@ -271,6 +271,33 @@ func TestDiffSecretFlag(t *testing.T) {
 	}
 }
 
+// TestDiffRequiredSecretKeys hard-codes the set of keys that must be flagged
+// Secret. secretKeys must not be its own oracle, and "username" matches none
+// of the name patterns in TestSecretLookingKeysAreFlagged.
+func TestDiffRequiredSecretKeys(t *testing.T) {
+	tests := []struct {
+		key    string
+		mutate func(c *Config)
+	}{
+		{"web.session_secret", func(c *Config) { c.Web.SessionSecret = "x" }},
+		{"cluster.gossip.encryption_key", func(c *Config) { c.Cluster.Gossip.EncryptionKey = "x" }},
+		{"smtp.relay.password", func(c *Config) { c.SMTP.Relay.Password = "x" }},
+		{"smtp.relay.username", func(c *Config) { c.SMTP.Relay.Username = "x" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			a, b := &Config{}, &Config{}
+			tt.mutate(b)
+			hot, restart, noop := Diff(a, b)
+			all := slices.Concat(hot, restart, noop)
+			want := []KeyChange{{Key: tt.key, Secret: true}}
+			if !slices.Equal(all, want) {
+				t.Fatalf("got %v, want %v", all, want)
+			}
+		})
+	}
+}
+
 func TestDiffSeveralChangesSorted(t *testing.T) {
 	a, b := &Config{}, &Config{}
 	b.Telemetry.Log.Level = "x"
