@@ -1,8 +1,12 @@
 package agent
 
 import (
+	"runtime"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	pipelineantivirus "github.com/bongo-project/bongo/internal/pipeline/antivirus"
 	bongosmtp "github.com/bongo-project/bongo/internal/smtp"
@@ -177,4 +181,88 @@ func appliedKeys(t *testing.T, f *reloadFixture) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// waitBlockedIn returns once a goroutine is parked on a mutex inside a frame
+// whose name contains fn, or fails if done fires first (the goroutine was not
+// blocked, so the lock under test is absent) or the deadline passes.
+func waitBlockedIn(t *testing.T, fn string, done <-chan error) {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	buf := make([]byte, 1<<20)
+	for {
+		select {
+		case <-done:
+			t.Fatalf("registration finished while the reload was in flight: it did not wait in %s", fn)
+		case <-deadline:
+			t.Fatalf("no goroutine blocked on a mutex in %s", fn)
+		default:
+		}
+		n := runtime.Stack(buf, true)
+		for _, g := range strings.Split(string(buf[:n]), "\n\n") {
+			if strings.Contains(g, "sync.(*Mutex).Lock") && strings.Contains(g, fn) {
+				return
+			}
+		}
+		runtime.Gosched()
+	}
+}
+
+func TestReload_RegisterDuringReloadWaitsForNewBaseline(t *testing.T) {
+	initial := defaultConf()
+	initial.Nets = []string{"192.0.2.0/24"}
+	f := newReloadFixture(t, initial, nil)
+
+	next := defaultConf()
+	next.Nets = []string{"10.0.0.0/8"}
+	f.write(next)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	doRelease := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(doRelease)
+	var hookOnce sync.Once
+	f.a.reloader.afterSnapshot = func() {
+		hookOnce.Do(func() { close(entered) })
+		<-release
+	}
+
+	reloadDone := make(chan error, 1)
+	go func() { reloadDone <- f.reload() }()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("reload never reached the hook")
+	}
+
+	late := bongosmtp.NewBackend(nil, nil, f.logger)
+	regDone := make(chan error, 1)
+	go func() {
+		_, err := f.a.registerSMTPBackend(late)
+		regDone <- err
+	}()
+
+	// Registration must be parked on the reloader lock while the reload is
+	// held after its snapshot.
+	waitBlockedIn(t, "currentHotConfig", regDone)
+	doRelease()
+
+	for name, ch := range map[string]chan error{"reload": reloadDone, "register": regDone} {
+		select {
+		case err := <-ch:
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s did not finish", name)
+		}
+	}
+
+	if !late.IsTrustedSource("10.1.2.3") {
+		t.Error("late backend does not trust the reloaded network")
+	}
+	if late.IsTrustedSource("192.0.2.9") {
+		t.Error("late backend trusts the stale network")
+	}
 }

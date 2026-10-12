@@ -33,6 +33,11 @@ type Reloader struct {
 	file      string
 	plainHTTP bool
 	baseline  *config.Config
+
+	// afterSnapshot is test-only: nil in production. reloadLocked calls it,
+	// with mu held, after the consumer snapshot and before the new baseline
+	// is published.
+	afterSnapshot func()
 }
 
 // EnableReload turns on Reload for this agent. file is the absolute path of
@@ -160,6 +165,9 @@ func (a *Agent) reloadLocked(r *Reloader) error {
 	hot = a.dropUnheld(hot)
 	hotSet := keySet(hot)
 	backends, clamavs := a.reloadConsumers()
+	if r.afterSnapshot != nil {
+		r.afterSnapshot()
+	}
 	if hotSet["telemetry.log.level"] {
 		a.LogLevel.Set(p.level)
 	}
