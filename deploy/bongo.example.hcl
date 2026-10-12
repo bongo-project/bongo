@@ -493,10 +493,11 @@ antivirus {
     #     not silently swallowed).
     #
     #     THE RECOVERY WINDOW IS FINITE. Quarantine is auto-purged after
-    #     pipeline.quarantine_retention (default 30d), and the purge deletes
-    #     the message blob as well as the envelope — it is not recoverable
-    #     afterwards. So "quarantine" means "held safely for 30 days", not
-    #     "held indefinitely". A clamd outage that goes unnoticed past the
+    #     pipeline.quarantine_retention (default 30d). The purge removes the
+    #     envelope and leaves the message blob to the blob GC, which reclaims
+    #     it once nothing else references it. The quarantined message is not
+    #     recoverable afterwards. So "quarantine" means "held safely for the
+    #     retention window", not "held indefinitely". A clamd outage that goes unnoticed past the
     #     retention window, or a backlog nobody drains, permanently destroys
     #     legitimate inbound mail. If you choose this policy, alert on the
     #     ERROR log above, and raise pipeline.quarantine_retention if your
@@ -515,7 +516,13 @@ antivirus {
 pipeline {
   workers              = 5
   poll_interval        = "1s"
+  # Envelopes that failed pipeline processing (spool error/) are removed once
+  # older than this, measured from receipt time. Same format as
+  # quarantine_retention; default 30d; must be positive. The message blob is
+  # left to the blob GC, which reclaims it once nothing references it. Checked
+  # hourly on each server node; changing it needs a restart.
   error_retention      = "30d"
+  # Format: whole days with "d" ("30d") or a Go duration ("720h"). Default 30d; must be positive.
   quarantine_retention = "30d"
 
   stage "antispam" {

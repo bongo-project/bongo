@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -14,9 +15,10 @@ import (
 )
 
 type mockSearchIndexer struct {
-	profiles     []string
-	mails        []string
-	deletedMails []string
+	profiles        []string
+	mails           []string
+	deletedMails    []string
+	deletedProfiles []string
 	// bodies records the body text handed to IndexMail per user/guid. Without
 	// it the mock cannot tell an indexed body from a blank one, which is the
 	// whole question for body search.
@@ -34,6 +36,11 @@ func (m *mockSearchIndexer) IndexMail(userID, guid string, subject, from string,
 
 func (m *mockSearchIndexer) IndexProfile(userID, email, displayName string) error {
 	m.profiles = append(m.profiles, userID+"/"+email)
+	return nil
+}
+
+func (m *mockSearchIndexer) DeleteProfile(userID string) error {
+	m.deletedProfiles = append(m.deletedProfiles, userID)
 	return nil
 }
 
@@ -244,5 +251,37 @@ func TestMailBodyTextDegradesToEmpty(t *testing.T) {
 				t.Errorf("body = %q, want empty", got)
 			}
 		})
+	}
+}
+
+// TestRebuildProfilesMatchesProfileKeyExactly feeds a tag and a Bayes token
+// that happen to be named "profile". Under a suffix match they were indexed
+// as the user's profile, overwriting the directory entry with junk.
+func TestRebuildProfilesMatchesProfileKeyExactly(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir() + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	defer ps.Close()
+
+	real, _ := proto.Marshal(&bongov1.UserProfile{Email: "user1@example.com", DisplayName: "User One"})
+	decoy, _ := proto.Marshal(&bongov1.UserProfile{Email: "decoy@example.com", DisplayName: "Decoy"})
+	for key, val := range map[string][]byte{
+		"/user/u1/profile":            real,
+		"/user/u1/tag/profile":        decoy,
+		"/user/u1/bayes/spam/profile": decoy,
+	} {
+		if err := ps.Set([]byte(key), val); err != nil {
+			t.Fatalf("Set %s: %v", key, err)
+		}
+	}
+
+	search := &mockSearchIndexer{}
+	n, err := rebuildProfiles(ps, nil, search, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("rebuildProfiles: %v", err)
+	}
+	if n != 1 || len(search.profiles) != 1 || search.profiles[0] != "u1/user1@example.com" {
+		t.Fatalf("indexed %d profiles %v, want only u1/user1@example.com", n, search.profiles)
 	}
 }

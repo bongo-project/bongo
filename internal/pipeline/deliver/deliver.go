@@ -60,36 +60,43 @@ type DeliverProcessor struct {
 	blobs        *store.BlobStore
 	dedupMinSize int
 
-	// authservID and spamThreshold enable trace-header stamping: an
+	// authservID and spamThresholds enable trace-header stamping: an
 	// Authentication-Results header naming authservID plus X-Spam-Score,
 	// X-Spam-Status and X-Spam-Reasons derived from the antispam StageResult.
 	// authservID is the configured SMTP hostname; empty omits
 	// Authentication-Results entirely (graceful degradation) rather than emit
 	// a header with a blank authserv-id. X-Spam-* stamping is independent of
 	// authservID: it is emitted whenever the envelope carries an antispam
-	// StageResult. spamThreshold is the score at/above which X-Spam-Status is
-	// "Yes"; it also drives Junk routing (see effectiveSpamThreshold) so the
-	// two never disagree.
-	authservID    string
-	spamThreshold float32
+	// StageResult. The tag threshold, read from spamThresholds, is the score
+	// at/above which X-Spam-Status is "Yes"; it also drives Junk routing. Process
+	// loads it once per message so the two never disagree.
+	authservID     string
+	spamThresholds ThresholdSource
+}
+
+// ThresholdSource supplies the shared tag/quarantine pair. Only Tag is used
+// here.
+type ThresholdSource interface {
+	Thresholds() pipeline.SpamThresholds
 }
 
 // defaultSpamThreshold is used for both Junk routing and X-Spam-Status when
-// no threshold has been configured (spamThreshold <= 0), preserving prior
-// behavior for default configuration.
+// no threshold source has been set, preserving prior behavior for default
+// configuration.
 const defaultSpamThreshold float32 = 0.5
 
 // slowDeliverThreshold is the point at which the delivery stage logs a
 // per-step breakdown of where its time went. Normal delivery is milliseconds.
 const slowDeliverThreshold = 2 * time.Second
 
-// effectiveSpamThreshold returns the configured spam threshold, falling back
-// to defaultSpamThreshold when unset. Both the Junk-routing decision and the
-// X-Spam-Status header use this so a message is never routed to Junk while
-// being stamped X-Spam-Status: No, or vice versa.
-func (p *DeliverProcessor) effectiveSpamThreshold() float32 {
-	if p.spamThreshold > 0 {
-		return p.spamThreshold
+// spamTag returns the current tag threshold, falling back to
+// defaultSpamThreshold when no source is set. Process calls it once per
+// message and uses the result for both the Junk-routing decision and the
+// X-Spam-Status header, so a message is never routed to Junk while being
+// stamped X-Spam-Status: No, or vice versa.
+func (p *DeliverProcessor) spamTag() float32 {
+	if p.spamThresholds != nil {
+		return p.spamThresholds.Thresholds().Tag
 	}
 	return defaultSpamThreshold
 }
@@ -99,12 +106,18 @@ func (p *DeliverProcessor) effectiveSpamThreshold() float32 {
 // setter-injection pattern. hostname is the authserv-id used in
 // Authentication-Results (the configured SMTP.Hostname); an empty hostname
 // omits that header but X-Spam-* stamping and inbound trace-header stripping
-// still happen. threshold should match the antispam stage's tag threshold; a
-// non-positive value falls back to defaultSpamThreshold.
-func (p *DeliverProcessor) SetTraceHeaders(hostname string, threshold float32) {
+// still happen. The spam threshold comes from SetSpamThresholds.
+func (p *DeliverProcessor) SetTraceHeaders(hostname string) {
 	p.authservID = hostname
-	p.spamThreshold = threshold
 }
+
+// SetSpamThresholds sets the source of the tag threshold used for Junk
+// routing and X-Spam-Status. Nil keeps defaultSpamThreshold.
+func (p *DeliverProcessor) SetSpamThresholds(src ThresholdSource) { p.spamThresholds = src }
+
+// ThresholdSource returns the source set by SetSpamThresholds, or nil. Tests
+// use it to prove the deliver and antispam stages share one holder.
+func (p *DeliverProcessor) ThresholdSource() ThresholdSource { return p.spamThresholds }
 
 // SetQueuer sets the outbound queue for forwarding messages.
 func (p *DeliverProcessor) SetQueuer(q ForwardQueuer) { p.queuer = q }
@@ -173,6 +186,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			ProcessedAt: time.Now().Unix(),
 		}, nil
 	}
+
+	// One load per message: Junk routing and X-Spam-Status share it.
+	spamTag := p.spamTag()
 
 	started := time.Now()
 
@@ -302,7 +318,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	if authHdr := buildAuthenticationResults(p.authservID, env.GetSpfResult(), dkimResult, dkimDomain, dmarcResult); authHdr != "" {
 		traceHdrs = append(traceHdrs, authHdr)
 	}
-	traceHdrs = append(traceHdrs, buildSpamHeaders(spamStage, p.effectiveSpamThreshold())...)
+	traceHdrs = append(traceHdrs, buildSpamHeaders(spamStage, spamTag)...)
 	stamped = prependHeaders(stamped, traceHdrs)
 	tStamp = mark(stepStart)
 
@@ -399,7 +415,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		targetMailbox := env.TargetMailbox
 		if targetMailbox == "" {
 			targetMailbox = "INBOX"
-			if spamScore >= p.effectiveSpamThreshold() {
+			if spamScore >= spamTag {
 				targetMailbox = "Junk"
 			}
 		}

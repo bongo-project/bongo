@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/agent"
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/web/handlers"
 )
 
@@ -97,27 +100,35 @@ func runServe(cmd *cobra.Command, args []string) error {
 		v.Set("skip-discovery", "true")
 	}
 
-	cfg, configFile, err := config.LoadWithDiscovery(v)
+	// Validate before the logger, storage or any listener exists, so a bad
+	// config refuses to start. The error reaches stderr via cobra, not the
+	// JSON log, because the logger is not built yet.
+	cfg, configFile, err := loadServeConfig(v)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return err
 	}
-
-	// NOTE: cfg.Validate() is deliberately NOT called here. It is currently
-	// unreachable in production (nothing outside tests calls it), and switching
-	// it on activates several dormant gates at once — including the multi-node
-	// cluster transport gate, which would stop an existing deployment that sets
-	// cluster.join without gossip encryption and TLS from booting at all.
-	// Enabling it is a deployment-affecting change that deserves its own change
-	// and its own release note, not a side effect of adding a config field.
-	// Tracked as task B8. Config that must fail startup is validated at the
-	// point of use instead — see SMTP.ParseTrustedNetworks in agent.go.
 
 	if servePlainHTTP {
 		cfg.Web.PlainHTTP = true
 	}
 
+	// Pin the config file and snapshot the running config for the reloader.
+	// The baseline is taken here, before NewAgent mutates cfg (dev mode sets
+	// Web.PlainHTTP), so those startup-only changes never show up as diffs.
+	var reloadBaseline *config.Config
+	var reloadFile string
+	if configFile != "" {
+		abs, err := filepath.Abs(configFile)
+		if err != nil {
+			abs = configFile
+		}
+		reloadFile = abs
+		v.Set("config", abs)
+		reloadBaseline = config.Clone(cfg)
+	}
+
 	// Set up structured logger with LogSink for admin UI streaming.
-	logLevel := parseLogLevel(cfg.Telemetry.Log.Level)
+	logLevel := cfg.Telemetry.Log.SlogLevel()
 	logSink := handlers.NewLogSink()
 
 	// Logs always go to stdout (so `docker logs`/journald still work). When
@@ -138,15 +149,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logOut = io.MultiWriter(os.Stdout, rotator)
 	}
 
-	var baseHandler slog.Handler
-	if cfg.Telemetry.Log.Format == "text" {
-		baseHandler = slog.NewTextHandler(logOut, &slog.HandlerOptions{Level: logLevel})
-	} else {
-		baseHandler = slog.NewJSONHandler(logOut, &slog.HandlerOptions{Level: logLevel})
-	}
-	// Wrap base handler so log entries are also sent to the admin log viewer.
-	handler := logSink.SlogHandler(baseHandler)
-	logger := slog.New(handler)
+	logger, logLevelVar := newServeLogger(cfg.Telemetry.Log.Format, logLevel, logOut, logSink)
 
 	if configFile != "" {
 		logger.Info("config loaded",
@@ -169,32 +172,98 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting server: %w", err)
 	}
 	a.LogSink = logSink
+	a.LogLevel = logLevelVar
+	if reloadBaseline != nil {
+		a.EnableReload(v, reloadFile, servePlainHTTP, reloadBaseline)
+	}
 
 	// Set up signal-based cancellation.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigCh
-		logger.Info("received signal", "signal", sig.String())
-		cancel()
-	}()
+	stop := watchSignals(ctx, cancel, a.Reload, logger)
+	defer stop()
 
 	return a.Run(ctx)
 }
 
-func parseLogLevel(level string) slog.Level {
-	switch level {
-	case "debug":
-		return slog.LevelDebug
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
+// watchSignals routes process signals: SIGINT and SIGTERM call cancel, SIGHUP
+// calls reload without cancelling. Both handlers are registered before it
+// returns. The returned stop unregisters them and waits for the goroutines to
+// exit; it is meant to be deferred around Run, not called on ctx.Done, so a
+// second signal during graceful shutdown is still swallowed instead of
+// restoring the default terminate action. A burst of SIGHUPs coalesces into
+// one pending reload; Reload serialises and logs its own failures.
+func watchSignals(ctx context.Context, cancel context.CancelFunc, reload func(context.Context) error, logger *slog.Logger) (stop func()) {
+	termCh := make(chan os.Signal, 1)
+	signal.Notify(termCh, syscall.SIGINT, syscall.SIGTERM)
+	hupCh := make(chan os.Signal, 1)
+	signal.Notify(hupCh, syscall.SIGHUP)
+
+	wctx, wcancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		select {
+		case sig := <-termCh:
+			logger.Info("received signal", "signal", sig.String())
+			cancel()
+		case <-wctx.Done():
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-wctx.Done():
+				return
+			case sig := <-hupCh:
+				logger.Info("received signal", "signal", sig.String())
+				_ = reload(ctx)
+			}
+		}
+	}()
+
+	return func() {
+		signal.Stop(hupCh)
+		signal.Stop(termCh)
+		wcancel()
+		wg.Wait()
 	}
+}
+
+// newServeLogger builds the process logger and routes gRPC's global logger
+// through it. It must run before agent.NewAgent creates any gRPC server or
+// client, because grpclog.SetLoggerV2 is not goroutine-safe.
+//
+// The returned LevelVar is the live level: Set on it changes the logger, the
+// admin log sink and every With child at once.
+func newServeLogger(format string, level slog.Level, out io.Writer, sink *handlers.LogSink) (*slog.Logger, *slog.LevelVar) {
+	lv := new(slog.LevelVar)
+	lv.Set(level)
+	var base slog.Handler
+	if format == "text" {
+		base = slog.NewTextHandler(out, &slog.HandlerOptions{Level: lv})
+	} else {
+		base = slog.NewJSONHandler(out, &slog.HandlerOptions{Level: lv})
+	}
+	// Wrap base handler so log entries are also sent to the admin log viewer.
+	logger := slog.New(sink.SlogHandler(base))
+	observability.InstallGRPCLogger(logger)
+	return logger, lv
+}
+
+// loadServeConfig loads the merged configuration and validates it. Serve is
+// the only entrypoint that validates: LoadWithDiscovery stays a pure merge so
+// tools needing only part of the config are not subject to server-only gates.
+func loadServeConfig(v *viper.Viper) (*config.Config, string, error) {
+	cfg, configFile, err := config.LoadWithDiscovery(v)
+	if err != nil {
+		return nil, "", fmt.Errorf("loading config: %w", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, "", fmt.Errorf("invalid config: %w", err)
+	}
+	return cfg, configFile, nil
 }

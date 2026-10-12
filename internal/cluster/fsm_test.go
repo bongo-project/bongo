@@ -476,6 +476,7 @@ func (s *slowIndexer) IndexMail(_, _ string, _, _ string, _ []string, _ string, 
 	return nil
 }
 func (s *slowIndexer) IndexProfile(_, _, _ string) error { return nil }
+func (s *slowIndexer) DeleteProfile(_ string) error      { return nil }
 func (s *slowIndexer) DeleteMailIndex(_, _ string) error { return nil }
 
 // mailPutLog builds a committed log entry that delivers a MailMeta for userID,
@@ -606,6 +607,7 @@ func (o *orderRecorder) IndexMail(_, guid string, _, _ string, _ []string, _ str
 	return nil
 }
 func (o *orderRecorder) IndexProfile(_, _, _ string) error { return nil }
+func (o *orderRecorder) DeleteProfile(_ string) error      { return nil }
 func (o *orderRecorder) DeleteMailIndex(_, _ string) error { return nil }
 
 func (o *orderRecorder) seen() []string {

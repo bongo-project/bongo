@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -77,9 +78,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			for env := range work {
 				if err := r.processMessage(ctx, env); err != nil {
 					r.logger.Error("pipeline: process message failed",
-						"id", env.Id,
-						"error", err,
-					)
+						append(envIdentity(env), "error", err)...)
 				}
 			}
 		}()
@@ -109,8 +108,7 @@ poll:
 					// Put the envelope back into incoming/ so it is not lost.
 					if moveErr := r.spool.Move(env.Id, "processing", "incoming"); moveErr != nil {
 						r.logger.Error("pipeline: failed to return envelope on shutdown",
-							"id", env.Id,
-							"error", moveErr,
+							append(envIdentity(env), "error", moveErr)...,
 						)
 					}
 					break poll
@@ -122,6 +120,29 @@ poll:
 	close(work)
 	wg.Wait()
 	return nil
+}
+
+// maxLoggedRecipients bounds the recipients logged per line. SMTP caps
+// recipients via Limits.MaxRecipients (operator-configurable), but gRPC
+// DepositMessage accepts a caller-supplied envelope with no recipient limit,
+// so an uncapped list would be a log-amplification vector.
+const maxLoggedRecipients = 20
+
+// envIdentity returns the slog attributes that identify whose message a
+// pipeline log line is about: envelope id, sender (empty for a null
+// reverse-path), at most maxLoggedRecipients recipients and the true
+// recipient_count. The field is "recipients" (a list); the deliver stage logs
+// "recipient" because it logs one address per line. The envelope carries no
+// resolved user ids (the deliver stage logs those) and no subject or body, and
+// none is ever logged here.
+func envIdentity(env *bongov1.QueueEnvelope) []any {
+	n := min(len(env.Recipients), maxLoggedRecipients)
+	return []any{
+		"id", env.Id,
+		"sender", env.Sender,
+		"recipients", slices.Clone(env.Recipients[:n]),
+		"recipient_count", len(env.Recipients),
+	}
 }
 
 // processMessage runs the configured pipeline stages sequentially on a single
@@ -145,7 +166,7 @@ func (r *Runner) processMessage(ctx context.Context, env *bongov1.QueueEnvelope)
 		rc, err := r.blobs.ReadBlob(env.BlobHash)
 		if err != nil {
 			if moveErr := r.spool.Move(env.Id, "processing", "error"); moveErr != nil {
-				r.logger.Error("pipeline: move to error failed", "id", env.Id, "error", moveErr)
+				r.logger.Error("pipeline: move to error failed", append(envIdentity(env), "error", moveErr)...)
 			}
 			return fmt.Errorf("pipeline: read blob for %s stage %s: %w", env.Id, stage.Name(), err)
 		}
@@ -157,7 +178,7 @@ func (r *Runner) processMessage(ctx context.Context, env *bongov1.QueueEnvelope)
 		}
 		if err != nil {
 			if moveErr := r.spool.Move(env.Id, "processing", "error"); moveErr != nil {
-				r.logger.Error("pipeline: move to error failed", "id", env.Id, "error", moveErr)
+				r.logger.Error("pipeline: move to error failed", append(envIdentity(env), "error", moveErr)...)
 			}
 			return fmt.Errorf("pipeline: stage %s for %s: %w", stage.Name(), env.Id, err)
 		}
@@ -184,25 +205,20 @@ func (r *Runner) processMessage(ctx context.Context, env *bongov1.QueueEnvelope)
 			// Persist updated envelope before moving.
 			if writeErr := r.spool.WriteEnvelope("processing", env); writeErr != nil {
 				r.logger.Error("pipeline: write envelope before quarantine failed",
-					"id", env.Id,
-					"error", writeErr,
-				)
+					append(envIdentity(env), "error", writeErr)...)
 			}
 			if moveErr := r.spool.Move(env.Id, "processing", "quarantine"); moveErr != nil {
 				return fmt.Errorf("pipeline: move %s to quarantine: %w", env.Id, moveErr)
 			}
 			r.logger.Info("pipeline: message quarantined",
-				"id", env.Id,
-				"stage", stage.Name(),
-				"action", result.Action,
-			)
+				append(envIdentity(env), "stage", stage.Name(), "action", result.Action)...)
 			return nil
 		}
 
 		// Persist envelope state after each stage.
 		if err := r.spool.WriteEnvelope("processing", env); err != nil {
 			if moveErr := r.spool.Move(env.Id, "processing", "error"); moveErr != nil {
-				r.logger.Error("pipeline: move to error failed", "id", env.Id, "error", moveErr)
+				r.logger.Error("pipeline: move to error failed", append(envIdentity(env), "error", moveErr)...)
 			}
 			return fmt.Errorf("pipeline: write envelope %s after stage %s: %w", env.Id, stage.Name(), err)
 		}
@@ -213,7 +229,7 @@ func (r *Runner) processMessage(ctx context.Context, env *bongov1.QueueEnvelope)
 		return fmt.Errorf("pipeline: move %s to deliver: %w", env.Id, err)
 	}
 
-	r.logger.Info("pipeline: message ready for delivery", "id", env.Id)
+	r.logger.Info("pipeline: message ready for delivery", envIdentity(env)...)
 	return nil
 }
 

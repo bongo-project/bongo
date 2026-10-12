@@ -9,6 +9,8 @@ Type=simple
 User=bongo
 Group=bongo
 ExecStart=/usr/local/bin/bongo-go serve --config /etc/bongo/bongo.hcl
+# SIGHUP reloads the hot config keys (docs/config-reload.md); it does not stop the server.
+ExecReload=/bin/kill -HUP $MAINPID
 
 # Secrets (e.g. BONGO_WEB_SESSION_SECRET) live here, root-only (chmod 600).
 EnvironmentFile=/etc/bongo/bongo.env

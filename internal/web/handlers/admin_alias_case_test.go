@@ -58,6 +58,42 @@ func TestCreateAliasNormalisesCase(t *testing.T) {
 	}
 }
 
+// TestCreateAliasNormalisesTarget: auth.CreateUser stores usernames lower-case,
+// and resolver tier 2a matches users.username exactly, so a target typed with
+// capitals must be normalised on write. The resolver here has no address index,
+// so PopulateAddressIndex cannot rescue the alias; only tier 2a can resolve it.
+func TestCreateAliasNormalisesTarget(t *testing.T) {
+	h, resolver, targetID := aliasCaseFixture(t)
+
+	// Control: a lower-case target resolves, or the test proves nothing.
+	if w := createAliasRequest(t, h, "control@alias.example", "admin@target.example", targetID); w.Code >= 400 {
+		t.Fatalf("CreateAlias(control) = %d: %s", w.Code, w.Body.String())
+	}
+	if got, err := resolver.ResolveRecipient("control@alias.example"); err != nil || got != targetID {
+		t.Fatalf("fixture invalid: lower-case target must resolve, got %q err %v", got, err)
+	}
+
+	if w := createAliasRequest(t, h, "sales@alias.example", "  Admin@Target.EXAMPLE ", targetID); w.Code >= 400 {
+		t.Fatalf("CreateAlias(mixed target) = %d: %s", w.Code, w.Body.String())
+	}
+
+	got, err := resolver.ResolveRecipient("sales@alias.example")
+	if err != nil || got != targetID {
+		t.Errorf("ResolveRecipient = %q, err %v; want %q", got, err, targetID)
+	}
+
+	v, err := h.store.Get([]byte("/system/alias/sales@alias.example"))
+	if err != nil || string(v) != "admin@target.example" {
+		t.Errorf("stored target = %q, err %v; want normalised admin@target.example", v, err)
+	}
+
+	var rowTarget string
+	if err := h.metadata.System.DB().QueryRow(
+		"SELECT target_user_id FROM aliases WHERE address = ?", "sales@alias.example").Scan(&rowTarget); err != nil || rowTarget != targetID {
+		t.Errorf("sqlite alias row target = %q, err %v; want %q", rowTarget, err, targetID)
+	}
+}
+
 // TestDeleteAliasRemovesMixedCaseKey covers the recovery path for aliases
 // created BEFORE normalisation existed. The admin list renders the stored key
 // verbatim, so the delete request arrives with capitals intact; deleting only

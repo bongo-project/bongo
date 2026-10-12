@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"context"
 	"fmt"
 	smtplib "net/smtp"
 	"strings"
@@ -12,7 +11,6 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/bongo-project/bongo/internal/agent"
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/store"
@@ -26,29 +24,8 @@ func TestSMTPFullMailFlow(t *testing.T) {
 	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 
-	logger := sharedTestLogger()
-
-	a, err := agent.NewAgent(cfg, logger)
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
+	a, cancel, done := sharedStartAgent(t, cfg)
 	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- a.Run(ctx)
-	}()
-
-	// Wait for the agent to be ready.
-	deadline := time.Now().Add(10 * time.Second)
-	for !a.Ready() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !a.Ready() {
-		t.Fatal("agent not ready in time")
-	}
 
 	// Create a test user.
 	userID, err := auth.CreateUser(a, a.Metadata, "testuser@localhost", "Test User", "testpass", false)

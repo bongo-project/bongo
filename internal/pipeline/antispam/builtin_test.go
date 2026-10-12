@@ -9,6 +9,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/antispam"
 	"github.com/bongo-project/bongo/internal/mail"
+	"github.com/bongo-project/bongo/internal/pipeline"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -542,4 +543,67 @@ func TestBuiltinProcessorTrustedStillScoresContent(t *testing.T) {
 			t.Errorf("blended score %.3f did not exceed heuristic-only score %.3f — the blend did not contribute", result.Score, controlResult.Score)
 		}
 	})
+}
+
+// TestBuiltinFollowsThresholdSource scores one fixed message, then publishes
+// pairs that move it pass -> tag -> quarantine -> pass without rebuilding the
+// processor.
+func TestBuiltinFollowsThresholdSource(t *testing.T) {
+	msg := testMessage("sender@example.com", "", "Buy now!", nil)
+	newEnv := func() *bongov1.QueueEnvelope {
+		return &bongov1.QueueEnvelope{
+			Sender:     "sender@example.com",
+			Recipients: []string{"recipient@example.com"},
+			SpfResult:  "fail",
+		}
+	}
+
+	holder, err := pipeline.NewSpamThresholdHolder(pipeline.SpamThresholds{Tag: 1, High: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc := NewBuiltinProcessor(antispam.NewScorer(), WithThresholdSource(holder))
+
+	run := func() (*bongov1.StageResult, *bongov1.QueueEnvelope) {
+		t.Helper()
+		env := newEnv()
+		res, err := proc.Process(context.Background(), env, strings.NewReader(msg))
+		if err != nil {
+			t.Fatalf("Process: %v", err)
+		}
+		return res, env
+	}
+
+	res, env := run()
+	score := res.Score
+	if score <= 0 || score >= 1 {
+		t.Fatalf("fixture score %.3f must be in (0, 1)", score)
+	}
+	if res.Action != "pass" || env.TargetMailbox != "" {
+		t.Fatalf("tag=1: action %q mailbox %q, want pass and empty", res.Action, env.TargetMailbox)
+	}
+
+	// Publish a tag at the score: tagged and filed in Junk.
+	if err := holder.Store(pipeline.SpamThresholds{Tag: score, High: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if res, env = run(); res.Action != "tag" || env.TargetMailbox != "Junk" {
+		t.Fatalf("tag=score: action %q mailbox %q, want tag and Junk", res.Action, env.TargetMailbox)
+	}
+
+	// Publish a high at the score: quarantined.
+	if err := holder.Store(pipeline.SpamThresholds{Tag: score, High: score}); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ = run(); res.Action != "quarantine" {
+		t.Fatalf("high=score: action %q, want quarantine", res.Action)
+	}
+
+	// Raise both again: back to pass.
+	if err := holder.Store(pipeline.SpamThresholds{Tag: 1, High: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if res, env = run(); res.Action != "pass" || env.TargetMailbox != "" {
+		t.Fatalf("tag=1 again: action %q mailbox %q, want pass and empty", res.Action, env.TargetMailbox)
+	}
 }

@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -677,9 +679,8 @@ var clamAVKnownFailurePolicies = map[string]bool{
 
 // FailurePolicy returns the normalised on_failure value: "quarantine"
 // (default) or "accept". Any other value — including empty/unset — is
-// treated as "quarantine", the safer default. config.Validate() is
-// deliberately not wired into the startup path (see CLAUDE.md and
-// internal/agent/antispam.go), so this normalises defensively at the point
+// treated as "quarantine", the safer default. config.Validate() runs on
+// the serve startup path, but this still normalises defensively at the point
 // of use rather than assuming validation has run; callers that detect a
 // value outside clamAVKnownFailurePolicies should log the coercion.
 func (c ClamAVConfig) FailurePolicy() string {
@@ -766,6 +767,22 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("antivirus.clamav.on_failure: unknown value %q (valid: quarantine, accept)", c.Antivirus.ClamAV.OnFailure)
 	}
 
+	if v := c.Pipeline.ErrorRetention; v != "" {
+		if _, err := parseRetention(v); err != nil {
+			return fmt.Errorf("pipeline.error_retention: invalid value %q (use whole days like \"30d\" or a duration like \"720h\", must be positive): %w", v, err)
+		}
+	}
+
+	if v := c.Pipeline.QuarantineRetention; v != "" {
+		if _, err := parseRetention(v); err != nil {
+			return fmt.Errorf("pipeline.quarantine_retention: invalid value %q (use whole days like \"30d\" or a duration like \"720h\", must be positive): %w", v, err)
+		}
+	}
+
+	if _, err := c.Storage.Pebble.CacheBytes(); err != nil {
+		return fmt.Errorf("storage.pebble.cache_size: invalid value %q (use a positive size like \"256MB\" or \"1GB\"): %w", c.Storage.Pebble.CacheSize, err)
+	}
+
 	return nil
 }
 
@@ -828,6 +845,67 @@ func (c *PipelineConfig) PipelinePollInterval() time.Duration {
 	d, err := time.ParseDuration(c.PollInterval)
 	if err != nil {
 		return time.Second
+	}
+	return d
+}
+
+// defaultQuarantineRetention is used when pipeline.quarantine_retention is unset.
+const defaultQuarantineRetention = 30 * 24 * time.Hour
+
+// parseRetention parses a retention period: whole days with a "d" suffix
+// ("30d") or any time.ParseDuration string ("720h"). The result is always
+// positive. Errors do not name the config key; the caller adds it.
+func parseRetention(s string) (time.Duration, error) {
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.Atoi(days)
+		if err != nil {
+			return 0, fmt.Errorf("invalid day count %q", days)
+		}
+		if n <= 0 {
+			return 0, fmt.Errorf("must be positive")
+		}
+		if int64(n) > math.MaxInt64/int64(24*time.Hour) {
+			return 0, fmt.Errorf("too large")
+		}
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("must be positive")
+	}
+	return d, nil
+}
+
+// QuarantineRetentionDuration returns how long quarantined mail is kept.
+// Empty, unparseable or non-positive values fall back to 30 days; Validate
+// rejects bad values at startup.
+func (c *PipelineConfig) QuarantineRetentionDuration() time.Duration {
+	if c.QuarantineRetention == "" {
+		return defaultQuarantineRetention
+	}
+	d, err := parseRetention(c.QuarantineRetention)
+	if err != nil {
+		return defaultQuarantineRetention
+	}
+	return d
+}
+
+// defaultErrorRetention is used when pipeline.error_retention is unset.
+const defaultErrorRetention = 30 * 24 * time.Hour
+
+// ErrorRetentionDuration returns how long failed envelopes are kept in the
+// spool error/ directory. Empty, unparseable or non-positive values fall back
+// to 30 days; Validate rejects bad values at startup.
+func (c *PipelineConfig) ErrorRetentionDuration() time.Duration {
+	if c.ErrorRetention == "" {
+		return defaultErrorRetention
+	}
+	d, err := parseRetention(c.ErrorRetention)
+	if err != nil {
+		return defaultErrorRetention
 	}
 	return d
 }
@@ -1034,6 +1112,38 @@ func Load(v *viper.Viper) (*Config, error) {
 	return cfg, err
 }
 
+// ApplyOverrides applies the flag and environment overrides held by v onto
+// cfg, in place: BONGO_* env vars bind through viper, then role, bind, join,
+// log-level and web.session_secret replace the file values when set. Startup
+// and the config reloader both call it so the precedence (CLI flags > env >
+// file > defaults) cannot drift between them. v is not goroutine-safe.
+func ApplyOverrides(v *viper.Viper, cfg *Config) {
+	// Override from env vars (BONGO_SERVER_ROLE, etc.)
+	v.SetEnvPrefix("BONGO")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	// Override specific fields from viper (CLI flags and env vars)
+	if v.IsSet("role") {
+		cfg.Server.Role = v.GetString("role")
+	}
+	if v.IsSet("bind") {
+		cfg.Server.BindAddr = v.GetString("bind")
+	}
+	if v.IsSet("join") {
+		cfg.Cluster.Join = strings.Split(v.GetString("join"), ",")
+	}
+	// bootstrap-expect is reserved for future multi-node bootstrap logic; no action needed here.
+	if v.IsSet("log-level") {
+		cfg.Telemetry.Log.Level = v.GetString("log-level")
+	}
+	// Allow the session secret to be injected via BONGO_WEB_SESSION_SECRET so it
+	// can be kept out of the config file (e.g. Docker/12-factor deployments).
+	if s := v.GetString("web.session_secret"); s != "" {
+		cfg.Web.SessionSecret = s
+	}
+}
+
 // LoadWithDiscovery runs config file discovery, loads the file if found, applies viper overrides,
 // and returns the config together with the resolved config file path (empty string means defaults only).
 func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
@@ -1059,30 +1169,7 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 		cfg = fileCfg
 	}
 
-	// Override from env vars (BONGO_SERVER_ROLE, etc.)
-	v.SetEnvPrefix("BONGO")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	// Override specific fields from viper (CLI flags and env vars)
-	if v.IsSet("role") {
-		cfg.Server.Role = v.GetString("role")
-	}
-	if v.IsSet("bind") {
-		cfg.Server.BindAddr = v.GetString("bind")
-	}
-	if v.IsSet("join") {
-		cfg.Cluster.Join = strings.Split(v.GetString("join"), ",")
-	}
-	// bootstrap-expect is reserved for future multi-node bootstrap logic; no action needed here.
-	if v.IsSet("log-level") {
-		cfg.Telemetry.Log.Level = v.GetString("log-level")
-	}
-	// Allow the session secret to be injected via BONGO_WEB_SESSION_SECRET so it
-	// can be kept out of the config file (e.g. Docker/12-factor deployments).
-	if s := v.GetString("web.session_secret"); s != "" {
-		cfg.Web.SessionSecret = s
-	}
+	ApplyOverrides(v, cfg)
 
 	return cfg, configFile, nil
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 
 	"github.com/cockroachdb/pebble"
@@ -38,11 +39,29 @@ func WithCacheSize(size int64) Option {
 	}
 }
 
+// WithLogger routes Pebble's log output through the given slog logger. A nil
+// logger is a programming error; it is ignored and Pebble keeps its default.
+func WithLogger(l *slog.Logger) Option {
+	return func(opts *pebble.Options) {
+		if l == nil {
+			return
+		}
+		opts.Logger = newPebbleLogger(l)
+	}
+}
+
 // NewPebbleStore opens a Pebble database at the given directory.
 func NewPebbleStore(dataDir string, opts ...Option) (*PebbleStore, error) {
 	pebbleOpts := &pebble.Options{}
 	for _, o := range opts {
 		o(pebbleOpts)
+	}
+
+	// pebble.NewCache hands the creator one reference. Open takes its own
+	// (and Close drops it), so release ours once Open returns, on success or
+	// failure. Dropping it earlier would free the cache before Open's Ref.
+	if pebbleOpts.Cache != nil {
+		defer pebbleOpts.Cache.Unref()
 	}
 
 	db, err := pebble.Open(dataDir, pebbleOpts)

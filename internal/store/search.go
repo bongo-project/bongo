@@ -187,6 +187,12 @@ func (sm *SearchManager) IndexProfile(userID, email, displayName string) error {
 	return sm.gal.Index(userID, doc)
 }
 
+// DeleteProfile removes a user from the Global Address List. Deleting an
+// entry that does not exist is not an error.
+func (sm *SearchManager) DeleteProfile(userID string) error {
+	return sm.gal.Delete(userID)
+}
+
 // galOverfetch is how many hits to ask Bleve for per requested result. The
 // domain filter below runs after the search, so asking for exactly limit hits
 // would return fewer than limit whenever other tenants' entries sort highly.
