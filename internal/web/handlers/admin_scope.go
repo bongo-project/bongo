@@ -56,5 +56,34 @@ func (h *AdminHandler) requireUserAccess(w http.ResponseWriter, scope middleware
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return nil, false
 	}
+	if !scope.Global && !h.targetWithinScope(profile, userID, scope) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return nil, false
+	}
 	return profile, true
+}
+
+// targetWithinScope reports whether a domain-admin may manage the target: the
+// target must not be a global admin, and every domain the target administers
+// (owned or granted) must lie inside the caller's scope. Fails closed when the
+// target's scope cannot be resolved.
+func (h *AdminHandler) targetWithinScope(profile *bongov1.UserProfile, userID string, scope middleware.AdminScope) bool {
+	if profile.IsAdmin {
+		return false
+	}
+	if h.authorizedDomainsFn == nil {
+		return false
+	}
+	// false on purpose: the global-admin case is the explicit IsAdmin check above.
+	domains, err := h.authorizedDomainsFn(userID, false)
+	if err != nil {
+		h.logger.Warn("admin scope: resolving target domains failed", "user_id", userID, "error", err)
+		return false
+	}
+	for _, d := range domains {
+		if !scope.HasDomain(d) {
+			return false
+		}
+	}
+	return true
 }

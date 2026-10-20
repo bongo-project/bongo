@@ -1252,3 +1252,7 @@ PATTERN: [security] Parse untrusted MIME with a depth/complexity cap; enmime has
 Cookie types and blob sync now have distinct HMAC purposes. Advisor PROCEED, review MINOR (two surviving mutations logged in TASKS.md). Gate: make test-all EXIT=0 (integration 320s), GOTOOLCHAIN=go1.26.9 make lint 0 issues.
 PATTERN: [tooling] golangci-lint 2.13.2 cannot read Go 1.27 export data ("export data version 5"); run lint as `GOTOOLCHAIN=go1.26.9 make lint`, the go.mod toolchain CI uses. Rebuilding golangci-lint with 1.27.3 does not help.
 PATTERN: [security] Moving a route to a new auth scheme needs a test that drives the real client against the real route; the integration helpers' fake mux hides a signer/verifier mismatch.
+
+### 2026-10-21 Task 18.3 (H2) DONE
+Domain admins can no longer act on global admins or on users who administer out-of-scope domains. Review REJECT twice; second rejection was a single missing test target (out-of-scope domain listed first), added by the orchestrator per the reviewer's fix and mutation-checked. Gate: make test-all EXIT=0, lint 0 issues.
+PATTERN: [testing] A loop guard "every element must pass" needs a test where the failing element is not last; otherwise a last-element-wins bug passes. Check the order the store returns.

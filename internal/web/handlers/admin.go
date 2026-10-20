@@ -55,9 +55,12 @@ type AdminHandler struct {
 	addresses    *store.AddressStore
 	search       *store.SearchManager
 	domainAdmin  *store.DomainAdminStore
-	domainQuota  *store.DomainQuotaStore
-	startTime    time.Time
-	mailHostname string // configured SMTP hostname; used as MX expected-value hint
+	// authorizedDomainsFn resolves a user's admin scope (owned and granted
+	// domains). Set by SetDomainAdminStore; replaceable in tests.
+	authorizedDomainsFn func(userID string, isGlobalAdmin bool) ([]string, error)
+	domainQuota         *store.DomainQuotaStore
+	startTime           time.Time
+	mailHostname        string // configured SMTP hostname; used as MX expected-value hint
 }
 
 // GossipLister returns gossip member info.
@@ -140,6 +143,7 @@ func (h *AdminHandler) SetAddressStore(as *store.AddressStore) {
 // GrantDomainAdmin, and RevokeDomainAdmin.
 func (h *AdminHandler) SetDomainAdminStore(das *store.DomainAdminStore) {
 	h.domainAdmin = das
+	h.authorizedDomainsFn = das.AuthorizedDomains
 }
 
 // SetDomainQuotaStore sets the domain quota store used by CreateUser (max-users
