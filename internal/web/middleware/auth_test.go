@@ -169,7 +169,7 @@ func TestRequireAuth_DisabledUserRevoked(t *testing.T) {
 // deleted. It has to be a cookie the server would otherwise trust.
 func signedSessionCookie(data SessionData) *http.Cookie {
 	payload, _ := json.Marshal(data)
-	sig := sign(testSecret, payload)
+	sig := sign(testSecret, sessionCookiePurpose, payload)
 	return &http.Cookie{
 		Name: cookieName,
 		Value: base64.RawURLEncoding.EncodeToString(payload) + "." +

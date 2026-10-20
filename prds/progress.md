@@ -1247,3 +1247,8 @@ PATTERN: [security] "Fail open when the profile lookup fails" also fires for a d
 PATTERN: [security] Authenticated sender checks must bind the header From, not just MAIL FROM, whenever the outbound path signs by From domain.
 PATTERN: [security] Every Traefik router for the app needs the same internal-path deny middleware; a later-added Host router silently bypasses the allowlist.
 PATTERN: [security] Parse untrusted MIME with a depth/complexity cap; enmime has none and unclosed nested boundaries are exponential.
+
+### 2026-10-21 Task 18.1 (H3) DONE
+Cookie types and blob sync now have distinct HMAC purposes. Advisor PROCEED, review MINOR (two surviving mutations logged in TASKS.md). Gate: make test-all EXIT=0 (integration 320s), GOTOOLCHAIN=go1.26.9 make lint 0 issues.
+PATTERN: [tooling] golangci-lint 2.13.2 cannot read Go 1.27 export data ("export data version 5"); run lint as `GOTOOLCHAIN=go1.26.9 make lint`, the go.mod toolchain CI uses. Rebuilding golangci-lint with 1.27.3 does not help.
+PATTERN: [security] Moving a route to a new auth scheme needs a test that drives the real client against the real route; the integration helpers' fake mux hides a signer/verifier mismatch.

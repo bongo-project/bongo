@@ -705,12 +705,6 @@ func (a *Agent) Run(ctx context.Context) error {
 		clusterH := handlers.NewClusterHandler(&lazyMemberLister{agent: a})
 		r.Get("/internal/cluster/members", clusterH.Members)
 
-		if a.Blobs != nil {
-			blobH := handlers.NewBlobHandler(a.Blobs)
-			r.Get("/internal/blob/{hash}", blobH.Get)
-			r.Head("/internal/blob/{hash}", blobH.Head)
-		}
-
 		if a.Raft != nil {
 			joinH := handlers.NewJoinHandler(a.Raft.Raft)
 			r.Post("/internal/cluster/join", joinH.Join)
@@ -724,6 +718,16 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/internal/user/create", userH.Create)
 		}
 	})
+
+	// Blob sync routes: signed with their own key, separate from the control plane.
+	if a.Blobs != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireBlobSyncAuth(sessionSecret))
+			blobH := handlers.NewBlobHandler(a.Blobs)
+			r.Get("/internal/blob/{hash}", blobH.Get)
+			r.Head("/internal/blob/{hash}", blobH.Head)
+		})
+	}
 
 	// Static assets (public).
 	r.Handle("/static/*", http.StripPrefix("/static/", handlers.StaticHandler()))
