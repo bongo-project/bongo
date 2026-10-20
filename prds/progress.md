@@ -1237,3 +1237,13 @@ fmt, vet, race and integration but never `make lint`, and config.md names gosec 
 
 PATTERN: [gate] The release gate must include `make lint` (golangci-lint), which CI runs and which
 catches things `go vet` alone does not.
+
+## 2026-10-20 norman secure (v0.7.0)
+Report: prds/verification.md. 327 agents, 46/47 Track B findings confirmed (skeptic over-agreement as expected).
+PATTERN: [security] An index that routes mail must only hold verified records. A self-serve "add address" that writes the same record type the recipient resolver trusts turns an unverified claim into inbound interception.
+PATTERN: [security] Scope checks must cover every object a request names, and the target's role, not just the first object's domain. Domain-admin checks keyed on the target's domain let a tenant admin reset a global admin, and accepted a second user_id from another tenant.
+PATTERN: [security] Two signed token types sharing one key and overlapping JSON fields are interchangeable. Give each cookie type its own derived purpose, or a type field the verifier checks.
+PATTERN: [security] "Fail open when the profile lookup fails" also fires for a deleted profile. Distinguish not-found (revoke) from store error.
+PATTERN: [security] Authenticated sender checks must bind the header From, not just MAIL FROM, whenever the outbound path signs by From domain.
+PATTERN: [security] Every Traefik router for the app needs the same internal-path deny middleware; a later-added Host router silently bypasses the allowlist.
+PATTERN: [security] Parse untrusted MIME with a depth/complexity cap; enmime has none and unclosed nested boundaries are exponential.
