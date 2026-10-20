@@ -196,20 +196,44 @@ func (a *Agent) IsLeader() bool {
 // userSessionState returns the live account state (disabled flag, admin flag,
 // and credential epoch) consulted by RequireAuth on every request, so that
 // disabling a user, demoting an admin, or changing a password/2FA takes effect
-// immediately despite the self-contained session cookie. Reads the
-// authoritative UserProfile from Pebble; on a read/parse error it returns a
-// zero (Found=false) value so callers fail open and a transient store problem
-// cannot log everyone out.
+// immediately despite the self-contained session cookie. Deleting the account
+// revokes it too.
+//
+// A profile that is not found revokes the session (Missing). Any other read or
+// parse problem fails open (zero value) so a transient store problem cannot
+// log everyone out; during a real store outage deleted or demoted accounts
+// therefore keep their cookie's rights. Profiles are read from local Pebble, so
+// a follower that has not yet applied a freshly created profile would revoke
+// rather than fail open; the window is narrow because accounts exist before
+// they log in.
 func (a *Agent) userSessionState(userID string) middleware.LiveSessionState {
 	if a.Store == nil || userID == "" {
 		return middleware.LiveSessionState{}
 	}
-	data, err := a.Store.Get([]byte("/user/" + userID + "/profile"))
-	if err != nil || len(data) == 0 {
+	return sessionStateFromProfile(a.Store.Get, a.logger, userID)
+}
+
+// sessionStateFromProfile maps a profile read to a LiveSessionState.
+func sessionStateFromProfile(get func([]byte) ([]byte, error), logger *slog.Logger, userID string) middleware.LiveSessionState {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	data, err := get([]byte("/user/" + userID + "/profile"))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			logger.Debug("session: profile not found, revoking", "user_id", userID)
+			return middleware.LiveSessionState{Missing: true}
+		}
+		logger.Warn("session: profile read failed, failing open", "user_id", userID, "error", err)
+		return middleware.LiveSessionState{}
+	}
+	if len(data) == 0 {
+		logger.Warn("session: profile empty, failing open", "user_id", userID)
 		return middleware.LiveSessionState{}
 	}
 	var profile bongov1.UserProfile
 	if err := proto.Unmarshal(data, &profile); err != nil {
+		logger.Warn("session: profile unreadable, failing open", "user_id", userID, "error", err)
 		return middleware.LiveSessionState{}
 	}
 	return middleware.LiveSessionState{

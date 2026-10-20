@@ -1261,3 +1261,7 @@ PATTERN: [testing] A loop guard "every element must pass" needs a test where the
 Unverified identity records no longer route mail; self-serve add refuses taken and hosted-domain addresses; create paths write address records. Advisor REVISE (six changes, adopted), review MINOR (follow-ups as B26). Orchestrator finished the reviewer's five unrun mutations (all red), fixed one govet finding, and parallelised TestUserActions after the handlers package hit the 10m test timeout. Gate: make test-all EXIT=0 (handlers 307s, integration 364s), lint 0 issues.
 Release notes so far for v0.7.1: (18.1) 2FA/TOTP-setup flows in progress restart; (18.4) admin-added extra addresses never granted send stop receiving mail until GrantSend or re-add, see the boot report; exploit-era verified identities on others' addresses are reported at boot and need revoking by hand.
 PATTERN: [testing] The handlers package runs near Go's 10m default test timeout; a feature adding ~1 min of serial subtests tips it over. Give bcrypt-heavy table tests t.Parallel, and watch package times in the gate log.
+
+### 2026-10-21 Task 18.2 (H4) DONE
+Deleted accounts' web sessions are revoked (profile not-found -> Missing). Advisor PROCEED, review MINOR. Gate: make test-all EXIT=0, lint 0 issues.
+PATTERN: [testing] proto.Marshal of a message with only default-valued fields is zero bytes. A "live record" test fixture must set a non-default field or it exercises the empty-record branch.

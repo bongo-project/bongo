@@ -62,9 +62,13 @@ type SessionData struct {
 // changes are re-evaluated so they take effect immediately rather than at the
 // next login or expiry.
 type LiveSessionState struct {
-	// Found is false when the profile could not be read (store error / missing);
-	// callers fail open in that case, leaving the cookie's snapshot in force.
-	Found    bool
+	// Found is false when the profile could not be read; with Missing also
+	// false that means a store error and callers fail open, leaving the
+	// cookie's snapshot in force.
+	Found bool
+	// Missing means the account no longer exists (profile not found): revoke.
+	// A separate field so the zero value still means fail-open.
+	Missing  bool
 	Disabled bool
 	IsAdmin  bool
 	Epoch    string
@@ -121,8 +125,9 @@ func ClearSessionCookie() *http.Cookie {
 // stateFn, when non-nil, is consulted on every request so that disabling a
 // user, changing their password, toggling 2FA, or changing their admin status
 // takes effect immediately despite the self-contained cookie. It is the only
-// place live account state is re-checked. When it reports Found=false (store
-// error) the request fails open, leaving the cookie's snapshot in force.
+// place live account state is re-checked. Missing=true (account deleted)
+// revokes the session; Found=false && !Missing (store error) fails open,
+// leaving the cookie's snapshot in force.
 func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +154,11 @@ func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) fu
 			isAdmin := data.IsAdmin
 			if stateFn != nil {
 				st := stateFn(data.UserID)
+				if st.Missing {
+					http.SetCookie(w, ClearSessionCookie())
+					redirectToLogin(w, r)
+					return
+				}
 				if st.Found {
 					// Disabled account, or credentials changed since this
 					// session was issued -> revoke immediately.
