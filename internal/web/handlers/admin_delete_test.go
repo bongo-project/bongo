@@ -34,6 +34,7 @@ func newAdminDeleteTestHandler(t *testing.T) (*AdminHandler, *directApplierTags,
 
 	applier := &directApplierTags{ps: ps}
 	h := NewAdminHandler(ps, nil, md, applier, discardLogger())
+	h.SetAddressStore(store.NewAddressStore(ps, applier, md.System))
 	return h, applier, md
 }
 

@@ -1256,3 +1256,8 @@ PATTERN: [security] Moving a route to a new auth scheme needs a test that drives
 ### 2026-10-21 Task 18.3 (H2) DONE
 Domain admins can no longer act on global admins or on users who administer out-of-scope domains. Review REJECT twice; second rejection was a single missing test target (out-of-scope domain listed first), added by the orchestrator per the reviewer's fix and mutation-checked. Gate: make test-all EXIT=0, lint 0 issues.
 PATTERN: [testing] A loop guard "every element must pass" needs a test where the failing element is not last; otherwise a last-element-wins bug passes. Check the order the store returns.
+
+### 2026-10-21 Task 18.4 (H1) DONE
+Unverified identity records no longer route mail; self-serve add refuses taken and hosted-domain addresses; create paths write address records. Advisor REVISE (six changes, adopted), review MINOR (follow-ups as B26). Orchestrator finished the reviewer's five unrun mutations (all red), fixed one govet finding, and parallelised TestUserActions after the handlers package hit the 10m test timeout. Gate: make test-all EXIT=0 (handlers 307s, integration 364s), lint 0 issues.
+Release notes so far for v0.7.1: (18.1) 2FA/TOTP-setup flows in progress restart; (18.4) admin-added extra addresses never granted send stop receiving mail until GrantSend or re-add, see the boot report; exploit-era verified identities on others' addresses are reported at boot and need revoking by hand.
+PATTERN: [testing] The handlers package runs near Go's 10m default test timeout; a feature adding ~1 min of serial subtests tips it over. Give bcrypt-heavy table tests t.Parallel, and watch package times in the gate log.

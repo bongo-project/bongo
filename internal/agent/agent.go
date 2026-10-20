@@ -1166,6 +1166,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.AddressStore != nil && a.Store != nil {
 			addrVerifyH := handlers.NewAddressVerifyHandler(a.logger)
 			addrVerifyH.SetAddressStore(a.AddressStore)
+			addrVerifyH.SetOwnershipStores(a.Store, a.Metadata, a)
 			addrVerifyH.SetVerifyStore(store.NewAddressVerifyStore(a.Store, a))
 			if a.Blobs != nil {
 				addrVerifyH.SetBlobStore(a.Blobs)
@@ -1586,6 +1587,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	// rejected, so the mail did not bounce either. Reporting only; the operator
 	// decides whether to recreate them.
 	a.reportMixedCaseAddresses()
+
+	// Report identity address records that no longer route mail (unverified)
+	// or that collide with an account, alias or hosted domain. Report only.
+	a.reportShadowedIdentities()
 
 	// Populate the global address index from existing user profiles and aliases.
 	// Leader-only, idempotent, additive — never deletes or modifies existing
@@ -2665,6 +2670,39 @@ func (a *Agent) reportMixedCaseAddresses() {
 		)
 	}
 	a.logger.Warn("startup: mixed-case address report", "count", len(found))
+}
+
+// reportShadowedIdentities logs identity (send-as) records that are unverified
+// or collide with another owner of the address. The resolver only routes
+// verified identities, after accounts and aliases, so admin-added addresses
+// that were never granted send stopped receiving mail with the H1 fix; the
+// operator repairs one with GrantSend or by re-adding it. Read-only.
+func (a *Agent) reportShadowedIdentities() {
+	if a.Store == nil {
+		return
+	}
+	var sys *store.SystemIndex
+	if a.Metadata != nil {
+		sys = a.Metadata.System
+	}
+	found, err := store.FindShadowedIdentities(a.Store, sys)
+	if err != nil {
+		a.logger.Warn("startup: shadowed identity report failed", "error", err)
+		return
+	}
+	for _, f := range found {
+		a.logger.Warn("startup: identity address record does not route mail as the resolver now requires",
+			"address", f.Address,
+			"user_id", f.UserID,
+			"verified", f.Verified,
+			"conflict", f.Conflict,
+			"conflict_owner", f.ConflictOwner,
+			"fix", "GrantSend on the address or re-add it as admin; remove the record if it is a stale claim",
+		)
+	}
+	if len(found) > 0 {
+		a.logger.Warn("startup: shadowed identity report", "count", len(found))
+	}
 }
 
 // migrateAddressIndex populates the global address index (AddressStore) from

@@ -1673,7 +1673,40 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store in Pebble.
+	if h.metadata == nil || h.metadata.System == nil || h.addresses == nil || h.store == nil {
+		http.Error(w, "alias storage not available", http.StatusInternalServerError)
+		return
+	}
+
+	// Resolve the target first: an alias to an unknown account would be stored
+	// dangling and silently dropped at delivery.
+	var targetID string
+	if err := h.metadata.System.DB().QueryRow("SELECT id FROM users WHERE username = ?", targetUser).Scan(&targetID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "target user not found", http.StatusBadRequest)
+			return
+		}
+		h.logger.Error("admin: alias target lookup failed", "target", targetUser, "error", err)
+		http.Error(w, "failed to create alias", http.StatusInternalServerError)
+		return
+	}
+
+	// The alias address must not already belong to an account, alias or
+	// another address record. Delete an alias before re-creating it.
+	if err := addressAllocationError(h.store, h.metadata, h.applier, address, ""); err != nil {
+		if errors.Is(err, auth.ErrAccountExists) {
+			http.Error(w, "address is already in use by an account, alias or identity", http.StatusConflict)
+			return
+		}
+		h.logger.Error("admin: alias address check failed", "alias", address, "error", err)
+		http.Error(w, "failed to create alias", http.StatusInternalServerError)
+		return
+	}
+
+	// Partial-failure semantics: the /system/alias key and the address record
+	// are separate Raft commands. If the record write fails the alias key is
+	// deleted again (best effort, logged) and the request fails; an alias key
+	// without a record still routes through resolver tier 2a.
 	key := []byte(fmt.Sprintf("/system/alias/%s", address))
 	cmd := &bongov1.RaftCommand{
 		Op:    bongov1.Op_OP_PUT,
@@ -1684,20 +1717,27 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to create alias", http.StatusInternalServerError)
 		return
 	}
-
-	// Also insert into system.db.
-	if h.metadata != nil && h.metadata.System != nil {
-		// Look up target user ID.
-		var targetID string
-		_ = h.metadata.System.DB().QueryRow("SELECT id FROM users WHERE username = ?", targetUser).Scan(&targetID)
-		if targetID != "" {
-			if _, err := h.metadata.System.DB().Exec(
-				"INSERT OR REPLACE INTO aliases (address, target_user_id, enabled, created_at) VALUES (?, ?, 1, ?)",
-				address, targetID, time.Now().Unix(),
-			); err != nil {
-				h.logger.Warn("admin: failed to insert alias into sqlite", "alias", address, "error", err)
-			}
+	// Put overwrites, so a stale record from an earlier alias is replaced.
+	if err := h.addresses.Put(address, &bongov1.AddressRecord{
+		UserId:   targetID,
+		Domain:   domainFromEmail(address),
+		Kind:     "alias",
+		CanSend:  false,
+		Verified: true,
+	}); err != nil {
+		h.logger.Error("admin: failed to write alias address record", "alias", address, "error", err)
+		if delErr := h.applier.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: key}, 5*time.Second); delErr != nil {
+			h.logger.Error("admin: failed to roll back alias key", "alias", address, "error", delErr)
 		}
+		http.Error(w, "failed to create alias", http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := h.metadata.System.DB().Exec(
+		"INSERT OR REPLACE INTO aliases (address, target_user_id, enabled, created_at) VALUES (?, ?, 1, ?)",
+		address, targetID, time.Now().Unix(),
+	); err != nil {
+		h.logger.Warn("admin: failed to insert alias into sqlite", "alias", address, "error", err)
 	}
 
 	h.logger.Info("admin: alias created", "alias", address, "target", targetUser)
@@ -1735,6 +1775,28 @@ func (h *AdminHandler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
 		if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
 			http.Error(w, "failed to delete alias", http.StatusInternalServerError)
 			return
+		}
+	}
+
+	// Remove the alias's address-index record too, or it keeps routing at
+	// resolver tier 1 after the alias is gone. Only alias-kind records are
+	// removed: a primary or identity record under the same address is not
+	// this alias's to delete. AddressStore keys are lower-case, so one lookup
+	// covers both spellings.
+	if h.addresses != nil {
+		lowered := strings.ToLower(address)
+		rec, ok, err := h.addresses.Get(lowered)
+		if err != nil {
+			h.logger.Error("admin: alias address record lookup failed", "alias", lowered, "error", err)
+			http.Error(w, "failed to delete alias", http.StatusInternalServerError)
+			return
+		}
+		if ok && rec.Kind == "alias" {
+			if err := h.addresses.Delete(lowered); err != nil {
+				h.logger.Error("admin: failed to delete alias address record", "alias", lowered, "error", err)
+				http.Error(w, "failed to delete alias", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
@@ -1987,8 +2049,9 @@ func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) 
 //
 // The address must contain '@', and if it already exists in the index it must
 // belong to THIS user — one owned by a different user is rejected. It is stored
-// with Kind=identity, CanSend=false, Verified=false; send capability is granted
-// later via GrantSend or self-serve verification.
+// with Kind=alias, Verified=true, CanSend=false so that it routes mail on its own
+// merits; send capability is granted later via GrantSend. The address must not
+// already be used by an account, alias or another user's record.
 //
 // Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
 func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
@@ -2023,7 +2086,6 @@ func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check whether this address is already owned by someone else.
 	existing, ok, err := h.addresses.Get(address)
 	if err != nil {
 		h.logger.Error("admin: failed to look up address", "address", address, "error", err)
@@ -2034,13 +2096,36 @@ func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "address is already owned by a different account", http.StatusConflict)
 		return
 	}
+	if ok && existing.Kind == "primary" {
+		// Already this account's own primary address: nothing to add, and
+		// never downgrade it.
+		http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Address+added", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+		return
+	}
 
+	// The address must not belong to an account (users table), an alias, or a
+	// record owned by anyone else. Records already held by THIS user do not
+	// count, so re-adding an existing extra address upgrades it in place.
+	if err := addressAllocationError(h.store, h.metadata, h.applier, address, userID); err != nil {
+		if errors.Is(err, auth.ErrAccountExists) {
+			http.Error(w, "address is already in use by an account, alias or identity", http.StatusConflict)
+			return
+		}
+		h.logger.Error("admin: address ownership check failed", "address", address, "error", err)
+		http.Error(w, "failed to look up address", http.StatusInternalServerError)
+		return
+	}
+
+	// An admin adding an address in a domain they administer is asserting where
+	// mail for it routes, so it is written as an alias-kind record (routes at
+	// resolver tier 1, Verified, no send rights). Send capability is granted
+	// separately via GrantSend or self-serve verification.
 	rec := &bongov1.AddressRecord{
 		UserId:   userID,
 		Domain:   domain,
-		Kind:     "identity",
-		CanSend:  false,
-		Verified: false,
+		Kind:     "alias",
+		CanSend:  ok && existing.CanSend,
+		Verified: true,
 	}
 	if err := h.addresses.Put(address, rec); err != nil {
 		h.logger.Error("admin: failed to add address", "user_id", userID, "address", address, "error", err)

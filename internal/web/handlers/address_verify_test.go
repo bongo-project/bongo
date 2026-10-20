@@ -66,6 +66,7 @@ func newVerifyTestEnvFull(t *testing.T) *verifyTestEnv {
 	h.SetVerifyStore(avs)
 	h.SetBlobStore(blobs)
 	h.SetQueueStore(qs)
+	h.SetOwnershipStores(ps, meta, applier)
 
 	return &verifyTestEnv{
 		ps: ps, blobs: blobs, meta: meta,

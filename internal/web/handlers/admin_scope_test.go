@@ -1944,6 +1944,9 @@ func TestUserActions_DomainAdmin_PrivilegedTargetForbidden(t *testing.T) {
 	for _, tg := range targets {
 		for _, a := range actions {
 			t.Run(tg.name+"/"+a.name, func(t *testing.T) {
+				// Each case seeds its own env (several bcrypt hashes); run them
+				// in parallel or this test alone takes about six minutes.
+				t.Parallel()
 				env := newAdminScopeTestEnv(t)
 				env.seedPrivilegedUsers(t)
 				id := tg.id(env)
