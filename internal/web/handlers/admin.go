@@ -483,7 +483,7 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	rand.Read(buf)
 	tempPassword := hex.EncodeToString(buf)
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), auth.PasswordHashCost)
 	if err != nil {
 		http.Error(w, "failed to hash password", http.StatusInternalServerError)
 		return

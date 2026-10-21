@@ -25,6 +25,11 @@ type RaftApplier interface {
 // by an account, alias or identity. Handlers map it to 409 Conflict.
 var ErrAccountExists = errors.New("address already in use")
 
+// PasswordHashCost is the bcrypt cost for stored password and recovery-code
+// hashes. Tests lower it to bcrypt.MinCost so bcrypt-heavy suites fit the CI
+// timeout; nothing else changes it.
+var PasswordHashCost = bcrypt.DefaultCost
+
 // keyReader is satisfied by appliers that can read Pebble (*agent.Agent does).
 // Without a GetKey the Pebble address and alias checks are skipped; the
 // SQLite checks still run.
@@ -143,7 +148,7 @@ func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, dis
 
 	userID := uuid.New().String()
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), PasswordHashCost)
 	if err != nil {
 		return "", fmt.Errorf("hashing password: %w", err)
 	}

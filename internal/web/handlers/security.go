@@ -236,7 +236,7 @@ func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Hash new password.
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), auth.PasswordHashCost)
 	if err != nil {
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return

@@ -1,6 +1,6 @@
 module github.com/bongo-project/bongo
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/a-h/templ v0.3.1001
