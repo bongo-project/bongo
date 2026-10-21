@@ -45,6 +45,7 @@ func buildAntispamProcessor(
 	resolver pipelineantispam.RecipientResolver,
 	logger *slog.Logger,
 	thresholds *pipeline.SpamThresholdHolder,
+	extra ...pipelineantispam.Option,
 ) pipeline.Processor {
 	builtinCfg := cfg.Antispam.Builtin
 	antispamOpts := []pipelineantispam.Option{
@@ -66,6 +67,7 @@ func buildAntispamProcessor(
 	if opt := dnsblOption(cfg, logger); opt != nil {
 		antispamOpts = append(antispamOpts, opt)
 	}
+	antispamOpts = append(antispamOpts, extra...)
 	builtin := pipelineantispam.NewBuiltinProcessor(scorer, antispamOpts...)
 	builtin.SetResolver(resolver)
 
@@ -160,6 +162,12 @@ func dnsblOption(cfg *config.Config, logger *slog.Logger) pipelineantispam.Optio
 // trained data) is unavailable and the heuristic scorer runs standalone
 // without blending. DNSBL goes through the same dnsblOption helper both
 // sites share, so the two cannot drift in how the option is built.
+//
+// Known gap (follow-up): this processor gets no SenderAuthorizer, so an
+// envelope with Trusted and AuthUserId set keeps the unconditional DMARC
+// bypass. AgentServer.DispatchOrLocal has no production callers today; before
+// it is wired, fail closed here (run DMARC when AuthUserId is set) or apply
+// the gate on the server.
 func (a *Agent) buildAgentAntispamProcessor() pipeline.Processor {
 	builtin := a.Config.Antispam.Builtin
 	opts := []pipelineantispam.Option{

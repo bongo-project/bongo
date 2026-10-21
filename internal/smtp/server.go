@@ -440,11 +440,15 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 // internal/netx/proxyproto.go), so the CIDR check above inherits that trust
 // boundary — see SetTrustedNetworks for details.
 func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
-	return &InboundMeta{
+	meta := &InboundMeta{
 		SPFResult: s.spfResult,
 		SourceIP:  sourceIP,
 		Trusted:   s.authed || s.backend.IsTrustedSource(sourceIP),
 	}
+	if s.authed {
+		meta.AuthUserID = s.userID
+	}
+	return meta
 }
 
 // Data is called when the message data is received.
@@ -531,6 +535,7 @@ func (s *Session) Data(r io.Reader) error {
 				SenderEmail: s.from,
 				Recipients:  s.externalRcpts,
 				BlobHash:    blobHash,
+				Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
 			}
 			if err := s.backend.relayQueue.Enqueue(out); err != nil {
 				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()

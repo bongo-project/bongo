@@ -529,6 +529,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			Layout:      layout,
 			Attachments: metaAttachments,
 			MessageGuid: meta.MessageId,
+			Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
 		}
 		if err := h.queueStore.Enqueue(outMsg); err != nil {
 			h.logger.Warn("web: failed to enqueue outbound delivery", "user", userID, "guid", guid, "error", err)

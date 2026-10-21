@@ -19,6 +19,7 @@ message QueueEnvelope {
   repeated string pending_tags = 12;     // Tags to apply at delivery (accumulated by rules stage)
   repeated string forward_addresses = 13; // External addresses to forward this message to
   bool trusted = 14;                     // Message arrived authenticated or from trusted network
+  string auth_user_id = 15;              // Authenticated submitter's user ID; empty for trusted-network or unauthenticated sources
 }
 
 message StageResult {

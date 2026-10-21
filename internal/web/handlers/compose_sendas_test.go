@@ -322,6 +322,10 @@ func TestComposeSendAs_DomainAligned(t *testing.T) {
 	if !strings.EqualFold(pending[0].SenderEmail, sendAsEmail) {
 		t.Errorf("OutboundMessage.SenderEmail = %q, want %q", pending[0].SenderEmail, sendAsEmail)
 	}
+	// Web compose must be marked LOCAL so the queue worker DKIM-signs it.
+	if got := pending[0].GetOrigin(); got != bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL {
+		t.Errorf("OutboundMessage.Origin = %v, want LOCAL", got)
+	}
 }
 
 // TestComposeSendAs_DomainAligned_RawFromHeaderDrivesDKIM verifies that after

@@ -44,6 +44,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/pipeline"
+	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
 	pipelineantivirus "github.com/bongo-project/bongo/internal/pipeline/antivirus"
 	pipelinedeliver "github.com/bongo-project/bongo/internal/pipeline/deliver"
 	pipelinerules "github.com/bongo-project/bongo/internal/pipeline/rules"
@@ -441,7 +442,16 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 		case "antispam":
 			scorer := antispam.NewScorer()
 			bayesFilter := antispam.NewBayesFilter(a.Store, a)
-			antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger, a.spamThresholdHolder())
+			// Authenticated submissions only keep the DMARC bypass for a header
+			// From the submitter may send as. Without the stores the processor
+			// logs a warning and keeps the unconditional bypass.
+			var extra []pipelineantispam.Option
+			if a.AddressStore != nil && a.Store != nil {
+				extra = append(extra, pipelineantispam.WithSenderAuthorizer(&store.SendAsPolicy{Addresses: a.AddressStore, Pebble: a.Store}))
+			} else {
+				a.logger.Warn("antispam: no address store; DMARC bypass for authenticated submissions is unconditional")
+			}
+			antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger, a.spamThresholdHolder(), extra...)
 			stages = append(stages, antispamProc)
 		case "rules":
 			if a.Rules != nil {

@@ -310,6 +310,7 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		Recipients:  []string{address},
 		BlobHash:    hash,
 		MessageGuid: fmt.Sprintf("<addrverify-%d@%s>", time.Now().UnixNano(), domain),
+		Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
 	}
 	if err := h.queueStore.Enqueue(outMsg); err != nil {
 		h.logger.Error("address-verify: request: failed to enqueue verification email", "user_id", userID, "address", address, "error", err)

@@ -359,6 +359,37 @@ func TestDepositMessageStripsTrusted(t *testing.T) {
 	}
 }
 
+// TestDepositMessageStripsAuthUserID: the deposit listener is unauthenticated,
+// so a caller-supplied AuthUserId must not reach the spool.
+func TestDepositMessageStripsAuthUserID(t *testing.T) {
+	srv, client, cleanup := startTestServer(t)
+	defer cleanup()
+
+	_, err := client.DepositMessage(context.Background(), &bongov1.DepositRequest{
+		Envelope: &bongov1.QueueEnvelope{
+			Id:         "msg-authuser-001",
+			Sender:     "attacker@evil.com",
+			Recipients: []string{"victim@example.com"},
+			ReceivedAt: time.Now().Unix(),
+			AuthUserId: "forged-user",
+		},
+		Message: []byte("From: attacker@evil.com\r\nTo: victim@example.com\r\nSubject: Test\r\n\r\nHello"),
+	})
+	if err != nil {
+		t.Fatalf("DepositMessage: %v", err)
+	}
+	envs, err := srv.spool.List("incoming")
+	if err != nil {
+		t.Fatalf("listing spool incoming: %v", err)
+	}
+	if len(envs) != 1 {
+		t.Fatalf("expected 1 spooled envelope, got %d", len(envs))
+	}
+	if got := envs[0].AuthUserId; got != "" {
+		t.Errorf("spooled AuthUserId = %q, want empty", got)
+	}
+}
+
 func TestFetchBlob(t *testing.T) {
 	_, client, cleanup := startTestServer(t)
 	defer cleanup()

@@ -9,7 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	netmail "net/mail"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jhillyerd/enmime"
@@ -41,8 +43,32 @@ type BuiltinProcessor struct {
 	dmarcEnforce  bool                  // when false, DMARC is evaluated and logged but not applied
 	dnsbl         *dnsbl.Checker        // may be nil; DNS blocklist checks
 	dnsblWeights  map[string]float64    // zone name -> score contribution; written once at construction, read concurrently
+	warnNoAuthz   sync.Once
+	authorizer    SenderAuthorizer // may be nil; checks header From for authenticated trusted submissions
 	logger        *slog.Logger
 }
+
+// SenderAuthorizer reports whether a user may send with addr as the header
+// From address. Defined here at the consumer; *store.SendAsPolicy
+// satisfies it. A non-nil error means the check could not be made.
+type SenderAuthorizer interface {
+	CanSendAs(userID, addr string) (bool, error)
+}
+
+// WithSenderAuthorizer makes DMARC bypass for authenticated trusted
+// submissions conditional on the header From being an address the
+// authenticated user may send as. Without it the bypass is unconditional
+// (the pre-existing behaviour); agent wiring logs a warning in that case.
+func WithSenderAuthorizer(a SenderAuthorizer) Option {
+	return func(p *BuiltinProcessor) {
+		p.authorizer = a
+	}
+}
+
+// HasSenderAuthorizer reports whether authenticated trusted submissions are
+// gated on a sender authorizer. Wiring tests use it to prove the server
+// pipeline does not fall back to the unconditional DMARC bypass.
+func (p *BuiltinProcessor) HasSenderAuthorizer() bool { return p.authorizer != nil }
 
 // ThresholdSource supplies the tag/quarantine pair. The agent shares one
 // *pipeline.SpamThresholdHolder between this processor and the deliver
@@ -322,8 +348,15 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// verdict itself (dmarcResult) is recorded regardless of enforce mode, so
 	// Authentication-Results can report it even in monitor-only deployments.
 	var dmarcResult string
-	if p.dmarc != nil && !trusted {
-		action, reasons, dmarcResult = p.applyDMARC(ctx, env, headers["From"], dkimDomain, dkimResult, action, reasons)
+	if p.dmarc != nil {
+		bypass := trusted
+		if trusted && !p.trustedFromAuthorised(env, headers["From"]) {
+			bypass = false
+			reasons = append(reasons, "trusted_from_unauthorised")
+		}
+		if !bypass {
+			action, reasons, dmarcResult = p.applyDMARC(ctx, env, headers["From"], dkimDomain, dkimResult, action, reasons)
+		}
 	}
 
 	observability.AntispamScore.Observe(float64(score))
@@ -574,4 +607,45 @@ func extractBasicHeaders(raw []byte) (subject string, headers map[string]string)
 	flush()
 
 	return subject, headers
+}
+
+// trustedFromAuthorised decides whether a trusted envelope keeps the DMARC
+// bypass. SPF/DKIM origin checks and DNSBL stay skipped for every trusted
+// envelope; this only stops an authenticated user from having a header From it
+// may not send as (another local user, another tenant's domain) treated as
+// aligned.
+//
+//   - No AuthUserId (trusted network, or a spool entry written before the
+//     field existed): bypass. A trusted network is an explicit operator
+//     decision, so a relay host there can still put any local From into a
+//     local mailbox.
+//   - No authorizer configured: bypass, with a one-time warning when an
+//     authenticated envelope shows up.
+//   - Otherwise bypass only when CanSendAs(AuthUserId, header From) is true.
+//     A lookup error or an unparseable From fails closed.
+//
+// External backends (rspamd, spamassassin) composed via CompositeProcessor do
+// not evaluate DMARC at all; they only add content scoring, so this gate lives
+// solely in the builtin processor.
+func (p *BuiltinProcessor) trustedFromAuthorised(env *bongov1.QueueEnvelope, fromHeader string) bool {
+	userID := env.GetAuthUserId()
+	if userID == "" {
+		return true
+	}
+	if p.authorizer == nil {
+		p.warnNoAuthz.Do(func() {
+			p.logger.Warn("antispam: authenticated envelope but no sender authorizer configured; DMARC bypass is unconditional")
+		})
+		return true
+	}
+	parsed, err := netmail.ParseAddress(strings.TrimSpace(fromHeader))
+	if err != nil {
+		return false
+	}
+	ok, err := p.authorizer.CanSendAs(userID, strings.ToLower(parsed.Address))
+	if err != nil {
+		p.logger.Warn("antispam: sender authorisation check failed, applying DMARC", "error", err)
+		return false
+	}
+	return ok
 }

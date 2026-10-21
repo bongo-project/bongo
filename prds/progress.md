@@ -1272,3 +1272,7 @@ Release note: SMTP clients submitting with a From the account may not send as ar
 PATTERN: [security] A hand-rolled header scanner has as many exits as states (EOF, buffer full, parse error, empty list); each exit is a place to fail open, and each needs its own test.
 PATTERN: [norman] Two parallel tasks that both need "may user X send as Y" will each build one. When tasks share a predicate, sequence them or name the owner of the shared function in both specs.
 PATTERN: [norman] Workflow `isolation: worktree` branches from the repository's default branch (main), not the orchestrator's current branch. On a feature branch, later batches are built against code missing earlier commits. Either merge to main between batches, or create the worktrees yourself from HEAD and tell workers to cd there. The full gate after applying each patch on the real branch is what catches the drift.
+
+### 2026-10-21 Task 18.6 (H5/H6 signing and forwarding) DONE
+Forwards are never DKIM-signed by us; trusted-submission DMARC bypass is limited to authorised From; signer domain parsing is strict. Ported onto 18.5's shared rule after the parallel build duplicated it. Gate: make test-all EXIT=0 (integration 349s), lint 0 issues. All six HIGH findings (H1-H6) now fixed.
+Release notes for v0.7.1 (collected): see 18.1, 18.4, 18.5, 18.6 rows in TASKS.md.

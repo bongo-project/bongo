@@ -318,6 +318,11 @@ func (s *AgentServer) DepositMessage(_ context.Context, req *DepositRequest) (*D
 	// the agent deposit channel itself is authenticated.
 	env.Trusted = false
 
+	// AuthUserId is likewise server-local: it names the account whose send-as
+	// rights gate the DMARC bypass, so a caller on this unauthenticated
+	// listener must not be able to pick one.
+	env.AuthUserId = ""
+
 	if err := s.spool.Enqueue(env); err != nil {
 		return nil, status.Errorf(codes.Internal, "enqueue message: %v", err)
 	}

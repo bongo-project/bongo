@@ -67,6 +67,8 @@ func (d *fakeSplitDeliverer) EnqueueLocal(from string, recipients []string, blob
 			SPFResult: meta.SPFResult,
 			SourceIP:  meta.SourceIP,
 			Trusted:   meta.Trusted,
+
+			AuthUserID: meta.AuthUserID,
 		})
 	} else {
 		d.localMetas = append(d.localMetas, &InboundMeta{})
