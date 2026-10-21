@@ -15,15 +15,15 @@ func TestSubmissionAllowsOwnMailFrom(t *testing.T) {
 	}
 }
 
-// An authenticated submission user may use an envelope sender that is not a
-// provisioned local account (e.g. a role or external address); those are
-// policed by the relay/SPF layer, not the sender-ownership check.
-func TestSubmissionAllowsNonLocalMailFrom(t *testing.T) {
+// Previously asserted that any non-local envelope sender was accepted (the
+// spoofing hole). Inverted deliberately: an address the user has no verified
+// send-as identity for is now refused at MAIL FROM.
+func TestSubmissionRejectsUnownedNonLocalMailFromUnit(t *testing.T) {
 	b, _, _ := testBackend("alice@example.com")
 	s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-alice@example.com"}
 
-	if err := s.Mail("newsletter@example.com", nil); err != nil {
-		t.Fatalf("non-provisioned sender should not be rejected by the ownership check, got %v", err)
+	if code := smtpCode(s.Mail("newsletter@example.com", nil)); code != 553 {
+		t.Fatalf("unowned sender should be 553, got %d", code)
 	}
 }
 

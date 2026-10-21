@@ -1265,3 +1265,9 @@ PATTERN: [testing] The handlers package runs near Go's 10m default test timeout;
 ### 2026-10-21 Task 18.2 (H4) DONE
 Deleted accounts' web sessions are revoked (profile not-found -> Missing). Advisor PROCEED, review MINOR. Gate: make test-all EXIT=0, lint 0 issues.
 PATTERN: [testing] proto.Marshal of a message with only default-valued fields is zero bytes. A "live record" test fixture must set a non-default field or it exercises the empty-record branch.
+
+### 2026-10-21 Task 18.5 (H5 submission) DONE
+Authenticated submission binds envelope sender and header From to the shared send-as rule. Review REJECT twice, both times on missing tests; a fix-up worker closed the five surviving mutations, two re-verified by the orchestrator. Gate: make test-all EXIT=0, lint 0 issues.
+Release note: SMTP clients submitting with a From the account may not send as are rejected (550/553 5.7.1).
+PATTERN: [security] A hand-rolled header scanner has as many exits as states (EOF, buffer full, parse error, empty list); each exit is a place to fail open, and each needs its own test.
+PATTERN: [norman] Two parallel tasks that both need "may user X send as Y" will each build one. When tasks share a predicate, sequence them or name the owner of the shared function in both specs.

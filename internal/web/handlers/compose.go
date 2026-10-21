@@ -125,11 +125,7 @@ func (h *ComposeHandler) buildFromPickerOptions(userID, primaryEmail string) (op
 	// Filter: keep only addresses owned by this user with CanSend && Verified.
 	// Always check via Pebble (Get) — SQLite's can_send/verified columns may be stale.
 	for _, addr := range addrs {
-		rec, ok, err := h.addresses.Get(addr)
-		if err != nil || !ok {
-			continue
-		}
-		if rec.UserId != userID || !rec.CanSend || !rec.Verified {
+		if ok, err := store.CanSendAs(h.addresses, userID, primaryEmail, addr); err != nil || !ok {
 			continue
 		}
 		options = append(options, strings.ToLower(addr))
@@ -307,18 +303,12 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Send-as is not available on this node", http.StatusForbidden)
 			return
 		}
-		rec, ok, err := h.addresses.Get(chosenFrom)
+		allowed, err := store.CanSendAs(h.addresses, userID, email, chosenFrom)
 		switch {
 		case err != nil:
 			http.Error(w, "Address lookup failed", http.StatusInternalServerError)
 			return
-		case !ok:
-			http.Error(w, "Forbidden: address not found", http.StatusForbidden)
-			return
-		case rec.UserId != userID:
-			http.Error(w, "Forbidden: address not owned by your account", http.StatusForbidden)
-			return
-		case !rec.CanSend || !rec.Verified:
+		case !allowed:
 			http.Error(w, "Forbidden: address is not authorised for sending", http.StatusForbidden)
 			return
 		}

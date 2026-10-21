@@ -591,6 +591,11 @@ func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *st
 	// deliver-stage resolution are always consistent.
 	backend.SetResolver(resolver)
 
+	// Send-as policy for authenticated submission: the envelope sender and the
+	// header From must be addresses the user may send as, the same rule as
+	// web compose. Without it authenticated submission fails closed.
+	backend.SetSenderPolicy(&store.SendAsPolicy{Addresses: a.AddressStore, Pebble: a.Store})
+
 	// Storage quota enforcement at RCPT: reject inbound mail permanently when
 	// the recipient's primary domain is at or over its max_storage_bytes
 	// limit. Nil when quota store is unavailable (dev/edge/agent — all

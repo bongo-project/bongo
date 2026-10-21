@@ -87,6 +87,18 @@ func (q *fakeRelayQueue) Enqueue(msg *bongov1.OutboundMessage) error {
 	return nil
 }
 
+// authedMsg is a minimal message whose From matches the "uid-alice@example.com"
+// session user used by the authenticated Data tests.
+const authedMsg = "From: alice@example.com\r\nSubject: hi\r\n\r\nbody"
+
+// fakePolicy allows a user to send as the address that fakeResolver maps to
+// that user ("uid-"+address) plus any address in extra.
+type fakePolicy struct{ extra map[string]bool }
+
+func (p *fakePolicy) CanSendAs(userID, addr string) (bool, error) {
+	return userID == "uid-"+addr || p.extra[addr], nil
+}
+
 func testBackend(local ...string) (*Backend, *fakeSplitDeliverer, *fakeRelayQueue) {
 	set := map[string]bool{}
 	for _, l := range local {
@@ -95,12 +107,13 @@ func testBackend(local ...string) (*Backend, *fakeSplitDeliverer, *fakeRelayQueu
 	deliverer := &fakeSplitDeliverer{}
 	relay := &fakeRelayQueue{}
 	b := &Backend{
-		auth:       &fakeAuth{userID: "uid-1"},
-		deliverer:  deliverer,
-		resolver:   &fakeResolver{local: set},
-		relayQueue: relay,
-		perIP:      map[string]int{},
-		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		auth:         &fakeAuth{userID: "uid-1"},
+		deliverer:    deliverer,
+		resolver:     &fakeResolver{local: set},
+		relayQueue:   relay,
+		senderPolicy: &fakePolicy{},
+		perIP:        map[string]int{},
+		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return b, deliverer, relay
 }
@@ -127,7 +140,7 @@ func TestRcptUnauthenticatedRelayDenied(t *testing.T) {
 		t.Fatalf("external recipient should be rejected 550, got %v", err)
 	}
 
-	if err := s.Data(strings.NewReader("subject: hi\r\n\r\nbody")); err != nil {
+	if err := s.Data(strings.NewReader(authedMsg)); err != nil {
 		t.Fatalf("Data failed: %v", err)
 	}
 	if len(deliverer.localCalls) != 1 || deliverer.localCalls[0][0] != "staff@example.com" {
@@ -146,6 +159,7 @@ func TestSubmissionRequiresAuth(t *testing.T) {
 
 	// After auth, MAIL is accepted.
 	s.authed = true
+	s.userID = "uid-me@example.com"
 	if err := s.Mail("me@example.com", nil); err != nil {
 		t.Fatalf("authenticated MAIL should be accepted, got %v", err)
 	}
@@ -186,9 +200,9 @@ func TestSMTPAuthFailuresAreRateLimited(t *testing.T) {
 // enqueued for outbound delivery rather than dropped.
 func TestAuthenticatedRelayToExternal(t *testing.T) {
 	b, deliverer, relay := testBackend("staff@example.com")
-	s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-1"}
+	s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-alice@example.com"}
 
-	if err := s.Mail("me@example.com", nil); err != nil {
+	if err := s.Mail("alice@example.com", nil); err != nil {
 		t.Fatalf("MAIL failed: %v", err)
 	}
 	if err := s.Rcpt("staff@example.com", nil); err != nil {
@@ -197,7 +211,7 @@ func TestAuthenticatedRelayToExternal(t *testing.T) {
 	if err := s.Rcpt("friend@external.com", nil); err != nil {
 		t.Fatalf("authed external rcpt should be accepted, got %v", err)
 	}
-	if err := s.Data(strings.NewReader("subject: hi\r\n\r\nbody")); err != nil {
+	if err := s.Data(strings.NewReader(authedMsg)); err != nil {
 		t.Fatalf("Data failed: %v", err)
 	}
 
@@ -211,7 +225,7 @@ func TestAuthenticatedRelayToExternal(t *testing.T) {
 	if len(out.Recipients) != 1 || out.Recipients[0] != "friend@external.com" {
 		t.Fatalf("expected external recipient in relay, got %v", out.Recipients)
 	}
-	if out.SenderId != "uid-1" || out.BlobHash != "blobhash" {
+	if out.SenderId != "uid-alice@example.com" || out.BlobHash != "blobhash" {
 		t.Fatalf("unexpected outbound message: %+v", out)
 	}
 }
@@ -339,7 +353,7 @@ func TestOutboundRateLimitRejectsWith452(t *testing.T) {
 		if err := s.Rcpt("outsider@example.net", nil); err != nil {
 			t.Fatalf("Rcpt to external: %v", err)
 		}
-		return s.Data(strings.NewReader("subject: hi\r\n\r\nbody"))
+		return s.Data(strings.NewReader(authedMsg))
 	}
 
 	for i := 1; i <= 2; i++ {
@@ -373,7 +387,7 @@ func TestOutboundRateLimitDoesNotApplyToLocalOnly(t *testing.T) {
 		if err := s.Rcpt("bob@example.com", nil); err != nil {
 			t.Fatalf("Rcpt local: %v", err)
 		}
-		if err := s.Data(strings.NewReader("subject: hi\r\n\r\nbody")); err != nil {
+		if err := s.Data(strings.NewReader(authedMsg)); err != nil {
 			t.Fatalf("local-only message %d was rate limited: %v", i, err)
 		}
 	}
@@ -438,7 +452,7 @@ func TestDataRejectsWhenSpoolFails(t *testing.T) {
 				t.Fatalf("Rcpt: %v", err)
 			}
 
-			err := s.Data(strings.NewReader("subject: hi\r\n\r\nbody"))
+			err := s.Data(strings.NewReader(authedMsg))
 			if err == nil {
 				t.Fatal("DATA returned 250 for a message that was never spooled: " +
 					"the sender will delete its copy and the mail is lost")

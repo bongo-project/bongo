@@ -1,6 +1,8 @@
 package smtp
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -8,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	netmail "net/mail"
 	"slices"
 	"strings"
 	"sync"
@@ -54,6 +57,7 @@ type Backend struct {
 	resolver     RecipientResolver
 	quotaChecker QuotaChecker
 	relayQueue   RelayQueuer
+	senderPolicy SenderPolicy
 	subPort      int
 	logger       *slog.Logger
 
@@ -97,6 +101,19 @@ func (b *Backend) SetSPFChecker(checker *mail.SPFChecker) {
 // mail only for local recipients unless the session is authenticated).
 func (b *Backend) SetResolver(r RecipientResolver) {
 	b.resolver = r
+}
+
+// SenderPolicy decides which From addresses an authenticated submission user
+// may send as. It is defined here, at the consumer; store.SendAsPolicy is the
+// production implementation and shares its rule with web compose.
+type SenderPolicy interface {
+	CanSendAs(userID, addr string) (bool, error)
+}
+
+// SetSenderPolicy sets the send-as policy enforced on authenticated
+// submission. With no policy set, authenticated submission fails closed.
+func (b *Backend) SetSenderPolicy(p SenderPolicy) {
+	b.senderPolicy = p
 }
 
 // SetQuotaChecker sets the storage quota checker used to reject inbound mail
@@ -333,14 +350,12 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 		return &gosmtp.SMTPError{Code: 530, EnhancedCode: gosmtp.EnhancedCode{5, 7, 0}, Message: "Authentication required"}
 	}
 
-	// Authenticated submission may not spoof another local user's address. If
-	// the envelope sender resolves to a local account, it must be the
-	// authenticated user's own account. Addresses that do not resolve to a
-	// local user are left to the relay policy (Rcpt) and SPF to police.
-	if s.submission && s.authed && s.backend.resolver != nil {
-		if fromUID, err := s.backend.resolver.ResolveRecipient(from); err == nil && fromUID != s.userID {
-			s.logger.Warn("smtp: submission sender not authorized", "from", from, "user", s.userID, "ip", s.remoteIP)
-			return &gosmtp.SMTPError{Code: 553, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "Sender address not owned by authenticated user"}
+	// Authenticated submission may only use an envelope sender the user may
+	// send as (primary, or a verified CanSend identity). The header From is
+	// checked in Data with the same rule.
+	if s.submission && s.authed {
+		if err := s.checkSendAs(from); err != nil {
+			return err
 		}
 	}
 
@@ -461,6 +476,18 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
+	// Authenticated submission: the header From must be an address the user may
+	// send as, because the outbound queue DKIM-signs by the header From domain.
+	// The (bounded) header block is read here and replayed ahead of the body.
+	if s.submission && s.authed {
+		replay, err := s.checkSubmissionHeaderFrom(r)
+		if err != nil {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+			return err
+		}
+		r = replay
+	}
+
 	// Build the header prefix streamed ahead of the message body (no full-message
 	// buffering). A Received header is added on every inbound hop so forwarding
 	// loops accumulate hops and can be detected and broken downstream.
@@ -536,6 +563,91 @@ func (s *Session) Data(r io.Reader) error {
 	observability.SMTPMessagesTotal.WithLabelValues("accepted").Inc()
 	s.logger.Info("smtp: message delivered", "from", s.from, "recipients", s.localRcpts)
 	return nil
+}
+
+// checkSendAs enforces the send-as policy for one address on an authenticated
+// submission session. It fails closed: a missing policy, a null sender or a
+// store error never allows the address.
+func (s *Session) checkSendAs(addr string) error {
+	if s.backend.senderPolicy == nil {
+		s.logger.Error("smtp: submission send-as policy not configured; rejecting", "user", s.userID)
+		return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Sender policy temporarily unavailable"}
+	}
+	ok, err := s.backend.senderPolicy.CanSendAs(s.userID, addr)
+	if err != nil {
+		s.logger.Error("smtp: send-as lookup failed", "user", s.userID, "error", err)
+		return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Sender policy temporarily unavailable"}
+	}
+	if !ok {
+		s.logger.Warn("smtp: submission sender not authorized", "from", addr, "user", s.userID, "ip", s.remoteIP)
+		return &gosmtp.SMTPError{Code: 553, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "Sender address not owned by authenticated user"}
+	}
+	return nil
+}
+
+// maxSubmissionHeaderBytes bounds the header block buffered for the From check.
+const maxSubmissionHeaderBytes = 256 << 10
+
+// checkSubmissionHeaderFrom reads the header block of an authenticated
+// submission, requires exactly one parseable From field whose every address
+// the user may send as, and returns a reader that replays the consumed bytes
+// followed by the rest of the stream. It parses with net/mail, the parser the
+// DKIM signer uses to pick its domain, so the check and the signer agree.
+func (s *Session) checkSubmissionHeaderFrom(r io.Reader) (io.Reader, error) {
+	br := bufio.NewReaderSize(r, 4096)
+	var hdr []byte
+	// atLineStart is false while ReadSlice is returning pieces of one over-long
+	// line; a bare line ending in such a piece is not a blank line.
+	atLineStart := true
+	for {
+		line, err := br.ReadSlice('\n')
+		hdr = append(hdr, line...)
+		if len(hdr) > maxSubmissionHeaderBytes {
+			return nil, &gosmtp.SMTPError{Code: 552, EnhancedCode: gosmtp.EnhancedCode{5, 3, 4}, Message: "Message header too large"}
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			atLineStart = false
+			continue
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("reading message header: %w", err)
+		}
+		if atLineStart && len(line) <= 2 && strings.TrimRight(string(line), "\r\n") == "" {
+			break
+		}
+		atLineStart = true
+	}
+
+	// Terminate defensively so a header block cut off at EOF still parses.
+	msg, err := netmail.ReadMessage(io.MultiReader(bytes.NewReader(hdr), strings.NewReader("\r\n\r\n")))
+	if err != nil {
+		return nil, malformedFrom("unparseable message header")
+	}
+	froms := msg.Header["From"]
+	if len(froms) != 1 {
+		return nil, malformedFrom("exactly one From header is required")
+	}
+	addrs, err := netmail.ParseAddressList(froms[0])
+	if err != nil || len(addrs) == 0 {
+		return nil, malformedFrom("From header is not a valid address list")
+	}
+	for _, a := range addrs {
+		if err := s.checkSendAs(a.Address); err != nil {
+			var se *gosmtp.SMTPError
+			if errors.As(err, &se) && se.Code == 553 {
+				return nil, &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "From address not owned by authenticated user"}
+			}
+			return nil, err
+		}
+	}
+	return io.MultiReader(bytes.NewReader(hdr), br), nil
+}
+
+func malformedFrom(msg string) error {
+	return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 6, 0}, Message: msg}
 }
 
 // Reset is called between messages on the same connection.
