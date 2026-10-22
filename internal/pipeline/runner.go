@@ -29,6 +29,7 @@ type Runner struct {
 	blobs        BlobReader
 	logger       *slog.Logger
 	workers      int
+	queueDepth   int // work channel capacity; zero means workers (tests raise it)
 	pollInterval time.Duration
 
 	messageTimeout time.Duration
@@ -86,7 +87,11 @@ func NewRunner(spool *SpoolStore, blobs BlobReader, stages []Processor, logger *
 // Run starts the worker pool and polls incoming/ until ctx is cancelled.
 // In-flight messages are allowed to complete before Run returns.
 func (r *Runner) Run(ctx context.Context) error {
-	work := make(chan *bongov1.QueueEnvelope, r.workers)
+	depth := r.queueDepth
+	if depth <= 0 {
+		depth = r.workers
+	}
+	work := make(chan *bongov1.QueueEnvelope, depth)
 
 	var wg sync.WaitGroup
 	for i := 0; i < r.workers; i++ {
@@ -94,6 +99,20 @@ func (r *Runner) Run(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			for env := range work {
+				if ctx.Err() != nil {
+					// Shutting down: do not start new work against the grace
+					// period. Hand the envelope back to incoming/ so the next
+					// start picks it up. If the move fails it stays in
+					// processing/, which RecoverCrashed returns to incoming/ at
+					// the next start, so it is neither lost nor duplicated.
+					// Keep draining (continue, not return) so every buffered
+					// envelope is returned now rather than at the next start.
+					if moveErr := r.spool.Move(env.Id, "processing", "incoming"); moveErr != nil {
+						r.logger.Error("pipeline: failed to return unstarted envelope on shutdown",
+							append(envIdentity(env), "error", moveErr)...)
+					}
+					continue
+				}
 				if err := r.processMessage(ctx, env); err != nil {
 					r.logger.Error("pipeline: process message failed",
 						append(envIdentity(env), "error", err)...)
