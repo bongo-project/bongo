@@ -1141,6 +1141,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Mailboxes != nil {
 			mailH := handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes, a.logger)
 			mailH.SetApplier(a)
+			if a.DomainQuota != nil {
+				mailH.SetQuotaChecker(a.DomainQuota)
+			}
 			if a.Threads != nil {
 				mailH.SetThreadStore(a.Threads)
 			}
@@ -1194,6 +1197,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			// + deduplicated attachment blobs; the queue reconstructs byte-exact
 			// before relaying.
 			composeH.SetAttachmentDedup(int(a.Config.Storage.AttachmentDedupMinBytes()))
+			if a.DomainQuota != nil {
+				composeH.SetQuotaChecker(a.DomainQuota)
+			}
 			if a.QueueStore != nil {
 				composeH.SetQueueStore(a.QueueStore)
 			}
@@ -1234,6 +1240,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Contacts != nil {
 			contactsH := handlers.NewContactsHandler(a.Contacts, a.Search)
+			if a.DomainQuota != nil {
+				contactsH.SetQuotaChecker(a.DomainQuota)
+			}
 			r.Get("/contacts", contactsH.ListContacts)
 			r.Post("/contacts", contactsH.CreateContact)
 			r.Get("/contacts/export", contactsH.ExportContacts)
@@ -1247,6 +1256,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Events != nil && a.Calendars != nil {
 			calendarH := handlers.NewCalendarHandler(a.Events, a.Calendars, a.Search)
+			if a.DomainQuota != nil {
+				calendarH.SetQuotaChecker(a.DomainQuota)
+			}
 			r.Get("/calendar", calendarH.CalendarIndex)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/{year}/{month}", calendarH.MonthView)

@@ -30,12 +30,16 @@ const contactsPerPage = 25
 type ContactsHandler struct {
 	contacts *store.ContactStore
 	search   *store.SearchManager
+	quota    QuotaChecker // nil = unlimited
 }
 
 // NewContactsHandler creates a ContactsHandler.
 func NewContactsHandler(contacts *store.ContactStore, search *store.SearchManager) *ContactsHandler {
 	return &ContactsHandler{contacts: contacts, search: search}
 }
+
+// SetQuotaChecker enables the domain storage-quota check on contact writes.
+func (h *ContactsHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 
 // ListContacts renders the contact list page.
 func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +74,12 @@ func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) 
 	contact := &bongov1.Contact{}
 	// Build the full vCard from the edit form (also sets the derived quick fields).
 	buildVCardFromForm(contact, r)
+
+	// Best-effort domain quota (usage is a periodic recompute).
+	if quotaExceeded(h.quota, nil, userID, 0) {
+		refuseQuota(w, r)
+		return
+	}
 
 	if _, err := h.contacts.Create(userID, contact); err != nil {
 		http.Error(w, "failed to create contact", http.StatusInternalServerError)
@@ -120,7 +130,16 @@ func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) 
 
 	// Rebuild the stored vCard from the full edit form (all fields), preserving
 	// any properties the form does not cover, and refresh the derived quick fields.
+	oldSize := len(existing.VcardRaw)
 	buildVCardFromForm(existing, r)
+
+	// At or over quota an update is allowed only if the vCard does not grow.
+	// This deliberately differs from CardDAV PUT, which refuses every update at
+	// quota: a full user can still edit or shrink what they have.
+	if len(existing.VcardRaw) > oldSize && quotaExceeded(h.quota, nil, userID, 0) {
+		refuseQuota(w, r)
+		return
+	}
 
 	if err := h.contacts.Update(userID, guid, existing); err != nil {
 		http.Error(w, "failed to update contact", http.StatusInternalServerError)
@@ -170,6 +189,11 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 			return
 		}
 		http.Redirect(w, r, "/contacts?flash=Already+in+contacts", http.StatusSeeOther)
+		return
+	}
+
+	if quotaExceeded(h.quota, nil, userID, 0) {
+		refuseQuotaFlash(w, r, returnTo)
 		return
 	}
 
@@ -265,6 +289,13 @@ func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request)
 	raw, err := io.ReadAll(file)
 	if err != nil {
 		http.Redirect(w, r, "/contacts?flash=Failed+to+read+file", http.StatusSeeOther)
+		return
+	}
+
+	// All or nothing, best effort: refuse the whole upload up front when it
+	// would not fit, rather than importing part of it.
+	if quotaExceeded(h.quota, nil, userID, int64(len(raw))) {
+		refuseQuotaFlash(w, r, "/contacts")
 		return
 	}
 

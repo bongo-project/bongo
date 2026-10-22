@@ -13,6 +13,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/emersion/go-ical"
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -25,12 +26,16 @@ type CalendarHandler struct {
 	events    *store.EventStore
 	calendars *store.CalendarStore
 	search    *store.SearchManager
+	quota     QuotaChecker // nil = unlimited
 }
 
 // NewCalendarHandler creates a CalendarHandler.
 func NewCalendarHandler(events *store.EventStore, calendars *store.CalendarStore, search *store.SearchManager) *CalendarHandler {
 	return &CalendarHandler{events: events, calendars: calendars, search: search}
 }
+
+// SetQuotaChecker enables the domain storage-quota check on event writes.
+func (h *CalendarHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 
 // CalendarIndex redirects to the current month view.
 func (h *CalendarHandler) CalendarIndex(w http.ResponseWriter, r *http.Request) {
@@ -363,6 +368,13 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best-effort domain quota (usage is a periodic recompute): refuse a new
+	// event for a user already at or over quota.
+	if quotaExceeded(h.quota, nil, userID, 0) {
+		refuseQuota(w, r)
+		return
+	}
+
 	if _, err := h.events.Create(userID, event); err != nil {
 		http.Error(w, "failed to create event", http.StatusInternalServerError)
 		return
@@ -405,7 +417,20 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// At or over quota an update is allowed only if the stored record does not
+	// grow. This deliberately differs from CalDAV PUT, which refuses every
+	// update at quota: letting a full user edit or shrink what they have lets
+	// them make room. Growth is measured on the whole record because the form
+	// path drops ical_raw.
+	// The store stamps these identity fields on write; copy them first so the
+	// comparison is like for like.
 	updated.CreatedAt = existing.CreatedAt
+	updated.Guid = existing.Guid
+	updated.UpdatedAt = existing.UpdatedAt
+	if proto.Size(updated) > proto.Size(existing) && quotaExceeded(h.quota, nil, userID, 0) {
+		refuseQuota(w, r)
+		return
+	}
 	if err := h.events.Update(userID, guid, updated); err != nil {
 		http.Error(w, "failed to update event", http.StatusInternalServerError)
 		return
@@ -520,12 +545,19 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	if !parseUploadForm(w, r, calendarImportMaxBytes, "/calendar") {
 		return
 	}
-	file, _, err := r.FormFile("ics")
+	file, hdr, err := r.FormFile("ics")
 	if err != nil {
 		http.Redirect(w, r, "/calendar?flash=No+file+uploaded", http.StatusSeeOther)
 		return
 	}
 	defer file.Close()
+
+	// All or nothing, best effort: refuse the whole upload up front when it
+	// would not fit, rather than importing part of it.
+	if quotaExceeded(h.quota, nil, userID, hdr.Size) {
+		refuseQuotaFlash(w, r, "/calendar")
+		return
+	}
 
 	// Ensure default calendar.
 	calID, _ := h.calendars.EnsureDefault(userID)

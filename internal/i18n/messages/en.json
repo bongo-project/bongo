@@ -667,5 +667,7 @@
   "admin.dmarcRecord": "DMARC",
   "settings.sendAsRequested": "Request received. If the address can be added, it now appears in your list.",
   "admin.tempPasswordLabel": "Temporary password",
-  "admin.tempPasswordNotice": "Password reset. This temporary password is shown once and cannot be retrieved again. Give it to the user now."
+  "admin.tempPasswordNotice": "Password reset. This temporary password is shown once and cannot be retrieved again. Give it to the user now.",
+  "quota.exceeded": "Your storage quota is full, so this cannot be saved. Delete some items or ask your administrator to raise the limit.",
+  "quota.recipientExceeded": "The mailbox of %s is full, so the message was not sent to anyone. Remove that recipient or try again later."
 }

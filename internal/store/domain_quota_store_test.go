@@ -310,3 +310,51 @@ func TestDomainQuotaStore_UsageNeverGoesNegative(t *testing.T) {
 		}
 	})
 }
+
+// TestDomainQuotaStore_RecipientWouldExceedQuota covers the size-aware check
+// used by web write paths. Sizes are deliberately not round numbers.
+func TestDomainQuotaStore_RecipientWouldExceedQuota(t *testing.T) {
+	const limit = int64(1_048_583)
+	tests := []struct {
+		name  string
+		max   int64
+		usage int64
+		add   int64
+		want  bool
+	}{
+		{"exact fit is allowed", limit, limit - 4_099, 4_099, false},
+		{"one byte over is refused", limit, limit - 4_099, 4_100, true},
+		{"zero add at usage==max is refused", limit, limit, 0, true},
+		{"zero add under max is allowed", limit, limit - 1, 0, false},
+		{"unlimited ignores size", 0, 977, math.MaxInt64, false},
+		{"overflowing add is refused", limit, 977, math.MaxInt64, true},
+		{"negative add treated as zero", limit, limit - 1, -5, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ps, qs := newDomainQuotaTestEnv(t)
+			writeTestProfile(t, &directApplier{store: ps}, "u1", "a@d.example")
+			if tc.max > 0 {
+				if err := qs.SetQuota("d.example", &bongov1.DomainQuota{MaxStorageBytes: tc.max}); err != nil {
+					t.Fatalf("SetQuota: %v", err)
+				}
+			}
+			if err := qs.SetUsage("d.example", tc.usage); err != nil {
+				t.Fatalf("SetUsage: %v", err)
+			}
+			got, err := qs.RecipientWouldExceedQuota("u1", tc.add)
+			if err != nil {
+				t.Fatalf("RecipientWouldExceedQuota: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("RecipientWouldExceedQuota(add=%d): want %v, got %v", tc.add, tc.want, got)
+			}
+			if tc.add <= 0 {
+				over, err := qs.RecipientOverQuota("u1")
+				if err != nil || over != got {
+					t.Errorf("RecipientOverQuota = %v, %v; want %v", over, err, got)
+				}
+			}
+		})
+	}
+}

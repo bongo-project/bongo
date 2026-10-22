@@ -667,5 +667,7 @@
   "admin.dmarcRecord": "DMARC",
   "settings.sendAsRequested": "Solicitud recibida. Si la dirección se puede añadir, ahora aparece en su lista.",
   "admin.tempPasswordLabel": "Contraseña temporal",
-  "admin.tempPasswordNotice": "Contraseña restablecida. Esta contraseña temporal se muestra una sola vez y no se puede recuperar. Entréguesela al usuario ahora."
+  "admin.tempPasswordNotice": "Contraseña restablecida. Esta contraseña temporal se muestra una sola vez y no se puede recuperar. Entréguesela al usuario ahora.",
+  "quota.exceeded": "Su cuota de almacenamiento está llena, por lo que no se puede guardar. Elimine algunos elementos o pida a su administrador que aumente el límite.",
+  "quota.recipientExceeded": "El buzón de %s está lleno, por lo que el mensaje no se envió a nadie. Quite a ese destinatario o inténtelo de nuevo más tarde."
 }

@@ -54,11 +54,15 @@ type ComposeHandler struct {
 	resolver      localRecipientResolver // unified address→userID resolver
 	addresses     *store.AddressStore    // for send-as From picker and enforcement
 	logger        *slog.Logger
+	quota         QuotaChecker // nil = unlimited
 
 	// dedupMinSize is the attachment-dedup threshold. > 0 stores sent mail as a
 	// skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
 	dedupMinSize int
 }
+
+// SetQuotaChecker enables the domain storage-quota check on Send and SaveDraft.
+func (h *ComposeHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 
 // SetAttachmentDedup sets the minimum encoded-attachment size for splitting sent
 // mail into deduplicated blobs. A non-positive value disables it.
@@ -302,6 +306,22 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Quota policy: a send is refused, never sent without its Sent copy. The
+	// sender's own Sent copy must fit, and so must every local recipient's
+	// INBOX copy (SMTP RCPT rejects an over-quota local recipient with a
+	// permanent 552; the web form has no per-recipient partial accept, so the
+	// whole send is refused and nothing is delivered). The sender check runs
+	// before any blob, queue or mailbox write; the per-recipient check runs after
+	// the message blob is stored (an orphan the GC collects, as for the rate-limit
+	// refusals) but before the rate limiters spend budget and before any delivery.
+	// Like SMTP RCPT, both checks are yes/no: a sender with any headroom may store
+	// a Sent copy or draft of any size up to the compose cap. The usage figure is
+	// recomputed periodically, so this is best effort.
+	if quotaExceeded(h.quota, h.logger, userID, 0) {
+		refuseQuota(w, r)
+		return
+	}
+
 	// Resolve the effective From address.
 	//
 	// Back-compat gate: if the submitted "from" is empty or equals the session
@@ -506,6 +526,13 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, rcpt := range localRecipients {
+		if rid := h.resolveLocalUser(rcpt); rid != "" && quotaExceeded(h.quota, h.logger, rid, 0) {
+			http.Error(w, quotaRecipientText(r, rcpt), http.StatusInsufficientStorage)
+			return
+		}
+	}
+
 	// Check rate limits for external recipients before persisting sender-visible
 	// state. The recipient budget is checked last so a message refused by the
 	// message limiter spends nothing. A message refused by the recipient budget
@@ -622,6 +649,13 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	subject := r.FormValue("subject")
 	body := r.FormValue("body")
 	bodyMode := r.FormValue("body_mode")
+
+	// A draft is always a new message, so it is a create: refuse it at quota
+	// before any blob is written (best effort; see Send).
+	if quotaExceeded(h.quota, h.logger, userID, 0) {
+		refuseQuota(w, r)
+		return
+	}
 
 	// Process file attachments for draft. As with Send, payloads are assembled
 	// into the message rather than stored as standalone decoded blobs; the split
