@@ -428,29 +428,30 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   **Debugging.** `bongo-go` is now the image ENTRYPOINT, so use
   `docker exec -it bongo sh` or `docker run --entrypoint sh` for a shell.
 
-  **Nomad / infra repo.** Production runs as a Nomad job in the infra repo, not
-  from this compose file, and needs the matching change, applied by the
-  operator: in the docker driver `config` set `user = "10001:10001"`,
-  `cap_drop = ["ALL"]` (and no `cap_add`), `security_opt = ["no-new-privileges:true"]`
-  and `sysctl = { "net.ipv4.ip_unprivileged_port_start" = "0" }` (this needs
-  bridge networking; Docker rejects the sysctl under host networking), and
-  chown the host volumes for data, logs and certs to 10001:10001. Do the chown
-  before deploying the new image.
+  **Production (infra repo).** The live deployment is not this compose file:
+  its compose file and bongo.prod.hcl live in the infra repo and are deployed
+  with its deploy script. It needs the same change, applied by the operator:
+  in the bongo service set `user: "10001:10001"`, `cap_drop: [ALL]` (no
+  `cap_add`), `security_opt: [no-new-privileges:true]` and the sysctl
+  `net.ipv4.ip_unprivileged_port_start=0` (bridge networking, as there), and
+  chown the host data, logs and certs directories to 10001:10001 before
+  deploying the new image.
 - **Secure cookies behind a proxy:** with `plain_http=true`, the app doesn't set
   the `Secure` cookie flag itself (TLS is at Traefik). Fine for a test; revisit
   for production.
 - **No log rotation on `bongo.jsonl`:** add `logrotate` or cap it if it runs for
   a long time.
-- **Set `trusted_proxies` before the first deploy.** `deploy/bongo.prod.hcl`
-  ships `172.18.0.0/16`, a placeholder, not Traefik's real address. Find Traefik's
-  address on the shared network with
+- **Set `trusted_proxies` before the first deploy behind Traefik.**
+  `deploy/bongo.prod.hcl` ships it empty, and with `proxy_protocol` on, startup
+  refuses until it is set. Find Traefik's address on the shared network with
   `docker network inspect ${TRAEFIK_NETWORK} --format '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{"\n"}}{{end}}'`
   (or `docker inspect <traefik-container> --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`),
-  or pin Traefik to a static IP and use that. Put it in `trusted_proxies` as a
-  `/32`. After deploying, watch the first minutes of logs: the WARN
-  `proxy protocol header from a peer not in server.trusted_proxies was ignored`
-  (logged at most once a minute, with the peer IP only) means the value is wrong,
-  and the `peer` field is the address to list.
+  or pin Traefik to a static IP, and list it as a `/32`. Never list the compose
+  network's subnet: other containers on it could then forge client IPs. After
+  deploying, the WARN `proxy protocol header from a peer not in
+  server.trusted_proxies was ignored` (at most once a minute, peer IP only)
+  means the value is wrong, and its `peer` field is the address to list. With no
+  proxy in front, set `proxy_protocol = false` and leave `trusted_proxies` empty.
 - **`server.trusted_proxies` must name Traefik.** PROXY protocol and
   `X-Forwarded-*` headers are believed only from the addresses listed in
   `server.trusted_proxies` in `bongo.prod.hcl`; no private or loopback peer is

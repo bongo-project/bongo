@@ -1051,6 +1051,16 @@ func TestShippedConfigsPassValidate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadFromFile(%q) failed: %v", path, err)
 			}
+			if strings.HasSuffix(path, "bongo.prod.hcl") {
+				// The Traefik template ships trusted_proxies empty on purpose,
+				// so startup refuses until the operator lists Traefik. Prove
+				// that is the only thing standing between it and a valid config.
+				err := cfg.Validate()
+				if err == nil || !strings.Contains(err.Error(), "trusted_proxies") {
+					t.Fatalf("Validate() on %q = %v, want the trusted_proxies refusal", path, err)
+				}
+				cfg.Server.TrustedProxies = []string{"192.0.2.10/32"}
+			}
 			if err := cfg.Validate(); err != nil {
 				t.Fatalf("Validate() on %q failed: %v", path, err)
 			}
