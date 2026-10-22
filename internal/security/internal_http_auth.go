@@ -20,9 +20,12 @@ const (
 	internalSkew          = 90 * time.Second
 
 	// internalAuthPurpose labels the subkey derived from the raw session secret
-	// for internal control-plane HMAC. Blob-sync signs via SignInternalRequest,
-	// so it is covered by this same purpose.
+	// for internal control-plane HMAC. Blob sync has its own purpose below, so a
+	// signature minted for one surface is rejected by the other.
 	internalAuthPurpose = "bongo/internal-auth/v1"
+
+	// blobSyncPurpose labels the subkey for node-to-node blob pulls.
+	blobSyncPurpose = "bongo/blob-sync/v1"
 )
 
 // signedPayload builds the string covered by the HMAC. It binds the timestamp,
@@ -33,8 +36,19 @@ func signedPayload(ts int64, nonce, method, uri string, bodyHash string) string 
 	return fmt.Sprintf("%d|%s|%s|%s|%s", ts, nonce, method, uri, bodyHash)
 }
 
-// SignInternalRequest adds an HMAC-based auth header for internal HTTP calls.
+// SignInternalRequest adds an HMAC-based auth header for internal control-plane
+// HTTP calls.
 func SignInternalRequest(r *http.Request, secret []byte) {
+	signWithPurpose(r, secret, internalAuthPurpose)
+}
+
+// SignBlobSyncRequest signs a node-to-node blob pull. It is not accepted by
+// VerifyInternalRequest.
+func SignBlobSyncRequest(r *http.Request, secret []byte) {
+	signWithPurpose(r, secret, blobSyncPurpose)
+}
+
+func signWithPurpose(r *http.Request, secret []byte, purpose string) {
 	if len(secret) == 0 || r == nil {
 		return
 	}
@@ -42,7 +56,7 @@ func SignInternalRequest(r *http.Request, secret []byte) {
 	ts := time.Now().Unix()
 	nonce := newNonce()
 	payload := signedPayload(ts, nonce, r.Method, r.URL.RequestURI(), bodyHash)
-	mac := hmac.New(sha256.New, DeriveKey(secret, internalAuthPurpose))
+	mac := hmac.New(sha256.New, DeriveKey(secret, purpose))
 	_, _ = mac.Write([]byte(payload))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	r.Header.Set(InternalAuthHeader, fmt.Sprintf("%s=%d,nonce=%s,sig=%s", internalTimestampName, ts, nonce, sig))
@@ -105,8 +119,17 @@ func hashBodyForSigning(r *http.Request) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-// VerifyInternalRequest verifies the internal HTTP auth header.
+// VerifyInternalRequest verifies the internal control-plane auth header.
 func VerifyInternalRequest(r *http.Request, secret []byte) bool {
+	return verifyWithPurpose(r, secret, internalAuthPurpose)
+}
+
+// VerifyBlobSyncRequest verifies a request signed by SignBlobSyncRequest.
+func VerifyBlobSyncRequest(r *http.Request, secret []byte) bool {
+	return verifyWithPurpose(r, secret, blobSyncPurpose)
+}
+
+func verifyWithPurpose(r *http.Request, secret []byte, purpose string) bool {
 	if len(secret) == 0 || r == nil {
 		return false
 	}
@@ -159,7 +182,7 @@ func VerifyInternalRequest(r *http.Request, secret []byte) bool {
 	bodyHash := base64.RawURLEncoding.EncodeToString(sum[:])
 
 	payload := signedPayload(ts, nonce, r.Method, r.URL.RequestURI(), bodyHash)
-	mac := hmac.New(sha256.New, DeriveKey(secret, internalAuthPurpose))
+	mac := hmac.New(sha256.New, DeriveKey(secret, purpose))
 	_, _ = mac.Write([]byte(payload))
 	if !hmac.Equal(sig, mac.Sum(nil)) {
 		return false

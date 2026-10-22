@@ -131,14 +131,14 @@ func TestAdminAddAddress_OK(t *testing.T) {
 	if rec.UserId != "user1" {
 		t.Errorf("UserId = %q, want user1", rec.UserId)
 	}
-	if rec.Kind != "identity" {
-		t.Errorf("Kind = %q, want identity", rec.Kind)
+	if rec.Kind != "alias" {
+		t.Errorf("Kind = %q, want alias (admin-added addresses route on their own merits)", rec.Kind)
 	}
 	if rec.CanSend {
 		t.Error("CanSend should be false for newly admin-added address")
 	}
-	if rec.Verified {
-		t.Error("Verified should be false for newly admin-added address")
+	if !rec.Verified {
+		t.Error("Verified should be true for admin-added address so it routes")
 	}
 	if rec.Domain != "example.com" {
 		t.Errorf("Domain = %q, want example.com", rec.Domain)

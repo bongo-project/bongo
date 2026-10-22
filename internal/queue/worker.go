@@ -212,13 +212,20 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 
 	// DKIM sign — registry selects signer by From domain; unkeyed domains are
 	// sent unsigned (skip is logged inside Sign). A nil registry also passes
-	// through unsigned.
-	signed, err := w.registry.Sign(rawMsg, w.logger)
-	if err != nil {
-		// Sign only returns a non-nil error on unexpected internal failures;
-		// "no key for domain" is a silent skip handled inside Sign.
-		w.logger.Error("queue: DKIM signing failed, sending unsigned", "error", err)
-		signed = rawMsg
+	// through unsigned. Forwarded inbound mail is never signed (see shouldSign):
+	// it keeps its original bytes and any DKIM-Signature from the author.
+	signed := rawMsg
+	if shouldSign(msg) {
+		var err error
+		signed, err = w.registry.Sign(rawMsg, w.logger)
+		if err != nil {
+			// Sign only returns a non-nil error on unexpected internal failures;
+			// "no key for domain" is a silent skip handled inside Sign.
+			w.logger.Error("queue: DKIM signing failed, sending unsigned", "error", err)
+			signed = rawMsg
+		}
+	} else {
+		w.logger.Info("dkim: not signing forwarded message", "id", msg.Id)
 	}
 
 	// Deliver via relay.
@@ -376,4 +383,13 @@ func pruneRecipients(all, remove []string) []string {
 		out = append(out, r)
 	}
 	return out
+}
+
+// shouldSign reports whether the worker may DKIM-sign msg with a hosted-domain
+// key. Forwarded inbound mail is relayed byte-for-byte: signing it by header
+// From domain would let an outsider who spoofs a hosted domain obtain a valid
+// signature for it. UNSPECIFIED (records queued before Origin existed) keeps
+// the previous behaviour and is signed.
+func shouldSign(msg *bongov1.OutboundMessage) bool {
+	return msg.GetOrigin() != bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD
 }

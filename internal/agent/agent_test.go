@@ -128,28 +128,10 @@ func TestAgentRunAndCancel(t *testing.T) {
 }
 
 func TestSweepOrphanedUsers(t *testing.T) {
-	cfg := config.Defaults()
-	cfg.Server.Role = "dev"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.SMTP.Enabled = false
-
-	a, err := NewAgent(cfg, testLogger())
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- a.Run(ctx) }()
-	defer func() { cancel(); <-done }()
-
-	// Wait for leadership (the sweep is leader-only).
-	for i := 0; i < 100 && !a.IsLeader(); i++ {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !a.IsLeader() {
-		t.Fatal("agent did not acquire leadership")
-	}
+	// Wait for Ready, not just leadership: dev-mode startup keeps writing to
+	// system.db after it wins the election, and a sweep DELETE racing those
+	// writes fails with SQLITE_BUSY and leaves the row in place.
+	a := blobGCLeaderTestAgent(t)
 
 	uid, err := auth.CreateUser(a, a.Metadata, "ghost@localhost", "Ghost", "pass1234", false)
 	if err != nil {

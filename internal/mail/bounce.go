@@ -80,7 +80,10 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 	// buildBounce treats as "omit part 3".
 	originalHeaders := bg.originalHeaderBlock(original)
 
-	bounceMsg := buildBounce(original, failedRecipients, reason, bg.domain, originalHeaders)
+	// A configured hostname may carry a trailing dot; an address with one is
+	// not valid RFC 5322, and the strict DKIM signer-domain parse would refuse
+	// to sign the DSN.
+	bounceMsg := buildBounce(original, failedRecipients, reason, strings.TrimSuffix(bg.domain, "."), originalHeaders)
 
 	bg.logger.Info("bounce: generating DSN",
 		"sender", original.SenderEmail,

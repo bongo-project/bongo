@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/queue"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -47,6 +49,9 @@ type AddressVerifyHandler struct {
 	verifyStore *store.AddressVerifyStore
 	blobs       *store.BlobStore
 	queueStore  *queue.QueueStore
+	pebble      *store.PebbleStore
+	metadata    *store.MetadataManager
+	applier     store.RaftApplier
 	logger      *slog.Logger
 }
 
@@ -58,6 +63,16 @@ func NewAddressVerifyHandler(logger *slog.Logger) *AddressVerifyHandler {
 // SetAddressStore injects the address store.
 func (h *AddressVerifyHandler) SetAddressStore(as *store.AddressStore) {
 	h.addresses = as
+}
+
+// SetOwnershipStores injects what AddSendAsAddress needs to prove an address
+// is unallocated: Pebble (domain and alias keys), the metadata index (users,
+// addresses and aliases tables) and the applier. Without them adding an
+// address fails closed.
+func (h *AddressVerifyHandler) SetOwnershipStores(ps *store.PebbleStore, md *store.MetadataManager, applier store.RaftApplier) {
+	h.pebble = ps
+	h.metadata = md
+	h.applier = applier
 }
 
 // SetVerifyStore injects the verification challenge store.
@@ -115,7 +130,11 @@ func (h *AddressVerifyHandler) ShowAddresses(w http.ResponseWriter, r *http.Requ
 //
 // The address is stored with Kind=identity, CanSend=false, Verified=false.
 // The user can subsequently request verification.
-// Ownership: rejects if the address already belongs to a different user.
+// Ownership: rejects if the address already belongs to a different user, to an
+// account, to an alias, or lies in a domain this server hosts (including
+// catch-all domains): a self-serve send-as for a local address is never
+// legitimate, and extra local addresses are the admin's job. Fails closed when
+// ownership cannot be established.
 func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
@@ -154,6 +173,26 @@ func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.R
 	}
 
 	if !ok {
+		hosted, hErr := domainHostedLocally(h.pebble, domain)
+		if hErr != nil {
+			h.logger.Error("address-verify: add: domain check failed", "address", address, "error", hErr)
+			http.Error(w, "failed to look up address", http.StatusInternalServerError)
+			return
+		}
+		if hosted {
+			http.Redirect(w, r, "/settings/addresses?error=Address+is+already+owned+by+another+account", http.StatusSeeOther)
+			return
+		}
+		if aErr := addressAllocationError(h.pebble, h.metadata, h.applier, address, ""); aErr != nil {
+			if errors.Is(aErr, auth.ErrAccountExists) {
+				http.Redirect(w, r, "/settings/addresses?error=Address+is+already+owned+by+another+account", http.StatusSeeOther)
+				return
+			}
+			h.logger.Error("address-verify: add: ownership check failed", "address", address, "error", aErr)
+			http.Error(w, "failed to look up address", http.StatusInternalServerError)
+			return
+		}
+
 		// New address — create it (unverified).
 		rec := &bongov1.AddressRecord{
 			UserId:   userID,
@@ -271,6 +310,7 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		Recipients:  []string{address},
 		BlobHash:    hash,
 		MessageGuid: fmt.Sprintf("<addrverify-%d@%s>", time.Now().UnixNano(), domain),
+		Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
 	}
 	if err := h.queueStore.Enqueue(outMsg); err != nil {
 		h.logger.Error("address-verify: request: failed to enqueue verification email", "user_id", userID, "address", address, "error", err)

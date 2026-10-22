@@ -169,7 +169,7 @@ func TestRequireAuth_DisabledUserRevoked(t *testing.T) {
 // deleted. It has to be a cookie the server would otherwise trust.
 func signedSessionCookie(data SessionData) *http.Cookie {
 	payload, _ := json.Marshal(data)
-	sig := sign(testSecret, payload)
+	sig := sign(testSecret, sessionCookiePurpose, payload)
 	return &http.Cookie{
 		Name: cookieName,
 		Value: base64.RawURLEncoding.EncodeToString(payload) + "." +
@@ -318,5 +318,55 @@ func TestRequireAuth_LiveAdminOverride(t *testing.T) {
 
 	if !sawAdmin {
 		t.Error("live admin promotion not reflected in context (M6)")
+	}
+}
+
+func TestRequireAuth_MissingUserRevoked(t *testing.T) {
+	ran := false
+	h := RequireAuth(testSecret, func(string) LiveSessionState { return LiveSessionState{Missing: true} })(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { ran = true }))
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(CreateSessionCookie(testSecret, "u", "e@x.com", false, false, false, ""))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if ran || rr.Code != http.StatusSeeOther {
+		t.Fatalf("ran=%v code=%d, want revoked 303", ran, rr.Code)
+	}
+	cleared := false
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == cookieName && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("cookie not cleared")
+	}
+}
+
+func TestRequireAuth_MissingAdminCannotReachAdmin(t *testing.T) {
+	ran := false
+	h := RequireAuth(testSecret, func(string) LiveSessionState { return LiveSessionState{Missing: true} })(
+		RequireAdmin(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { ran = true })))
+	req := httptest.NewRequest("GET", "/admin", nil)
+	req.AddCookie(CreateSessionCookie(testSecret, "u", "e@x.com", false, true, false, ""))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if ran || rr.Code != http.StatusSeeOther {
+		t.Fatalf("ran=%v code=%d, want revoked 303", ran, rr.Code)
+	}
+}
+
+func TestRequireAuth_StoreErrorFailsOpen(t *testing.T) {
+	var sawAdmin bool
+	h := RequireAuth(testSecret, func(string) LiveSessionState { return LiveSessionState{} })(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sawAdmin = AdminFromContext(r.Context())
+		}))
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(CreateSessionCookie(testSecret, "u", "e@x.com", false, true, false, ""))
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || !sawAdmin {
+		t.Fatalf("code=%d admin=%v, want 200 admin=true", rr.Code, sawAdmin)
 	}
 }

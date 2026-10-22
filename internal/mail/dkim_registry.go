@@ -55,7 +55,8 @@ func (r *DKIMRegistry) Get(domain string) *DKIMSigner {
 
 // Sign signs rawMsg using the signer for the From header domain.
 //
-//   - If the From header is missing or unparseable, the message is returned
+//   - If the From header is missing, unparseable or holds anything other
+//     than exactly one address (StrictFromDomain), the message is returned
 //     unsigned and a structured skip log is emitted.
 //   - If no signer is registered for the From domain, the message is returned
 //     unsigned and a skip log is emitted (no DKIM-Signature is ever added with
@@ -68,9 +69,10 @@ func (r *DKIMRegistry) Sign(rawMsg []byte, logger *slog.Logger) ([]byte, error) 
 		return rawMsg, nil
 	}
 
-	fromDomain, err := FromRawMessageDomain(rawMsg)
+	fromDomain, err := StrictFromDomain(rawMsg)
 	if err != nil {
-		logger.Info("dkim: skipping signing — cannot determine From domain",
+		// Only the failure class is logged, never header content.
+		logger.Warn("dkim: skipping signing - From header is not a single address",
 			"reason", err.Error(),
 		)
 		return rawMsg, nil
@@ -78,7 +80,7 @@ func (r *DKIMRegistry) Sign(rawMsg []byte, logger *slog.Logger) ([]byte, error) 
 
 	signer := r.Get(fromDomain)
 	if signer == nil {
-		logger.Info("dkim: skipping signing — no key configured for domain",
+		logger.Warn("dkim: skipping signing - no key configured for domain",
 			"domain", fromDomain,
 		)
 		return rawMsg, nil

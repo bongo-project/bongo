@@ -47,7 +47,7 @@ func GenerateRecoveryCodes(count int) ([]string, []string, error) {
 			return nil, nil, fmt.Errorf("generate recovery code %d: %w", i, err)
 		}
 
-		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), PasswordHashCost)
 		if err != nil {
 			return nil, nil, fmt.Errorf("hash recovery code %d: %w", i, err)
 		}

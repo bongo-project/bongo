@@ -490,11 +490,18 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			p.logger.Warn("deliver: forwarding suppressed, hop limit exceeded",
 				"id", env.Id, "hops", hops, "forward_to", env.ForwardAddresses)
 		} else if targets := p.forwardTargets(env.ForwardAddresses, env.Recipients); len(targets) > 0 {
+			// Envelope sender: the original MAIL FROM is kept (there is no SRS), so
+			// SPF will fail at the next hop. DMARC survives only through the
+			// original author's DKIM-Signature, which stays valid because the
+			// queue relays FORWARD messages unmodified and never re-signs them.
+			// Mail that was authored locally and is forwarded externally therefore
+			// leaves unsigned.
 			fwdMsg := &bongov1.OutboundMessage{
 				Id:          uuid.New().String(),
 				SenderEmail: env.Sender,
 				Recipients:  targets,
 				BlobHash:    env.BlobHash,
+				Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD,
 			}
 			if err := p.queuer.Enqueue(fwdMsg); err != nil {
 				p.logger.Warn("deliver: failed to enqueue forwarded message",

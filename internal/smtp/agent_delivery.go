@@ -60,6 +60,7 @@ func (p *AgentDeliveryPipeline) DeliverWithSPF(from string, recipients []string,
 		SpfResult:  meta.SPFResult,
 		SourceIp:   meta.SourceIP,
 		Trusted:    meta.Trusted,
+		AuthUserId: meta.AuthUserID,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

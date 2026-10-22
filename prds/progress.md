@@ -1237,3 +1237,42 @@ fmt, vet, race and integration but never `make lint`, and config.md names gosec 
 
 PATTERN: [gate] The release gate must include `make lint` (golangci-lint), which CI runs and which
 catches things `go vet` alone does not.
+
+## 2026-10-20 norman secure (v0.7.0)
+Report: prds/verification.md. 327 agents, 46/47 Track B findings confirmed (skeptic over-agreement as expected).
+PATTERN: [security] An index that routes mail must only hold verified records. A self-serve "add address" that writes the same record type the recipient resolver trusts turns an unverified claim into inbound interception.
+PATTERN: [security] Scope checks must cover every object a request names, and the target's role, not just the first object's domain. Domain-admin checks keyed on the target's domain let a tenant admin reset a global admin, and accepted a second user_id from another tenant.
+PATTERN: [security] Two signed token types sharing one key and overlapping JSON fields are interchangeable. Give each cookie type its own derived purpose, or a type field the verifier checks.
+PATTERN: [security] "Fail open when the profile lookup fails" also fires for a deleted profile. Distinguish not-found (revoke) from store error.
+PATTERN: [security] Authenticated sender checks must bind the header From, not just MAIL FROM, whenever the outbound path signs by From domain.
+PATTERN: [security] Every Traefik router for the app needs the same internal-path deny middleware; a later-added Host router silently bypasses the allowlist.
+PATTERN: [security] Parse untrusted MIME with a depth/complexity cap; enmime has none and unclosed nested boundaries are exponential.
+
+### 2026-10-21 Task 18.1 (H3) DONE
+Cookie types and blob sync now have distinct HMAC purposes. Advisor PROCEED, review MINOR (two surviving mutations logged in TASKS.md). Gate: make test-all EXIT=0 (integration 320s), GOTOOLCHAIN=go1.26.9 make lint 0 issues.
+PATTERN: [tooling] golangci-lint 2.13.2 cannot read Go 1.27 export data ("export data version 5"); run lint as `GOTOOLCHAIN=go1.26.9 make lint`, the go.mod toolchain CI uses. Rebuilding golangci-lint with 1.27.3 does not help.
+PATTERN: [security] Moving a route to a new auth scheme needs a test that drives the real client against the real route; the integration helpers' fake mux hides a signer/verifier mismatch.
+
+### 2026-10-21 Task 18.3 (H2) DONE
+Domain admins can no longer act on global admins or on users who administer out-of-scope domains. Review REJECT twice; second rejection was a single missing test target (out-of-scope domain listed first), added by the orchestrator per the reviewer's fix and mutation-checked. Gate: make test-all EXIT=0, lint 0 issues.
+PATTERN: [testing] A loop guard "every element must pass" needs a test where the failing element is not last; otherwise a last-element-wins bug passes. Check the order the store returns.
+
+### 2026-10-21 Task 18.4 (H1) DONE
+Unverified identity records no longer route mail; self-serve add refuses taken and hosted-domain addresses; create paths write address records. Advisor REVISE (six changes, adopted), review MINOR (follow-ups as B26). Orchestrator finished the reviewer's five unrun mutations (all red), fixed one govet finding, and parallelised TestUserActions after the handlers package hit the 10m test timeout. Gate: make test-all EXIT=0 (handlers 307s, integration 364s), lint 0 issues.
+Release notes so far for v0.7.1: (18.1) 2FA/TOTP-setup flows in progress restart; (18.4) admin-added extra addresses never granted send stop receiving mail until GrantSend or re-add, see the boot report; exploit-era verified identities on others' addresses are reported at boot and need revoking by hand.
+PATTERN: [testing] The handlers package runs near Go's 10m default test timeout; a feature adding ~1 min of serial subtests tips it over. Give bcrypt-heavy table tests t.Parallel, and watch package times in the gate log.
+
+### 2026-10-21 Task 18.2 (H4) DONE
+Deleted accounts' web sessions are revoked (profile not-found -> Missing). Advisor PROCEED, review MINOR. Gate: make test-all EXIT=0, lint 0 issues.
+PATTERN: [testing] proto.Marshal of a message with only default-valued fields is zero bytes. A "live record" test fixture must set a non-default field or it exercises the empty-record branch.
+
+### 2026-10-21 Task 18.5 (H5 submission) DONE
+Authenticated submission binds envelope sender and header From to the shared send-as rule. Review REJECT twice, both times on missing tests; a fix-up worker closed the five surviving mutations, two re-verified by the orchestrator. Gate: make test-all EXIT=0, lint 0 issues.
+Release note: SMTP clients submitting with a From the account may not send as are rejected (550/553 5.7.1).
+PATTERN: [security] A hand-rolled header scanner has as many exits as states (EOF, buffer full, parse error, empty list); each exit is a place to fail open, and each needs its own test.
+PATTERN: [norman] Two parallel tasks that both need "may user X send as Y" will each build one. When tasks share a predicate, sequence them or name the owner of the shared function in both specs.
+PATTERN: [norman] Workflow `isolation: worktree` branches from the repository's default branch (main), not the orchestrator's current branch. On a feature branch, later batches are built against code missing earlier commits. Either merge to main between batches, or create the worktrees yourself from HEAD and tell workers to cd there. The full gate after applying each patch on the real branch is what catches the drift.
+
+### 2026-10-21 Task 18.6 (H5/H6 signing and forwarding) DONE
+Forwards are never DKIM-signed by us; trusted-submission DMARC bypass is limited to authorised From; signer domain parsing is strict. Ported onto 18.5's shared rule after the parallel build duplicated it. Gate: make test-all EXIT=0 (integration 349s), lint 0 issues. All six HIGH findings (H1-H6) now fixed.
+Release notes for v0.7.1 (collected): see 18.1, 18.4, 18.5, 18.6 rows in TASKS.md.
