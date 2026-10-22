@@ -90,6 +90,7 @@ func NewServer(
 			notifier:    notifier,
 			logger:      logger,
 			remoteIP:    remoteIP,
+			conn:        conn,
 			authLimiter: authLimiter,
 		}
 		greeting := &imapserver.GreetingData{}

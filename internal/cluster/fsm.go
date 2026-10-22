@@ -610,14 +610,21 @@ func (f *FSM) indexProfile(userID string, cmd *bongov1.RaftCommand) {
 		return
 	}
 
+	// The Pebble profile is the source of truth; users.enabled is derived
+	// from it on every node so a stale row can never re-enable an account.
+	enabled := 1
+	if profile.Disabled {
+		enabled = 0
+	}
 	if f.metadata != nil && f.metadata.System != nil {
 		_, err := f.metadata.System.DB().Exec(`
 			INSERT INTO users (id, username, display_name, enabled, created_at, modified_at)
-			VALUES (?, ?, ?, 1, unixepoch(), unixepoch())
+			VALUES (?, ?, ?, ?, unixepoch(), unixepoch())
 			ON CONFLICT(id) DO UPDATE SET
 				display_name = excluded.display_name,
+			enabled = excluded.enabled,
 				modified_at = unixepoch()
-		`, userID, profile.Email, profile.DisplayName)
+		`, userID, profile.Email, profile.DisplayName, enabled)
 		if err != nil {
 			f.logger.Warn("fsm: failed to update system.db user", "error", err, "user", userID)
 		}

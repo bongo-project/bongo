@@ -223,10 +223,45 @@ type Session struct {
 	externalRcpts []string
 	authed        bool
 	userID        string
+	epoch         string // credential fingerprint recorded at AUTH
 	submission    bool
 	remoteIP      net.IP
 	spfResult     string
 	authFailures  int // failed AUTH attempts on this connection
+}
+
+// accountStateReader is implemented by authenticators that can report the live
+// standing of an account (auth.LocalAuth).
+type accountStateReader interface {
+	AccountState(userID string) (auth.AccountState, error)
+}
+
+func (s *Session) accountReader() accountStateReader {
+	r, _ := s.backend.auth.(accountStateReader)
+	return r
+}
+
+// checkAccountLive rejects further mail on an authenticated session whose
+// account was disabled or deleted, or had its password reset, since AUTH, so a
+// submission connection held open cannot keep relaying. A missing profile fails
+// closed; a store read error fails open so an outage does not stop submission
+// (AUTH itself fails closed on any error).
+func (s *Session) checkAccountLive() error {
+	reader := s.accountReader()
+	if reader == nil {
+		return nil
+	}
+	st, err := reader.AccountState(s.userID)
+	if err != nil {
+		s.logger.Warn("smtp: account state check failed, allowing command", "user", s.userID, "error", err)
+		return nil
+	}
+	if st.Live(s.epoch) {
+		return nil
+	}
+	s.logger.Info("smtp: rejecting MAIL, account no longer valid", "user", s.userID,
+		"missing", st.Missing, "disabled", st.Disabled)
+	return &gosmtp.SMTPError{Code: 535, EnhancedCode: gosmtp.EnhancedCode{5, 7, 8}, Message: "Account no longer available"}
 }
 
 // AuthPlain handles PLAIN authentication.
@@ -251,6 +286,19 @@ func (s *Session) AuthPlain(username, password string) error {
 		s.backend.authFail.Fail(ip, username)
 		s.logger.Warn("smtp: auth failed", "username", username, "ip", s.remoteIP)
 		return err
+	}
+
+	if reader := s.accountReader(); reader != nil {
+		// Fail closed: without a baseline epoch the session could never notice
+		// a later password reset.
+		st, err := reader.AccountState(userID)
+		if err != nil || !st.Live(st.Epoch) {
+			s.authFailures++
+			s.backend.authFail.Fail(ip, username)
+			s.logger.Warn("smtp: auth refused, account state unavailable", "username", username, "ip", s.remoteIP)
+			return auth.ErrBadCredentials
+		}
+		s.epoch = st.Epoch
 	}
 
 	s.authed = true
@@ -338,6 +386,12 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 	if s.submission && !s.authed {
 		s.logger.Warn("smtp: unauthenticated MAIL on submission port rejected", "from", from, "ip", s.remoteIP)
 		return &gosmtp.SMTPError{Code: 530, EnhancedCode: gosmtp.EnhancedCode{5, 7, 0}, Message: "Authentication required"}
+	}
+
+	if s.submission && s.authed {
+		if err := s.checkAccountLive(); err != nil {
+			return err
+		}
 	}
 
 	// Authenticated submission may only use an envelope sender the user may
