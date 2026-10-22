@@ -163,6 +163,8 @@ separate certbot would just conflict.
 >
 > Bongo loads the mail cert once at startup, so also restart after each renewal
 > (a renewal hook or a weekly `restart bongo` cron is fine for a test).
+> certs-dumper chowns the dumped files to uid 10001 itself (`--post-hook`), so
+> the restart is all that is needed (see section 11 for the one-time host chown).
 
 ---
 
@@ -379,25 +381,55 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   from `cluster.tls`, which is why `bongo.prod.hcl` sets it to the same
   Let's Encrypt cert as `smtp.tls`. Worth refactoring to a dedicated `imap.tls`
   block later. (POP3 is disabled here — no Traefik entrypoint for it.)
-- **Container runs as uid 10001 (non-root).** The entrypoint starts as root,
-  chowns `/data`, `/logs`, and `/certs`, then drops to the dedicated `bongo`
-  user (uid/gid 10001) via `su-exec`.  The binary carries `cap_net_bind_service`
-  as a file capability so ports 25, 587, 143, 993 still bind from non-root.
-  Two one-off host commands are required before first start:
+- **Container runs as uid 10001 (non-root) from the start.** There is no root
+  entrypoint, no `su-exec` and no file capability. The compose service sets
+  `user: "10001:10001"`, `cap_drop: [ALL]` (nothing added back),
+  `security_opt: [no-new-privileges:true]` and the sysctl
+  `net.ipv4.ip_unprivileged_port_start=0`, which is what lets the process bind
+  ports 25, 587, 143 and 993 without any capability. The image no longer
+  chowns anything at start, so ownership of the bind-mounted directories is an
+  operator step. Run this once before first start:
 
   ```bash
-  # DKIM key: /secrets/dkim.key is :ro and cannot be chowned inside the
-  # container. The host file must be readable by uid 10001.
-  chown 10001 deploy/secrets/dkim.key
-
-  # Log directory: bind-mounted from the host, may arrive root-owned.
-  mkdir -p deploy/logs
-  chown -R 10001:10001 deploy/logs
+  cd deploy
+  mkdir -p data logs certs
+  chown -R 10001:10001 data logs certs
+  # DKIM key: mounted :ro, so the host file must be readable by uid 10001.
+  chown 10001 secrets/dkim.key        # or: chmod 0644 secrets/dkim.key
   ```
 
-  The `/certs` volume (TLS keys from certs-dumper) is handled automatically:
-  the entrypoint chowns it on each startup.  After a cert renewal the directory
-  reverts to root ownership; a `docker compose restart bongo` restores it.
+  **Migrating an existing deployment.** The previous image also used uid 10001
+  and chowned `/data` and `/logs` on every start, so those are normally already
+  correct. `./certs` may hold root-owned files written by certs-dumper since the
+  last restart. Before pulling the new image, run the same command once; it is
+  idempotent:
+
+  ```bash
+  chown -R 10001:10001 data logs certs
+  ```
+
+  If it is missed, bongo exits at startup with a permission error opening
+  Pebble or raft under `/data`, or serves STARTTLS/IMAPS without the Let's
+  Encrypt certificate because it cannot read `privatekey.key`.
+
+  **Certificate ownership after renewals.** certs-dumper stays root, and its
+  `--post-hook=chown -R 10001:10001 /certs` hands every dump to uid 10001, so
+  a renewal followed by `docker compose restart bongo` just works and `/certs`
+  is mounted read-only into bongo. (In `--watch` mode `--post-hook` also runs
+  on the first dump when certs-dumper starts, but the manual `chown` above
+  remains the safe step when upgrading.)
+
+  **Debugging.** `bongo-go` is now the image ENTRYPOINT, so use
+  `docker exec -it bongo sh` or `docker run --entrypoint sh` for a shell.
+
+  **Nomad / infra repo.** Production runs as a Nomad job in the infra repo, not
+  from this compose file, and needs the matching change, applied by the
+  operator: in the docker driver `config` set `user = "10001:10001"`,
+  `cap_drop = ["ALL"]` (and no `cap_add`), `security_opt = ["no-new-privileges:true"]`
+  and `sysctl = { "net.ipv4.ip_unprivileged_port_start" = "0" }` (this needs
+  bridge networking; Docker rejects the sysctl under host networking), and
+  chown the host volumes for data, logs and certs to 10001:10001. Do the chown
+  before deploying the new image.
 - **Secure cookies behind a proxy:** with `plain_http=true`, the app doesn't set
   the `Secure` cookie flag itself (TLS is at Traefik). Fine for a test; revisit
   for production.
