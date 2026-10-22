@@ -40,3 +40,15 @@ message AddressVerification {
   // When it reaches maxVerifyAttempts the challenge is invalidated.
   int32 attempts = 3;
 }
+
+// ForwardTarget records the state of an external forwarding target for a user.
+// Key: /user/{user_id}/fwdtarget/{lowercased-address}
+// Challenges for pending targets live at /user/{user_id}/fwdverify/{address}
+// and reuse AddressVerification. A target never grants send-as rights.
+message ForwardTarget {
+  // state is "pending", "verified" or "grandfathered". Only the last two allow
+  // mail to be forwarded; grandfathered marks forwards that predate
+  // verification and is reported to the operator at startup.
+  string state = 1;
+  int64 updated_at = 2;
+}

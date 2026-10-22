@@ -494,3 +494,33 @@ func TestDomainOwnerKey_NoCollision(t *testing.T) {
 		t.Errorf("admin key unexpectedly starts with /system/domain/ prefix: %q", adminKey)
 	}
 }
+
+func TestAuthorizedDomains_OmitsDomainWithoutKey(t *testing.T) {
+	ps, err := NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ps.Close()
+	s := NewDomainAdminStore(ps, &directApplier{store: ps})
+
+	// Orphaned grant and owner for a domain with no /system/domain key, plus a
+	// live domain as a positive control.
+	for k, v := range map[string]string{
+		"/system/domain/live.test":             "enabled",
+		"/system/domain_admin/live.test/u1":    "1",
+		"/system/domain_admin/gone.test/u1":    "1",
+		"/system/domain/gone.test/owner":       "u1",
+		"/system/domain/gone-owner.test/owner": "u1",
+	} {
+		if err := ps.Set([]byte(k), []byte(v)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.AuthorizedDomains("u1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "live.test" {
+		t.Errorf("AuthorizedDomains = %v, want [live.test]", got)
+	}
+}

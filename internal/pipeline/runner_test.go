@@ -541,7 +541,7 @@ func TestRunnerFailureLogsCarryIdentity(t *testing.T) {
 			msg: moveMsg, wantErr: "spool: move", wantRet: true,
 		},
 		{
-			// A directory squats on WriteEnvelope's temp path (".tmp-"+id+envSuffix),
+			// A directory squats on WriteEnvelope's temp path (tmpPrefix+id+tmpSuffix),
 			// so the write fails with EISDIR while the real envelope still moves.
 			name: "write before quarantine", blobs: &mockBlobReader{},
 			result: &bongov1.StageResult{Stage: "antispam", Action: "quarantine"},
@@ -549,7 +549,7 @@ func TestRunnerFailureLogsCarryIdentity(t *testing.T) {
 				if err := spool.WriteEnvelope("processing", env); err != nil {
 					t.Fatal(err)
 				}
-				tmp := filepath.Join(spool.baseDir, "processing", ".tmp-"+env.Id+envSuffix)
+				tmp := filepath.Join(spool.baseDir, "processing", tmpPrefix+env.Id+tmpSuffix)
 				if err := os.Mkdir(tmp, 0o750); err != nil {
 					t.Fatal(err)
 				}

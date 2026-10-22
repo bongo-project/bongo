@@ -320,7 +320,19 @@ func (s *DomainAdminStore) AuthorizedDomains(userID string, isGlobalAdmin bool) 
 		add(d)
 	}
 
-	return result, nil
+	// Drop domains that no longer exist: grants and owner keys can outlive a
+	// deleted domain, and must not carry over to a re-created one.
+	live := result[:0]
+	for _, d := range result {
+		ok, eErr := s.domainExists(d)
+		if eErr != nil {
+			return nil, fmt.Errorf("authorized domains: %w", eErr)
+		}
+		if ok {
+			live = append(live, d)
+		}
+	}
+	return live, nil
 }
 
 // DeleteOwner removes the owner record for a domain via Raft.

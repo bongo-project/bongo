@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -40,6 +41,14 @@ type Server struct {
 	// listener (netutil.LimitListener), as SMTP does.
 	connLimit *netx.PerIPLimiter
 	maxConn   int
+
+	// quota is read when each session is created, so SetQuotaChecker takes
+	// effect for connections accepted after the call, even after Listen.
+	quota atomic.Pointer[quotaChecker]
+
+	// newSession is the factory handed to go-imap; kept so tests can build a
+	// session exactly as an accepted connection would.
+	newSession func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error)
 }
 
 // NewServer creates an IMAP server.
@@ -70,6 +79,7 @@ func NewServer(
 	// Starts at the default so a lost SetConnectionLimits call fails safe.
 	connLimit := netx.NewPerIPLimiter(netx.DefaultMaxConnectionsPerIP)
 
+	var s *Server
 	newSession := func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 		var remoteIP net.IP
 		if conn != nil {
@@ -79,7 +89,12 @@ func NewServer(
 				}
 			}
 		}
+		var qc quotaChecker
+		if p := s.quota.Load(); p != nil {
+			qc = *p
+		}
 		sess := &session{
+			quota:       qc,
 			auth:        authenticator,
 			pebble:      pebble,
 			blobs:       blobs,
@@ -90,6 +105,7 @@ func NewServer(
 			notifier:    notifier,
 			logger:      logger,
 			remoteIP:    remoteIP,
+			conn:        conn,
 			authLimiter: authLimiter,
 		}
 		greeting := &imapserver.GreetingData{}
@@ -104,11 +120,13 @@ func NewServer(
 		Logger:       observability.IMAPLibraryLogger(logger),
 	}
 
-	s := &Server{
+	s = &Server{
 		server:    imapserver.New(opts),
 		logger:    logger,
 		connLimit: connLimit,
 		maxConn:   netx.DefaultMaxConnections,
+
+		newSession: newSession,
 	}
 
 	// For implicit TLS (port 993/1993), create a separate server instance.
@@ -123,6 +141,17 @@ func NewServer(
 	}
 
 	return s
+}
+
+// SetQuotaChecker installs the storage-quota checker that gates APPEND. Nil
+// (the default) disables the check. Safe to call after Listen: it applies to
+// sessions created afterwards.
+func (s *Server) SetQuotaChecker(qc quotaChecker) {
+	if qc == nil {
+		s.quota.Store(nil)
+		return
+	}
+	s.quota.Store(&qc)
 }
 
 // SetConnectionLimits sets the per-listener concurrent connection cap and the

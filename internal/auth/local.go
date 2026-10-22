@@ -10,6 +10,7 @@ import (
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
+	"github.com/bongo-project/bongo/internal/security"
 	"github.com/bongo-project/bongo/internal/store"
 )
 
@@ -73,6 +74,14 @@ func (a *LocalAuth) Authenticate(username, password string) (string, error) {
 		return "", ErrBadCredentials
 	}
 
+	// The Pebble profile is the source of truth for the disabled flag; the
+	// SQLite users.enabled filter in lookupUserID is derived and can be stale
+	// (follower nodes, index rebuild). Checked after bcrypt so timing and the
+	// error are identical to a wrong password.
+	if profile.Disabled {
+		return "", ErrBadCredentials
+	}
+
 	return userID, nil
 }
 
@@ -97,4 +106,45 @@ func (a *LocalAuth) lookupUserID(username string) (string, error) {
 		return "", fmt.Errorf("looking up user: %w", err)
 	}
 	return userID, nil
+}
+
+// AccountState is the live standing of an account, read from the Pebble
+// profile (the source of truth) rather than the derived SQLite index.
+type AccountState struct {
+	// Missing is true when the profile no longer exists (account deleted).
+	Missing bool
+	// Disabled mirrors UserProfile.Disabled.
+	Disabled bool
+	// Epoch fingerprints the password hash. It changes on a password reset.
+	// Unlike the web session epoch it ignores TOTP state, so turning 2FA on or
+	// off does not drop mail clients that never use TOTP.
+	Epoch string
+}
+
+// Live reports whether a session that recorded epoch at login may continue.
+// A missing profile is never live (fail closed).
+func (st AccountState) Live(epoch string) bool {
+	return !st.Missing && !st.Disabled && st.Epoch == epoch
+}
+
+// AccountState reads the current state of userID: one Pebble Get and a
+// protobuf unmarshal, no bcrypt, so it is cheap enough to run per command.
+// A genuinely absent profile is reported as Missing; any other store failure is
+// returned as an error so the caller can choose its own failure policy.
+func (a *LocalAuth) AccountState(userID string) (AccountState, error) {
+	data, err := a.store.Get([]byte(fmt.Sprintf("/user/%s/profile", userID)))
+	if errors.Is(err, store.ErrNotFound) {
+		return AccountState{Missing: true}, nil
+	}
+	if err != nil {
+		return AccountState{}, fmt.Errorf("reading profile: %w", err)
+	}
+	var profile bongov1.UserProfile
+	if err := proto.Unmarshal(data, &profile); err != nil {
+		return AccountState{}, fmt.Errorf("parsing profile: %w", err)
+	}
+	return AccountState{
+		Disabled: profile.Disabled,
+		Epoch:    security.SessionEpoch(profile.PasswordHash, nil, false),
+	}, nil
 }

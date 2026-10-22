@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -142,8 +143,11 @@ type Agent struct {
 	DKIMRegistry *mail.DKIMRegistry // per-domain signer registry passed to the worker
 	Relay        *bongosmtp.Relay
 	RateLimiter  *mail.RateLimiter
-	SPFChecker   *mail.SPFChecker
-	BounceGen    *mail.BounceGenerator
+	// ForwardTargets holds verified external forwarding targets per user; the
+	// deliver stage forwards only to targets recorded here (or hosted ones).
+	ForwardTargets *store.ForwardTargetStore
+	SPFChecker     *mail.SPFChecker
+	BounceGen      *mail.BounceGenerator
 
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
@@ -178,6 +182,25 @@ type Agent struct {
 	reminderCancel        context.CancelFunc
 	pipelineCancel        context.CancelFunc
 	quarantinePurgeCancel context.CancelFunc
+	orphanGCCancel        context.CancelFunc
+	usageCancel           context.CancelFunc
+
+	// pipelineDone is closed by startPipelineRunner once Runner.Run has
+	// returned. Nil when no runner was started.
+	pipelineDone chan struct{}
+	// bgWG tracks background workers that read or write the stores, so
+	// Shutdown can wait for them before tearing the stores down.
+	bgWG sync.WaitGroup
+	// bgStarted counts goWorker launches; tests use it to prove the real
+	// workers are tracked.
+	bgStarted atomic.Int32
+	// bgMu guards bgLive, the names of workers started through goWorker that
+	// have not returned yet. Shutdown reports them when the grace expires.
+	bgMu   sync.Mutex
+	bgLive map[string]int
+	// shutdownGrace bounds how long Shutdown waits for the pipeline runner
+	// and bgWG workers. Unexported so tests can shrink it.
+	shutdownGrace time.Duration
 
 	// dataDir is the resolved data directory (tmp dir in dev mode).
 	dataDir string
@@ -296,8 +319,9 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	i18n.Init("en")
 
 	a := &Agent{
-		Config: cfg,
-		logger: logger,
+		Config:        cfg,
+		logger:        logger,
+		shutdownGrace: defaultShutdownGrace,
 	}
 
 	// Create the shared threshold holder now, before any goroutine can reach
@@ -477,6 +501,13 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 	if a.Preferences != nil {
 		deliverProc.SetPreferences(a.Preferences)
 	}
+	// Every forward is checked against the owning user's verified targets and
+	// rate limit. Without a store no target can be verified, so none is sent.
+	if ft := a.forwardTargetStore(); ft != nil {
+		deliverProc.SetForwardTargets(ft)
+	}
+	deliverProc.SetForwardLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardMaxPerHour))
+	deliverProc.SetHostedDomains(a.domainHosted)
 	// Attachment deduplication: store large attachments as separate
 	// content-addressed blobs + a message skeleton, reconstructed byte-exact
 	// on read. The self-check inside the deliver stage falls back to whole-raw
@@ -822,6 +853,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// CardDAV endpoint with basic auth.
 	if a.Contacts != nil {
 		carddavBackend := bongocarddav.NewBackend(a.Contacts, a.Search, a.logger)
+		if a.DomainQuota != nil {
+			carddavBackend.SetQuotaChecker(a.DomainQuota)
+		}
 		carddavHandler := &carddavHTTPHandler{
 			auth:    a.Auth,
 			backend: carddavBackend,
@@ -837,6 +871,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// CalDAV endpoint with basic auth.
 	if a.Events != nil && a.Calendars != nil {
 		caldavBackend := bongocaldav.NewBackend(a.Events, a.Calendars, a.logger)
+		if a.DomainQuota != nil {
+			caldavBackend.SetQuotaChecker(a.DomainQuota)
+		}
 		caldavHandler := &caldavHTTPHandler{
 			auth:    a.Auth,
 			backend: caldavBackend,
@@ -1062,6 +1099,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			bayesFilter := antispam.NewBayesFilter(a.Store, a)
 			mailH.SetBayes(bayesFilter)
+			// 120 training actions per user per hour: each costs a Raft entry
+			// and up to ~2k Pebble reads in the FSM.
+			mailH.SetTrainLimiter(mail.NewRateLimiter(120))
 			if a.Metadata != nil {
 				mailH.SetMetadata(a.Metadata)
 			}
@@ -1171,8 +1211,23 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/calendar/search", calendarH.SearchEvents)
 		}
 
+		// Forwarding-target verification, shared by the settings page and the
+		// rules editor. Hosted targets resolve through the same resolver the
+		// deliver stage uses, so both agree on what needs verifying.
+		var fwdVerifier *handlers.ForwardVerifier
+		if ft := a.forwardTargetStore(); ft != nil {
+			fwdVerifier = handlers.NewForwardVerifier(ft, a.hostedForwardTarget(sharedResolver), a.logger)
+			if a.Blobs != nil && a.QueueStore != nil {
+				fwdVerifier.SetMailer(a.Blobs, a.QueueStore)
+			}
+			fwdVerifier.SetLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardVerifyMaxPerHour))
+			r.Post("/settings/forwarding/request", fwdVerifier.Request)
+			r.Post("/settings/forwarding/verify", fwdVerifier.Submit)
+		}
+
 		if a.Preferences != nil {
 			prefH := handlers.NewPreferencesHandler(a.Preferences)
+			prefH.SetForwardVerifier(fwdVerifier)
 			r.Get("/settings", prefH.ShowSettings)
 			r.Post("/settings", prefH.SaveSettings)
 			r.Get("/api/user-prefs", prefH.UserPrefsJSON)
@@ -1180,6 +1235,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Rules != nil && a.Mailboxes != nil {
 			rulesH := handlers.NewRulesHandler(a.Rules, a.Mailboxes, a.Store, a.Blobs)
+			rulesH.SetForwardVerifier(fwdVerifier)
 			r.Get("/settings/rules", rulesH.ListRules)
 			r.Get("/settings/rules/new", rulesH.NewRule)
 			r.Post("/settings/rules", rulesH.CreateRule)
@@ -1305,7 +1361,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.Raft.FSM.StartIndexer(indexerCtx)
 		a.logger.Info("fsm: derived index worker started")
 
-		go a.BlobSync.Run(blobSyncCtx)
+		a.goWorker("blob-sync", func() { a.BlobSync.Run(blobSyncCtx) })
 		a.logger.Info("blob syncer started")
 	}
 
@@ -1340,11 +1396,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		pipelineCtx, pipelineCancel := context.WithCancel(ctx)
 		a.pipelineCancel = pipelineCancel
-		go func() {
-			if err := a.PipelineRunner.Run(pipelineCtx); err != nil {
-				a.logger.Error("pipeline runner error", "error", err)
-			}
-		}()
+		a.startPipelineRunner(pipelineCtx)
 		a.logger.Info("pipeline: runner started",
 			"spool_dir", spoolDir,
 			"workers", a.Config.Pipeline.Workers,
@@ -1469,7 +1521,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			queue.WithPollInterval(a.Config.Queue.QueuePollInterval()))
 		queueCtx, queueCancel := context.WithCancel(ctx)
 		a.queueWorkerCancel = queueCancel
-		go a.QueueWorker.Run(queueCtx)
+		a.goWorker("queue-worker", func() { a.QueueWorker.Run(queueCtx) })
 
 		// Queue HTTP routes.
 		r.Group(func(r chi.Router) {
@@ -1511,7 +1563,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Events != nil && a.Notifier != nil {
 		reminderCtx, reminderCancel := context.WithCancel(ctx)
 		a.reminderCancel = reminderCancel
-		go a.runReminderChecker(reminderCtx)
+		a.goWorker("reminder-checker", func() { a.runReminderChecker(reminderCtx) })
 		a.logger.Info("event reminder checker started")
 	}
 
@@ -1554,6 +1606,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		plainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapPort))
 		tlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapTLSPort))
 
+		if a.DomainQuota != nil {
+			a.IMAP.SetQuotaChecker(a.DomainQuota)
+		}
 		a.IMAP.SetConnectionLimits(a.Config.IMAP.MaxConnections, a.Config.IMAP.MaxConnectionsPerIP)
 		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol); err != nil {
 			return fmt.Errorf("imap listen: %w", err)
@@ -1639,17 +1694,27 @@ func (a *Agent) Run(ctx context.Context) error {
 	// users, aliases, profiles, or mailboxes.
 	a.migrateAddressIndex()
 
+	// Forwards that predate verification are grandfathered so they keep
+	// working, then listed so the operator can decide. Runs after the address
+	// index is populated so hosted targets resolve and are skipped.
+	a.migrateForwardTargets()
+	a.reportGrandfatheredForwards()
+
 	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
 	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
 	// self-gating; conservative two-pass sweep.
 	if a.Raft != nil {
-		go a.runOrphanGC(ctx, orphanGCInterval, orphanGCMinAge)
+		gcCtx, gcCancel := context.WithCancel(ctx)
+		a.orphanGCCancel = gcCancel
+		a.goWorker("orphan-gc", func() { a.runOrphanGC(gcCtx, orphanGCInterval, orphanGCMinAge) })
 	}
 
 	// Recompute per-domain aggregate storage usage.
 	// Leader-only, periodic, idempotent. Used by the SMTP RCPT quota check.
 	if a.Raft != nil && a.DomainQuota != nil {
-		go a.runUsageRecompute(ctx, usageRecomputeInterval)
+		usageCtx, usageCancel := context.WithCancel(ctx)
+		a.usageCancel = usageCancel
+		a.goWorker("usage-recompute", func() { a.runUsageRecompute(usageCtx, usageRecomputeInterval) })
 	}
 
 	a.ready.Store(true)
@@ -2515,9 +2580,14 @@ func (a *Agent) recomputeDomainUsage() {
 	computeAndWriteDomainUsage(a.Store, a.DomainQuota, a.logger)
 }
 
-// computeAndWriteDomainUsage scans all /user/{id}/mail/{guid} MailMeta keys in
-// pebble, sums raw_message.size per primary domain (derived from the owner's
-// /user/{id}/profile), and writes the per-domain totals via quotaStore.SetUsage.
+// computeAndWriteDomainUsage scans the /user/{id}/mail/{guid} MailMeta keys in
+// pebble and sums raw_message.size per primary domain (derived from the owner's
+// /user/{id}/profile). It also adds len(ical_raw) for /user/{id}/event/{guid}
+// and len(vcard_raw) for /user/{id}/contact/{guid}: those live inline in Pebble
+// rather than as blobs, and CalDAV/CardDAV PUT is quota-gated, so they must
+// count. The per-domain totals are written via quotaStore.SetUsage.
+//
+// IMAP COPY/MOVE add a MailboxMessage, not a MailMeta, so they are not counted.
 //
 // Extracted from recomputeDomainUsage so it can be called directly in tests
 // without needing a live Raft cluster.
@@ -2539,10 +2609,14 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 
 	for iter.Next() {
 		key := string(iter.Key())
-		// We only care about /user/{id}/mail/{guid} keys.
+		// We only care about mail, event and contact records.
 		rest := strings.TrimPrefix(key, "/user/")
 		parts := strings.SplitN(rest, "/", 3)
-		if len(parts) != 3 || parts[1] != "mail" {
+		if len(parts) != 3 {
+			continue
+		}
+		kind := parts[1]
+		if kind != "mail" && kind != "event" && kind != "contact" {
 			continue
 		}
 		userID := parts[0]
@@ -2573,12 +2647,27 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 		if vErr != nil {
 			continue
 		}
-		var meta bongov1.MailMeta
-		if uErr := proto.Unmarshal(val, &meta); uErr != nil {
-			continue
-		}
-		if meta.RawMessage != nil {
-			domainBytes[domain] += meta.RawMessage.Size
+		switch kind {
+		case "mail":
+			var meta bongov1.MailMeta
+			if uErr := proto.Unmarshal(val, &meta); uErr != nil {
+				continue
+			}
+			if meta.RawMessage != nil {
+				domainBytes[domain] += meta.RawMessage.Size
+			}
+		case "event":
+			var ev bongov1.Event
+			if uErr := proto.Unmarshal(val, &ev); uErr != nil {
+				continue
+			}
+			domainBytes[domain] += int64(len(ev.IcalRaw))
+		case "contact":
+			var c bongov1.Contact
+			if uErr := proto.Unmarshal(val, &c); uErr != nil {
+				continue
+			}
+			domainBytes[domain] += int64(len(c.VcardRaw))
 		}
 	}
 	iter.Close()
@@ -2658,8 +2747,22 @@ func (a *Agent) ensureConfiguredDomain() {
 		}
 	}
 
-	cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: key, Value: []byte("enabled")}
-	if err := a.ApplyCommand(cmd, 5*time.Second); err != nil {
+	a.seedConfiguredDomain(domain, a)
+}
+
+// seedConfiguredDomain writes the domain key for a configured domain whose key
+// is absent. Config and grants left by a delete from before the cascade
+// existed must not be inherited, so it purges first and does not create the
+// key if the purge fails (the next boot retries).
+func (a *Agent) seedConfiguredDomain(domain string, applier store.RaftApplier) {
+	if a.Store != nil {
+		if err := store.PurgeDomainConfig(a.Store, applier, domain); err != nil {
+			a.logger.Warn("startup: failed to clear stale config for configured domain", "domain", domain, "error", err)
+			return
+		}
+	}
+	cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: []byte("/system/domain/" + domain), Value: []byte("enabled")}
+	if err := applier.ApplyCommand(cmd, 5*time.Second); err != nil {
 		a.logger.Warn("startup: failed to seed configured mail domain", "domain", domain, "error", err)
 		return
 	}
@@ -2744,6 +2847,105 @@ func (a *Agent) reportShadowedIdentities() {
 	}
 	if len(found) > 0 {
 		a.logger.Warn("startup: shadowed identity report", "count", len(found))
+	}
+}
+
+// forwardTargetStore returns the forward-target store, creating it on first
+// use. It is nil when there is no Pebble store (edge and agent roles).
+func (a *Agent) forwardTargetStore() *store.ForwardTargetStore {
+	if a.ForwardTargets == nil && a.Store != nil {
+		a.ForwardTargets = store.NewForwardTargetStore(a.Store, a)
+	}
+	return a.ForwardTargets
+}
+
+// domainHosted reports whether this server hosts the domain. A failed read
+// counts as not hosted, so the target is held for verification.
+func (a *Agent) domainHosted(domain string) bool {
+	if a.Store == nil {
+		return false
+	}
+	ok, err := store.DomainHosted(a.Store, domain)
+	return err == nil && ok
+}
+
+// hostedForwardTarget returns the test for forward targets that need no
+// verification: the address's domain is hosted here and it resolves to a local
+// user. Resolving alone would also match another user's verified send-as
+// identity on an external domain. The deliver stage, the settings and rules
+// handlers and the migration all use this one rule.
+func (a *Agent) hostedForwardTarget(resolver *store.RecipientResolver) func(string) bool {
+	return func(addr string) bool {
+		at := strings.LastIndexByte(addr, '@')
+		if at < 0 || !a.domainHosted(strings.ToLower(addr[at+1:])) {
+			return false
+		}
+		_, err := resolver.ResolveRecipient(addr)
+		return err == nil
+	}
+}
+
+// migrateForwardTargets writes a grandfathered forward-target record for every
+// existing external forward (account ForwardAddress and rule forward actions)
+// so they keep working after forwards began requiring a verified target. A
+// missing record means "not allowed", so without this every existing forward
+// would stop. Leader-only, additive and run to completion once: a marker at
+// /system/migration/fwdtargets stops later boots grandfathering forwards that
+// were saved since (by an old-version node, restored from backup, or whose
+// target stopped being hosted), which must go through verification. Failures
+// are logged and do not abort startup, and leave the marker unset so a later
+// boot retries.
+func (a *Agent) migrateForwardTargets() {
+	ft := a.forwardTargetStore()
+	if ft == nil || a.Raft == nil || !a.IsLeader() {
+		return
+	}
+	var sys *store.SystemIndex
+	if a.Metadata != nil {
+		sys = a.Metadata.System
+	}
+	if done, err := ft.MigrationDone(); err != nil {
+		a.logger.Warn("startup: forward target migration marker unreadable", "error", err)
+		return
+	} else if done {
+		return
+	}
+	resolver := store.NewRecipientResolver(a.AddressStore, a.Store, sys)
+	n, err := ft.MigrateForwardTargets(a.hostedForwardTarget(resolver))
+	if err != nil {
+		a.logger.Warn("startup: forward target migration failed", "written", n, "error", err)
+		return
+	}
+	if n > 0 {
+		a.logger.Info("startup: grandfathered existing forward targets", "count", n)
+	}
+	if err := ft.MarkMigrationDone(); err != nil {
+		a.logger.Warn("startup: forward target migration marker not written", "error", err)
+	}
+}
+
+// reportGrandfatheredForwards lists forwards that work only because they
+// predate verification, so the operator can decide whether to keep them.
+// Read-only.
+func (a *Agent) reportGrandfatheredForwards() {
+	ft := a.forwardTargetStore()
+	if ft == nil {
+		return
+	}
+	found, err := ft.ListGrandfathered()
+	if err != nil {
+		a.logger.Warn("startup: grandfathered forward report failed", "error", err)
+		return
+	}
+	for _, f := range found {
+		a.logger.Warn("startup: external forward predates verification and is still active",
+			"user_id", f.UserID,
+			"forward_to", f.Address,
+			"fix", "ask the user to re-enter the address to verify it, or remove the fwdtarget record to stop the forward",
+		)
+	}
+	if len(found) > 0 {
+		a.logger.Warn("startup: grandfathered forward report", "count", len(found))
 	}
 }
 
@@ -3157,7 +3359,103 @@ func (a *Agent) mailListenerTLS(proto, certFile, keyFile string, hosts []string)
 	return cfg, nil
 }
 
+// defaultShutdownGrace bounds how long Shutdown waits for in-flight pipeline
+// messages and store-touching background workers before giving up.
+const defaultShutdownGrace = 30 * time.Second
+
+// startPipelineRunner runs the pipeline runner on its own goroutine and
+// records pipelineDone, which is closed once Runner.Run has returned.
+func (a *Agent) startPipelineRunner(ctx context.Context) {
+	done := make(chan struct{})
+	a.pipelineDone = done
+	go func() {
+		defer close(done)
+		if err := a.PipelineRunner.Run(ctx); err != nil {
+			a.logger.Error("pipeline runner error", "error", err)
+		}
+	}()
+}
+
+// goWorker runs fn as a background worker that Shutdown waits for. The name
+// is kept in a live set so a grace timeout can say which workers are stuck.
+func (a *Agent) goWorker(name string, fn func()) {
+	a.bgStarted.Add(1)
+	a.bgWG.Add(1)
+	a.bgMu.Lock()
+	if a.bgLive == nil {
+		a.bgLive = make(map[string]int)
+	}
+	a.bgLive[name]++
+	a.bgMu.Unlock()
+	go func() {
+		defer a.bgWG.Done()
+		defer func() {
+			a.bgMu.Lock()
+			if a.bgLive[name]--; a.bgLive[name] <= 0 {
+				delete(a.bgLive, name)
+			}
+			a.bgMu.Unlock()
+		}()
+		fn()
+	}()
+}
+
+// liveWorkers returns the sorted names of workers that have not returned.
+func (a *Agent) liveWorkers() []string {
+	a.bgMu.Lock()
+	defer a.bgMu.Unlock()
+	names := make([]string, 0, len(a.bgLive))
+	for n := range a.bgLive {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// waitForWorkers waits for the pipeline runner and bgWG workers under a single
+// shutdownGrace deadline, logging each "stopped" line only once it is true.
+func (a *Agent) waitForWorkers() error {
+	grace := a.shutdownGrace
+	if grace <= 0 {
+		grace = defaultShutdownGrace
+	}
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+
+	if a.pipelineDone != nil {
+		select {
+		case <-a.pipelineDone:
+			a.logger.Info("pipeline runner stopped")
+		case <-timer.C:
+			return fmt.Errorf("pipeline runner still processing messages after %s", grace)
+		}
+	}
+
+	bgDone := make(chan struct{})
+	go func() {
+		a.bgWG.Wait()
+		close(bgDone)
+	}()
+	select {
+	case <-bgDone:
+		a.logger.Info("background workers stopped")
+		return nil
+	case <-timer.C:
+		return fmt.Errorf("background workers still running after %s: %s", grace, strings.Join(a.liveWorkers(), ", "))
+	}
+}
+
 // Shutdown closes all resources held by the agent.
+//
+// It cancels the pipeline runner and the store-touching background workers
+// (queue worker, reminder checker, blob syncer, orphan GC, usage recompute)
+// and waits for them, bounded by shutdownGrace (30s), before touching Raft or
+// any store. If the grace expires, Shutdown returns an error and deliberately
+// leaves Raft and the stores open: the running message is not pushed into
+// error/ by a shutdown-induced failure, its envelope stays in
+// spool/processing/, and RecoverCrashed requeues it on the next start. If the
+// process then exits mid-delivery, the retry may deliver again to recipients
+// already served (duplicates, never loss), the same as a crash today.
 func (a *Agent) Shutdown() error {
 	var errs []error
 
@@ -3201,34 +3499,42 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	// 3.5. Pipeline runner.
+	// 3.5. Stop the pipeline runner and store-touching background workers, and
+	// wait for them. This must precede Gossip, Raft and every store close: an
+	// in-flight message runs under context.WithoutCancel, so cancelling is not
+	// enough, and the deliver stage needs Raft alive to finish. Shutting Raft
+	// down first would fail its ApplyCommand and push a part-delivered
+	// envelope into error/, which is never retried.
+	// Each cancel is called by name rather than from a slice so that gosec
+	// (G118) can see every stored CancelFunc is called.
 	if a.pipelineCancel != nil {
 		a.pipelineCancel()
-		a.logger.Info("pipeline runner stopped")
 	}
-
-	// 3.6. Queue worker.
 	if a.queueWorkerCancel != nil {
 		a.queueWorkerCancel()
-		a.logger.Info("queue worker stopped")
 	}
-
-	// 3.7. Reminder checker.
 	if a.reminderCancel != nil {
 		a.reminderCancel()
-		a.logger.Info("reminder checker stopped")
 	}
-
-	// 3.8. Quarantine auto-purge.
 	if a.quarantinePurgeCancel != nil {
 		a.quarantinePurgeCancel()
-		a.logger.Info("quarantine auto-purge stopped")
 	}
-
-	// 4. Blob sync cancel.
 	if a.blobSyncCancel != nil {
 		a.blobSyncCancel()
-		a.logger.Info("blob syncer stopped")
+	}
+	if a.orphanGCCancel != nil {
+		a.orphanGCCancel()
+	}
+	if a.usageCancel != nil {
+		a.usageCancel()
+	}
+	if err := a.waitForWorkers(); err != nil {
+		// Leave Raft and every store open so the straggler can finish or be
+		// killed cleanly; the envelope stays in spool/processing/ and
+		// RecoverCrashed requeues it on the next start.
+		a.logger.Error("shutdown: workers still running after grace; leaving stores open", "error", err)
+		errs = append(errs, err)
+		return fmt.Errorf("shutdown errors: %v", errs)
 	}
 
 	// 4. Gossip.

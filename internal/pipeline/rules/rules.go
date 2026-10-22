@@ -137,7 +137,9 @@ func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope
 			reasons = append(reasons, "delete")
 		case "forward":
 			if action.Target != "" {
-				env.ForwardAddresses = append(env.ForwardAddresses, action.Target)
+				// Attributed to the rule's owner: the deliver stage checks that
+				// user's verified targets and rate limit.
+				env.ForwardRequests = append(env.ForwardRequests, &bongov1.ForwardRequest{UserId: userID, Target: action.Target})
 				reasons = append(reasons, "forward:"+action.Target)
 			}
 		case "tag":

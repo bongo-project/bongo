@@ -18,12 +18,14 @@ import (
 type DKIMRegistry struct {
 	mu      sync.RWMutex
 	signers map[string]*DKIMSigner
+	seeded  map[string]bool // domains whose signer came from Seed (static config)
 }
 
 // NewDKIMRegistry returns an initialised, empty registry.
 func NewDKIMRegistry() *DKIMRegistry {
 	return &DKIMRegistry{
 		signers: make(map[string]*DKIMSigner),
+		seeded:  make(map[string]bool),
 	}
 }
 
@@ -35,14 +37,32 @@ func NewDKIMRegistry() *DKIMRegistry {
 func (r *DKIMRegistry) Seed(domain string, signer *DKIMSigner) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.signers[strings.ToLower(domain)] = signer
+	d := strings.ToLower(domain)
+	r.signers[d] = signer
+	r.seeded[d] = true
 }
 
 // Add registers a per-domain signer. Safe to call concurrently.
 func (r *DKIMRegistry) Add(domain string, signer *DKIMSigner) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.signers[strings.ToLower(domain)] = signer
+	d := strings.ToLower(domain)
+	r.signers[d] = signer
+	delete(r.seeded, d)
+}
+
+// Remove drops the signer for a domain. Removing an unknown domain is a no-op.
+// A signer registered through Seed is kept: it comes from static config, not
+// Pebble, and nothing would put it back until restart.
+// The registry is per-node memory: other nodes keep their signer until restart.
+func (r *DKIMRegistry) Remove(domain string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d := strings.ToLower(domain)
+	if r.seeded[d] {
+		return
+	}
+	delete(r.signers, d)
 }
 
 // Get returns the signer for the given domain, or nil if no key is

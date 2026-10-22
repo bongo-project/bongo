@@ -1290,3 +1290,16 @@ PATTERN: [testing] A "success forgives failures" test must record enough failure
 PATTERN: [security] A connection cap enforced after a TLS handshake can be held by a client that never sends ClientHello. Refuse below the TLS listener, on the raw connection.
 PATTERN: [tooling] BSD sed does not understand `\s`; a mutation applied with it silently changes nothing and the "mutant" passes. Apply mutations with Python and diff the result before trusting a green run.
 PATTERN: [norman] Worktree diffs must be re-staged (`git add -A`) after a follow-up fix agent runs, or the exported patch misses its files.
+
+## 2026-10-22 — PR #36 merged; Phase 18 batch 3 (18.9, 18.13, 18.14, 18.16, 18.17, 18.34, 18.35) DONE
+
+PR #36 (batch 2) squash-merged as 34ff9e3; its tree matched the CI-tested 89284f2 exactly, so the branch was reset onto it with no rebase.
+
+Batch 3 ran in worktrees the orchestrator created from the branch tip (the workflow script now takes a per-task `workdir`), avoiding the stale-main base problem. Reviews: 18.13, 18.16, 18.17, 18.34 MINOR; 18.9 and 18.14 REJECT. 18.14's review found a real bypass: "hosted" was defined as "the resolver finds an owner", and the resolver routes a verified external send-as identity to its owner, so a user could forward to another user's verified external address without verifying it. Fix rounds for all six; one named mutation per fix re-run by the orchestrator, all red.
+
+New: 18.35 (spool temp-file race refusing inbound mail with 554 under load), 18.36 (web write paths skip the quota), 18.37 (pipeline shutdown follow-ups). A network outage killed four fix agents mid-run; resuming each by SendMessage continued from its transcript with the worktree intact.
+
+PATTERN: [security] "Local" for a forward or relay decision must mean the address's DOMAIN is hosted here. "Something resolves it to a user" also matches verified external identities and catch-alls.
+PATTERN: [testing] A "disabled" case built by rewriting the profile with a re-hashed password also changes the session epoch, so it silently tests password reset instead. Flip only the field under test.
+PATTERN: [norman] Never `git add -u` after applying a worker patch when prds/ has uncommitted edits; stage the patch's own paths. Recovering cost a commit rebuild.
+PATTERN: [tooling] `git cherry-pick` has no `-q`; a failed option in a loop under `set -e` still let later commands move a branch. Check each step's exit code explicitly before moving refs.

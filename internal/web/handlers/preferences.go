@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"html"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -31,8 +33,14 @@ func plainTextFromHTML(sanitizedHTML string) string {
 
 // PreferencesHandler handles user preference endpoints.
 type PreferencesHandler struct {
-	prefs *store.PreferenceStore
+	prefs     *store.PreferenceStore
+	forwarder *ForwardVerifier
 }
+
+// SetForwardVerifier injects the forwarding-target verifier. Without it the
+// forward address is still saved, but nothing is forwarded until the target is
+// verified.
+func (h *PreferencesHandler) SetForwardVerifier(v *ForwardVerifier) { h.forwarder = v }
 
 // NewPreferencesHandler creates a PreferencesHandler.
 func NewPreferencesHandler(prefs *store.PreferenceStore) *PreferencesHandler {
@@ -44,7 +52,12 @@ func (h *PreferencesHandler) ShowSettings(w http.ResponseWriter, r *http.Request
 	userID, email := middleware.UserFromContext(r.Context())
 	prefs := h.prefs.Get(userID)
 	flash := r.URL.Query().Get("flash")
-	templ.Handler(templates.SettingsPage(prefs, email, flash)).ServeHTTP(w, r)
+	var fwd templates.ForwardView
+	if h.forwarder != nil {
+		fwd.Targets = h.forwarder.View(userID)
+		fwd.Error = r.URL.Query().Get("error")
+	}
+	templ.Handler(templates.SettingsPage(prefs, email, flash, fwd)).ServeHTTP(w, r)
 }
 
 // SaveSettings processes the settings form.
@@ -137,14 +150,33 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 	if fwdAddr != "" {
 		// Basic email validation.
 		if !strings.Contains(fwdAddr, "@") || !strings.Contains(fwdAddr, ".") {
-			http.Error(w, "Invalid forwarding address", http.StatusBadRequest)
+			fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
 			return
 		}
 		// Prevent forwarding to self.
 		_, email := middleware.UserFromContext(r.Context())
 		if strings.EqualFold(fwdAddr, email) {
-			http.Error(w, "Cannot forward to your own address", http.StatusBadRequest)
+			fwdError(w, r, "settings.fwdOwnAddress", http.StatusBadRequest)
 			return
+		}
+	}
+	// A new or changed target is only recorded as pending here and the
+	// challenge mailed; the deliver stage forwards nothing until it is verified.
+	flash := url.QueryEscape("Settings saved")
+	if fwdAddr != "" && h.forwarder != nil {
+		_, email := middleware.UserFromContext(r.Context())
+		if err := h.forwarder.Ensure(userID, email, fwdAddr); err != nil {
+			if msg, soft := forwardOutcomeMessage(r, err); soft {
+				flash = url.QueryEscape(fwdText(r, "settings.fwdSavedPrefix") + " " + msg)
+			} else if errors.Is(err, ErrForwardInvalidAddress) {
+				fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
+				return
+			} else {
+				fwdError(w, r, "settings.fwdErrStart", http.StatusInternalServerError)
+				return
+			}
+		} else if h.forwarder.Pending(userID, fwdAddr) {
+			flash = url.QueryEscape(fwdText(r, "settings.fwdSavedPending"))
 		}
 	}
 	prefs.ForwardAddress = fwdAddr
@@ -159,7 +191,7 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	http.Redirect(w, r, "/settings?flash=Settings+saved", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings?flash="+flash, http.StatusSeeOther)
 }
 
 // UserPrefsJSON returns preferences as JSON for Alpine.js hydration.
