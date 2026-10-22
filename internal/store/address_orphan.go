@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -122,4 +123,28 @@ func userProfileExists(ps *PebbleStore, userID string) bool {
 	}
 	data, err := ps.Get([]byte("/user/" + userID + "/profile"))
 	return err == nil && len(data) > 0
+}
+
+// profileState reports whether a user's profile exists and whether it is
+// disabled. A missing key or empty value is (false, false, nil); any other read
+// or decode error is returned so the caller can choose to fail open.
+func profileState(ps *PebbleStore, userID string) (exists, disabled bool, err error) {
+	if userID == "" {
+		return false, false, nil
+	}
+	data, err := ps.Get([]byte("/user/" + userID + "/profile"))
+	if errors.Is(err, ErrNotFound) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("read profile %s: %w", userID, err)
+	}
+	if len(data) == 0 {
+		return false, false, nil
+	}
+	var p bongov1.UserProfile
+	if err := proto.Unmarshal(data, &p); err != nil {
+		return false, false, fmt.Errorf("decode profile %s: %w", userID, err)
+	}
+	return true, p.Disabled, nil
 }

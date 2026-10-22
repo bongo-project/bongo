@@ -613,6 +613,28 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Cascade: remove legacy /system/alias keys targeting this user's email and
+	// the catch-alls it owns, plus the derived SQLite alias rows. A legacy alias
+	// value is an email, so left behind it would route to whoever re-registers
+	// the address. Separate Raft commands, so not atomic: failures are logged,
+	// counted into `failed` and shown in the flash. A leftover catch-all is
+	// inert (the resolver rejects a dead owner); a leftover alias is the one
+	// residual risk and needs manual removal. The FSM does not maintain the
+	// SQLite aliases table for these keys, hence the explicit delete (it must
+	// precede the users row, which it references).
+	if h.store != nil {
+		if _, _, pErr := store.PurgeUserRouting(h.store, h.applier, userID, profile.Email); pErr != nil {
+			failed++
+			h.logger.Warn("admin: delete cascade: failed to purge alias/catch-all routing", "user_id", userID, "error", pErr)
+		}
+	}
+	if h.metadata != nil && h.metadata.System != nil {
+		if _, dErr := h.metadata.System.DB().Exec("DELETE FROM aliases WHERE target_user_id = ?", userID); dErr != nil {
+			failed++
+			h.logger.Warn("admin: delete cascade: failed to remove sqlite alias rows", "user_id", userID, "error", dErr)
+		}
+	}
+
 	// Cascade: revoke domain-admin grants held by the deleted user (best-effort).
 	// This prevents dangling grants from granting access after account deletion.
 	if h.domainAdmin != nil {

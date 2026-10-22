@@ -27,6 +27,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/observability"
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -449,7 +450,8 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		return nil
 	}
 
-	if userID, err := s.backend.resolver.ResolveRecipient(to); err == nil {
+	userID, resolveErr := s.backend.resolver.ResolveRecipient(to)
+	if resolveErr == nil {
 		// Storage quota check: reject permanently if the recipient's owning
 		// domain is at or over its max_storage_bytes limit. The QuotaChecker
 		// derives the primary domain from the already-resolved userID so we
@@ -467,6 +469,14 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		s.localRcpts = append(s.localRcpts, to)
 		s.logger.Debug("smtp: RCPT TO (local)", "to", to)
 		return nil
+	}
+
+	if errors.Is(resolveErr, store.ErrRecipientUnavailable) {
+		// A local address whose account is disabled or deleted. Reject it before
+		// the relay branch, or an authenticated session would send the mail out
+		// to our own MX.
+		s.logger.Warn("smtp: RCPT rejected: recipient unavailable", "to", to)
+		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: "Mailbox unavailable"}
 	}
 
 	// Non-local recipient: relay is only permitted for authenticated senders.

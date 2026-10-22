@@ -67,8 +67,9 @@ func domainOf(email string) string {
 // --- Individual unit tests ---
 
 func TestRecipientResolver_UserHit(t *testing.T) {
-	_, as, sys, resolver := newResolverTestEnv(t)
+	ps, as, sys, resolver := newResolverTestEnv(t)
 	insertUser(t, sys, "user1", "alice@example.com")
+	putUserProfile(t, ps, "user1", "alice@example.com", false)
 	putAddress(t, as, "alice@example.com", "user1", "primary")
 
 	userID, err := resolver.ResolveRecipient("alice@example.com")
@@ -81,8 +82,9 @@ func TestRecipientResolver_UserHit(t *testing.T) {
 }
 
 func TestRecipientResolver_AliasHitViaIndex(t *testing.T) {
-	_, as, sys, resolver := newResolverTestEnv(t)
+	ps, as, sys, resolver := newResolverTestEnv(t)
 	insertUser(t, sys, "user1", "alice@example.com")
+	putUserProfile(t, ps, "user1", "alice@example.com", false)
 	putAddress(t, as, "alice@example.com", "user1", "primary")
 	putAddress(t, as, "alias@example.com", "user1", "alias")
 
@@ -98,9 +100,10 @@ func TestRecipientResolver_AliasHitViaIndex(t *testing.T) {
 // TestRecipientResolver_LegacyFallbackHit verifies tier 2b: a user in the SQLite
 // users table but NOT in the address index is still resolved (post-boot account).
 func TestRecipientResolver_LegacyFallbackHit(t *testing.T) {
-	_, _, sys, resolver := newResolverTestEnv(t)
+	ps, _, sys, resolver := newResolverTestEnv(t)
 	// User in SQLite only — no address index entry.
 	insertUser(t, sys, "user2", "bob@example.com")
+	putUserProfile(t, ps, "user2", "bob@example.com", false)
 
 	userID, err := resolver.ResolveRecipient("bob@example.com")
 	if err != nil {
@@ -116,6 +119,7 @@ func TestRecipientResolver_LegacyFallbackHit(t *testing.T) {
 func TestRecipientResolver_LegacyAliasFallback(t *testing.T) {
 	ps, _, sys, resolver := newResolverTestEnv(t)
 	insertUser(t, sys, "user3", "carol@example.com")
+	putUserProfile(t, ps, "user3", "carol@example.com", false)
 	// Legacy alias Pebble key (not in address index).
 	seedAlias(t, ps, "legacyalias@example.com", "carol@example.com")
 
@@ -248,6 +252,7 @@ func TestRecipientResolver_TableDriven(t *testing.T) {
 			// Seed SQLite users.
 			for id, email := range tc.setup.sqliteUsers {
 				insertUser(t, sys, id, email)
+				putUserProfile(t, ps, id, email, false)
 			}
 
 			// Disabled-user special case: add with enabled=0 via raw SQL.
@@ -259,6 +264,7 @@ func TestRecipientResolver_TableDriven(t *testing.T) {
 				if err != nil {
 					t.Fatalf("insert disabled user: %v", err)
 				}
+				putUserProfile(t, ps, "disabled1", "disabled@test.com", true)
 			}
 
 			// Seed address index.
@@ -307,6 +313,7 @@ func TestRecipientResolver_CatchAll_Hit(t *testing.T) {
 	ps, _, _, resolver := newResolverTestEnv(t)
 
 	const ownerID = "catchall-owner"
+	putUserProfile(t, ps, ownerID, "owner@catchall.example.com", false)
 	seedCatchAll(t, ps, "catchall.example.com", ownerID)
 
 	userID, err := resolver.ResolveRecipient("random@catchall.example.com")
@@ -336,9 +343,11 @@ func TestRecipientResolver_ExplicitBeats_CatchAll(t *testing.T) {
 
 	// Set up a catch-all on the domain.
 	seedCatchAll(t, ps, "example.com", "catchall-owner")
+	putUserProfile(t, ps, "catchall-owner", "owner@example.com", false)
 
 	// Also set up an explicit user for bob@example.com.
 	insertUser(t, sys, "bob-id", "bob@example.com")
+	putUserProfile(t, ps, "bob-id", "bob@example.com", false)
 	putAddress(t, as, "bob@example.com", "bob-id", "primary")
 
 	// bob@example.com must resolve to bob, not the catch-all owner.
@@ -365,6 +374,7 @@ func TestRecipientResolver_ExplicitBeats_CatchAll(t *testing.T) {
 func TestRecipientResolver_CatchAll_CaseNormalisation(t *testing.T) {
 	ps, _, _, resolver := newResolverTestEnv(t)
 	seedCatchAll(t, ps, "mixedcase.example.com", "owner1")
+	putUserProfile(t, ps, "owner1", "owner1@mixedcase.example.com", false)
 
 	userID, err := resolver.ResolveRecipient("Anything@MIXEDCASE.EXAMPLE.COM")
 	if err != nil {
@@ -393,6 +403,7 @@ func TestRecipientResolver_NilAddressStoreGraceful(t *testing.T) {
 	// nil AddressStore — tier 1 must be skipped, tier 2 should still work.
 	resolver := NewRecipientResolver(nil, ps, mgr.System)
 	insertUser(t, mgr.System, "u1", "edge@example.com")
+	putUserProfile(t, ps, "u1", "edge@example.com", false)
 
 	userID, err := resolver.ResolveRecipient("edge@example.com")
 	if err != nil {
