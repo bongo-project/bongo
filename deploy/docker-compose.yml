@@ -161,7 +161,12 @@ services:
       - "traefik.tcp.services.bongo-imaps.loadbalancer.proxyProtocol.version=2"
 
   # Extracts the mail.example.com certificate from Traefik's acme.json into the
-  # shared ./certs dir, and re-dumps on renewal. Pin the tag as you like.
+  # shared ./certs dir, and re-dumps on renewal.
+  #
+  # certs-dumper cannot filter by domain: it dumps every certificate Traefik
+  # manages, plus the ACME account key. It therefore writes to the private
+  # certs-dump volume, which bongo does not mount, and the post-hook copies only
+  # the mail host's certificate and key into ./certs (deploy/certs-hook.sh).
   certs-dumper:
     image: ldez/traefik-certs-dumper@sha256:a34b27edf8e5e96a215035a6bfba00d769d2638f8444a5dd6dc27299d75f43c5
     container_name: bongo-certs-dumper
@@ -177,15 +182,27 @@ services:
       - "--version=v2"
       - "--watch"
       - "--source=/traefik/acme.json"
-      - "--dest=/certs"
+      - "--dest=/dump"
       - "--domain-subdir=true"
-      # certs-dumper runs as root and writes root-owned files. Hand them to the
-      # bongo uid after every dump (initial and each renewal) so the non-root
-      # bongo process can read the private key on its next restart.
-      - "--post-hook=chown -R 10001:10001 /certs"
+      # Runs after every dump (initial and each renewal). certs-dumper splits
+      # this on spaces and execs it without a shell, so keep it to one script
+      # and one argument. The script copies the mail host's files into /certs,
+      # hands them to the bongo uid (10001) so the non-root bongo process can
+      # read the key, and deletes everything else in /certs.
+      - "--post-hook=/bin/sh /hooks/mail-cert.sh ${WEB_HOST:?set WEB_HOST in .env}"
     volumes:
       - /mnt/data/traefik/acme.json:/traefik/acme.json:ro
       - ./certs:/certs
+      # Long syntax so a missing host file is an error: short syntax would make
+      # Docker create a directory named certs-hook.sh, the hook would fail
+      # silently and the mail certificate would never be published or renewed.
+      - type: bind
+        source: ./certs-hook.sh
+        target: /hooks/mail-cert.sh
+        read_only: true
+        bind:
+          create_host_path: false
+      - certs-dump:/dump
 
   # Static landing page for the apex example.com so it serves a real page with a
   # valid Let's Encrypt cert instead of Traefik's default self-signed cert.
@@ -210,6 +227,11 @@ services:
       - "traefik.http.routers.bongo-web.entrypoints=websecure"
       - "traefik.http.routers.bongo-web.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
       - "traefik.http.services.bongo-web.loadbalancer.server.port=80"
+
+# Private to certs-dumper: holds every certificate it dumps, including keys for
+# domains other than the mail host. Never mount it into bongo.
+volumes:
+  certs-dump:
 
 networks:
   # The external network Traefik is attached to (compose project `foo` -> `foo_web`).

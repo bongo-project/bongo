@@ -1989,8 +1989,8 @@ func TestUserActions_DomainAdmin_PeerD1AdminAllowed(t *testing.T) {
 	w := postToHandler(t, env.h, env.h.ResetPassword, http.MethodPost, "/x", nil,
 		map[string]string{"userID": env.d1PeerAdminID},
 		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) })
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want 303", w.Code)
+	if w.Code != http.StatusOK { // reset renders the one-time password, no redirect
+		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	if bytes.Equal(before.PasswordHash, env.profile(t, env.d1PeerAdminID).PasswordHash) {
 		t.Error("password hash unchanged")
@@ -2036,8 +2036,12 @@ func TestUserActions_GlobalAdmin_PrivilegedTargetsAllowed(t *testing.T) {
 			w := postToHandler(t, env.h, fn, http.MethodPost, "/x", nil,
 				map[string]string{"userID": id},
 				func(r *http.Request) *http.Request { return withGlobalAdmin(r, env.globalAdminID) })
-			if w.Code != http.StatusSeeOther {
-				t.Errorf("%s on %s: status = %d, want 303", name, id, w.Code)
+			want := http.StatusSeeOther
+			if name == "ResetPassword" {
+				want = http.StatusOK // renders the one-time password, no redirect
+			}
+			if w.Code != want {
+				t.Errorf("%s on %s: status = %d, want %d", name, id, w.Code, want)
 			}
 		}
 	}

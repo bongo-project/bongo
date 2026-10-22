@@ -1,4 +1,7 @@
-# Bongo-Go production config for example.com (single-node, Docker + Traefik).
+# Bongo-Go production config TEMPLATE for example.com (single-node, Docker +
+# Traefik). This is not the live production config: that lives in the infra
+# repo, has no Traefik in front (ports are published straight to the host) and
+# runs with proxy_protocol = false.
 #
 # Mounted into the container at /etc/bongo/bongo.hcl.
 # The web UI is served plain-HTTP behind Traefik (which terminates TLS).
@@ -36,14 +39,13 @@ server {
   #   docker network inspect traefik_web --format '{{(index .IPAM.Config 0).Subnet}}'
   # which still lets any other container on that network forge client IPs.
   #
-  # !!! PLACEHOLDER !!! 172.18.0.0/16 below is a GUESS at the Docker bridge
-  # range, NOT Traefik's real address. Replace it with Traefik's address on the
-  # shared network BEFORE deploying (see "Set trusted_proxies before the first deploy" in deploy/README.md).
-  # If it is wrong, every client appears as the proxy's IP (SPF, per-IP limits,
-  # lockout and DNSBL all evaluate the proxy) and bongo logs the WARN
-  # "proxy protocol header from a peer not in server.trusted_proxies was ignored"
-  # within the first minutes of traffic.
-  trusted_proxies = ["172.18.0.0/16"] # PLACEHOLDER: replace with Traefik's address
+  # Empty on purpose: startup refuses until you list Traefik's address, so this
+  # template cannot ship trusting a guessed range. Do NOT use the compose
+  # network's subnet (e.g. 172.18.0.0/16): bongo's own sidecars live on it, and
+  # trusting it lets any of them forge client IPs. A deployment with no proxy in
+  # front (ports published straight to the host) sets proxy_protocol = false
+  # and leaves this empty.
+  trusted_proxies = [] # set to Traefik's address, e.g. ["172.20.0.2/32"]
 }
 
 cluster {
@@ -154,6 +156,11 @@ smtp {
     # Per-user cap on authenticated-submission messages/minute. Bounds spam
     # volume from a single compromised account. 0 disables. Default 30.
     outbound_messages_per_minute = 30
+    # External recipients per user/hour across SMTP submission and web compose.
+    # In memory and per node. Keep >= max_recipients. 0 disables. Default 500.
+    outbound_recipients_per_hour = 500
+    # Send-as verification mails per user per hour. 0 disables. Default 5.
+    send_as_verify_max_per_hour = 5
   }
 
   dkim {

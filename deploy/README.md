@@ -15,6 +15,7 @@ for **example.com** on a single Docker host, behind an existing Traefik.
 |------|---------|
 | `Dockerfile` | Multi-stage build (templ generate + static Go binary → Alpine runtime) |
 | `docker-compose.yml` | Bongo service + a certs-dumper sidecar; Traefik HTTP router (web) and TCP routers (mail) |
+| `certs-hook.sh` | certs-dumper post-hook: publishes only the mail host's cert and key to `./certs`; must sit beside `docker-compose.yml` |
 | `bongo.prod.hcl` | Production config (mounted at `/etc/bongo/bongo.hcl`) |
 | `.env.example` | Copy to `.env`; holds the session secret + Traefik names |
 | `ship-logs.sh` | Pull the JSON log file from the server to your laptop |
@@ -31,7 +32,8 @@ Your existing Traefik already owns 80/443 **and** the mail entrypoints
   TLS itself. STARTTLS ports (25/587/143) match `HostSNI(*)`; IMAPS (993) is
   `tls.passthrough=true` matching `HostSNI(mail.example.com)`.
 - **Mail cert:** the `certs-dumper` sidecar extracts `mail.example.com` from
-  Traefik's `acme.json` into a shared volume that bongo reads.
+  Traefik's `acme.json` into a shared directory that bongo reads. Only that one
+  host's certificate and key reach bongo (section 5).
 - **POP3 is disabled** (Traefik has no 110/995 entrypoint). Use IMAP.
 
 ---
@@ -139,8 +141,8 @@ resolves to the server.
 
 The **mail protocols** terminate TLS in bongo, so they need the cert on disk.
 The `certs-dumper` sidecar in `docker-compose.yml` handles this: it watches
-Traefik's `acme.json` (`/mnt/data/traefik/acme.json`) and writes the extracted
-cert to a shared volume as:
+Traefik's `acme.json` (`/mnt/data/traefik/acme.json`) and publishes the mail
+host's cert to a shared directory as:
 
 ```
 /certs/mail.example.com/certificate.crt
@@ -148,6 +150,23 @@ cert to a shared volume as:
 ```
 
 which `bongo.prod.hcl` already points at (for both `smtp.tls` and `cluster.tls`).
+
+certs-dumper cannot filter by domain, so it would otherwise hand bongo the
+private key of every domain Traefik manages, plus the ACME account key. It
+therefore dumps into a private `certs-dump` volume that bongo never mounts, and
+its `--post-hook` runs `certs-hook.sh`, which copies only
+`<WEB_HOST>/certificate.crt` and `<WEB_HOST>/privatekey.key` into `./certs`
+(key mode 0600, owner 10001) and deletes everything else found there. `WEB_HOST`
+must be set in `.env`.
+
+> **Upgrading from the old layout.** Earlier versions dumped every domain's key
+> and `private/letsencrypt.key` (the ACME account key) into `./certs`, so they
+> were readable by the bongo container. The first dump after upgrading deletes
+> them from `./certs`, but they have been exposed to bongo. Whether to rotate the
+> other domains' certificates and the ACME account key is an operator decision.
+> When upgrading, copy `certs-hook.sh` to the server beside `docker-compose.yml`
+> (the compose file alone is not enough); compose refuses to start
+> `certs-dumper` if it is missing.
 
 **No manual certbot needed** — Traefik already does ACME and owns port 80, so a
 separate certbot would just conflict.
@@ -163,8 +182,8 @@ separate certbot would just conflict.
 >
 > Bongo loads the mail cert once at startup, so also restart after each renewal
 > (a renewal hook or a weekly `restart bongo` cron is fine for a test).
-> certs-dumper chowns the dumped files to uid 10001 itself (`--post-hook`), so
-> the restart is all that is needed (see section 11 for the one-time host chown).
+> The post-hook chowns the published files to uid 10001 itself, so the restart is
+> all that is needed (see section 11 for the one-time host chown).
 
 ---
 
@@ -406,8 +425,8 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
 
   **Migrating an existing deployment.** The previous image also used uid 10001
   and chowned `/data` and `/logs` on every start, so those are normally already
-  correct. `./certs` may hold root-owned files written by certs-dumper since the
-  last restart. Before pulling the new image, run the same command once; it is
+  correct. `./certs` may hold root-owned files written by an older certs-dumper
+  configuration. Before pulling the new image, run the same command once; it is
   idempotent:
 
   ```bash
@@ -419,38 +438,39 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   Encrypt certificate because it cannot read `privatekey.key`.
 
   **Certificate ownership after renewals.** certs-dumper stays root, and its
-  `--post-hook=chown -R 10001:10001 /certs` hands every dump to uid 10001, so
-  a renewal followed by `docker compose restart bongo` just works and `/certs`
-  is mounted read-only into bongo. (In `--watch` mode `--post-hook` also runs
+  post-hook (`certs-hook.sh`) copies the mail host's files into `/certs` owned by
+  uid 10001, so a renewal followed by `docker compose restart bongo` just works
+  and `/certs` is mounted read-only into bongo. (In `--watch` mode `--post-hook` also runs
   on the first dump when certs-dumper starts, but the manual `chown` above
   remains the safe step when upgrading.)
 
   **Debugging.** `bongo-go` is now the image ENTRYPOINT, so use
   `docker exec -it bongo sh` or `docker run --entrypoint sh` for a shell.
 
-  **Nomad / infra repo.** Production runs as a Nomad job in the infra repo, not
-  from this compose file, and needs the matching change, applied by the
-  operator: in the docker driver `config` set `user = "10001:10001"`,
-  `cap_drop = ["ALL"]` (and no `cap_add`), `security_opt = ["no-new-privileges:true"]`
-  and `sysctl = { "net.ipv4.ip_unprivileged_port_start" = "0" }` (this needs
-  bridge networking; Docker rejects the sysctl under host networking), and
-  chown the host volumes for data, logs and certs to 10001:10001. Do the chown
-  before deploying the new image.
+  **Production (infra repo).** The live deployment is not this compose file:
+  its compose file and bongo.prod.hcl live in the infra repo and are deployed
+  with its deploy script. It needs the same change, applied by the operator:
+  in the bongo service set `user: "10001:10001"`, `cap_drop: [ALL]` (no
+  `cap_add`), `security_opt: [no-new-privileges:true]` and the sysctl
+  `net.ipv4.ip_unprivileged_port_start=0` (bridge networking, as there), and
+  chown the host data, logs and certs directories to 10001:10001 before
+  deploying the new image.
 - **Secure cookies behind a proxy:** with `plain_http=true`, the app doesn't set
   the `Secure` cookie flag itself (TLS is at Traefik). Fine for a test; revisit
   for production.
 - **No log rotation on `bongo.jsonl`:** add `logrotate` or cap it if it runs for
   a long time.
-- **Set `trusted_proxies` before the first deploy.** `deploy/bongo.prod.hcl`
-  ships `172.18.0.0/16`, a placeholder, not Traefik's real address. Find Traefik's
-  address on the shared network with
+- **Set `trusted_proxies` before the first deploy behind Traefik.**
+  `deploy/bongo.prod.hcl` ships it empty, and with `proxy_protocol` on, startup
+  refuses until it is set. Find Traefik's address on the shared network with
   `docker network inspect ${TRAEFIK_NETWORK} --format '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{"\n"}}{{end}}'`
   (or `docker inspect <traefik-container> --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`),
-  or pin Traefik to a static IP and use that. Put it in `trusted_proxies` as a
-  `/32`. After deploying, watch the first minutes of logs: the WARN
-  `proxy protocol header from a peer not in server.trusted_proxies was ignored`
-  (logged at most once a minute, with the peer IP only) means the value is wrong,
-  and the `peer` field is the address to list.
+  or pin Traefik to a static IP, and list it as a `/32`. Never list the compose
+  network's subnet: other containers on it could then forge client IPs. After
+  deploying, the WARN `proxy protocol header from a peer not in
+  server.trusted_proxies was ignored` (at most once a minute, peer IP only)
+  means the value is wrong, and its `peer` field is the address to list. With no
+  proxy in front, set `proxy_protocol = false` and leave `trusted_proxies` empty.
 - **`server.trusted_proxies` must name Traefik.** PROXY protocol and
   `X-Forwarded-*` headers are believed only from the addresses listed in
   `server.trusted_proxies` in `bongo.prod.hcl`; no private or loopback peer is

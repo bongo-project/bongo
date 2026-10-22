@@ -14,7 +14,13 @@ func TestLoadServeConfig(t *testing.T) {
 		wantErr  string
 		wantRole string
 	}{
-		{name: "prod config", set: map[string]string{"config": "../../deploy/bongo.prod.hcl"}},
+		{
+			// The Traefik template ships trusted_proxies empty, so serve
+			// refuses it until the operator lists Traefik's address.
+			name:    "prod template refuses without trusted_proxies",
+			set:     map[string]string{"config": "../../deploy/bongo.prod.hcl"},
+			wantErr: "requires server.trusted_proxies",
+		},
 		{name: "example config", set: map[string]string{"config": "../../deploy/bongo.example.hcl"}},
 		{
 			name:    "bogus role",

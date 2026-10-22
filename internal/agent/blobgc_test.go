@@ -468,7 +468,7 @@ func TestDeleteSweptBlobsSparesReferencedCandidate(t *testing.T) {
 		t.Fatalf("Set mail: %v", err)
 	}
 
-	deleted, spared, err := a.deleteSweptBlobs([]string{hash}, false)
+	deleted, spared, err := a.deleteSweptBlobs([]string{hash}, time.Now().Add(time.Minute), false)
 	if err != nil {
 		t.Fatalf("deleteSweptBlobs: %v", err)
 	}
@@ -496,7 +496,7 @@ func TestDeleteSweptBlobsStillDeletesUnreferenced(t *testing.T) {
 		t.Fatalf("Put: %v", err)
 	}
 
-	deleted, spared, err := a.deleteSweptBlobs([]string{hash}, false)
+	deleted, spared, err := a.deleteSweptBlobs([]string{hash}, time.Now().Add(time.Minute), false)
 	if err != nil {
 		t.Fatalf("deleteSweptBlobs: %v", err)
 	}
@@ -532,7 +532,7 @@ func TestDeleteSweptBlobsDryRunStillRevalidates(t *testing.T) {
 		t.Fatalf("Set mail: %v", err)
 	}
 
-	deleted, spared, err := a.deleteSweptBlobs([]string{hash}, true)
+	deleted, spared, err := a.deleteSweptBlobs([]string{hash}, time.Now().Add(time.Minute), true)
 	if err != nil {
 		t.Fatalf("deleteSweptBlobs: %v", err)
 	}
@@ -571,7 +571,7 @@ func TestDeleteSweptBlobsSkipsScanWhenNothingToDelete(t *testing.T) {
 
 	a := &Agent{Blobs: blobs, Store: ps, Spool: spool, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
-	deleted, spared, err := a.deleteSweptBlobs(nil, false)
+	deleted, spared, err := a.deleteSweptBlobs(nil, time.Now().Add(time.Minute), false)
 	if err != nil {
 		t.Fatalf("deleteSweptBlobs with nothing to delete must not scan (and so cannot fail), got: %v", err)
 	}
@@ -611,7 +611,7 @@ func TestDeleteSweptBlobsFailedRevalidationDeletesNothing(t *testing.T) {
 
 	a := &Agent{Blobs: blobs, Store: ps, Spool: spool, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 
-	deleted, spared, err := a.deleteSweptBlobs([]string{hash}, false)
+	deleted, spared, err := a.deleteSweptBlobs([]string{hash}, time.Now().Add(time.Minute), false)
 	if err == nil {
 		t.Fatal("expected an error from an unreadable spool directory")
 	}
@@ -654,7 +654,7 @@ func TestDryRunDeletesNothing(t *testing.T) {
 		hashes = append(hashes, h)
 	}
 
-	deleted, _, err := a.deleteSweptBlobs(hashes, true)
+	deleted, _, err := a.deleteSweptBlobs(hashes, time.Now().Add(time.Minute), true)
 	if err != nil {
 		t.Fatalf("deleteSweptBlobs: %v", err)
 	}
@@ -682,7 +682,7 @@ func TestNonDryRunDeletes(t *testing.T) {
 		t.Fatalf("Put: %v", err)
 	}
 
-	deleted, _, err := a.deleteSweptBlobs([]string{h}, false)
+	deleted, _, err := a.deleteSweptBlobs([]string{h}, time.Now().Add(time.Minute), false)
 	if err != nil {
 		t.Fatalf("deleteSweptBlobs: %v", err)
 	}
@@ -1388,7 +1388,7 @@ func TestSweepCandidatesAreLoggedIndividually(t *testing.T) {
 				hashes = append(hashes, h)
 			}
 
-			deleted, spared, err := a.deleteSweptBlobs(hashes, tc.dryRun)
+			deleted, spared, err := a.deleteSweptBlobs(hashes, time.Now().Add(time.Minute), tc.dryRun)
 			if err != nil {
 				t.Fatalf("deleteSweptBlobs: %v", err)
 			}
@@ -1456,7 +1456,7 @@ func TestSweepCandidateLogSurvivesAStatFailure(t *testing.T) {
 	// A well-formed hash that names no file on disk: stat fails, but the
 	// candidate must still be recorded.
 	missing := strings.Repeat("ab", 32)
-	if _, _, err := a.deleteSweptBlobs([]string{missing}, true); err != nil {
+	if _, _, err := a.deleteSweptBlobs([]string{missing}, time.Now().Add(time.Minute), true); err != nil {
 		t.Fatalf("deleteSweptBlobs: %v", err)
 	}
 

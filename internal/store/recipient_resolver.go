@@ -1,9 +1,16 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// ErrRecipientUnavailable is returned (wrapped) by ResolveRecipient when an
+// address matches a routing entry whose target account no longer exists or is
+// disabled. Callers map it to a permanent rejection and must not treat it as
+// "not local", or an authenticated session would relay the mail out.
+var ErrRecipientUnavailable = errors.New("recipient unavailable")
 
 // RecipientResolver resolves an email address to a local user ID.
 //
@@ -31,6 +38,12 @@ import (
 //     returns the owner's user ID when configured. Only domains with an explicit
 //     catch-all entry accept unmatched mail; others are still rejected.
 //     Skipped when pebble is nil (same nil-guard as tier 2a).
+//
+//     Every tier checks that the target's profile exists and is not disabled.
+//     The first tier that matches decides; a dead or disabled target returns
+//     ErrRecipientUnavailable and never falls through to a later tier. This is
+//     the single place that decides inbound mail for disabled or deleted users.
+//     A profile read error fails open.
 //
 //     Reject: returns a non-nil error. Callers should map this to a 550 (no relay).
 //
@@ -81,7 +94,7 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 		if err == nil && ok && rec.UserId != "" {
 			switch {
 			case rec.Kind == "primary" || rec.Kind == "alias":
-				return rec.UserId, nil
+				return r.live(email, rec.UserId)
 			case rec.Kind == "identity" && rec.Verified:
 				identityOwner = rec.UserId // tier 2c, after accounts and aliases
 			}
@@ -97,15 +110,27 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 		aliasData, aliasErr := r.pebble.Get([]byte("/system/alias/" + email))
 		if aliasErr == nil && len(aliasData) > 0 {
 			targetUsername := strings.TrimSpace(string(aliasData))
+			// The alias key matched, so this tier decides. The target is
+			// found through the users table or, when that row is missing
+			// or lagging (the FSM drops it with the profile), through the
+			// address index. A target found by neither is dead: falling
+			// through would hand the mail to the domain catch-all owner.
 			if r.system != nil {
-				var userID string
-				qErr := r.system.DB().QueryRow(
-					"SELECT id FROM users WHERE username = ? AND enabled = 1",
-					targetUsername,
-				).Scan(&userID)
-				if qErr == nil && userID != "" {
-					return userID, nil
+				if userID, enabled, ok := r.usersRow(targetUsername); ok {
+					return r.liveEnabled(email, userID, enabled)
 				}
+			}
+			if r.addresses != nil {
+				rec, ok, err := r.addresses.Get(strings.ToLower(targetUsername))
+				if err == nil && ok && rec.UserId != "" && (rec.Kind == "primary" || rec.Kind == "alias") {
+					return r.live(email, rec.UserId)
+				}
+				if err != nil {
+					return "", fmt.Errorf("resolve recipient: %s: alias target lookup: %w", email, err)
+				}
+			}
+			if r.system != nil || r.addresses != nil {
+				return "", unavailable(email)
 			}
 		}
 	}
@@ -116,19 +141,14 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 	// Note: reads per-node SQLite which may lag behind on followers/edge nodes.
 	// Guarded independently by system != nil (does not require pebble).
 	if r.system != nil {
-		var userID string
-		qErr := r.system.DB().QueryRow(
-			"SELECT id FROM users WHERE username = ? AND enabled = 1",
-			email,
-		).Scan(&userID)
-		if qErr == nil && userID != "" {
-			return userID, nil
+		if userID, enabled, ok := r.usersRow(email); ok {
+			return r.liveEnabled(email, userID, enabled)
 		}
 	}
 
 	// Tier 2c: verified identity (see type comment).
 	if identityOwner != "" {
-		return identityOwner, nil
+		return r.live(email, identityOwner)
 	}
 
 	// Tier 3: per-domain catch-all.
@@ -143,11 +163,57 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 			if catchAllErr == nil && len(catchAllData) > 0 {
 				ownerID := strings.TrimSpace(string(catchAllData))
 				if ownerID != "" {
-					return ownerID, nil
+					return r.live(email, ownerID)
 				}
 			}
 		}
 	}
 
 	return "", fmt.Errorf("resolve recipient: %s: not a local address", email)
+}
+
+// usersRow looks up a users-table row by username. ok is false when no row
+// exists or the query fails (the caller falls through, as a stale or missing
+// local index says nothing about the account).
+func (r *RecipientResolver) usersRow(username string) (id string, enabled, ok bool) {
+	var en int
+	if err := r.system.DB().QueryRow(
+		"SELECT id, enabled FROM users WHERE username = ?", username,
+	).Scan(&id, &en); err != nil || id == "" {
+		return "", false, false
+	}
+	return id, en != 0, true
+}
+
+// liveEnabled is live for tiers that matched through the users table: when
+// Pebble is available the profile decides (the SQLite enabled flag may be
+// stale on a follower); without Pebble the flag is all there is.
+func (r *RecipientResolver) liveEnabled(email, userID string, enabled bool) (string, error) {
+	if r.pebble == nil && !enabled {
+		return "", unavailable(email)
+	}
+	return r.live(email, userID)
+}
+
+// live returns userID when its account exists and is not disabled, and
+// ErrRecipientUnavailable otherwise. The first tier that matches an address
+// decides: an unavailable target is never passed down to a later tier, or a
+// disabled user's mail would fall into the domain catch-all.
+func (r *RecipientResolver) live(email, userID string) (string, error) {
+	if r.pebble == nil {
+		return userID, nil // edge/agent: the server this forwards to checks
+	}
+	exists, disabled, err := profileState(r.pebble, userID)
+	if err != nil {
+		// Fail open: a transient read error must not become a permanent 5xx.
+		return userID, nil
+	}
+	if !exists || disabled {
+		return "", unavailable(email)
+	}
+	return userID, nil
+}
+
+func unavailable(email string) error {
+	return fmt.Errorf("resolve recipient: %s: %w", email, ErrRecipientUnavailable)
 }

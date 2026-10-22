@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -75,10 +76,11 @@ func TestOrphanedAddressShadowsAliasUntilRepaired(t *testing.T) {
 
 	resolver := NewRecipientResolver(as, ps, nil)
 
-	// Before repair: the dead record wins, so mail goes to a nonexistent user.
+	// Before repair: the dead record still wins the tier, but the resolver now
+	// refuses it rather than delivering to a nonexistent user.
 	got, err := resolver.ResolveRecipient("shared@example.com")
-	if err != nil || got != "ghost-user" {
-		t.Fatalf("fixture invalid: expected the orphaned record to shadow the alias, got %q err %v", got, err)
+	if !errors.Is(err, ErrRecipientUnavailable) {
+		t.Fatalf("fixture invalid: expected the orphaned record to be refused, got %q err %v", got, err)
 	}
 
 	orphans, err := FindOrphanedAddresses(ps)

@@ -735,7 +735,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		return nil, fmt.Errorf("delivering to mailbox: %w", err)
 	}
 
-	s.logger.Info("imap: mail stored", "mailbox", mailbox, "user", s.userID, "guid", guid, "subject", subject, "size", size)
+	s.logger.Info("imap: mail stored", "mailbox", mailbox, "user", s.userID, "guid", guid, "size", size)
 
 	// Index for search.
 	if s.search != nil {

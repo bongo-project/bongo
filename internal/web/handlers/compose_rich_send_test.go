@@ -87,6 +87,14 @@ func (e *composeRichTestEnv) registerLocalUser(t *testing.T, userID, email strin
 	if err != nil {
 		t.Fatalf("registerLocalUser(%s): %v", email, err)
 	}
+	// The resolver also requires a live (existing, enabled) profile.
+	data, err := proto.Marshal(&bongov1.UserProfile{Email: email})
+	if err != nil {
+		t.Fatalf("registerLocalUser(%s): marshal profile: %v", email, err)
+	}
+	if err := e.ps.Set([]byte("/user/"+userID+"/profile"), data); err != nil {
+		t.Fatalf("registerLocalUser(%s): profile: %v", email, err)
+	}
 }
 
 // rawSentMessage retrieves the raw RFC 5322 bytes of the first message in the

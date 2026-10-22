@@ -27,6 +27,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/observability"
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -63,6 +64,10 @@ type Backend struct {
 	hostname   string              // public hostname, used in the Received header
 	outboundRL *inboundRateLimiter // nil = disabled; per-user submission rate limit
 
+	// recipientRL is the per-user external-recipient budget shared with web
+	// compose (keyed by user ID). nil = disabled. In memory and per node.
+	recipientRL *mail.RateLimiter
+
 	connLimit *netx.PerIPLimiter  // nil = disabled; per-IP cap from config.SMTPLimits.MaxConnectionsPerIP
 	inboundRL *inboundRateLimiter // nil = disabled; set from config.SMTPLimits.MessagesPerMinute
 
@@ -88,6 +93,15 @@ func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *s
 		authFail:  authlimit.New(maxAuthFailures, authFailWindow),
 	}
 }
+
+// SetRecipientLimiter sets the per-user external-recipient budget. Share one
+// limiter with web compose so both paths draw on the same allowance.
+func (b *Backend) SetRecipientLimiter(rl *mail.RateLimiter) {
+	b.recipientRL = rl
+}
+
+// RecipientLimiter returns the per-user external-recipient budget, or nil.
+func (b *Backend) RecipientLimiter() *mail.RateLimiter { return b.recipientRL }
 
 // SetSPFChecker sets the SPF checker for inbound SPF verification.
 func (b *Backend) SetSPFChecker(checker *mail.SPFChecker) {
@@ -284,8 +298,15 @@ func (s *Session) AuthPlain(username, password string) error {
 	if err != nil {
 		s.authFailures++
 		s.backend.authFail.Fail(ip, username)
-		s.logger.Warn("smtp: auth failed", "username", username, "ip", s.remoteIP)
-		return err
+		// go-smtp writes the returned error to the client verbatim, so the
+		// backend's error text (profile parsing, store failures) must stay in
+		// the server log. Only the error class is logged, never the password.
+		if errors.Is(err, auth.ErrBadCredentials) {
+			s.logger.Warn("smtp: auth failed", "username", username, "ip", s.remoteIP)
+			return errAuthBadCredentials
+		}
+		s.logger.Error("smtp: auth backend error", "username", username, "ip", s.remoteIP, "error", err)
+		return errAuthTemporary
 	}
 
 	if reader := s.accountReader(); reader != nil {
@@ -296,7 +317,7 @@ func (s *Session) AuthPlain(username, password string) error {
 			s.authFailures++
 			s.backend.authFail.Fail(ip, username)
 			s.logger.Warn("smtp: auth refused, account state unavailable", "username", username, "ip", s.remoteIP)
-			return auth.ErrBadCredentials
+			return errAuthBadCredentials
 		}
 		s.epoch = st.Epoch
 	}
@@ -308,6 +329,12 @@ func (s *Session) AuthPlain(username, password string) error {
 	s.logger.Debug("smtp: auth succeeded", "username", username)
 	return nil
 }
+
+// Client-visible AUTH failures. Fixed text only: see the note in AuthPlain.
+var (
+	errAuthBadCredentials = &gosmtp.SMTPError{Code: 535, EnhancedCode: gosmtp.EnhancedCode{5, 7, 8}, Message: "Authentication credentials invalid"}
+	errAuthTemporary      = &gosmtp.SMTPError{Code: 454, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Temporary authentication failure"}
+)
 
 // Compile-time assertion that Session satisfies go-smtp's AuthSession add-on
 // interface. go-smtp v0.24 advertises AUTH and accepts credentials only for
@@ -436,7 +463,8 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		return nil
 	}
 
-	if userID, err := s.backend.resolver.ResolveRecipient(to); err == nil {
+	userID, resolveErr := s.backend.resolver.ResolveRecipient(to)
+	if resolveErr == nil {
 		// Storage quota check: reject permanently if the recipient's owning
 		// domain is at or over its max_storage_bytes limit. The QuotaChecker
 		// derives the primary domain from the already-resolved userID so we
@@ -456,10 +484,27 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		return nil
 	}
 
+	if errors.Is(resolveErr, store.ErrRecipientUnavailable) {
+		// A local address whose account is disabled or deleted. Reject it before
+		// the relay branch, or an authenticated session would send the mail out
+		// to our own MX.
+		s.logger.Warn("smtp: RCPT rejected: recipient unavailable", "to", to)
+		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: "Mailbox unavailable"}
+	}
+
 	// Non-local recipient: relay is only permitted for authenticated senders.
 	if !s.authed {
 		s.logger.Warn("smtp: relay denied for non-local recipient", "to", to, "from", s.from, "ip", s.remoteIP)
 		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "Relaying denied"}
+	}
+	// Per-recipient budget on authenticated submission. This only peeks: a
+	// parallel session can spend the budget before DATA, which commits
+	// atomically. Refusing here lets the client deliver what was accepted and
+	// retry the rest (RFC 5321 s4.5.3.1.10).
+	if s.submission && s.userID != "" && s.backend.recipientRL != nil &&
+		s.backend.recipientRL.Remaining(s.userID) < len(s.externalRcpts)+1 {
+		s.logger.Warn("smtp: outbound recipient limit reached", "user", s.userID)
+		return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 5, 3}, Message: "Too many recipients, try again later"}
 	}
 	s.externalRcpts = append(s.externalRcpts, to)
 	s.logger.Debug("smtp: RCPT TO (relay)", "to", to)
@@ -499,7 +544,7 @@ func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
 func (s *Session) Data(r io.Reader) error {
 	if len(s.localRcpts)+len(s.externalRcpts) == 0 {
 		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-		return fmt.Errorf("no recipients")
+		return &gosmtp.SMTPError{Code: 554, EnhancedCode: gosmtp.EnhancedCode{5, 5, 1}, Message: "No valid recipients"}
 	}
 
 	// Per-IP inbound message-rate check. Applied to MX (inbound) connections only;
@@ -531,9 +576,23 @@ func (s *Session) Data(r io.Reader) error {
 		replay, err := s.checkSubmissionHeaderFrom(r)
 		if err != nil {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-			return err
+			return s.dataFailure("submission header check", err)
 		}
 		r = replay
+	}
+
+	// Commit the recipient budget once the message is otherwise acceptable, so
+	// a message rejected for its From header spends nothing, and before any
+	// blob is stored or queue entry made so a refusal leaves nothing behind.
+	// A refusal here has already spent one message-rate unit, and a later
+	// StoreBlob or Enqueue failure burns recipient budget that was never
+	// sent. Both err on the strict side.
+	if s.submission && s.authed && s.userID != "" && len(s.externalRcpts) > 0 && s.backend.recipientRL != nil {
+		if !s.backend.recipientRL.AllowN(s.userID, len(s.externalRcpts)) {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+			s.logger.Warn("smtp: outbound recipient limit exceeded", "user", s.userID, "recipients", len(s.externalRcpts))
+			return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Outbound recipient limit exceeded, try again later"}
+		}
 	}
 
 	// Build the header prefix streamed ahead of the message body (no full-message
@@ -557,14 +616,12 @@ func (s *Session) Data(r io.Reader) error {
 		blobHash, err := sd.StoreBlob(reader)
 		if err != nil {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-			s.logger.Error("smtp: storing message failed", "from", s.from, "error", err)
-			return err
+			return s.dataFailure("store blob", err)
 		}
 		if len(s.localRcpts) > 0 {
 			if err := sd.EnqueueLocal(s.from, s.localRcpts, blobHash, s.inboundMeta(sourceIP)); err != nil {
 				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-				s.logger.Error("smtp: local delivery failed", "from", s.from, "error", err)
-				return err
+				return s.dataFailure("local delivery", err)
 			}
 		}
 		if len(s.externalRcpts) > 0 {
@@ -581,10 +638,14 @@ func (s *Session) Data(r io.Reader) error {
 				BlobHash:    blobHash,
 				Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
 			}
+			// Partial failure: EnqueueLocal above has already committed, so
+			// returning 451 here makes the sender retry the whole message and
+			// the local recipients receive a duplicate. That is deliberate: a
+			// duplicate is recoverable, a lost message is not, and the two
+			// queues cannot be committed atomically.
 			if err := s.backend.relayQueue.Enqueue(out); err != nil {
 				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-				s.logger.Error("smtp: enqueue outbound relay failed", "from", s.from, "error", err)
-				return err
+				return s.dataFailure("enqueue relay", err)
 			}
 			s.logger.Info("smtp: outbound relay enqueued", "from", s.from, "recipients", s.externalRcpts)
 		}
@@ -600,18 +661,33 @@ func (s *Session) Data(r io.Reader) error {
 	if sd, ok := s.backend.deliverer.(spfDeliverer); ok {
 		if err := sd.DeliverWithSPF(s.from, s.localRcpts, reader, s.inboundMeta(sourceIP)); err != nil {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-			s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
-			return err
+			return s.dataFailure("delivery", err)
 		}
 	} else if err := s.backend.deliverer.Deliver(s.from, s.localRcpts, reader); err != nil {
 		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-		s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
-		return err
+		return s.dataFailure("delivery", err)
 	}
 
 	observability.SMTPMessagesTotal.WithLabelValues("accepted").Inc()
 	s.logger.Info("smtp: message delivered", "from", s.from, "recipients", s.localRcpts)
 	return nil
+}
+
+// dataFailure maps an error from the DATA phase to what the client sees.
+// go-smtp turns any error that is not a bare *SMTPError into a permanent
+// "554 5.0.0 Error: transaction failed: <err>", which would echo internal
+// detail (paths, store errors) and make the sender give up on a transient
+// fault. A deliberate *SMTPError, wrapped or not, is passed through unchanged
+// so permanent policy rejections stay permanent (552 too large, 550 From not
+// owned). Anything else is logged here, never with the subject, and answered
+// with a generic temporary failure so the sender retries.
+func (s *Session) dataFailure(stage string, err error) error {
+	var se *gosmtp.SMTPError
+	if errors.As(err, &se) {
+		return se
+	}
+	s.logger.Error("smtp: data phase failed", "stage", stage, "from", s.from, "ip", s.remoteIP, "error", err)
+	return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Temporary local error, please try again later"}
 }
 
 // checkSendAs enforces the send-as policy for one address on an authenticated

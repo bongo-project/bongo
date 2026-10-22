@@ -23,9 +23,10 @@ func CatchAllKey(domain string) []byte {
 // user. Only domains with an explicitly configured catch-all accept unmatched
 // mail — domains without one continue to reject (no open relay).
 //
-// Partial-failure note: if an owner account is deleted after being configured as
-// a catch-all target, the key remains and routes to the deleted user_id, causing
-// downstream delivery failure. Cleanup is the administrator's responsibility.
+// Owner deletion: DeleteUser removes the catch-alls the user owns
+// (PurgeUserRouting). That is a separate Raft command per key, so a failure can
+// leave one behind; RecipientResolver then rejects the domain's unmatched mail
+// with ErrRecipientUnavailable rather than accepting and dropping it.
 type CatchAllStore struct {
 	pebble  *PebbleStore
 	applier RaftApplier

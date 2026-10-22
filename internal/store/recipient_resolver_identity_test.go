@@ -82,6 +82,9 @@ func TestResolve_UnverifiedIdentityDoesNotRoute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ps, as, sys, resolver := newResolverTestEnv(t)
+			for _, id := range []string{"userA", "userB", "userP", "catcher"} {
+				putUserProfile(t, ps, id, id+"@live.test", false)
+			}
 			tt.setup(t, ps, as, sys)
 			got, err := resolver.ResolveRecipient(tt.addr)
 			if tt.wantErr {

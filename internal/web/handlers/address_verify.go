@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -52,8 +53,15 @@ type AddressVerifyHandler struct {
 	pebble      *store.PebbleStore
 	metadata    *store.MetadataManager
 	applier     store.RaftApplier
+	limiter     interface{ Allow(string) bool } // nil = unlimited; per-user verification-mail cap
 	logger      *slog.Logger
 }
+
+// Limiter returns the per-user verification-mail limiter, or nil.
+func (h *AddressVerifyHandler) Limiter() interface{ Allow(string) bool } { return h.limiter }
+
+// SetLimiter sets the per-user cap on verification mails sent.
+func (h *AddressVerifyHandler) SetLimiter(l interface{ Allow(string) bool }) { h.limiter = l }
 
 // NewAddressVerifyHandler creates an AddressVerifyHandler.
 func NewAddressVerifyHandler(logger *slog.Logger) *AddressVerifyHandler {
@@ -168,7 +176,8 @@ func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.R
 		return
 	}
 	if ok && existing.UserId != userID {
-		http.Redirect(w, r, "/settings/addresses?error=Address+is+already+owned+by+another+account", http.StatusSeeOther)
+		h.logger.Info("address-verify: add refused: address owned by another account", "user_id", userID, "address", address)
+		h.sendAsAddRedirect(w, r)
 		return
 	}
 
@@ -180,12 +189,14 @@ func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.R
 			return
 		}
 		if hosted {
-			http.Redirect(w, r, "/settings/addresses?error=Address+is+already+owned+by+another+account", http.StatusSeeOther)
+			h.logger.Info("address-verify: add refused: domain hosted here", "user_id", userID, "address", address)
+			h.sendAsAddRedirect(w, r)
 			return
 		}
 		if aErr := addressAllocationError(h.pebble, h.metadata, h.applier, address, ""); aErr != nil {
 			if errors.Is(aErr, auth.ErrAccountExists) {
-				http.Redirect(w, r, "/settings/addresses?error=Address+is+already+owned+by+another+account", http.StatusSeeOther)
+				h.logger.Info("address-verify: add refused: address already allocated", "user_id", userID, "address", address)
+				h.sendAsAddRedirect(w, r)
 				return
 			}
 			h.logger.Error("address-verify: add: ownership check failed", "address", address, "error", aErr)
@@ -209,7 +220,15 @@ func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.R
 		h.logger.Info("address-verify: address added", "user_id", userID, "address", address)
 	}
 
-	http.Redirect(w, r, "/settings/addresses?flash=Address+added", http.StatusSeeOther)
+	h.sendAsAddRedirect(w, r)
+}
+
+// sendAsAddRedirect is the single reply to AddSendAsAddress for every
+// non-error outcome: added, already held, taken by another account, hosted
+// domain, alias. The reply must not depend on who owns the address, or the
+// form becomes an oracle for which addresses exist on any tenant.
+func (h *AddressVerifyHandler) sendAsAddRedirect(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/settings/addresses?flash="+url.QueryEscape(fwdText(r, "settings.sendAsRequested")), http.StatusSeeOther)
 }
 
 // RequestVerification issues a one-time verification code for an owned address.
@@ -246,7 +265,7 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		return
 	}
 	if rec.UserId != userID {
-		http.Redirect(w, r, "/settings/addresses?error=Address+is+owned+by+another+account", http.StatusSeeOther)
+		http.Redirect(w, r, "/settings/addresses?error=Address+not+found", http.StatusSeeOther)
 		return
 	}
 	if rec.CanSend && rec.Verified {
@@ -263,6 +282,15 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 	}
 	if hasChallenge && existing != nil && existing.ExpiresAt > time.Now().Unix() {
 		http.Redirect(w, r, "/settings/addresses?error=A+verification+code+has+already+been+sent+to+this+address", http.StatusSeeOther)
+		return
+	}
+
+	// Per-user cap on verification mails. Checked after the ownership and
+	// live-challenge checks and before any write, so a refusal strands no
+	// challenge. The response is constant and never names the address.
+	if h.limiter != nil && !h.limiter.Allow(userID) {
+		h.logger.Warn("address-verify: request: per-user limit reached", "user_id", userID)
+		http.Redirect(w, r, "/settings/addresses?error=Too+many+verification+requests,+try+again+later", http.StatusSeeOther)
 		return
 	}
 
@@ -370,7 +398,7 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if rec.UserId != userID {
-		http.Redirect(w, r, "/settings/addresses?error=Address+is+owned+by+another+account", http.StatusSeeOther)
+		http.Redirect(w, r, "/settings/addresses?error=Address+not+found", http.StatusSeeOther)
 		return
 	}
 

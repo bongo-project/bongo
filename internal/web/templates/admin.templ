@@ -47,6 +47,9 @@ type AdminUserInfo struct {
 	// PrimaryEmail is the user's primary email address (from profile).
 	// Used by the remove-address guard to prevent deletion of the primary address.
 	PrimaryEmail string
+	// TempPassword is set only on the response to a password reset. It is
+	// rendered once and never stored, redirected or logged.
+	TempPassword string
 }
 
 // DNSCheckRow holds one DNS verification row for the domain detail page.
@@ -340,6 +343,12 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 		<div class="admin-scroll">
 			if flash != "" {
 				@FlashMessage(flash, "success")
+			}
+			if !isNew && user.TempPassword != "" {
+				<div class="flash flash-success" role="alert" aria-live="assertive">
+					<p>{ t(ctx, "admin.tempPasswordNotice") }</p>
+					<p>{ t(ctx, "admin.tempPasswordLabel") }: <code id="temp-password">{ user.TempPassword }</code></p>
+				</div>
 			}
 			if isNew {
 				<h1 class="admin-title">{ t(ctx, "admin.createUser") }</h1>

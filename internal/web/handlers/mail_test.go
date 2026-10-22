@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jhillyerd/enmime"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -801,5 +803,389 @@ func TestShowMessageFullPageIncludesLayout(t *testing.T) {
 	}
 	if strings.Contains(htmx.Body.String(), "<html") {
 		t.Errorf("HTMX message response should be a fragment, not a full <html> document")
+	}
+}
+
+// blobSplitFixture is a handler over a store holding one split message that
+// carries a base64 inline image with a filename, delivered to "user1".
+type blobSplitFixture struct {
+	h        *MailHandler
+	bs       *store.BlobStore
+	ps       *store.PebbleStore
+	meta     *bongov1.MailMeta
+	uid      uint32
+	raw      string
+	png      []byte
+	skelHash string
+	spanHash string
+}
+
+func newBlobSplitFixture(t *testing.T) *blobSplitFixture {
+	t.Helper()
+	return newBlobSplitFixtureWithPart(t, "Content-Type: image/png; name=\"x.png\"\r\n"+
+		"Content-Disposition: inline; filename=\"x.png\"\r\n")
+}
+
+// newBlobSplitFixtureWithPart is newBlobSplitFixture with caller-chosen
+// headers (CRLF-terminated, excluding the transfer encoding) on the base64 part.
+func newBlobSplitFixtureWithPart(t *testing.T, partHeaders string) *blobSplitFixture {
+	t.Helper()
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	bs, err := store.NewBlobStore(dir + "/blobs")
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	mailboxes := store.NewMailboxStore(ps, &directApplierTags{ps: ps})
+	if err := mailboxes.CreateMailbox("user1", "INBOX"); err != nil {
+		t.Fatalf("CreateMailbox: %v", err)
+	}
+
+	// 1537 bytes: deliberately not a round number or a multiple of three.
+	png := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte("IMG-DATA!"), 170)...)
+	b64 := strings.Join(chunk76(base64.StdEncoding.EncodeToString(png)), "\r\n")
+	raw := "From: s@ext.test\r\nTo: u@example.com\r\nSubject: pic\r\nMIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nhi\r\n" +
+		"--B\r\n" + partHeaders +
+		"Content-Transfer-Encoding: base64\r\n\r\n" + b64 + "\r\n--B--\r\n"
+
+	sm := store.PrepareSplit([]byte(raw), 512)
+	if sm == nil {
+		t.Fatal("expected the message to split")
+	}
+	skHash, err := bs.Put(sm.Skeleton)
+	if err != nil {
+		t.Fatalf("put skeleton: %v", err)
+	}
+	for _, enc := range sm.Encoded {
+		if _, err := bs.Put(enc); err != nil {
+			t.Fatalf("put span: %v", err)
+		}
+	}
+	if len(sm.Attachments) != 1 {
+		t.Fatalf("split attachments = %d, want 1", len(sm.Attachments))
+	}
+	meta := &bongov1.MailMeta{
+		Guid: "g-inline", Subject: "pic",
+		RawMessage:  &bongov1.BlobRef{Hash: skHash, Size: int64(len(raw))},
+		Attachments: sm.Attachments,
+		Layout:      sm.Layout,
+	}
+	uid, err := mailboxes.DeliverMessage("user1", "INBOX", meta, 0)
+	if err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+	return &blobSplitFixture{
+		h: NewMailHandler(ps, bs, mailboxes, discardLogger()), bs: bs, ps: ps,
+		meta: meta, uid: uid, raw: raw, png: png,
+		skelHash: skHash, spanHash: sm.Attachments[0].Hash,
+	}
+}
+
+func (f *blobSplitFixture) router(userID string) *chi.Mux {
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, req.WithContext(middleware.WithUserContext(req.Context(), userID, userID+"@example.test")))
+		})
+	})
+	r.Get("/mail/blob/{hash}", f.h.ServeBlob)
+	r.Get("/mail/{mailbox}/{uid}/attachment/{idx}", f.h.ServeAttachment)
+	r.Get("/mail/{mailbox}/{uid}/export", f.h.ExportEML)
+	return r
+}
+
+func TestServeBlobCacheControlPrivate(t *testing.T) {
+	f := newBlobSplitFixture(t)
+	r := f.router("user1")
+
+	check := func(t *testing.T, path string) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: status = %d", path, rec.Code)
+		}
+		cc := rec.Header().Get("Cache-Control")
+		if cc == "" || strings.Contains(cc, "public") || !strings.Contains(cc, "private") {
+			t.Errorf("GET %s: Cache-Control = %q, want private and never public", path, cc)
+		}
+	}
+
+	t.Run("blob", func(t *testing.T) {
+		check(t, "/mail/blob/"+f.skelHash)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mail/blob/"+f.skelHash, nil))
+		if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age") {
+			t.Errorf("blob Cache-Control = %q, want a max-age", cc)
+		}
+	})
+	t.Run("attachment", func(t *testing.T) {
+		check(t, fmt.Sprintf("/mail/INBOX/%d/attachment/0", f.uid))
+	})
+	t.Run("eml", func(t *testing.T) {
+		check(t, fmt.Sprintf("/mail/INBOX/%d/export", f.uid))
+	})
+}
+
+func TestSplitInlineImageWithFilenameServedDecoded(t *testing.T) {
+	f := newBlobSplitFixture(t)
+
+	detail := templates.MessageDetail{Mailbox: "INBOX", UID: f.uid}
+	f.h.applyEnvelopeBody(&detail, f.meta)
+	if len(detail.Attachments) != 1 {
+		t.Fatalf("attachments = %d, want 1", len(detail.Attachments))
+	}
+	att := detail.Attachments[0]
+	if att.Hash != "" {
+		t.Errorf("split inline part must not carry the encoded span hash, got %q", att.Hash)
+	}
+	wantURL := fmt.Sprintf("/mail/INBOX/%d/attachment/0", f.uid)
+	if att.URL != wantURL {
+		t.Fatalf("inline part URL = %q, want %q", att.URL, wantURL)
+	}
+
+	r := f.router("user1")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, att.URL+"?inline=1", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), f.png) {
+		t.Fatalf("inline image not decoded: got %d bytes, want %d", rec.Body.Len(), len(f.png))
+	}
+
+	// The encoded span must not be reachable as base64 text.
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mail/blob/"+f.spanHash, nil))
+	if rec.Code == http.StatusOK {
+		t.Errorf("encoded span served via /mail/blob (%d bytes)", rec.Body.Len())
+	}
+}
+
+func TestServeBlobSplitRawHashReturnsReconstructed(t *testing.T) {
+	f := newBlobSplitFixture(t)
+	rec := httptest.NewRecorder()
+	f.router("user1").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mail/blob/"+f.skelHash, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if rec.Body.String() != f.raw {
+		t.Fatalf("raw hash served %d bytes, want the full %d byte message", rec.Body.Len(), len(f.raw))
+	}
+}
+
+func TestServeBlobCrossUser(t *testing.T) {
+	t.Run("shared blob", func(t *testing.T) {
+		router, bs, ps := setupServeBlobRouter(t)
+		hash, err := bs.Put([]byte("shared dataset blob"))
+		if err != nil {
+			t.Fatalf("blob put: %v", err)
+		}
+		// Only another user references the blob.
+		other := &bongov1.MailMeta{Guid: "other-g", Attachments: []*bongov1.BlobRef{{Hash: hash}}}
+		data, err := proto.Marshal(other)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := ps.Set([]byte("/user/other-user/mail/other-g"), data); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+		get := func() int {
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mail/blob/"+hash, nil))
+			return rec.Code
+		}
+		if code := get(); code != http.StatusNotFound {
+			t.Fatalf("non-owner status = %d, want 404", code)
+		}
+		// Positive control: same router, same blob, now referenced by the caller.
+		ownBlobForTestUser(t, ps, hash)
+		if code := get(); code != http.StatusOK {
+			t.Fatalf("owner status = %d, want 200", code)
+		}
+	})
+
+	t.Run("split skeleton", func(t *testing.T) {
+		f := newBlobSplitFixture(t)
+		for _, hash := range []string{f.skelHash, f.spanHash} {
+			rec := httptest.NewRecorder()
+			f.router("user2").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mail/blob/"+hash, nil))
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("user2 fetching user1's %s: status = %d, want 404", hash[:8], rec.Code)
+			}
+		}
+		rec := httptest.NewRecorder()
+		f.router("user1").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mail/blob/"+f.skelHash, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("owner fetching own raw hash: status = %d, want 200", rec.Code)
+		}
+	})
+}
+
+// A part named only by Content-Type name= (no Content-Disposition) lands in
+// enmime's OtherParts; attsplit still stores it as an encoded span.
+func TestSplitNamedPartWithoutDispositionServedDecoded(t *testing.T) {
+	f := newBlobSplitFixtureWithPart(t, "Content-Type: application/pdf; name=\"inv.pdf\"\r\n")
+
+	detail := templates.MessageDetail{Mailbox: "INBOX", UID: f.uid}
+	f.h.applyEnvelopeBody(&detail, f.meta)
+	if len(detail.Attachments) != 1 {
+		t.Fatalf("attachments = %d, want 1", len(detail.Attachments))
+	}
+	att := detail.Attachments[0]
+	if att.Filename != "inv.pdf" {
+		t.Errorf("filename = %q, want inv.pdf", att.Filename)
+	}
+	if att.Hash != "" || strings.Contains(att.URL, "/mail/blob/") {
+		t.Errorf("split part exposes span: hash=%q url=%q", att.Hash, att.URL)
+	}
+	wantURL := fmt.Sprintf("/mail/INBOX/%d/attachment/0", f.uid)
+	if att.URL != wantURL {
+		t.Fatalf("URL = %q, want %q", att.URL, wantURL)
+	}
+	rec := httptest.NewRecorder()
+	f.router("user1").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, att.URL, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), f.png) {
+		t.Fatalf("part not decoded: got %d bytes, want %d", rec.Body.Len(), len(f.png))
+	}
+}
+
+// A split record's proto attachment that no envelope part matches must never
+// be listed with a span hash or a /mail/blob URL.
+func TestSplitUnmatchedSpanNeverLinked(t *testing.T) {
+	f := newBlobSplitFixture(t)
+	meta := proto.Clone(f.meta).(*bongov1.MailMeta)
+	meta.Attachments = append(meta.Attachments, &bongov1.BlobRef{Hash: "ghostspanhash", Filename: "ghost.bin", Size: 9})
+
+	detail := templates.MessageDetail{Mailbox: "INBOX", UID: f.uid}
+	f.h.applyEnvelopeBody(&detail, meta)
+	for _, a := range detail.Attachments {
+		if a.Hash != "" || strings.Contains(a.URL, "/mail/blob/") {
+			t.Errorf("split record exposes span: %+v", a)
+		}
+	}
+}
+
+// The same hash referenced by a split and a non-split message of one user:
+// the non-split reference (stored bytes are the real content) must win.
+func TestServeBlobPrefersNonSplitReference(t *testing.T) {
+	f := newBlobSplitFixture(t)
+	r := f.router("user1")
+	get := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mail/blob/"+f.spanHash, nil))
+		return rec
+	}
+	if rec := get(); rec.Code != http.StatusNotFound {
+		t.Fatalf("split-only span status = %d, want 404", rec.Code)
+	}
+	plain := &bongov1.MailMeta{Guid: "z-plain", Attachments: []*bongov1.BlobRef{{Hash: f.spanHash}}}
+	data, err := proto.Marshal(plain)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	// Sorts after the split record's key so a first-match scan would pick the split one.
+	if err := f.ps.Set([]byte("/user/user1/mail/z-plain"), data); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if rec := get(); rec.Code != http.StatusOK {
+		t.Fatalf("with non-split reference status = %d, want 200", rec.Code)
+	}
+}
+
+// ServeAttachment must answer 404, not index past the slice, for an index at
+// or beyond the number of servable parts.
+func TestServeAttachmentIndexBounds(t *testing.T) {
+	f := newBlobSplitFixture(t)
+	r := f.router("user1")
+	n := len(servableParts(mustEnvelope(t, f.raw)))
+	if n != 1 {
+		t.Fatalf("servable parts = %d, want 1", n)
+	}
+	for _, idx := range []int{n, n + 1, 99} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/INBOX/%d/attachment/%d", f.uid, idx), nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("attachment/%d status = %d, want 404", idx, rec.Code)
+		}
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/INBOX/%d/attachment/%d", f.uid, n-1), nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("last valid index status = %d, want 200", rec.Code)
+	}
+}
+
+func mustEnvelope(t *testing.T, raw string) *enmime.Envelope {
+	t.Helper()
+	env, _, err := mimesafe.ReadEnvelope([]byte(raw))
+	if err != nil {
+		t.Fatalf("ReadEnvelope: %v", err)
+	}
+	return env
+}
+
+// Existing /attachment/{idx} links must keep their meaning: regular
+// attachments come first, named inline parts after them, whatever the order
+// of the parts in the message.
+func TestAttachmentIndexOrderRegularBeforeInline(t *testing.T) {
+	f := newBlobSplitFixture(t)
+	regular := append([]byte("REGULAR-"), bytes.Repeat([]byte("abc"), 101)...)
+	b64 := func(b []byte) string {
+		return strings.Join(chunk76(base64.StdEncoding.EncodeToString(b)), "\r\n")
+	}
+	// The inline image precedes the attachment in the message on purpose.
+	raw := "From: s@ext.test\r\nTo: u@example.com\r\nSubject: order\r\nMIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nhi\r\n" +
+		"--B\r\nContent-Type: image/png; name=\"x.png\"\r\nContent-Disposition: inline; filename=\"x.png\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\n" + b64(f.png) + "\r\n" +
+		"--B\r\nContent-Type: application/octet-stream; name=\"a.bin\"\r\nContent-Disposition: attachment; filename=\"a.bin\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\n" + b64(regular) + "\r\n--B--\r\n"
+
+	hash, err := f.bs.Put([]byte(raw))
+	if err != nil {
+		t.Fatalf("put raw: %v", err)
+	}
+	mailboxes := store.NewMailboxStore(f.ps, &directApplierTags{ps: f.ps})
+	meta := &bongov1.MailMeta{Guid: "g-order", Subject: "order", RawMessage: &bongov1.BlobRef{Hash: hash, Size: int64(len(raw))}}
+	uid, err := mailboxes.DeliverMessage("user1", "INBOX", meta, 0)
+	if err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+
+	detail := templates.MessageDetail{Mailbox: "INBOX", UID: uid}
+	f.h.applyEnvelopeBody(&detail, meta)
+	if len(detail.Attachments) != 2 {
+		t.Fatalf("attachments = %d, want 2", len(detail.Attachments))
+	}
+	for i, want := range []string{"a.bin", "x.png"} {
+		if got := detail.Attachments[i].Filename; got != want {
+			t.Errorf("chip %d filename = %q, want %q", i, got, want)
+		}
+		if got, wantURL := detail.Attachments[i].URL, fmt.Sprintf("/mail/INBOX/%d/attachment/%d", uid, i); got != wantURL {
+			t.Errorf("chip %d URL = %q, want %q", i, got, wantURL)
+		}
+	}
+
+	r := f.router("user1")
+	for i, want := range [][]byte{regular, f.png} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/INBOX/%d/attachment/%d", uid, i), nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("attachment/%d status = %d", i, rec.Code)
+		}
+		if !bytes.Equal(rec.Body.Bytes(), want) {
+			t.Errorf("attachment/%d served %d bytes, want %d (order changed)", i, rec.Body.Len(), len(want))
+		}
 	}
 }
