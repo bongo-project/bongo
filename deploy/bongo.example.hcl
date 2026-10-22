@@ -47,7 +47,10 @@ server {
 
   # Address Raft/gossip advertise to peers. For a SINGLE node this only ever
   # talks to itself, so loopback is correct. Set to the node's routable IP only
-  # if you later form a multi-node cluster.
+  # if you later form a multi-node cluster. While this is loopback (or
+  # "localhost"), raft and gossip listen on loopback only regardless of
+  # bind_addr; a routable value makes them follow bind_addr. A server with
+  # cluster.join set is refused if this is loopback.
   advertise_addr = "127.0.0.1"
 
   # agents — ONLY for role = "agent". The list of protocol processors this agent

@@ -16,6 +16,11 @@ server {
   # container network). Raft advertises loopback: this is a single node with no
   # peers, so it only ever talks to itself. Set this to the node's routable IP
   # if you later form a multi-node cluster.
+  #
+  # While advertise_addr is loopback, raft (8300) and gossip (8301) listen on
+  # loopback only, whatever bind_addr says, so other containers on the compose
+  # network cannot reach them. A routable advertise_addr makes them follow
+  # bind_addr again.
   bind_addr      = "0.0.0.0"
   advertise_addr = "127.0.0.1"
 }

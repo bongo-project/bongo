@@ -269,6 +269,12 @@ controlling terminal on a foreground `serve`, and a process started under
   which the container does not see until it restarts. Edit in place, or check
   what the container sees before sending the signal:
   `docker compose exec bongo cat /etc/bongo/bongo.hcl`.
+- **Cluster ports are loopback-only on a single node.** With
+  `advertise_addr = "127.0.0.1"` (the shipped default), raft (8300) and gossip
+  (8301) listen on loopback inside the container even though `bind_addr` is
+  `0.0.0.0` for the mail and HTTP listeners. Not publishing the ports is not
+  enough on its own: other containers on the `traefik` network could otherwise
+  reach them. Setting a routable `advertise_addr` restores the wide bind.
 - **Config is per node.** SIGHUP reloads the node that receives it. In a
   cluster, edit the file and send the signal on every node.
 

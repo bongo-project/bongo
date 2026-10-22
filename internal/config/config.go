@@ -35,9 +35,14 @@ type Config struct {
 // Roles: "server" (Raft voter, full stack), "edge" (stateless proxy), "dev" (all-in-one ephemeral),
 // "agent" (remote processor, requires agents list).
 type ServerConfig struct {
-	Role          string   `hcl:"role,optional" mapstructure:"role"`
-	Name          string   `hcl:"name,optional" mapstructure:"name"`
-	Datacenter    string   `hcl:"datacenter,optional" mapstructure:"datacenter"`
+	Role       string `hcl:"role,optional" mapstructure:"role"`
+	Name       string `hcl:"name,optional" mapstructure:"name"`
+	Datacenter string `hcl:"datacenter,optional" mapstructure:"datacenter"`
+	// BindAddr is shared by the protocol listeners, raft and gossip. When the
+	// effective advertise address (AdvertiseAddr, else BindAddr) is a loopback
+	// literal or "localhost", raft and gossip bind to that loopback address
+	// instead, so a single node does not expose its cluster transports to
+	// other hosts or containers. Hostnames are not resolved.
 	BindAddr      string   `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
 	AdvertiseAddr string   `hcl:"advertise_addr,optional" mapstructure:"advertise_addr"`
 	Agents        []string `hcl:"agents,optional" mapstructure:"agents"`
@@ -767,6 +772,15 @@ func (c *Config) Validate() error {
 		if len(missing) > 0 {
 			return fmt.Errorf("cluster: joining peers requires transport security before a multi-node cluster can form; set %s (see docs/multi-node-cluster-checklist.md)", strings.Join(missing, " and "))
 		}
+		// Peers are handed the advertised address; a loopback one can never be
+		// reached from another node, and raft/gossip bind to it exclusively.
+		adv := c.Server.AdvertiseAddr
+		if adv == "" {
+			adv = c.Server.BindAddr
+		}
+		if IsLoopbackHost(adv) {
+			return fmt.Errorf("cluster: cluster.join is set but raft/gossip advertise the loopback address %q; set server.advertise_addr to this node's routable IP", adv)
+		}
 	}
 
 	if err := c.Cluster.Raft.Validate(); err != nil {
@@ -1230,4 +1244,14 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 	ApplyOverrides(v, cfg)
 
 	return cfg, configFile, nil
+}
+
+// IsLoopbackHost reports whether host is a loopback IP literal or "localhost".
+// Other hostnames are not resolved and count as non-loopback.
+func IsLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

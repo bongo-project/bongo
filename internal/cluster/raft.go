@@ -84,7 +84,7 @@ func NewRaftNode(
 	case "server":
 		// TCP transport for production clusters.
 		raftPort := strconv.Itoa(cfg.Cluster.Raft.Port)
-		bindAddr := net.JoinHostPort(cfg.Server.BindAddr, raftPort)
+		bindAddr := net.JoinHostPort(clusterBindHost(cfg), raftPort)
 		advertise := bindAddr
 		if cfg.Server.AdvertiseAddr != "" {
 			advertise = net.JoinHostPort(cfg.Server.AdvertiseAddr, raftPort)

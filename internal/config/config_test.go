@@ -734,6 +734,90 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "server joining peers while advertising loopback is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "0.0.0.0"
+				c.Server.AdvertiseAddr = "127.0.0.1"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: true,
+			errMsg:  "loopback",
+		},
+		{
+			name: "server joining peers with loopback bind and no advertise is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "127.0.0.1"
+				c.Server.AdvertiseAddr = ""
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: true,
+			errMsg:  "loopback",
+		},
+		{
+			name: "server joining peers with routable advertise is allowed",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "0.0.0.0"
+				c.Server.AdvertiseAddr = "10.0.0.5"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "server joining peers while advertising localhost is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "0.0.0.0"
+				c.Server.AdvertiseAddr = "localhost"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: true,
+			errMsg:  "loopback",
+		},
+		{
+			name: "server joining peers while advertising the IPv6 loopback is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "0.0.0.0"
+				c.Server.AdvertiseAddr = "::1"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: true,
+			errMsg:  "loopback",
+		},
+		{
 			name:    "no trusted networks is valid",
 			modify:  func(c *Config) { c.SMTP.TrustedNetworks = nil },
 			wantErr: false,
@@ -1460,6 +1544,28 @@ func TestConnectionLimitDefaults(t *testing.T) {
 			}
 			if tt.gotPerIP != 50 {
 				t.Errorf("max_connections_per_ip = %d, want 50", tt.gotPerIP)
+			}
+		})
+	}
+}
+
+func TestIsLoopbackHost(t *testing.T) {
+	tests := []struct {
+		host string
+		want bool
+	}{
+		{"127.0.0.1", true},
+		{"::1", true},
+		{"LOCALHOST", true},
+		{"127.0.0.2", true},
+		{"10.0.0.5", false},
+		{"mail.example.com", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			if got := IsLoopbackHost(tt.host); got != tt.want {
+				t.Errorf("IsLoopbackHost(%q) = %v, want %v", tt.host, got, tt.want)
 			}
 		})
 	}
