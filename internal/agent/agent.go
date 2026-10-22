@@ -843,6 +843,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// CardDAV endpoint with basic auth.
 	if a.Contacts != nil {
 		carddavBackend := bongocarddav.NewBackend(a.Contacts, a.Search, a.logger)
+		if a.DomainQuota != nil {
+			carddavBackend.SetQuotaChecker(a.DomainQuota)
+		}
 		carddavHandler := &carddavHTTPHandler{
 			auth:    a.Auth,
 			backend: carddavBackend,
@@ -858,6 +861,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// CalDAV endpoint with basic auth.
 	if a.Events != nil && a.Calendars != nil {
 		caldavBackend := bongocaldav.NewBackend(a.Events, a.Calendars, a.logger)
+		if a.DomainQuota != nil {
+			caldavBackend.SetQuotaChecker(a.DomainQuota)
+		}
 		caldavHandler := &caldavHTTPHandler{
 			auth:    a.Auth,
 			backend: caldavBackend,
@@ -1574,6 +1580,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		plainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapPort))
 		tlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapTLSPort))
 
+		if a.DomainQuota != nil {
+			a.IMAP.SetQuotaChecker(a.DomainQuota)
+		}
 		a.IMAP.SetConnectionLimits(a.Config.IMAP.MaxConnections, a.Config.IMAP.MaxConnectionsPerIP)
 		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol); err != nil {
 			return fmt.Errorf("imap listen: %w", err)
@@ -2539,9 +2548,14 @@ func (a *Agent) recomputeDomainUsage() {
 	computeAndWriteDomainUsage(a.Store, a.DomainQuota, a.logger)
 }
 
-// computeAndWriteDomainUsage scans all /user/{id}/mail/{guid} MailMeta keys in
-// pebble, sums raw_message.size per primary domain (derived from the owner's
-// /user/{id}/profile), and writes the per-domain totals via quotaStore.SetUsage.
+// computeAndWriteDomainUsage scans the /user/{id}/mail/{guid} MailMeta keys in
+// pebble and sums raw_message.size per primary domain (derived from the owner's
+// /user/{id}/profile). It also adds len(ical_raw) for /user/{id}/event/{guid}
+// and len(vcard_raw) for /user/{id}/contact/{guid}: those live inline in Pebble
+// rather than as blobs, and CalDAV/CardDAV PUT is quota-gated, so they must
+// count. The per-domain totals are written via quotaStore.SetUsage.
+//
+// IMAP COPY/MOVE add a MailboxMessage, not a MailMeta, so they are not counted.
 //
 // Extracted from recomputeDomainUsage so it can be called directly in tests
 // without needing a live Raft cluster.
@@ -2563,10 +2577,14 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 
 	for iter.Next() {
 		key := string(iter.Key())
-		// We only care about /user/{id}/mail/{guid} keys.
+		// We only care about mail, event and contact records.
 		rest := strings.TrimPrefix(key, "/user/")
 		parts := strings.SplitN(rest, "/", 3)
-		if len(parts) != 3 || parts[1] != "mail" {
+		if len(parts) != 3 {
+			continue
+		}
+		kind := parts[1]
+		if kind != "mail" && kind != "event" && kind != "contact" {
 			continue
 		}
 		userID := parts[0]
@@ -2597,12 +2615,27 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 		if vErr != nil {
 			continue
 		}
-		var meta bongov1.MailMeta
-		if uErr := proto.Unmarshal(val, &meta); uErr != nil {
-			continue
-		}
-		if meta.RawMessage != nil {
-			domainBytes[domain] += meta.RawMessage.Size
+		switch kind {
+		case "mail":
+			var meta bongov1.MailMeta
+			if uErr := proto.Unmarshal(val, &meta); uErr != nil {
+				continue
+			}
+			if meta.RawMessage != nil {
+				domainBytes[domain] += meta.RawMessage.Size
+			}
+		case "event":
+			var ev bongov1.Event
+			if uErr := proto.Unmarshal(val, &ev); uErr != nil {
+				continue
+			}
+			domainBytes[domain] += int64(len(ev.IcalRaw))
+		case "contact":
+			var c bongov1.Contact
+			if uErr := proto.Unmarshal(val, &c); uErr != nil {
+				continue
+			}
+			domainBytes[domain] += int64(len(c.VcardRaw))
 		}
 	}
 	iter.Close()

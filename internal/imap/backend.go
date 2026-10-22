@@ -22,6 +22,13 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
+// quotaChecker is satisfied by *store.DomainQuotaStore, the same checker SMTP
+// RCPT uses (smtp.QuotaChecker), so both protocols decide "over quota" with
+// one implementation.
+type quotaChecker interface {
+	RecipientOverQuota(userID string) (bool, error)
+}
+
 // session implements imapserver.Session and imapserver.SessionMove.
 type session struct {
 	auth      auth.Authenticator
@@ -33,6 +40,9 @@ type session struct {
 	search    *store.SearchManager
 	notifier  *Notifier
 	logger    *slog.Logger
+
+	// quota gates APPEND. Nil means unlimited (dev, tests, edge).
+	quota quotaChecker
 
 	// Brute-force defence: per-source-IP failed-LOGIN throttling. authLimiter is
 	// shared across connections; remoteIP identifies this connection's source.
@@ -596,6 +606,27 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	// implicitly. Checked before any blob work; go-imap drains the literal.
 	if err := s.requireMailbox(mailbox, errTryCreate); err != nil {
 		return nil, err
+	}
+
+	// Storage quota, checked before any blob or metadata is written so a
+	// refused APPEND leaves nothing behind. Same checker as SMTP RCPT, so it has
+	// the same limits: usage is recomputed every few minutes and the check does
+	// not weigh this message's size, so a user just under quota can still land
+	// one APPEND (up to maxAppendBytes) before the next recompute. A checker
+	// error fails open, as SMTP does. Nothing here blocks EXPUNGE, COPY or MOVE,
+	// so a user over quota can still free space.
+	if s.quota != nil {
+		over, qErr := s.quota.RecipientOverQuota(s.userID)
+		if qErr != nil {
+			s.logger.Warn("imap: quota check error (fail open)", "mailbox", mailbox, "user", s.userID, "error", qErr)
+		} else if over {
+			s.logger.Warn("imap: append refused: domain over storage quota", "mailbox", mailbox, "user", s.userID)
+			return nil, &imap.Error{
+				Type: imap.StatusResponseTypeNo,
+				Code: imap.ResponseCodeOverQuota,
+				Text: "Storage quota exceeded",
+			}
+		}
 	}
 
 	// Store raw message as a blob.
@@ -1601,6 +1632,12 @@ func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsO
 }
 
 // Copy copies messages to another mailbox.
+//
+// COPY (and MOVE, which is COPY plus removal) is deliberately not quota-gated
+// and does not count toward usage. It writes a new MailboxMessage that points
+// at the existing MailMeta and blob: no new bytes are stored, and usage is
+// summed per MailMeta, so the copy is free under the existing accounting.
+// Refusing it would also block moving mail to Trash to get back under quota.
 func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) {
 	if err := s.checkAccount(); err != nil {
 		return nil, err
