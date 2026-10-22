@@ -200,7 +200,7 @@ func startRevokeServer(t *testing.T, e *revokeEnv) string {
 	e.ms.SetNotifier(NewStoreNotifier(notifier))
 	srv := NewServer(e.auth, e.ps, blobs, e.ms, nil, nil, nil, notifier, nil, true,
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err := srv.Listen("127.0.0.1:0", "", nil, false); err != nil {
+	if err := srv.Listen("127.0.0.1:0", "", nil, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	go func() { _ = srv.Serve() }()

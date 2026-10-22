@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/netx"
 )
 
 const (
@@ -80,6 +81,11 @@ func TestSMTPPerIPConnectionCap(t *testing.T) {
 		Limits:         config.SMTPLimits{MaxConnections: 100, MaxConnectionsPerIP: 2},
 	}
 	srv := NewServer(cfg, NewBackend(nil, nil, testLogger()), true, testLogger())
+	tp, err := netx.ParseTrustedProxies([]string{"127.0.0.1/32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.SetTrustedProxies(tp)
 	srv.mx.Addr = "127.0.0.1:0"
 	srv.submission.Addr = "127.0.0.1:0"
 	if err := srv.Listen(); err != nil {
@@ -122,5 +128,57 @@ func TestSMTPPerIPConnectionCap(t *testing.T) {
 			t.Fatal("slot was never freed after close")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestSMTPPROXYHeaderFromUnlistedPeerIgnored proves a PROXY header from a peer
+// outside the trust set is dropped: forged distinct sources all key on the
+// real peer, so the per-IP cap still applies.
+func TestSMTPPROXYHeaderFromUnlistedPeerIgnored(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		trusted []string
+	}{
+		{"empty", nil},
+		{"other peer listed", []string{"10.9.9.9/32"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.SMTPConfig{
+				Port:           2525,
+				SubmissionPort: 2587,
+				ProxyProtocol:  true,
+				Limits:         config.SMTPLimits{MaxConnections: 100, MaxConnectionsPerIP: 2},
+			}
+			srv := NewServer(cfg, NewBackend(nil, nil, testLogger()), true, testLogger())
+			tp, err := netx.ParseTrustedProxies(tc.trusted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			srv.SetTrustedProxies(tp)
+			srv.mx.Addr = "127.0.0.1:0"
+			srv.submission.Addr = "127.0.0.1:0"
+			if err := srv.Listen(); err != nil {
+				t.Fatal(err)
+			}
+			go func() { _ = srv.Serve() }()
+			t.Cleanup(func() { _ = srv.Close() })
+			for _, l := range []struct{ name, addr string }{
+				{"mx", srv.MXAddr()},
+				{"submission", srv.SubmissionAddr()},
+			} {
+				t.Run(l.name, func(t *testing.T) {
+					for _, ip := range []string{smtpClientA, smtpClientB} {
+						c := dialSMTPAs(t, l.addr, ip)
+						if got := c.hello(t); !strings.HasPrefix(got, "250") {
+							t.Fatalf("EHLO from forged %s = %q", ip, got)
+						}
+					}
+					c3 := dialSMTPAs(t, l.addr, "192.0.2.55")
+					if got := c3.hello(t); !strings.HasPrefix(got, "421") {
+						t.Fatalf("third EHLO = %q, want 421 (forged sources must share the real peer's cap)", got)
+					}
+				})
+			}
+		})
 	}
 }

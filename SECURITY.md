@@ -64,6 +64,17 @@ request. The per-user lock that serialises this is per node; two nodes (or a
 follower that has not applied the previous write) can race inside a few
 milliseconds. DAV Basic Auth and protocol logins do not use TOTP.
 
+**Forwarded client IPs are trusted only from configured proxies.** PROXY protocol
+headers and `X-Forwarded-For` / `X-Forwarded-Proto` are honoured only from the
+addresses in `server.trusted_proxies`. Nothing is trusted by default, loopback and
+private ranges included, and startup fails if `proxy_protocol` is enabled with an
+empty list. Operators behind a proxy must set it to the proxy's address. If you
+list a whole container network rather than the proxy's own `/32`, any container on
+that network can still forge client IPs. With `web.behind_tls_proxy` set and no
+trusted proxy, forwarded headers are ignored: rate limits and lockout see the
+proxy's IP and `/metrics` sees a private address, so keep the proxy-level
+restriction on `/metrics`.
+
 **Shutdown waits up to 30 seconds for in-flight mail.** On shutdown the server
 waits for pipeline messages and store-touching background workers to finish
 before stopping Raft and closing storage. If a message is still running after the

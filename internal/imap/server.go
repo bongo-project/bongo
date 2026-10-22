@@ -166,8 +166,9 @@ func (s *Server) SetConnectionLimits(maxConn, maxPerIP int) {
 }
 
 // Listen binds the IMAP listeners. When proxyProtocol is set, the PROXY header
-// is read before TLS so the real client IP is preserved behind a TCP proxy.
-func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config, proxyProtocol bool) error {
+// is read before TLS so the real client IP is preserved behind a TCP proxy;
+// it is honoured only from peers listed in trust.
+func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config, proxyProtocol bool, trust *netx.TrustedProxies) error {
 	if s.maxConn <= 0 {
 		s.maxConn = netx.DefaultMaxConnections
 	}
@@ -175,7 +176,7 @@ func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config, proxyProtocol 
 	if err != nil {
 		return fmt.Errorf("imap listen %s: %w", addr, err)
 	}
-	s.plainListener = netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(plain, s.maxConn), proxyProtocol), s.connLimit)
+	s.plainListener = netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(plain, s.maxConn), proxyProtocol, trust, netx.WithRejectLogger(s.logger)), s.connLimit)
 	s.logger.Info("imap: listening", "addr", s.plainListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 
 	if addrTLS != "" && tlsCfg != nil {
@@ -188,7 +189,7 @@ func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config, proxyProtocol 
 		}
 		// PROXY header must be read before the TLS handshake, so wrap the raw
 		// listener first and layer TLS on top.
-		s.tlsListener = tls.NewListener(netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(rawTLS, s.maxConn), proxyProtocol), s.connLimit), tlsCfg)
+		s.tlsListener = tls.NewListener(netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(rawTLS, s.maxConn), proxyProtocol, trust, netx.WithRejectLogger(s.logger)), s.connLimit), tlsCfg)
 		s.logger.Info("imaps: listening", "addr", s.tlsListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 	}
 

@@ -141,10 +141,10 @@ func (b *Backend) SetRelayQueue(q RelayQueuer) {
 // nothing.
 //
 // Security note: when smtp.proxy_protocol is enabled, the effective source IP
-// can be asserted by any peer connecting from a loopback/private/link-local
-// address (see internal/netx/proxyproto.go). In that configuration,
+// can be asserted only by a peer listed in server.trusted_proxies (see
+// internal/netx/proxyproto.go). In that configuration,
 // trusted_networks is only as trustworthy as the set of hosts that can reach
-// the SMTP listener from such an address.
+// the SMTP listener from a listed proxy address.
 func (b *Backend) SetTrustedNetworks(nets []*net.IPNet) {
 	if len(nets) == 0 {
 		b.trustedNets.Store(nil)
@@ -757,7 +757,9 @@ type Server struct {
 	backend       *Backend
 	maxConn       int
 	proxyProtocol bool
-	logger        *slog.Logger
+	// trustedProxies lists the peers whose PROXY header is honoured.
+	trustedProxies *netx.TrustedProxies
+	logger         *slog.Logger
 
 	mxListener  net.Listener
 	subListener net.Listener
@@ -869,6 +871,10 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	}
 }
 
+// SetTrustedProxies sets the peers whose PROXY protocol header is honoured
+// (server.trusted_proxies). Call before Listen. nil trusts nobody.
+func (s *Server) SetTrustedProxies(t *netx.TrustedProxies) { s.trustedProxies = t }
+
 // Listen binds the MX and submission ports. Call Serve() after to start handling.
 // Both listeners are wrapped with a global concurrent-connection cap to bound
 // goroutine/memory use under a connection flood.
@@ -892,8 +898,8 @@ func (s *Server) Listen() error {
 	}
 	// Read the PROXY protocol header (from a TCP-terminating proxy) so the real
 	// client IP is available for SPF and logging.
-	mxl = netx.MaybeProxyProtocol(mxl, s.proxyProtocol)
-	subl = netx.MaybeProxyProtocol(subl, s.proxyProtocol)
+	mxl = netx.MaybeProxyProtocol(mxl, s.proxyProtocol, s.trustedProxies, netx.WithRejectLogger(s.logger))
+	subl = netx.MaybeProxyProtocol(subl, s.proxyProtocol, s.trustedProxies, netx.WithRejectLogger(s.logger))
 	s.mxListener = mxl
 	s.subListener = subl
 

@@ -441,7 +441,26 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   for production.
 - **No log rotation on `bongo.jsonl`:** add `logrotate` or cap it if it runs for
   a long time.
-- **Inbound SPF is blind behind Traefik TCP.** Because inbound SMTP (port 25) is
+- **Set `trusted_proxies` before the first deploy.** `deploy/bongo.prod.hcl`
+  ships `172.18.0.0/16`, a placeholder, not Traefik's real address. Find Traefik's
+  address on the shared network with
+  `docker network inspect ${TRAEFIK_NETWORK} --format '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{"\n"}}{{end}}'`
+  (or `docker inspect <traefik-container> --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`),
+  or pin Traefik to a static IP and use that. Put it in `trusted_proxies` as a
+  `/32`. After deploying, watch the first minutes of logs: the WARN
+  `proxy protocol header from a peer not in server.trusted_proxies was ignored`
+  (logged at most once a minute, with the peer IP only) means the value is wrong,
+  and the `peer` field is the address to list.
+- **`server.trusted_proxies` must name Traefik.** PROXY protocol and
+  `X-Forwarded-*` headers are believed only from the addresses listed in
+  `server.trusted_proxies` in `bongo.prod.hcl`; no private or loopback peer is
+  trusted implicitly, and startup fails if `proxy_protocol` is on and the list is
+  empty. Pin Traefik to a static IP on `${TRAEFIK_NETWORK}` (in Traefik's own
+  compose project) and list it as a `/32`. The fallback is the network CIDR from
+  `docker network inspect traefik_web`, but that trusts every container on the
+  network, so any of them can forge a client IP; treat it as a stopgap. Upgrading
+  from a release without this key: set it before deploying or bongo will not start.
+- **Inbound SPF (historical note).** Because inbound SMTP (port 25) is
   routed through Traefik's TCP entrypoint, bongo sees Traefik's IP as the sender,
   not the real remote — so SPF checks and per-IP abuse controls don't see the
   true client. Before relying on inbound spam filtering, either enable PROXY

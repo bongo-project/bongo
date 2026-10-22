@@ -46,6 +46,11 @@ If you are going to receive real mail, read the DNS section carefully. A mail se
 set up correctly will have its mail rejected by most receivers, and that is a property of the
 internet rather than of this software.
 
+If you run behind a reverse proxy, set `trusted_proxies` in the `server` block to the proxy's
+address. PROXY protocol and `X-Forwarded-*` headers are now believed only from listed addresses
+(private and loopback peers are no longer trusted implicitly). Startup fails if `proxy_protocol` is
+enabled with an empty list, and `X-Forwarded-For` is ignored until the proxy is listed.
+
 ## What is not finished
 
 Being direct about this so you do not waste time reporting things already known:

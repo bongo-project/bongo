@@ -57,7 +57,7 @@ func startTestServerWithLogger(t *testing.T, ms *store.MailboxStore, ps *store.P
 	ms.SetNotifier(NewStoreNotifier(notifier))
 
 	srv := NewServer(stubAuthenticator{}, ps, blobs, ms, nil, nil, nil, notifier, nil, true, logger)
-	if err := srv.Listen("127.0.0.1:0", "", nil, false); err != nil {
+	if err := srv.Listen("127.0.0.1:0", "", nil, false, nil); err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
 	go func() { _ = srv.Serve() }()

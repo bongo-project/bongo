@@ -1570,3 +1570,53 @@ func TestIsLoopbackHost(t *testing.T) {
 		})
 	}
 }
+
+func TestTrustedProxiesValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(c *Config)
+		wantErr string
+	}{
+		{"unset, no proxy protocol", func(c *Config) {}, ""},
+		{"listed IP and CIDR", func(c *Config) {
+			c.Server.TrustedProxies = []string{"172.18.0.5", "10.0.0.0/8"}
+		}, ""},
+		{"bad CIDR names the value", func(c *Config) {
+			c.Server.TrustedProxies = []string{"10.0.0.0/99"}
+		}, "10.0.0.0/99"},
+		{"bad address names the value", func(c *Config) {
+			c.Server.TrustedProxies = []string{"traefik"}
+		}, "traefik"},
+		{"smtp proxy_protocol without list", func(c *Config) {
+			c.SMTP.ProxyProtocol = true
+		}, "smtp.proxy_protocol"},
+		{"imap proxy_protocol without list", func(c *Config) {
+			c.IMAP.ProxyProtocol = true
+		}, "imap.proxy_protocol"},
+		{"pop3 proxy_protocol without list", func(c *Config) {
+			c.POP3.ProxyProtocol = true
+		}, "pop3.proxy_protocol"},
+		{"proxy_protocol with list", func(c *Config) {
+			c.SMTP.ProxyProtocol = true
+			c.IMAP.ProxyProtocol = true
+			c.POP3.ProxyProtocol = true
+			c.Server.TrustedProxies = []string{"172.18.0.5/32"}
+		}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Defaults()
+			tt.mutate(cfg)
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() = %v, want error containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
