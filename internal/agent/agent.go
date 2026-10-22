@@ -3344,7 +3344,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 
 	userID, err := authn.Authenticate(username, password)
 	if err != nil {
-		if limiter.Record(ip) {
+		if limiter.Fail(ip, username) {
 			logger.Warn("dav: basic auth locked out after repeated failures", "ip", ip)
 			http.Error(w, "Too many authentication failures, try again later", http.StatusTooManyRequests)
 			return "", false
@@ -3354,7 +3354,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 		return "", false
 	}
 
-	limiter.Reset(ip)
+	limiter.Succeed(ip, username)
 	return userID, true
 }
 

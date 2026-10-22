@@ -258,7 +258,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	userID, err := s.backend.auth.Authenticate(username, password)
 	if err != nil {
 		s.authFailures++
-		s.backend.authFail.Record(ip)
+		s.backend.authFail.Fail(ip, username)
 		s.logger.Warn("smtp: auth failed", "username", username, "ip", s.remoteIP)
 		return err
 	}
@@ -266,7 +266,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	s.authed = true
 	s.userID = userID
 	s.authFailures = 0
-	s.backend.authFail.Reset(ip)
+	s.backend.authFail.Succeed(ip, username)
 	s.logger.Debug("smtp: auth succeeded", "username", username)
 	return nil
 }

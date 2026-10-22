@@ -61,20 +61,67 @@ func TestAuthThrottlePersistsAcrossSessions(t *testing.T) {
 	}
 }
 
-// A successful auth clears the failure counter for that IP.
+// perUserAuth fails every login except for the accounts in ok, which must
+// present the password mapped to them.
+type perUserAuth struct{ ok map[string]string }
+
+func (p *perUserAuth) Authenticate(username, password string) (string, error) {
+	if pw, found := p.ok[username]; found && pw == password {
+		return "uid-" + username, nil
+	}
+	return "", auth.ErrBadCredentials
+}
+
+// A successful auth forgives the failures typed under the same account name,
+// and only those.
 func TestAuthThrottleResetsOnSuccess(t *testing.T) {
-	b := throttleTestBackend(nil) // Authenticate always succeeds
-	s := newSessionForIP(b, "203.0.113.11")
+	const ip = "203.0.113.11"
+	b := throttleTestBackend(nil)
+	b.auth = &perUserAuth{ok: map[string]string{"bob@example.com": "correct"}}
 
-	// Pre-load some failures directly, then a success should clear them.
-	b.authFail.Record("203.0.113.11")
-	b.authFail.Record("203.0.113.11")
-
-	if err := s.AuthPlain("bob@example.com", "correct"); err != nil {
+	// Other names fail from this IP, and Bob mistypes twice before succeeding.
+	for i := 0; i < maxAuthFailures-3; i++ {
+		_ = newSessionForIP(b, ip).AuthPlain("wrong@example.com", "x")
+	}
+	for range 2 {
+		if err := newSessionForIP(b, ip).AuthPlain("bob@example.com", "bad"); err == nil {
+			t.Fatal("Bob's mistyped password should fail")
+		}
+	}
+	if err := newSessionForIP(b, ip).AuthPlain("bob@example.com", "correct"); err != nil {
 		t.Fatalf("valid auth should succeed, got %v", err)
 	}
-	if b.authFail.Blocked("203.0.113.11") {
-		t.Fatal("failure counter should be cleared after a successful auth")
+	// Bob's two failures are forgiven; the others are not. Two more failures
+	// would have reached the limit had Bob's counted still.
+	b.authFail.Fail(ip, "wrong@example.com")
+	b.authFail.Fail(ip, "wrong@example.com")
+	if b.authFail.Blocked(ip) {
+		t.Fatal("own failures should be forgiven after a successful auth")
+	}
+	if !b.authFail.Fail(ip, "wrong@example.com") {
+		t.Fatal("failures under other names must still count towards the IP limit")
+	}
+}
+
+// An attacker logging in to their own account between guesses at a victim must
+// not reset the per-IP counter.
+func TestAuthThrottleOtherAccountSuccessDoesNotClear(t *testing.T) {
+	const ip = "203.0.113.12"
+	b := throttleTestBackend(nil)
+	b.auth = &perUserAuth{ok: map[string]string{"attacker@example.com": "mine"}}
+
+	for i := 0; i < maxAuthFailures-1; i++ {
+		if err := newSessionForIP(b, ip).AuthPlain("victim@example.com", "guess"); err == nil {
+			t.Fatal("victim guess should fail")
+		}
+	}
+	if err := newSessionForIP(b, ip).AuthPlain("attacker@example.com", "mine"); err != nil {
+		t.Fatalf("attacker's own login should succeed, got %v", err)
+	}
+	// One more guess reaches the limit; the next connection must be throttled.
+	_ = newSessionForIP(b, ip).AuthPlain("victim@example.com", "guess")
+	if code := smtpCode(newSessionForIP(b, ip).AuthPlain("victim@example.com", "guess")); code != 454 {
+		t.Fatalf("IP should be throttled with 454 after attacker success, got code %d", code)
 	}
 }
 

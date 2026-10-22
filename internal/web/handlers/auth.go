@@ -22,11 +22,12 @@ type ProfileLoader interface {
 	GetKey(key []byte) ([]byte, error)
 }
 
-// LoginLimiter is the interface the auth handler uses to record and reset
-// per-IP failure counts.
+// LoginLimiter is the interface the auth handler uses to record failures and
+// successes. A success forgives only the failures typed under the same account
+// from the same IP; it never clears the IP's counter outright.
 type LoginLimiter interface {
-	RecordFailure(ip string)
-	Reset(ip string)
+	RecordFailure(ip, account string)
+	Succeed(ip, account string)
 }
 
 // TOTPRaftApplier applies Raft commands to update stored profiles.
@@ -104,7 +105,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	userID, err := h.auth.Authenticate(email, password)
 	if err != nil {
 		if h.limiter != nil {
-			h.limiter.RecordFailure(ip)
+			h.limiter.RecordFailure(ip, email)
 		}
 		templ.Handler(templates.LoginPage("Invalid email or password.")).ServeHTTP(w, r)
 		return
@@ -118,7 +119,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			if profile.Disabled {
 				if h.limiter != nil {
-					h.limiter.RecordFailure(ip)
+					h.limiter.RecordFailure(ip, email)
 				}
 				// Use the same generic message as a bad password so a valid
 				// (but disabled) account is not confirmed to an attacker who
@@ -140,7 +141,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.limiter != nil {
-		h.limiter.Reset(ip)
+		h.limiter.Succeed(ip, email)
 	}
 
 	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, email, remember, isAdmin, h.tlsEnabled, h.sessionEpoch(userID))
@@ -190,7 +191,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 	profile, err := h.loadProfile(pending.UserID)
 	if err != nil {
 		if h.limiter != nil {
-			h.limiter.RecordFailure(ip)
+			h.limiter.RecordFailure(ip, pending.Email)
 		}
 		http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
 		return
@@ -221,7 +222,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 
 		if h.raft == nil {
 			if h.limiter != nil {
-				h.limiter.RecordFailure(ip)
+				h.limiter.RecordFailure(ip, pending.Email)
 			}
 			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
 			return
@@ -230,7 +231,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		profileBytes, marshalErr := proto.Marshal(profile)
 		if marshalErr != nil {
 			if h.limiter != nil {
-				h.limiter.RecordFailure(ip)
+				h.limiter.RecordFailure(ip, pending.Email)
 			}
 			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
 			return
@@ -242,7 +243,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := h.raft.ApplyCommand(cmd, 5*time.Second); err != nil {
 			if h.limiter != nil {
-				h.limiter.RecordFailure(ip)
+				h.limiter.RecordFailure(ip, pending.Email)
 			}
 			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
 			return
@@ -254,7 +255,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		// Complete login with recovery warning passed as query param.
 		http.SetCookie(w, middleware.ClearPendingCookie())
 		if h.limiter != nil {
-			h.limiter.Reset(ip)
+			h.limiter.Succeed(ip, pending.Email)
 		}
 		cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, h.sessionEpoch(pending.UserID))
 		http.SetCookie(w, cookie)
@@ -264,7 +265,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 
 	// Both TOTP and recovery code failed.
 	if h.limiter != nil {
-		h.limiter.RecordFailure(ip)
+		h.limiter.RecordFailure(ip, pending.Email)
 	}
 	http.Redirect(w, r, "/login/2fa?error="+urlEncode("Invalid code. Please try again."), http.StatusSeeOther)
 }
@@ -274,7 +275,7 @@ func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, pend
 	ip := middleware.ClientIP(r)
 	http.SetCookie(w, middleware.ClearPendingCookie())
 	if h.limiter != nil {
-		h.limiter.Reset(ip)
+		h.limiter.Succeed(ip, pending.Email)
 	}
 	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, h.sessionEpoch(pending.UserID))
 	http.SetCookie(w, cookie)

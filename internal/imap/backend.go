@@ -218,13 +218,13 @@ func (s *session) Login(username, password string) error {
 	userID, err := s.auth.Authenticate(username, password)
 	if err != nil {
 		s.logger.Warn("imap: login failed", "username", username, "ip", s.remoteIP)
-		if s.authLimiter.Record(ip) {
+		if s.authLimiter.Fail(ip, username) {
 			return errAuthRateLimited
 		}
 		return imapserver.ErrAuthFailed
 	}
 	s.userID = userID
-	s.authLimiter.Reset(ip)
+	s.authLimiter.Succeed(ip, username)
 	s.logger.Debug("imap: login succeeded", "username", username, "user_id", userID)
 	return nil
 }

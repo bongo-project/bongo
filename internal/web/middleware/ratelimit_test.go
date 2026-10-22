@@ -17,33 +17,41 @@ func TestLoginRateLimiter_RecordAndIsLimited(t *testing.T) {
 		t.Fatal("expected not limited before any failures")
 	}
 
-	rl.RecordFailure(ip)
-	rl.RecordFailure(ip)
+	rl.RecordFailure(ip, "u")
+	rl.RecordFailure(ip, "u")
 	if rl.IsLimited(ip) {
 		t.Fatal("expected not limited after 2 of 3 allowed failures")
 	}
 
-	rl.RecordFailure(ip)
+	rl.RecordFailure(ip, "u")
 	if !rl.IsLimited(ip) {
 		t.Fatal("expected limited after reaching max attempts")
 	}
 }
 
-func TestLoginRateLimiter_Reset(t *testing.T) {
-	rl := NewLoginRateLimiter(2, time.Minute)
-	defer rl.Stop()
-
+func TestLoginRateLimiter_SucceedForgivesOnlyOwnAccount(t *testing.T) {
 	const ip = "10.0.0.1"
 
-	rl.RecordFailure(ip)
-	rl.RecordFailure(ip)
+	rl := NewLoginRateLimiter(3, time.Minute)
+	defer rl.Stop()
+	rl.RecordFailure(ip, "victim@example.com")
+	rl.RecordFailure(ip, "victim@example.com")
+	rl.Succeed(ip, "attacker@example.com")
+	rl.RecordFailure(ip, "victim@example.com")
 	if !rl.IsLimited(ip) {
-		t.Fatal("expected limited before reset")
+		t.Fatal("another account's success must not reset the IP counter")
 	}
 
-	rl.Reset(ip)
-	if rl.IsLimited(ip) {
-		t.Fatal("expected not limited after reset")
+	// Positive control: a user's own success forgives their own failures.
+	rl2 := NewLoginRateLimiter(3, time.Minute)
+	defer rl2.Stop()
+	rl2.RecordFailure(ip, "Alice@example.com")
+	rl2.RecordFailure(ip, "alice@example.com")
+	rl2.Succeed(ip, "alice@example.com")
+	rl2.RecordFailure(ip, "alice@example.com")
+	rl2.RecordFailure(ip, "alice@example.com")
+	if rl2.IsLimited(ip) {
+		t.Fatal("own success should forgive own earlier failures")
 	}
 }
 
@@ -54,8 +62,8 @@ func TestLoginRateLimiter_WindowExpiry(t *testing.T) {
 
 	const ip = "192.168.1.1"
 
-	rl.RecordFailure(ip)
-	rl.RecordFailure(ip)
+	rl.RecordFailure(ip, "u")
+	rl.RecordFailure(ip, "u")
 	if !rl.IsLimited(ip) {
 		t.Fatal("expected limited immediately")
 	}
@@ -68,7 +76,7 @@ func TestLoginRateLimiter_WindowExpiry(t *testing.T) {
 	}
 
 	// A new failure after expiry should start a fresh bucket.
-	rl.RecordFailure(ip)
+	rl.RecordFailure(ip, "u")
 	if rl.IsLimited(ip) {
 		t.Fatal("expected not limited after single failure in new window")
 	}
@@ -78,8 +86,8 @@ func TestLoginRateLimiter_DifferentIPs(t *testing.T) {
 	rl := NewLoginRateLimiter(2, time.Minute)
 	defer rl.Stop()
 
-	rl.RecordFailure("1.1.1.1")
-	rl.RecordFailure("1.1.1.1")
+	rl.RecordFailure("1.1.1.1", "u")
+	rl.RecordFailure("1.1.1.1", "u")
 
 	if !rl.IsLimited("1.1.1.1") {
 		t.Fatal("expected 1.1.1.1 to be limited")
@@ -118,8 +126,8 @@ func TestLoginRateLimit_Middleware(t *testing.T) {
 	}
 
 	// Trigger the limit externally.
-	rl.RecordFailure("5.5.5.5")
-	rl.RecordFailure("5.5.5.5")
+	rl.RecordFailure("5.5.5.5", "u")
+	rl.RecordFailure("5.5.5.5", "u")
 
 	// Third request should be blocked (2 middleware passes + 2 external = 4, max 2 → already limited).
 	if code := makeRequest("5.5.5.5:1234"); code != http.StatusTooManyRequests {
@@ -135,7 +143,7 @@ func TestLoginRateLimit_RetryAfterHeader(t *testing.T) {
 	rl := NewLoginRateLimiter(1, window)
 	defer rl.Stop()
 
-	rl.RecordFailure("9.9.9.9")
+	rl.RecordFailure("9.9.9.9", "u")
 
 	req := httptest.NewRequest(http.MethodPost, "/login", nil)
 	req.RemoteAddr = "9.9.9.9:1234"

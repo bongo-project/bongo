@@ -5,6 +5,7 @@
 package authlimit
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -99,12 +100,56 @@ func (l *Limiter) Record(key string) bool {
 	return st.count >= l.max
 }
 
-// Reset clears the counter for key, e.g. after a successful authentication.
-func (l *Limiter) Reset(key string) {
-	if l == nil || key == "" {
+// pairKey builds the per-(IP, account) key. The prefix and NUL separators keep
+// it from colliding with a plain IP key. The account is lowercased and trimmed
+// only; aliases are deliberately not resolved, as that would need a lookup that
+// reveals whether an account exists. Legacy accounts differing only by case
+// share a pair; that edge is accepted. A pair keeps its own window, so a live
+// pair started late in an earlier IP window can be forgiven into a new one,
+// allowing at most one burst of about twice the limit.
+func pairKey(ip, account string) string {
+	return "acct\x00" + ip + "\x00" + strings.ToLower(strings.TrimSpace(account))
+}
+
+// Fail records a failed attempt against both the source IP and the
+// (IP, account) pair, and reports whether the IP is now blocked. An empty ip
+// records nothing.
+func (l *Limiter) Fail(ip, account string) bool {
+	if l == nil || ip == "" {
+		return false
+	}
+	l.Record(pairKey(ip, account))
+	return l.Record(ip)
+}
+
+// Succeed registers a successful authentication of account from ip. It
+// forgives only the failures previously recorded for that same normalised
+// (IP, account) pair, by subtracting them from the IP counter. A success never
+// clears the IP counter outright: otherwise an attacker could log in to their
+// own account between guesses and get unlimited guesses against others.
+func (l *Limiter) Succeed(ip, account string) {
+	if l == nil || ip == "" {
 		return
 	}
+	pk := pairKey(ip, account)
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	delete(l.entries, key)
+
+	pair := l.entries[pk]
+	if pair == nil {
+		return
+	}
+	delete(l.entries, pk)
+	if l.now().Sub(pair.first) > l.window {
+		return
+	}
+	st := l.entries[ip]
+	if st == nil {
+		return
+	}
+	st.count -= pair.count
+	if st.count <= 0 {
+		delete(l.entries, ip)
+	}
 }
