@@ -955,6 +955,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// injects an AdminScope into the context for per-handler isolation checks.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
+		// Every cookie-authenticated group is RequireAuth then Require2FA, so
+		// the require_2fa policy covers the admin console too.
+		r.Use(middleware.Require2FA(a))
 		r.Use(middleware.RequireAdminOrDomainAdmin(func(userID string, isGlobalAdmin bool) ([]string, error) {
 			if domainAdminStoreForAdmin == nil {
 				return nil, nil
@@ -1414,6 +1417,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Register quarantine admin routes (spool is now available).
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
+			r.Use(middleware.Require2FA(a))
 			r.Use(middleware.RequireAdmin(sessionSecret))
 			r.Use(middleware.RequireSameOrigin())
 			// Double-submit CSRF token, defence-in-depth on top of same-origin.
