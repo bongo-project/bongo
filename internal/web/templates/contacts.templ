@@ -252,6 +252,7 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 				<a href="/contacts/export" class="tool-btn">{ t(ctx, "contacts.exportVcard") }</a>
 				<div class="tool-spacer"></div>
 				<form class="import-form" method="post" action="/contacts/import" enctype="multipart/form-data" aria-label={ t(ctx, "contacts.importContacts") }>
+					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 					<input type="file" name="vcf" accept=".vcf" aria-label={ t(ctx, "contacts.selectVcf") }/>
 					<button type="submit" class="tool-btn">{ t(ctx, "contacts.import") }</button>
 				</form>

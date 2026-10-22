@@ -32,6 +32,7 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 				<a href="/mail/INBOX" class="compose-close" title={ t(ctx, "compose.discard") }>&times;</a>
 			</div>
 			<form method="post" action="/compose/send" enctype="multipart/form-data" class="compose-form">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 				if mode == "reply" || mode == "forward" {
 					<input type="hidden" name="reply_mailbox" value={ replyMailbox }/>
 					<input type="hidden" name="reply_uid" value={ uintToStr(replyUID) }/>
