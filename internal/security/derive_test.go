@@ -44,6 +44,20 @@ func TestDeriveKey_DistinctPurposes(t *testing.T) {
 	session := DeriveKey(secret, "bongo/session-cookie/v1")
 	blob := DeriveKey(secret, "bongo/blob-sync/v1")
 
+	purposes := []string{
+		internalAuthPurpose, blobSyncPurpose,
+		"bongo/session-cookie/v1", "bongo/2fa-pending-cookie/v1",
+		"bongo/totp-setup-cookie/v1", "bongo/csrf-token/v1",
+	}
+	seen := map[string]string{}
+	for _, p := range purposes {
+		k := string(DeriveKey(secret, p))
+		if prev, dup := seen[k]; dup {
+			t.Errorf("purposes %q and %q derive the same key", prev, p)
+		}
+		seen[k] = p
+	}
+
 	if bytes.Equal(internal, session) {
 		t.Error("internal-auth and session-cookie keys must differ")
 	}

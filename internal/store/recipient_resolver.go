@@ -7,17 +7,25 @@ import (
 
 // RecipientResolver resolves an email address to a local user ID.
 //
-// Three-tier lookup (explicit tiers run first; catch-all is always last):
+// Lookup tiers (explicit tiers run first; catch-all is always last):
 //
 //  1. AddressStore.Get(addr) reads Pebble (source of truth, correct on all nodes).
-//     Covers migrated primary addresses and aliases in the global address index.
-//     Skipped when addresses is nil (edge/agent/degraded nodes fall through).
+//     Only records of Kind "primary" or "alias" route here: those are written
+//     by the server (migration, CreateUser, CreateAlias, admin AddAddress).
+//     Identity (send-as) records never route at this tier, because anyone can
+//     claim one through the self-serve flow. Skipped when addresses is nil.
 //
-//  2. Legacy Pebble /system/alias/{addr} key, then direct users-table lookup.
-//     Covers accounts and aliases created after the last address index migration.
+//  2. Legacy Pebble /system/alias/{addr} key (2a), then direct users-table
+//     lookup (2b). Covers accounts and aliases not yet in the address index.
 //     Note: the users-table lookup reads per-node SQLite, which may be stale on
 //     non-leader followers and edge nodes; Pebble reads (tiers 1 and 2a) are
 //     always current.
+//
+//     2c. A Verified identity record routes after accounts and aliases, so a
+//     verified claim can never outrank a real account or alias. An unverified
+//     identity never routes. Verified identities keep routing (today's
+//     behaviour): admin-added extra addresses that GrantSend marked verified
+//     depend on it.
 //
 //  3. Per-domain catch-all: reads /system/catchall/{domain} from Pebble and
 //     returns the owner's user ID when configured. Only domains with an explicit
@@ -67,10 +75,16 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 
 	// Tier 1: AddressStore.Get reads Pebble (source of truth, all nodes).
 	// Covers primary addresses and aliases in the global address index.
+	var identityOwner string
 	if r.addresses != nil {
 		rec, ok, err := r.addresses.Get(email)
 		if err == nil && ok && rec.UserId != "" {
-			return rec.UserId, nil
+			switch {
+			case rec.Kind == "primary" || rec.Kind == "alias":
+				return rec.UserId, nil
+			case rec.Kind == "identity" && rec.Verified:
+				identityOwner = rec.UserId // tier 2c, after accounts and aliases
+			}
 		}
 		// On Pebble read error or miss, fall through to the legacy tier.
 		// A transient Pebble error does not mean the user is absent.
@@ -110,6 +124,11 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 		if qErr == nil && userID != "" {
 			return userID, nil
 		}
+	}
+
+	// Tier 2c: verified identity (see type comment).
+	if identityOwner != "" {
+		return identityOwner, nil
 	}
 
 	// Tier 3: per-domain catch-all.

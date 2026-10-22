@@ -224,3 +224,24 @@ type errorReader struct{}
 func (e *errorReader) Read(_ []byte) (int, error) {
 	return 0, io.ErrUnexpectedEOF
 }
+
+func TestAgentDeliveryCopiesAuthUserID(t *testing.T) {
+	mock := &mockAgentServer{}
+	client, cleanup := startMockServer(t, mock)
+	defer cleanup()
+
+	pipeline := NewAgentDeliveryPipeline(client, testLogger())
+
+	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: Auth\r\n\r\nBody\r\n"
+	meta := &InboundMeta{Trusted: true, AuthUserID: "user-42"}
+	if err := pipeline.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), meta); err != nil {
+		t.Fatalf("DeliverWithSPF: %v", err)
+	}
+	env := mock.lastRequest.GetEnvelope()
+	if env == nil {
+		t.Fatal("envelope is nil")
+	}
+	if env.AuthUserId != "user-42" {
+		t.Errorf("auth_user_id = %q, want %q", env.AuthUserId, "user-42")
+	}
+}

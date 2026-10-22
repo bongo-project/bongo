@@ -307,3 +307,88 @@ func TestNewDKIMSignerFromPEM(t *testing.T) {
 		t.Error("expected DKIM-Signature header")
 	}
 }
+
+// TestDKIMRegistrySignRefusesAmbiguousFrom: the signer domain must come from
+// exactly one address. A comment holding a second address, an address list or
+// a repeated From header must leave the message unsigned, even when the
+// smuggled domain has a key.
+func TestDKIMRegistrySignRefusesAmbiguousFrom(t *testing.T) {
+	pemA, _ := generateTestRSAKey(t)
+	pemB, _ := generateTestRSAKey(t)
+	signerA, err := NewDKIMSignerFromPEM("mail", "tenantb.example", pemA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signerB, err := NewDKIMSignerFromPEM("mail", "example.com", pemB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := NewDKIMRegistry()
+	reg.Add("tenantb.example", signerA)
+	reg.Add("example.com", signerB)
+
+	tests := []struct {
+		name string
+		raw  []byte
+	}{
+		{"comment, unkeyed outer domain", rawMessage("alice@unkeyed.example (x@tenantb.example)")},
+		{"two addresses", rawMessage("alice@example.com, bob@tenantb.example")},
+		{"two From headers", []byte("From: alice@example.com\r\nFrom: bob@tenantb.example\r\nSubject: t\r\n\r\nBody")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+			out, err := reg.Sign(tc.raw, logger)
+			if err != nil {
+				t.Fatalf("Sign: %v", err)
+			}
+			if strings.Contains(string(out), "DKIM-Signature:") {
+				t.Fatalf("message was signed (d=%q)", dkimDomain(t, out))
+			}
+			if !strings.Contains(logBuf.String(), `"level":"WARN"`) {
+				t.Errorf("expected Warn log, got %s", logBuf.String())
+			}
+			if strings.Contains(logBuf.String(), "tenantb") {
+				t.Errorf("log leaks header content: %s", logBuf.String())
+			}
+		})
+	}
+
+	// A comment is not an address: the one real address decides the signer,
+	// never the address-shaped text inside the comment.
+	out, err := reg.Sign(rawMessage("alice@example.com (x@tenantb.example)"), slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dkimDomain(t, out); got != "example.com" {
+		t.Errorf("d= %q, want example.com (not tenantb.example)", got)
+	}
+}
+
+func TestStrictFromDomain(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+		err  bool
+	}{
+		{"plain", "From: a@Example.COM\r\n\r\n", "example.com", false},
+		{"display name", "From: A <a@example.org>\r\n\r\n", "example.org", false},
+		{"comment with address", "From: alice@example.com (x@tenantb.example)\r\n\r\n", "example.com", false},
+		{"list", "From: a@one.example, b@two.example\r\n\r\n", "", true},
+		{"missing", "Subject: x\r\n\r\n", "", true},
+		{"malformed", "From: nope\r\n\r\n", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := StrictFromDomain([]byte(tc.raw))
+			if (err != nil) != tc.err {
+				t.Fatalf("err = %v, wantErr %v", err, tc.err)
+			}
+			if got != tc.want {
+				t.Errorf("domain = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

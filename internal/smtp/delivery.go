@@ -21,6 +21,9 @@ type InboundMeta struct {
 	SPFResult string
 	SourceIP  string
 	Trusted   bool
+	// AuthUserID is the SMTP AUTH user, set only for authenticated sessions.
+	// Empty for trusted-network and unauthenticated sources.
+	AuthUserID string
 }
 
 // RaftApplier applies commands through Raft consensus.
@@ -114,6 +117,7 @@ func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHa
 		SpfResult:  meta.SPFResult,
 		SourceIp:   meta.SourceIP,
 		Trusted:    meta.Trusted,
+		AuthUserId: meta.AuthUserID,
 	}
 
 	if err := d.spool.Enqueue(env); err != nil {

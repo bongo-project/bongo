@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
@@ -17,7 +15,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/auth"
-	"github.com/bongo-project/bongo/internal/security"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -239,7 +236,7 @@ func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Hash new password.
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), auth.PasswordHashCost)
 	if err != nil {
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return
@@ -297,8 +294,7 @@ func (h *SecurityHandler) setTOTPPendingCookie(w http.ResponseWriter, secret str
 	}
 
 	data, _ := json.Marshal(payload) // #nosec G117 -- TOTP setup secret is signed and stored temporarily in an HttpOnly cookie
-	sig := h.signPayload(data)
-	value := base64.RawURLEncoding.EncodeToString(data) + "." + base64.RawURLEncoding.EncodeToString(sig)
+	value := middleware.SignValue(h.sessionSecret, middleware.TOTPSetupCookiePurpose, data)
 
 	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure is set from runtime TLS/proxy config so dev HTTP can enable TOTP
 		Name:     totpPendingCookieName,
@@ -317,31 +313,9 @@ func (h *SecurityHandler) getTOTPPendingCookie(r *http.Request) (string, error) 
 		return "", err
 	}
 
-	value := cookie.Value
-	var payloadB64, sigB64 string
-	for i := len(value) - 1; i >= 0; i-- {
-		if value[i] == '.' {
-			payloadB64 = value[:i]
-			sigB64 = value[i+1:]
-			break
-		}
-	}
-	if payloadB64 == "" || sigB64 == "" {
-		return "", http.ErrNoCookie
-	}
-
-	data, err := base64.RawURLEncoding.DecodeString(payloadB64)
+	data, err := middleware.VerifyValue(h.sessionSecret, middleware.TOTPSetupCookiePurpose, cookie.Value)
 	if err != nil {
 		return "", err
-	}
-
-	sig, err := base64.RawURLEncoding.DecodeString(sigB64)
-	if err != nil {
-		return "", err
-	}
-
-	if !hmac.Equal(sig, h.signPayload(data)) {
-		return "", http.ErrNoCookie
 	}
 
 	var payload totpPendingPayload
@@ -365,13 +339,4 @@ func (h *SecurityHandler) clearTOTPPendingCookie(w http.ResponseWriter) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
-}
-
-// signPayload signs the TOTP-setup cookie. It derives the same cookie subkey as
-// middleware.sign (purpose "bongo/session-cookie/v1") so all cookie HMAC uses a
-// key distinct from the internal control-plane and blob-sync usages.
-func (h *SecurityHandler) signPayload(payload []byte) []byte {
-	mac := hmac.New(sha256.New, security.DeriveKey(h.sessionSecret, "bongo/session-cookie/v1"))
-	mac.Write(payload)
-	return mac.Sum(nil)
 }

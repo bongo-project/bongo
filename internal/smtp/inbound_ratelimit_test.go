@@ -186,12 +186,13 @@ func TestDataSubmissionExemptsRateLimit(t *testing.T) {
 			remoteIP:   remoteIP,
 			submission: true, // submission port — exempt from inbound rate limit
 			authed:     true,
+			userID:     "uid-alice@example.com",
 		}
 	}
 
 	// Both messages must succeed on the submission path.
 	for i := range 5 {
-		if err := makeSession().Data(strings.NewReader("Subject: test\r\n\r\nbody")); err != nil {
+		if err := makeSession().Data(strings.NewReader(authedMsg)); err != nil {
 			t.Fatalf("submission message %d should succeed: %v", i+1, err)
 		}
 	}

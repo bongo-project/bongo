@@ -44,6 +44,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/pipeline"
+	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
 	pipelineantivirus "github.com/bongo-project/bongo/internal/pipeline/antivirus"
 	pipelinedeliver "github.com/bongo-project/bongo/internal/pipeline/deliver"
 	pipelinerules "github.com/bongo-project/bongo/internal/pipeline/rules"
@@ -196,20 +197,44 @@ func (a *Agent) IsLeader() bool {
 // userSessionState returns the live account state (disabled flag, admin flag,
 // and credential epoch) consulted by RequireAuth on every request, so that
 // disabling a user, demoting an admin, or changing a password/2FA takes effect
-// immediately despite the self-contained session cookie. Reads the
-// authoritative UserProfile from Pebble; on a read/parse error it returns a
-// zero (Found=false) value so callers fail open and a transient store problem
-// cannot log everyone out.
+// immediately despite the self-contained session cookie. Deleting the account
+// revokes it too.
+//
+// A profile that is not found revokes the session (Missing). Any other read or
+// parse problem fails open (zero value) so a transient store problem cannot
+// log everyone out; during a real store outage deleted or demoted accounts
+// therefore keep their cookie's rights. Profiles are read from local Pebble, so
+// a follower that has not yet applied a freshly created profile would revoke
+// rather than fail open; the window is narrow because accounts exist before
+// they log in.
 func (a *Agent) userSessionState(userID string) middleware.LiveSessionState {
 	if a.Store == nil || userID == "" {
 		return middleware.LiveSessionState{}
 	}
-	data, err := a.Store.Get([]byte("/user/" + userID + "/profile"))
-	if err != nil || len(data) == 0 {
+	return sessionStateFromProfile(a.Store.Get, a.logger, userID)
+}
+
+// sessionStateFromProfile maps a profile read to a LiveSessionState.
+func sessionStateFromProfile(get func([]byte) ([]byte, error), logger *slog.Logger, userID string) middleware.LiveSessionState {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	data, err := get([]byte("/user/" + userID + "/profile"))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			logger.Debug("session: profile not found, revoking", "user_id", userID)
+			return middleware.LiveSessionState{Missing: true}
+		}
+		logger.Warn("session: profile read failed, failing open", "user_id", userID, "error", err)
+		return middleware.LiveSessionState{}
+	}
+	if len(data) == 0 {
+		logger.Warn("session: profile empty, failing open", "user_id", userID)
 		return middleware.LiveSessionState{}
 	}
 	var profile bongov1.UserProfile
 	if err := proto.Unmarshal(data, &profile); err != nil {
+		logger.Warn("session: profile unreadable, failing open", "user_id", userID, "error", err)
 		return middleware.LiveSessionState{}
 	}
 	return middleware.LiveSessionState{
@@ -417,7 +442,16 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 		case "antispam":
 			scorer := antispam.NewScorer()
 			bayesFilter := antispam.NewBayesFilter(a.Store, a)
-			antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger, a.spamThresholdHolder())
+			// Authenticated submissions only keep the DMARC bypass for a header
+			// From the submitter may send as. Without the stores the processor
+			// logs a warning and keeps the unconditional bypass.
+			var extra []pipelineantispam.Option
+			if a.AddressStore != nil && a.Store != nil {
+				extra = append(extra, pipelineantispam.WithSenderAuthorizer(&store.SendAsPolicy{Addresses: a.AddressStore, Pebble: a.Store}))
+			} else {
+				a.logger.Warn("antispam: no address store; DMARC bypass for authenticated submissions is unconditional")
+			}
+			antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger, a.spamThresholdHolder(), extra...)
 			stages = append(stages, antispamProc)
 		case "rules":
 			if a.Rules != nil {
@@ -567,6 +601,11 @@ func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *st
 	// deliver-stage resolution are always consistent.
 	backend.SetResolver(resolver)
 
+	// Send-as policy for authenticated submission: the envelope sender and the
+	// header From must be addresses the user may send as, the same rule as
+	// web compose. Without it authenticated submission fails closed.
+	backend.SetSenderPolicy(&store.SendAsPolicy{Addresses: a.AddressStore, Pebble: a.Store})
+
 	// Storage quota enforcement at RCPT: reject inbound mail permanently when
 	// the recipient's primary domain is at or over its max_storage_bytes
 	// limit. Nil when quota store is unavailable (dev/edge/agent — all
@@ -705,12 +744,6 @@ func (a *Agent) Run(ctx context.Context) error {
 		clusterH := handlers.NewClusterHandler(&lazyMemberLister{agent: a})
 		r.Get("/internal/cluster/members", clusterH.Members)
 
-		if a.Blobs != nil {
-			blobH := handlers.NewBlobHandler(a.Blobs)
-			r.Get("/internal/blob/{hash}", blobH.Get)
-			r.Head("/internal/blob/{hash}", blobH.Head)
-		}
-
 		if a.Raft != nil {
 			joinH := handlers.NewJoinHandler(a.Raft.Raft)
 			r.Post("/internal/cluster/join", joinH.Join)
@@ -724,6 +757,16 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/internal/user/create", userH.Create)
 		}
 	})
+
+	// Blob sync routes: signed with their own key, separate from the control plane.
+	if a.Blobs != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireBlobSyncAuth(sessionSecret))
+			blobH := handlers.NewBlobHandler(a.Blobs)
+			r.Get("/internal/blob/{hash}", blobH.Get)
+			r.Head("/internal/blob/{hash}", blobH.Head)
+		})
+	}
 
 	// Static assets (public).
 	r.Handle("/static/*", http.StripPrefix("/static/", handlers.StaticHandler()))
@@ -1162,6 +1205,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.AddressStore != nil && a.Store != nil {
 			addrVerifyH := handlers.NewAddressVerifyHandler(a.logger)
 			addrVerifyH.SetAddressStore(a.AddressStore)
+			addrVerifyH.SetOwnershipStores(a.Store, a.Metadata, a)
 			addrVerifyH.SetVerifyStore(store.NewAddressVerifyStore(a.Store, a))
 			if a.Blobs != nil {
 				addrVerifyH.SetBlobStore(a.Blobs)
@@ -1582,6 +1626,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	// rejected, so the mail did not bounce either. Reporting only; the operator
 	// decides whether to recreate them.
 	a.reportMixedCaseAddresses()
+
+	// Report identity address records that no longer route mail (unverified)
+	// or that collide with an account, alias or hosted domain. Report only.
+	a.reportShadowedIdentities()
 
 	// Populate the global address index from existing user profiles and aliases.
 	// Leader-only, idempotent, additive — never deletes or modifies existing
@@ -2661,6 +2709,39 @@ func (a *Agent) reportMixedCaseAddresses() {
 		)
 	}
 	a.logger.Warn("startup: mixed-case address report", "count", len(found))
+}
+
+// reportShadowedIdentities logs identity (send-as) records that are unverified
+// or collide with another owner of the address. The resolver only routes
+// verified identities, after accounts and aliases, so admin-added addresses
+// that were never granted send stopped receiving mail with the H1 fix; the
+// operator repairs one with GrantSend or by re-adding it. Read-only.
+func (a *Agent) reportShadowedIdentities() {
+	if a.Store == nil {
+		return
+	}
+	var sys *store.SystemIndex
+	if a.Metadata != nil {
+		sys = a.Metadata.System
+	}
+	found, err := store.FindShadowedIdentities(a.Store, sys)
+	if err != nil {
+		a.logger.Warn("startup: shadowed identity report failed", "error", err)
+		return
+	}
+	for _, f := range found {
+		a.logger.Warn("startup: identity address record does not route mail as the resolver now requires",
+			"address", f.Address,
+			"user_id", f.UserID,
+			"verified", f.Verified,
+			"conflict", f.Conflict,
+			"conflict_owner", f.ConflictOwner,
+			"fix", "GrantSend on the address or re-add it as admin; remove the record if it is a stale claim",
+		)
+	}
+	if len(found) > 0 {
+		a.logger.Warn("startup: shadowed identity report", "count", len(found))
+	}
 }
 
 // migrateAddressIndex populates the global address index (AddressStore) from

@@ -23,10 +23,15 @@ const (
 	pendingCookieName = "bongo_2fa_pending"
 	pendingCookieTTL  = 5 * time.Minute
 
-	// sessionCookiePurpose labels the subkey derived from the raw session secret
-	// for cookie HMAC. The session and 2FA-pending cookies share the sign/verify
-	// helper below, so both use this purpose.
+	// Each signed cookie type derives its own subkey from the raw session
+	// secret. Their JSON payloads overlap (uid, email, exp...), so sharing a
+	// key would make one type decode as another. The session purpose must not
+	// change: doing so would log every user out.
 	sessionCookiePurpose = "bongo/session-cookie/v1"
+	pendingCookiePurpose = "bongo/2fa-pending-cookie/v1"
+
+	// TOTPSetupCookiePurpose is the subkey purpose for the TOTP-setup cookie.
+	TOTPSetupCookiePurpose = "bongo/totp-setup-cookie/v1"
 )
 
 // PendingData represents the signed 2FA-pending cookie payload.
@@ -57,9 +62,13 @@ type SessionData struct {
 // changes are re-evaluated so they take effect immediately rather than at the
 // next login or expiry.
 type LiveSessionState struct {
-	// Found is false when the profile could not be read (store error / missing);
-	// callers fail open in that case, leaving the cookie's snapshot in force.
-	Found    bool
+	// Found is false when the profile could not be read; with Missing also
+	// false that means a store error and callers fail open, leaving the
+	// cookie's snapshot in force.
+	Found bool
+	// Missing means the account no longer exists (profile not found): revoke.
+	// A separate field so the zero value still means fail-open.
+	Missing  bool
 	Disabled bool
 	IsAdmin  bool
 	Epoch    string
@@ -84,8 +93,7 @@ func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin,
 	}
 
 	payload, _ := json.Marshal(data)
-	sig := sign(secret, payload)
-	value := base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(sig)
+	value := SignValue(secret, sessionCookiePurpose, payload)
 
 	return &http.Cookie{ // #nosec G124 -- Secure is set from runtime TLS/proxy config so dev HTTP can still log in
 		Name:     cookieName,
@@ -117,8 +125,9 @@ func ClearSessionCookie() *http.Cookie {
 // stateFn, when non-nil, is consulted on every request so that disabling a
 // user, changing their password, toggling 2FA, or changing their admin status
 // takes effect immediately despite the self-contained cookie. It is the only
-// place live account state is re-checked. When it reports Found=false (store
-// error) the request fails open, leaving the cookie's snapshot in force.
+// place live account state is re-checked. Missing=true (account deleted)
+// revokes the session; Found=false && !Missing (store error) fails open,
+// leaving the cookie's snapshot in force.
 func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +143,7 @@ func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) fu
 				return
 			}
 
-			if time.Now().Unix() > data.Exp {
+			if data.UserID == "" || time.Now().Unix() > data.Exp {
 				redirectToLogin(w, r)
 				return
 			}
@@ -145,6 +154,11 @@ func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) fu
 			isAdmin := data.IsAdmin
 			if stateFn != nil {
 				st := stateFn(data.UserID)
+				if st.Missing {
+					http.SetCookie(w, ClearSessionCookie())
+					redirectToLogin(w, r)
+					return
+				}
 				if st.Found {
 					// Disabled account, or credentials changed since this
 					// session was issued -> revoke immediately.
@@ -217,7 +231,28 @@ func WithUserContext(ctx context.Context, userID, email string) context.Context 
 }
 
 func validateCookie(secret []byte, value string) (*SessionData, error) {
-	// Split "payload.signature"
+	payload, err := VerifyValue(secret, sessionCookiePurpose, value)
+	if err != nil {
+		return nil, err
+	}
+	var data SessionData
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+// SignValue returns "payload.signature" for payload, signed with the subkey
+// derived for purpose.
+func SignValue(secret []byte, purpose string, payload []byte) string {
+	return base64.RawURLEncoding.EncodeToString(payload) + "." +
+		base64.RawURLEncoding.EncodeToString(sign(secret, purpose, payload))
+}
+
+// VerifyValue checks a SignValue string against the subkey for purpose and
+// returns the payload. It is the single place cookie parsing and the purpose
+// check happen.
+func VerifyValue(secret []byte, purpose, value string) ([]byte, error) {
 	var payloadB64, sigB64 string
 	for i := len(value) - 1; i >= 0; i-- {
 		if value[i] == '.' {
@@ -240,16 +275,10 @@ func validateCookie(secret []byte, value string) (*SessionData, error) {
 		return nil, err
 	}
 
-	if !hmac.Equal(sig, sign(secret, payload)) {
+	if !hmac.Equal(sig, sign(secret, purpose, payload)) {
 		return nil, http.ErrNoCookie
 	}
-
-	var data SessionData
-	if err := json.Unmarshal(payload, &data); err != nil {
-		return nil, err
-	}
-
-	return &data, nil
+	return payload, nil
 }
 
 // CreatePendingCookie creates a short-lived signed cookie indicating that 2FA is required.
@@ -263,8 +292,7 @@ func CreatePendingCookie(secret []byte, userID, email string, remember, isAdmin,
 	}
 
 	payload, _ := json.Marshal(data)
-	sig := sign(secret, payload)
-	value := base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(sig)
+	value := SignValue(secret, pendingCookiePurpose, payload)
 
 	return &http.Cookie{ // #nosec G124 -- Secure is set from runtime TLS/proxy config so dev HTTP can still complete 2FA
 		Name:     pendingCookieName,
@@ -285,31 +313,9 @@ func ValidatePendingCookie(secret []byte, r *http.Request) (*PendingData, error)
 		return nil, http.ErrNoCookie
 	}
 
-	value := cookie.Value
-	var payloadB64, sigB64 string
-	for i := len(value) - 1; i >= 0; i-- {
-		if value[i] == '.' {
-			payloadB64 = value[:i]
-			sigB64 = value[i+1:]
-			break
-		}
-	}
-	if payloadB64 == "" || sigB64 == "" {
-		return nil, http.ErrNoCookie
-	}
-
-	payload, err := base64.RawURLEncoding.DecodeString(payloadB64)
+	payload, err := VerifyValue(secret, pendingCookiePurpose, cookie.Value)
 	if err != nil {
 		return nil, err
-	}
-
-	sig, err := base64.RawURLEncoding.DecodeString(sigB64)
-	if err != nil {
-		return nil, err
-	}
-
-	if !hmac.Equal(sig, sign(secret, payload)) {
-		return nil, http.ErrNoCookie
 	}
 
 	var data PendingData
@@ -336,8 +342,8 @@ func ClearPendingCookie() *http.Cookie {
 	}
 }
 
-func sign(secret, payload []byte) []byte {
-	mac := hmac.New(sha256.New, security.DeriveKey(secret, sessionCookiePurpose))
+func sign(secret []byte, purpose string, payload []byte) []byte {
+	mac := hmac.New(sha256.New, security.DeriveKey(secret, purpose))
 	mac.Write(payload)
 	return mac.Sum(nil)
 }

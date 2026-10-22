@@ -115,7 +115,7 @@ func (bs *BlobSyncer) pull(hash string) error {
 		if err != nil {
 			continue
 		}
-		security.SignInternalRequest(headReq, bs.secret)
+		security.SignBlobSyncRequest(headReq, bs.secret)
 		resp, err := bs.client.Do(headReq)
 		if err != nil {
 			continue
@@ -137,7 +137,7 @@ func (bs *BlobSyncer) pull(hash string) error {
 		if err != nil {
 			continue
 		}
-		security.SignInternalRequest(getReq, bs.secret)
+		security.SignBlobSyncRequest(getReq, bs.secret)
 		resp, err = bs.client.Do(getReq)
 		if err != nil {
 			continue

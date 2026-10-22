@@ -62,3 +62,26 @@ func TestVerifyInternalRequest_RejectsReplay(t *testing.T) {
 		t.Error("replayed request with a reused nonce should be rejected")
 	}
 }
+
+func TestBlobSyncAndInternalAreDistinct(t *testing.T) {
+	signers := map[string]func(*http.Request, []byte){
+		"internal": SignInternalRequest,
+		"blob":     SignBlobSyncRequest,
+	}
+	verifiers := map[string]func(*http.Request, []byte) bool{
+		"internal": VerifyInternalRequest,
+		"blob":     VerifyBlobSyncRequest,
+	}
+	for sname, sign := range signers {
+		for vname, verify := range verifiers {
+			t.Run(sname+" signed, "+vname+" verifier", func(t *testing.T) {
+				// Fresh request per case so the nonce cache cannot cause a rejection.
+				req, _ := http.NewRequest(http.MethodGet, "http://x/internal/blob/abc", nil)
+				sign(req, authSecret)
+				if got, want := verify(req, authSecret), sname == vname; got != want {
+					t.Errorf("accepted = %v, want %v", got, want)
+				}
+			})
+		}
+	}
+}

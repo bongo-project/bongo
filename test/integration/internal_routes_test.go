@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 // startInternalRoutesAgent brings up a real dev-role agent and returns its base
@@ -18,10 +19,13 @@ import (
 // building a router in the test: the invariant under test is that the
 // PRODUCTION router wires RequireInternalAuth around the /internal group, and a
 // test that constructs its own router cannot observe that.
+const internalRoutesSecret = "internal-routes-test-secret-0123456789"
+
 func startInternalRoutesAgent(t *testing.T) (baseURL string, cancel context.CancelFunc) {
 	t.Helper()
 
 	cfg := config.Defaults()
+	cfg.Web.SessionSecret = internalRoutesSecret
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
 	sharedAssignFreePorts(t, cfg)
@@ -107,5 +111,48 @@ func TestInternalRoutesRequireAuth(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestInternalRoutesRejectCrossSigned proves the control-plane group and the
+// blob-sync group are keyed separately in the production router. A request
+// signed for one surface must get 401 on the other, and each surface must
+// accept its own signature (so the 401s cannot be explained by a broken route).
+func TestInternalRoutesRejectCrossSigned(t *testing.T) {
+	baseURL, cancel := startInternalRoutesAgent(t)
+	defer cancel()
+	secret := []byte(internalRoutesSecret)
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	blobPath := "/internal/blob/" + strings.Repeat("a", 64)
+	status := func(method, path string, sign func(*http.Request, []byte)) int {
+		req, err := http.NewRequest(method, baseURL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sign(req, secret)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if got := status(http.MethodGet, blobPath, security.SignInternalRequest); got != http.StatusUnauthorized {
+		t.Errorf("control-plane-signed GET blob = %d, want 401", got)
+	}
+	if got := status(http.MethodGet, "/internal/cluster/members", security.SignBlobSyncRequest); got != http.StatusUnauthorized {
+		t.Errorf("blob-signed GET members = %d, want 401", got)
+	}
+	if got := status(http.MethodGet, "/internal/kv/test%2Fkey", security.SignBlobSyncRequest); got != http.StatusUnauthorized {
+		t.Errorf("blob-signed GET kv = %d, want 401", got)
+	}
+	// Positive controls: a correctly signed request is authenticated (not 401/404).
+	if got := status(http.MethodGet, blobPath, security.SignBlobSyncRequest); got == http.StatusUnauthorized {
+		t.Errorf("blob-signed GET blob = %d, want authenticated", got)
+	}
+	if got := status(http.MethodGet, "/internal/cluster/members", security.SignInternalRequest); got != http.StatusOK {
+		t.Errorf("control-plane-signed GET members = %d, want 200", got)
 	}
 }

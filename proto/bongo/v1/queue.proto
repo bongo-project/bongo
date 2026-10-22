@@ -15,6 +15,18 @@ enum MessageStatus {
   MESSAGE_STATUS_BOUNCED = 4;
 }
 
+// OutboundOrigin records where an outbound message came from. The queue worker
+// DKIM-signs by header From domain, so it must know whether the message was
+// authored locally by an authorised sender or is relayed inbound mail.
+// UNSPECIFIED (records queued before this field existed, or a construction site
+// that forgets to set it) is treated as LOCAL and signed. Every construction
+// site must set the origin explicitly.
+enum OutboundOrigin {
+  OUTBOUND_ORIGIN_UNSPECIFIED = 0;
+  OUTBOUND_ORIGIN_LOCAL = 1;    // web compose, authenticated submission, server-generated mail
+  OUTBOUND_ORIGIN_FORWARD = 2;  // inbound mail forwarded by a rule or ForwardAddress; never re-signed
+}
+
 message OutboundMessage {
   string id = 1;
   string sender_id = 2;
@@ -35,6 +47,8 @@ message OutboundMessage {
   // is the whole raw message (the default / self-check fallback).
   repeated MessageSegment layout = 13;
   repeated BlobRef attachments = 14;
+
+  OutboundOrigin origin = 15;
 }
 
 message QueueStats {

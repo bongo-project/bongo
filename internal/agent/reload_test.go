@@ -23,6 +23,7 @@ import (
 	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
 	pipelineantivirus "github.com/bongo-project/bongo/internal/pipeline/antivirus"
 	bongosmtp "github.com/bongo-project/bongo/internal/smtp"
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -877,5 +878,36 @@ func TestSafeErrDropsHCLDetail(t *testing.T) {
 	}
 	if !strings.Contains(got, "bad.hcl") {
 		t.Errorf("safeErr lost the location: %s", got)
+	}
+}
+
+// TestBuildPipelineStages_InjectsSenderAuthorizer proves the server pipeline
+// wires a SenderAuthorizer into the builtin antispam stage. Without it the
+// processor silently falls back to the unconditional trusted DMARC bypass.
+func TestBuildPipelineStages_InjectsSenderAuthorizer(t *testing.T) {
+	build := func(withStores bool) *pipelineantispam.BuiltinProcessor {
+		cfg := config.Defaults()
+		for i := range cfg.Pipeline.Stages {
+			cfg.Pipeline.Stages[i].Enabled = cfg.Pipeline.Stages[i].Name == "antispam"
+		}
+		a := &Agent{Config: cfg, logger: testLogger()}
+		if withStores {
+			a.Store = &store.PebbleStore{}
+			a.AddressStore = store.NewAddressStore(nil, nil, nil)
+		}
+		stages, _ := a.buildPipelineStages(nil)
+		for _, s := range stages {
+			if b, ok := s.(*pipelineantispam.BuiltinProcessor); ok {
+				return b
+			}
+		}
+		t.Fatal("no builtin antispam stage built")
+		return nil
+	}
+	if !build(true).HasSenderAuthorizer() {
+		t.Error("server pipeline built the antispam stage without a sender authorizer")
+	}
+	if build(false).HasSenderAuthorizer() {
+		t.Error("authorizer present without stores")
 	}
 }

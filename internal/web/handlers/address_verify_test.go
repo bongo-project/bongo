@@ -66,6 +66,7 @@ func newVerifyTestEnvFull(t *testing.T) *verifyTestEnv {
 	h.SetVerifyStore(avs)
 	h.SetBlobStore(blobs)
 	h.SetQueueStore(qs)
+	h.SetOwnershipStores(ps, meta, applier)
 
 	return &verifyTestEnv{
 		ps: ps, blobs: blobs, meta: meta,
@@ -149,6 +150,12 @@ func (e *verifyTestEnv) extractCodeFromQueue(t *testing.T) string {
 		t.Fatal("no queued messages: verification email was not sent")
 	}
 	msg := pending[len(pending)-1]
+
+	// Verification mail is server-generated: it must be marked LOCAL so the
+	// queue worker DKIM-signs it.
+	if got := msg.GetOrigin(); got != bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL {
+		t.Errorf("verification OutboundMessage.Origin = %v, want LOCAL", got)
+	}
 
 	rc, err := e.blobs.Get(msg.BlobHash)
 	if err != nil {

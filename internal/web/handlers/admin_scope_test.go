@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -32,11 +34,19 @@ type adminScopeTestEnv struct {
 	regularUserID  string
 	d1UserID       string // user whose primary domain is d1
 	d2UserID       string // user whose primary domain is d2
+
+	d1CrossAdminID string // user@d1 granted d2 (outside a d1 admin's scope)
+	d1OwnerOfD2ID  string // user@d1 who owns d2
+	d1PeerAdminID  string // user@d1 granted d1 only
+	d1BothAdminID  string // user@d1 granted d1 and d2
+	d1OwnD1Gr2ID   string // user@d1 who owns d1 and is granted d2
+	d1OwnD3Gr1ID   string // user@d1 who owns d3 and is granted d1 (out-of-scope domain listed first)
 }
 
 const (
 	testDomain1 = "d1.example.com"
 	testDomain2 = "d2.example.com"
+	testDomain3 = "d3.example.com"
 )
 
 func newAdminScopeTestEnv(t *testing.T) *adminScopeTestEnv {
@@ -1810,5 +1820,209 @@ func TestListDomains_MXColumn(t *testing.T) {
 	// to "MX Record" in English, which the template renders in the thead).
 	if !strings.Contains(body, "MX Record") {
 		t.Errorf("ListDomains: MX column header missing from response")
+	}
+}
+
+// --- H2: domain-admin actions on privileged targets ---
+
+// seedPrivilegedUsers adds admin-ish d1 users used by the H2 tests. It is
+// separate from newAdminScopeTestEnv because each user costs a bcrypt hash.
+func (env *adminScopeTestEnv) seedPrivilegedUsers(t *testing.T) {
+	t.Helper()
+	mk := func(local string) string {
+		id, err := auth.CreateUser(env.applier, env.md, local+"@"+testDomain1, local, "pass123!", false)
+		if err != nil {
+			t.Fatalf("create %s: %v", local, err)
+		}
+		return id
+	}
+	env.d1CrossAdminID = mk("crossadmin")
+	env.d1OwnerOfD2ID = mk("ownerofd2")
+	env.d1PeerAdminID = mk("peeradmin")
+	env.d1BothAdminID = mk("bothadmin")
+	env.d1OwnD1Gr2ID = mk("ownd1grd2")
+	for _, g := range []struct{ domain, id string }{
+		{testDomain2, env.d1CrossAdminID},
+		{testDomain1, env.d1PeerAdminID},
+		{testDomain1, env.d1BothAdminID},
+		{testDomain2, env.d1BothAdminID},
+	} {
+		if err := env.das.Grant(g.domain, g.id); err != nil {
+			t.Fatalf("grant %s: %v", g.domain, err)
+		}
+	}
+	if err := env.das.SetOwner(testDomain2, env.d1OwnerOfD2ID); err != nil {
+		t.Fatalf("set owner: %v", err)
+	}
+	if err := env.das.SetOwner(testDomain1, env.d1OwnD1Gr2ID); err != nil {
+		t.Fatalf("set owner d1: %v", err)
+	}
+	if err := env.das.Grant(testDomain2, env.d1OwnD1Gr2ID); err != nil {
+		t.Fatalf("grant d2: %v", err)
+	}
+	// AuthorizedDomains lists owned domains before grants, so this user's
+	// domains come back as [d3, d1]: the out-of-scope one first. Without it
+	// every target lists its out-of-scope domain last, and a loop that lets
+	// the last domain decide passes.
+	seedDomainForScope(t, env, testDomain3)
+	env.d1OwnD3Gr1ID = mk("ownd3grd1")
+	if err := env.das.SetOwner(testDomain3, env.d1OwnD3Gr1ID); err != nil {
+		t.Fatalf("set owner d3: %v", err)
+	}
+	if err := env.das.Grant(testDomain1, env.d1OwnD3Gr1ID); err != nil {
+		t.Fatalf("grant d1: %v", err)
+	}
+
+}
+
+func withD1D2Admin(r *http.Request, userID string) *http.Request {
+	ctx := middleware.WithUserContext(r.Context(), userID, "domainadmin@"+testDomain1)
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{
+		Domains: map[string]bool{testDomain1: true, testDomain2: true},
+	})
+	return r.WithContext(ctx)
+}
+
+func (env *adminScopeTestEnv) profile(t *testing.T, id string) *bongov1.UserProfile {
+	t.Helper()
+	p, err := env.h.loadProfile(id)
+	if err != nil {
+		t.Fatalf("loadProfile(%s): %v", id, err)
+	}
+	return p
+}
+
+func TestUserActions_DomainAdmin_PrivilegedTargetForbidden(t *testing.T) {
+	actions := []struct {
+		name   string
+		fn     func(*AdminHandler) func(http.ResponseWriter, *http.Request)
+		form   url.Values
+		mutate bool
+	}{
+		{"ResetPassword", func(h *AdminHandler) func(http.ResponseWriter, *http.Request) { return h.ResetPassword }, nil, true},
+		{"ToggleDisabled", func(h *AdminHandler) func(http.ResponseWriter, *http.Request) { return h.ToggleDisabled }, nil, true},
+		{"UpdateUser", func(h *AdminHandler) func(http.ResponseWriter, *http.Request) { return h.UpdateUser }, url.Values{"quota_bytes": {"1"}, "display_name": {"x"}}, true},
+		{"DeleteUser", func(h *AdminHandler) func(http.ResponseWriter, *http.Request) { return h.DeleteUser }, nil, true},
+		{"ShowUser", func(h *AdminHandler) func(http.ResponseWriter, *http.Request) { return h.ShowUser }, nil, false},
+		{"AddAddress", func(h *AdminHandler) func(http.ResponseWriter, *http.Request) { return h.AddAddress }, url.Values{"address": {"x@" + testDomain1}}, false},
+		{"GrantSend", func(h *AdminHandler) func(http.ResponseWriter, *http.Request) { return h.GrantSend }, url.Values{"address": {"x@" + testDomain1}}, false},
+	}
+	targets := []struct {
+		name   string
+		id     func(*adminScopeTestEnv) string
+		caller func(*adminScopeTestEnv) func(*http.Request) *http.Request
+	}{
+		{"globalAdmin", func(e *adminScopeTestEnv) string { return e.globalAdminID },
+			func(e *adminScopeTestEnv) func(*http.Request) *http.Request {
+				return func(r *http.Request) *http.Request { return withDomainAdmin1(r, e.domainAdmin1ID) }
+			}},
+		{"globalAdminVsD1D2Admin", func(e *adminScopeTestEnv) string { return e.globalAdminID },
+			func(e *adminScopeTestEnv) func(*http.Request) *http.Request {
+				return func(r *http.Request) *http.Request { return withD1D2Admin(r, e.d1BothAdminID) }
+			}},
+		{"crossGrantAdmin", func(e *adminScopeTestEnv) string { return e.d1CrossAdminID },
+			func(e *adminScopeTestEnv) func(*http.Request) *http.Request {
+				return func(r *http.Request) *http.Request { return withDomainAdmin1(r, e.domainAdmin1ID) }
+			}},
+		{"bothGrantAdmin", func(e *adminScopeTestEnv) string { return e.d1BothAdminID },
+			func(e *adminScopeTestEnv) func(*http.Request) *http.Request {
+				return func(r *http.Request) *http.Request { return withDomainAdmin1(r, e.domainAdmin1ID) }
+			}},
+		{"ownsD1GrantedD2", func(e *adminScopeTestEnv) string { return e.d1OwnD1Gr2ID },
+			func(e *adminScopeTestEnv) func(*http.Request) *http.Request {
+				return func(r *http.Request) *http.Request { return withDomainAdmin1(r, e.domainAdmin1ID) }
+			}},
+		{"ownsD3GrantedD1", func(e *adminScopeTestEnv) string { return e.d1OwnD3Gr1ID },
+			func(e *adminScopeTestEnv) func(*http.Request) *http.Request {
+				return func(r *http.Request) *http.Request { return withDomainAdmin1(r, e.domainAdmin1ID) }
+			}},
+		{"ownerOfD2", func(e *adminScopeTestEnv) string { return e.d1OwnerOfD2ID },
+			func(e *adminScopeTestEnv) func(*http.Request) *http.Request {
+				return func(r *http.Request) *http.Request { return withDomainAdmin1(r, e.domainAdmin1ID) }
+			}},
+	}
+	for _, tg := range targets {
+		for _, a := range actions {
+			t.Run(tg.name+"/"+a.name, func(t *testing.T) {
+				// Each case seeds its own env (several bcrypt hashes); run them
+				// in parallel or this test alone takes about six minutes.
+				t.Parallel()
+				env := newAdminScopeTestEnv(t)
+				env.seedPrivilegedUsers(t)
+				id := tg.id(env)
+				before := env.profile(t, id)
+				w := postToHandler(t, env.h, a.fn(env.h), http.MethodPost, "/admin/users/"+id+"/x",
+					a.form, map[string]string{"userID": id}, tg.caller(env))
+				if w.Code != http.StatusForbidden {
+					t.Fatalf("status = %d, want 403", w.Code)
+				}
+				after := env.profile(t, id)
+				if !bytes.Equal(before.PasswordHash, after.PasswordHash) ||
+					before.Disabled != after.Disabled || before.QuotaBytes != after.QuotaBytes {
+					t.Errorf("target state changed despite 403")
+				}
+			})
+		}
+	}
+}
+
+func TestUserActions_DomainAdmin_PeerD1AdminAllowed(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+	env.seedPrivilegedUsers(t)
+	before := env.profile(t, env.d1PeerAdminID)
+	w := postToHandler(t, env.h, env.h.ResetPassword, http.MethodPost, "/x", nil,
+		map[string]string{"userID": env.d1PeerAdminID},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) })
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", w.Code)
+	}
+	if bytes.Equal(before.PasswordHash, env.profile(t, env.d1PeerAdminID).PasswordHash) {
+		t.Error("password hash unchanged")
+	}
+}
+
+func TestUserActions_DomainAdmin_FailsClosedOnScopeLookupError(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+	env.h.authorizedDomainsFn = func(string, bool) ([]string, error) { return nil, errors.New("boom") }
+	before := env.profile(t, env.d1UserID)
+	w := postToHandler(t, env.h, env.h.ResetPassword, http.MethodPost, "/x", nil,
+		map[string]string{"userID": env.d1UserID},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) })
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if !bytes.Equal(before.PasswordHash, env.profile(t, env.d1UserID).PasswordHash) {
+		t.Error("password hash changed")
+	}
+}
+
+func TestUserActions_DomainAdmin_FailsClosedWithoutStore(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+	env.h.authorizedDomainsFn = nil
+	w := postToHandler(t, env.h, env.h.ToggleDisabled, http.MethodPost, "/x", nil,
+		map[string]string{"userID": env.d1UserID},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) })
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if env.profile(t, env.d1UserID).Disabled {
+		t.Error("target disabled despite 403")
+	}
+}
+
+func TestUserActions_GlobalAdmin_PrivilegedTargetsAllowed(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+	env.seedPrivilegedUsers(t)
+	for _, id := range []string{env.d1CrossAdminID, env.d1PeerAdminID, env.d1OwnerOfD2ID} {
+		for name, fn := range map[string]func(http.ResponseWriter, *http.Request){
+			"ResetPassword": env.h.ResetPassword, "ToggleDisabled": env.h.ToggleDisabled,
+		} {
+			w := postToHandler(t, env.h, fn, http.MethodPost, "/x", nil,
+				map[string]string{"userID": id},
+				func(r *http.Request) *http.Request { return withGlobalAdmin(r, env.globalAdminID) })
+			if w.Code != http.StatusSeeOther {
+				t.Errorf("%s on %s: status = %d, want 303", name, id, w.Code)
+			}
+		}
 	}
 }

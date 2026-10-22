@@ -76,6 +76,61 @@ func (MessageStatus) EnumDescriptor() ([]byte, []int) {
 	return file_proto_bongo_v1_queue_proto_rawDescGZIP(), []int{0}
 }
 
+// OutboundOrigin records where an outbound message came from. The queue worker
+// DKIM-signs by header From domain, so it must know whether the message was
+// authored locally by an authorised sender or is relayed inbound mail.
+// UNSPECIFIED (records queued before this field existed, or a construction site
+// that forgets to set it) is treated as LOCAL and signed. Every construction
+// site must set the origin explicitly.
+type OutboundOrigin int32
+
+const (
+	OutboundOrigin_OUTBOUND_ORIGIN_UNSPECIFIED OutboundOrigin = 0
+	OutboundOrigin_OUTBOUND_ORIGIN_LOCAL       OutboundOrigin = 1 // web compose, authenticated submission, server-generated mail
+	OutboundOrigin_OUTBOUND_ORIGIN_FORWARD     OutboundOrigin = 2 // inbound mail forwarded by a rule or ForwardAddress; never re-signed
+)
+
+// Enum value maps for OutboundOrigin.
+var (
+	OutboundOrigin_name = map[int32]string{
+		0: "OUTBOUND_ORIGIN_UNSPECIFIED",
+		1: "OUTBOUND_ORIGIN_LOCAL",
+		2: "OUTBOUND_ORIGIN_FORWARD",
+	}
+	OutboundOrigin_value = map[string]int32{
+		"OUTBOUND_ORIGIN_UNSPECIFIED": 0,
+		"OUTBOUND_ORIGIN_LOCAL":       1,
+		"OUTBOUND_ORIGIN_FORWARD":     2,
+	}
+)
+
+func (x OutboundOrigin) Enum() *OutboundOrigin {
+	p := new(OutboundOrigin)
+	*p = x
+	return p
+}
+
+func (x OutboundOrigin) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OutboundOrigin) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_bongo_v1_queue_proto_enumTypes[1].Descriptor()
+}
+
+func (OutboundOrigin) Type() protoreflect.EnumType {
+	return &file_proto_bongo_v1_queue_proto_enumTypes[1]
+}
+
+func (x OutboundOrigin) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OutboundOrigin.Descriptor instead.
+func (OutboundOrigin) EnumDescriptor() ([]byte, []int) {
+	return file_proto_bongo_v1_queue_proto_rawDescGZIP(), []int{1}
+}
+
 type OutboundMessage struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -96,6 +151,7 @@ type OutboundMessage struct {
 	// is the whole raw message (the default / self-check fallback).
 	Layout        []*MessageSegment `protobuf:"bytes,13,rep,name=layout,proto3" json:"layout,omitempty"`
 	Attachments   []*BlobRef        `protobuf:"bytes,14,rep,name=attachments,proto3" json:"attachments,omitempty"`
+	Origin        OutboundOrigin    `protobuf:"varint,15,opt,name=origin,proto3,enum=bongo.v1.OutboundOrigin" json:"origin,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -228,6 +284,13 @@ func (x *OutboundMessage) GetAttachments() []*BlobRef {
 	return nil
 }
 
+func (x *OutboundMessage) GetOrigin() OutboundOrigin {
+	if x != nil {
+		return x.Origin
+	}
+	return OutboundOrigin_OUTBOUND_ORIGIN_UNSPECIFIED
+}
+
 type QueueStats struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	PendingCount         int32                  `protobuf:"varint,1,opt,name=pending_count,json=pendingCount,proto3" json:"pending_count,omitempty"`
@@ -292,7 +355,7 @@ var File_proto_bongo_v1_queue_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\n" +
-	"\x1aproto/bongo/v1/queue.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\x1a\x19proto/bongo/v1/mail.proto\"\x93\x04\n" +
+	"\x1aproto/bongo/v1/queue.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\x1a\x19proto/bongo/v1/mail.proto\"\xc5\x04\n" +
 	"\x0fOutboundMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tsender_id\x18\x02 \x01(\tR\bsenderId\x12!\n" +
@@ -311,7 +374,8 @@ const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\x11failed_recipients\x18\v \x03(\tR\x10failedRecipients\x12!\n" +
 	"\fmessage_guid\x18\f \x01(\tR\vmessageGuid\x120\n" +
 	"\x06layout\x18\r \x03(\v2\x18.bongo.v1.MessageSegmentR\x06layout\x123\n" +
-	"\vattachments\x18\x0e \x03(\v2\x11.bongo.v1.BlobRefR\vattachments\"\x8a\x01\n" +
+	"\vattachments\x18\x0e \x03(\v2\x11.bongo.v1.BlobRefR\vattachments\x120\n" +
+	"\x06origin\x18\x0f \x01(\x0e2\x18.bongo.v1.OutboundOriginR\x06origin\"\x8a\x01\n" +
 	"\n" +
 	"QueueStats\x12#\n" +
 	"\rpending_count\x18\x01 \x01(\x05R\fpendingCount\x12!\n" +
@@ -322,7 +386,11 @@ const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\x16MESSAGE_STATUS_PENDING\x10\x01\x12\x19\n" +
 	"\x15MESSAGE_STATUS_FAILED\x10\x02\x12\x1c\n" +
 	"\x18MESSAGE_STATUS_DELIVERED\x10\x03\x12\x1a\n" +
-	"\x16MESSAGE_STATUS_BOUNCED\x10\x04B7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"\x16MESSAGE_STATUS_BOUNCED\x10\x04*i\n" +
+	"\x0eOutboundOrigin\x12\x1f\n" +
+	"\x1bOUTBOUND_ORIGIN_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15OUTBOUND_ORIGIN_LOCAL\x10\x01\x12\x1b\n" +
+	"\x17OUTBOUND_ORIGIN_FORWARD\x10\x02B7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_queue_proto_rawDescOnce sync.Once
@@ -336,24 +404,26 @@ func file_proto_bongo_v1_queue_proto_rawDescGZIP() []byte {
 	return file_proto_bongo_v1_queue_proto_rawDescData
 }
 
-var file_proto_bongo_v1_queue_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_bongo_v1_queue_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_proto_bongo_v1_queue_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_proto_bongo_v1_queue_proto_goTypes = []any{
 	(MessageStatus)(0),      // 0: bongo.v1.MessageStatus
-	(*OutboundMessage)(nil), // 1: bongo.v1.OutboundMessage
-	(*QueueStats)(nil),      // 2: bongo.v1.QueueStats
-	(*MessageSegment)(nil),  // 3: bongo.v1.MessageSegment
-	(*BlobRef)(nil),         // 4: bongo.v1.BlobRef
+	(OutboundOrigin)(0),     // 1: bongo.v1.OutboundOrigin
+	(*OutboundMessage)(nil), // 2: bongo.v1.OutboundMessage
+	(*QueueStats)(nil),      // 3: bongo.v1.QueueStats
+	(*MessageSegment)(nil),  // 4: bongo.v1.MessageSegment
+	(*BlobRef)(nil),         // 5: bongo.v1.BlobRef
 }
 var file_proto_bongo_v1_queue_proto_depIdxs = []int32{
 	0, // 0: bongo.v1.OutboundMessage.status:type_name -> bongo.v1.MessageStatus
-	3, // 1: bongo.v1.OutboundMessage.layout:type_name -> bongo.v1.MessageSegment
-	4, // 2: bongo.v1.OutboundMessage.attachments:type_name -> bongo.v1.BlobRef
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	4, // 1: bongo.v1.OutboundMessage.layout:type_name -> bongo.v1.MessageSegment
+	5, // 2: bongo.v1.OutboundMessage.attachments:type_name -> bongo.v1.BlobRef
+	1, // 3: bongo.v1.OutboundMessage.origin:type_name -> bongo.v1.OutboundOrigin
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_proto_bongo_v1_queue_proto_init() }
@@ -368,7 +438,7 @@ func file_proto_bongo_v1_queue_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bongo_v1_queue_proto_rawDesc), len(file_proto_bongo_v1_queue_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
