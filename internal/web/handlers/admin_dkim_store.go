@@ -46,6 +46,15 @@ func LoadStoredDKIMKeys(ps *store.PebbleStore, reg *internalmail.DKIMRegistry, l
 		if domain == "" {
 			continue
 		}
+		// Keys are canonically stored under the lower-case name. A legacy
+		// mixed-case record only applies when no canonical one exists, so the
+		// outcome never depends on key sort order.
+		if lower := strings.ToLower(domain); lower != domain {
+			if _, err := ps.Get([]byte("/system/domain/" + lower + "/dkim")); err == nil {
+				continue
+			}
+			domain = lower
+		}
 
 		val, err := iter.Value()
 		if err != nil {

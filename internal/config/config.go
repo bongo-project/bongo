@@ -11,6 +11,8 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclsimple"
 	"github.com/spf13/viper"
+
+	"github.com/bongo-project/bongo/internal/netx"
 )
 
 // Config is the top-level configuration for bongo-go.
@@ -35,12 +37,34 @@ type Config struct {
 // Roles: "server" (Raft voter, full stack), "edge" (stateless proxy), "dev" (all-in-one ephemeral),
 // "agent" (remote processor, requires agents list).
 type ServerConfig struct {
-	Role          string   `hcl:"role,optional" mapstructure:"role"`
-	Name          string   `hcl:"name,optional" mapstructure:"name"`
-	Datacenter    string   `hcl:"datacenter,optional" mapstructure:"datacenter"`
+	Role       string `hcl:"role,optional" mapstructure:"role"`
+	Name       string `hcl:"name,optional" mapstructure:"name"`
+	Datacenter string `hcl:"datacenter,optional" mapstructure:"datacenter"`
+	// BindAddr is shared by the protocol listeners, raft and gossip. When the
+	// effective advertise address (AdvertiseAddr, else BindAddr) is a loopback
+	// literal or "localhost", raft and gossip bind to that loopback address
+	// instead, so a single node does not expose its cluster transports to
+	// other hosts or containers. Hostnames are not resolved.
 	BindAddr      string   `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
 	AdvertiseAddr string   `hcl:"advertise_addr,optional" mapstructure:"advertise_addr"`
 	Agents        []string `hcl:"agents,optional" mapstructure:"agents"`
+	// TrustedProxies lists the addresses (bare IPs or CIDRs) of reverse
+	// proxies whose PROXY protocol headers (smtp/imap/pop3 proxy_protocol) and
+	// X-Forwarded-For / X-Forwarded-Proto headers (web) are believed. Empty by
+	// default: nobody is trusted, not even loopback or RFC 1918 peers, so a
+	// co-tenant container cannot forge client IPs. Enabling proxy_protocol
+	// with an empty list fails validation. See ParseTrustedProxies.
+	TrustedProxies []string `hcl:"trusted_proxies,optional" mapstructure:"trusted_proxies"`
+}
+
+// ParseTrustedProxies parses server.trusted_proxies once at startup. A
+// malformed entry fails with an error naming the value.
+func (s *ServerConfig) ParseTrustedProxies() (*netx.TrustedProxies, error) {
+	tp, err := netx.ParseTrustedProxies(s.TrustedProxies)
+	if err != nil {
+		return nil, fmt.Errorf("server.trusted_proxies: %w", err)
+	}
+	return tp, nil
 }
 
 // AgentConfig holds connection settings for an agent-role node to reach its server.
@@ -767,6 +791,15 @@ func (c *Config) Validate() error {
 		if len(missing) > 0 {
 			return fmt.Errorf("cluster: joining peers requires transport security before a multi-node cluster can form; set %s (see docs/multi-node-cluster-checklist.md)", strings.Join(missing, " and "))
 		}
+		// Peers are handed the advertised address; a loopback one can never be
+		// reached from another node, and raft/gossip bind to it exclusively.
+		adv := c.Server.AdvertiseAddr
+		if adv == "" {
+			adv = c.Server.BindAddr
+		}
+		if IsLoopbackHost(adv) {
+			return fmt.Errorf("cluster: cluster.join is set but raft/gossip advertise the loopback address %q; set server.advertise_addr to this node's routable IP", adv)
+		}
 	}
 
 	if err := c.Cluster.Raft.Validate(); err != nil {
@@ -775,6 +808,25 @@ func (c *Config) Validate() error {
 
 	if _, err := c.SMTP.ParseTrustedNetworks(); err != nil {
 		return err
+	}
+
+	proxies, err := c.Server.ParseTrustedProxies()
+	if err != nil {
+		return err
+	}
+	if proxies.Empty() {
+		for _, l := range []struct {
+			key string
+			on  bool
+		}{
+			{"smtp.proxy_protocol", c.SMTP.ProxyProtocol},
+			{"imap.proxy_protocol", c.IMAP.ProxyProtocol},
+			{"pop3.proxy_protocol", c.POP3.ProxyProtocol},
+		} {
+			if l.on {
+				return fmt.Errorf("%s: requires server.trusted_proxies to list the proxy's address; without it every client would appear to connect from the proxy (set it to the proxy's IP or network)", l.key)
+			}
+		}
 	}
 
 	if !clamAVKnownFailurePolicies[c.Antivirus.ClamAV.OnFailure] {
@@ -1230,4 +1282,14 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 	ApplyOverrides(v, cfg)
 
 	return cfg, configFile, nil
+}
+
+// IsLoopbackHost reports whether host is a loopback IP literal or "localhost".
+// Other hostnames are not resolved and count as non-loopback.
+func IsLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

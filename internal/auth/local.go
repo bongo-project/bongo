@@ -145,6 +145,8 @@ func (a *LocalAuth) AccountState(userID string) (AccountState, error) {
 	}
 	return AccountState{
 		Disabled: profile.Disabled,
-		Epoch:    security.SessionEpoch(profile.PasswordHash, nil, false),
+		// Generation is deliberately 0: a web logout bumps it, and that
+		// must not end IMAP, POP3 or SMTP sessions.
+		Epoch: security.SessionEpoch(profile.PasswordHash, nil, false, 0),
 	}, nil
 }

@@ -2,6 +2,8 @@ package store
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -13,11 +15,14 @@ import (
 type CalendarStore struct {
 	pebble  *PebbleStore
 	applier RaftApplier
+	// scan is the prefix scan used by List and IsSharedWith. It defaults to
+	// pebble.PrefixScan and exists so tests can record which prefixes are read.
+	scan func(prefix []byte) (Iterator, error)
 }
 
 // NewCalendarStore creates a CalendarStore.
 func NewCalendarStore(pebble *PebbleStore, applier RaftApplier) *CalendarStore {
-	return &CalendarStore{pebble: pebble, applier: applier}
+	return &CalendarStore{pebble: pebble, applier: applier, scan: pebble.PrefixScan}
 }
 
 func calendarKey(userID, guid string) []byte {
@@ -134,7 +139,7 @@ func (s *CalendarStore) Delete(userID, guid string) error {
 
 // List returns all calendars for a user.
 func (s *CalendarStore) List(userID string) ([]*bongov1.Calendar, error) {
-	iter, err := s.pebble.PrefixScan(calendarPrefix(userID))
+	iter, err := s.scan(calendarPrefix(userID))
 	if err != nil {
 		return nil, fmt.Errorf("scanning calendars: %w", err)
 	}
@@ -156,70 +161,22 @@ func (s *CalendarStore) List(userID string) ([]*bongov1.Calendar, error) {
 	return calendars, nil
 }
 
-// SharedCalendar holds a calendar and its owner's userID.
-type SharedCalendar struct {
-	OwnerID  string
-	Calendar *bongov1.Calendar
-}
-
-// ListSharedCalendars returns calendars shared with the given userID.
-// It scans all users' calendar prefixes to find shared_with matches.
-func (s *CalendarStore) ListSharedCalendars(userID string) ([]SharedCalendar, error) {
-	// Scan all /user/*/calendar/* keys.
-	iter, err := s.pebble.PrefixScan([]byte("/user/"))
+// IsSharedWith reports whether any of ownerID's calendars is shared with
+// userID. It reads only ownerID's calendar prefix, so it is safe on a request
+// path. IDs are opaque and compared exactly.
+func (s *CalendarStore) IsSharedWith(ownerID, userID string) (bool, error) {
+	// A "/" in ownerID would steer the prefix into another key family.
+	if ownerID == "" || userID == "" || strings.Contains(ownerID, "/") {
+		return false, nil
+	}
+	calendars, err := s.List(ownerID)
 	if err != nil {
-		return nil, fmt.Errorf("scanning for shared calendars: %w", err)
+		return false, fmt.Errorf("listing calendars for share check: %w", err)
 	}
-	defer iter.Close()
-
-	var results []SharedCalendar
-	for iter.Next() {
-		key := string(iter.Key())
-
-		// Only process calendar keys: /user/{ownerID}/calendar/{calID}
-		if len(key) < 7 {
-			continue
-		}
-		rest := key[6:] // after "/user/"
-		slashIdx := 0
-		for slashIdx < len(rest) && rest[slashIdx] != '/' {
-			slashIdx++
-		}
-		if slashIdx == 0 || slashIdx >= len(rest)-1 {
-			continue
-		}
-		ownerID := rest[:slashIdx]
-		remainder := rest[slashIdx+1:]
-
-		// Only look at calendar keys, skip events/contacts/etc.
-		if len(remainder) < 9 || remainder[:9] != "calendar/" {
-			continue
-		}
-
-		// Skip own calendars.
-		if ownerID == userID {
-			continue
-		}
-
-		val, err := iter.Value()
-		if err != nil {
-			continue
-		}
-		var cal bongov1.Calendar
-		if err := proto.Unmarshal(val, &cal); err != nil {
-			continue
-		}
-
-		for _, u := range cal.SharedWith {
-			if u == userID {
-				results = append(results, SharedCalendar{
-					OwnerID:  ownerID,
-					Calendar: &cal,
-				})
-				break
-			}
+	for _, cal := range calendars {
+		if slices.Contains(cal.SharedWith, userID) {
+			return true, nil
 		}
 	}
-
-	return results, nil
+	return false, nil
 }

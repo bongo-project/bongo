@@ -625,9 +625,9 @@ did not audit each). Therefore:
 
 ### Signal semantics: what SIGHUP does today
 
-- In-container: `deploy/entrypoint.sh` ends in `exec su-exec bongo:bongo
-  /usr/local/bin/bongo-go "$@"`, so `bongo-go` is the container's main
-  process. The binary registers no SIGHUP handler. Per the `os/signal`
+- In-container: `bongo-go` is the image's `ENTRYPOINT`, so it runs directly
+  as the container's main process (PID 1) as uid 10001, with no wrapper
+  script. The binary registers no SIGHUP handler. Per the `os/signal`
   documentation, "A SIGHUP, SIGINT, or SIGTERM signal causes the program to
   exit" in a Go program with no handler. I confirmed that with a trivial Go
   program locally (exit status 129 on SIGHUP, darwin). I did not run it as PID

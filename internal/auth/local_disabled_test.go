@@ -106,6 +106,15 @@ func TestAccountState(t *testing.T) {
 		t.Error("epoch must not depend on TOTP state")
 	}
 
+	// A web logout bumps SessionGeneration; protocol sessions must survive it.
+	p.SessionGeneration = 7
+	data, _ = proto.Marshal(p)
+	kv.data["/user/user-1/profile"] = data
+	gen, _ := a.AccountState("user-1")
+	if gen.Epoch != reset.Epoch {
+		t.Error("epoch must not depend on the web session generation")
+	}
+
 	p.Disabled = true
 	data, _ = proto.Marshal(p)
 	kv.data["/user/user-1/profile"] = data

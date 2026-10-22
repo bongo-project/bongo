@@ -82,7 +82,7 @@ func newCrossEnv(t *testing.T) *crossEnv {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := bongoimap.NewServer(crossAuth{}, ps, blobs, mailboxes, nil, nil, nil, notifier, nil, true, logger)
-	if err := srv.Listen("127.0.0.1:0", "", nil, false); err != nil {
+	if err := srv.Listen("127.0.0.1:0", "", nil, false, nil); err != nil {
 		t.Fatalf("IMAP Listen: %v", err)
 	}
 	go func() { _ = srv.Serve() }()

@@ -16,8 +16,34 @@ server {
   # container network). Raft advertises loopback: this is a single node with no
   # peers, so it only ever talks to itself. Set this to the node's routable IP
   # if you later form a multi-node cluster.
+  #
+  # While advertise_addr is loopback, raft (8300) and gossip (8301) listen on
+  # loopback only, whatever bind_addr says, so other containers on the compose
+  # network cannot reach them. A routable advertise_addr makes them follow
+  # bind_addr again.
   bind_addr      = "0.0.0.0"
   advertise_addr = "127.0.0.1"
+
+  # Addresses whose PROXY protocol headers (smtp/imap proxy_protocol below) and
+  # X-Forwarded-For / X-Forwarded-Proto headers (web) are believed. REQUIRED
+  # because proxy_protocol is on: startup fails without it. Nothing else is
+  # trusted, not even other private-network peers, so a co-tenant container
+  # cannot forge a client IP.
+  #
+  # Set this to Traefik's own address as bongo sees it. Best: pin Traefik to a
+  # static IP on the traefik_web network (in Traefik's compose project) and list
+  # it as a /32. Fallback: the whole network CIDR from
+  #   docker network inspect traefik_web --format '{{(index .IPAM.Config 0).Subnet}}'
+  # which still lets any other container on that network forge client IPs.
+  #
+  # !!! PLACEHOLDER !!! 172.18.0.0/16 below is a GUESS at the Docker bridge
+  # range, NOT Traefik's real address. Replace it with Traefik's address on the
+  # shared network BEFORE deploying (see "Set trusted_proxies before the first deploy" in deploy/README.md).
+  # If it is wrong, every client appears as the proxy's IP (SPF, per-IP limits,
+  # lockout and DNSBL all evaluate the proxy) and bongo logs the WARN
+  # "proxy protocol header from a peer not in server.trusted_proxies was ignored"
+  # within the first minutes of traffic.
+  trusted_proxies = ["172.18.0.0/16"] # PLACEHOLDER: replace with Traefik's address
 }
 
 cluster {

@@ -339,16 +339,8 @@ func (h *CalendarHandler) targetSharesWith(targetUser, callerID string) bool {
 	if callerID == "" || h.calendars == nil {
 		return false
 	}
-	shared, err := h.calendars.ListSharedCalendars(callerID)
-	if err != nil {
-		return false
-	}
-	for _, sc := range shared {
-		if sc.OwnerID == targetUser {
-			return true
-		}
-	}
-	return false
+	shared, err := h.calendars.IsSharedWith(targetUser, callerID)
+	return err == nil && shared
 }
 
 // NewEvent renders the create event form.

@@ -734,6 +734,90 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "server joining peers while advertising loopback is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "0.0.0.0"
+				c.Server.AdvertiseAddr = "127.0.0.1"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: true,
+			errMsg:  "loopback",
+		},
+		{
+			name: "server joining peers with loopback bind and no advertise is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "127.0.0.1"
+				c.Server.AdvertiseAddr = ""
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: true,
+			errMsg:  "loopback",
+		},
+		{
+			name: "server joining peers with routable advertise is allowed",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "0.0.0.0"
+				c.Server.AdvertiseAddr = "10.0.0.5"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "server joining peers while advertising localhost is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "0.0.0.0"
+				c.Server.AdvertiseAddr = "localhost"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: true,
+			errMsg:  "loopback",
+		},
+		{
+			name: "server joining peers while advertising the IPv6 loopback is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.BindAddr = "0.0.0.0"
+				c.Server.AdvertiseAddr = "::1"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: true,
+			errMsg:  "loopback",
+		},
+		{
 			name:    "no trusted networks is valid",
 			modify:  func(c *Config) { c.SMTP.TrustedNetworks = nil },
 			wantErr: false,
@@ -1460,6 +1544,78 @@ func TestConnectionLimitDefaults(t *testing.T) {
 			}
 			if tt.gotPerIP != 50 {
 				t.Errorf("max_connections_per_ip = %d, want 50", tt.gotPerIP)
+			}
+		})
+	}
+}
+
+func TestIsLoopbackHost(t *testing.T) {
+	tests := []struct {
+		host string
+		want bool
+	}{
+		{"127.0.0.1", true},
+		{"::1", true},
+		{"LOCALHOST", true},
+		{"127.0.0.2", true},
+		{"10.0.0.5", false},
+		{"mail.example.com", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			if got := IsLoopbackHost(tt.host); got != tt.want {
+				t.Errorf("IsLoopbackHost(%q) = %v, want %v", tt.host, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTrustedProxiesValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(c *Config)
+		wantErr string
+	}{
+		{"unset, no proxy protocol", func(c *Config) {}, ""},
+		{"listed IP and CIDR", func(c *Config) {
+			c.Server.TrustedProxies = []string{"172.18.0.5", "10.0.0.0/8"}
+		}, ""},
+		{"bad CIDR names the value", func(c *Config) {
+			c.Server.TrustedProxies = []string{"10.0.0.0/99"}
+		}, "10.0.0.0/99"},
+		{"bad address names the value", func(c *Config) {
+			c.Server.TrustedProxies = []string{"traefik"}
+		}, "traefik"},
+		{"smtp proxy_protocol without list", func(c *Config) {
+			c.SMTP.ProxyProtocol = true
+		}, "smtp.proxy_protocol"},
+		{"imap proxy_protocol without list", func(c *Config) {
+			c.IMAP.ProxyProtocol = true
+		}, "imap.proxy_protocol"},
+		{"pop3 proxy_protocol without list", func(c *Config) {
+			c.POP3.ProxyProtocol = true
+		}, "pop3.proxy_protocol"},
+		{"proxy_protocol with list", func(c *Config) {
+			c.SMTP.ProxyProtocol = true
+			c.IMAP.ProxyProtocol = true
+			c.POP3.ProxyProtocol = true
+			c.Server.TrustedProxies = []string{"172.18.0.5/32"}
+		}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Defaults()
+			tt.mutate(cfg)
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() = %v, want error containing %q", err, tt.wantErr)
 			}
 		})
 	}
