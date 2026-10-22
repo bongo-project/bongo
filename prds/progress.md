@@ -1303,3 +1303,11 @@ PATTERN: [security] "Local" for a forward or relay decision must mean the addres
 PATTERN: [testing] A "disabled" case built by rewriting the profile with a re-hashed password also changes the session epoch, so it silently tests password reset instead. Flip only the field under test.
 PATTERN: [norman] Never `git add -u` after applying a worker patch when prds/ has uncommitted edits; stage the patch's own paths. Recovering cost a commit rebuild.
 PATTERN: [tooling] `git cherry-pick` has no `-q`; a failed option in a loop under `set -e` still let later commands move a branch. Check each step's exit code explicitly before moving refs.
+
+## 2026-10-22 — PR #37 merged; paused with Phase 18 batch 4 in flight
+
+PR #37 (batch 3) squash-merged as d49554b after one fix: CI's gosec flagged G118 because 18.34 called the shutdown cancels from a slice; they are now called by name. Local gosec had been passing without checking anything: under Go 1.27 it loads no packages and exits 0. `prds/config.md` now runs it under GOTOOLCHAIN=go1.26.10. Batch 2 and 3 "gosec clean" claims rested on CI alone.
+
+Paused for travel. Batch 4 (18.18, 18.19, 18.20, 18.21, 18.22, 18.27, 18.29) runs as workflow wf_592260b1-3b8 in worktrees .claude/worktrees/p18-<task>, based on b02fc50 (identical to d49554b except the G118 change in agent.go). Branch norman/phase18-low sits on d49554b. To resume: read the workflow journal (or resume the run with resumeFromRunId if it died), verify each fix with one mutation, re-run gosec under go1.26.10, apply patches task by task staging only each patch's paths, full gate, PR, merge on green. Then batch 5 (18.23-18.26, 18.28, 18.30, 18.31) and batch 6 (18.36, 18.37, then 18.32 before 18.33).
+
+PATTERN: [tooling] gosec run under a newer Go than go.mod loads nothing and exits 0. A clean security scan with no findings at all after a big change is a reason to check the tool ran, not a pass.
