@@ -1331,7 +1331,11 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 // registers the new signer in the DKIM registry so that outbound mail from the
 // domain is signed immediately. The private key is NEVER logged.
 func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
-	domain := chi.URLParam(r, "domain")
+	// The key is stored and the signer registered under the lower-case name:
+	// scope checks and the DKIM registry are case-insensitive, so a mixed-case
+	// URL must rotate the same record rather than create a second one.
+	rawDomain := chi.URLParam(r, "domain")
+	domain := strings.ToLower(strings.TrimSpace(rawDomain))
 	if domain == "" {
 		http.Error(w, "domain is required", http.StatusBadRequest)
 		return
@@ -1363,6 +1367,7 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 	const selector = "mail"
 
 	// Build and store the DomainRecord proto under /system/domain/{domain}/dkim.
+	dkimKey := fmt.Sprintf("/system/domain/%s/dkim", domain)
 	rec := &bongov1.DomainRecord{
 		DkimEnabled:    true,
 		DkimSelector:   selector,
@@ -1376,7 +1381,7 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd := &bongov1.RaftCommand{
 		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/system/domain/%s/dkim", domain)),
+		Key:   []byte(dkimKey),
 		Value: data,
 	}
 	if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
@@ -1384,6 +1389,7 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to store key", http.StatusInternalServerError)
 		return
 	}
+	h.removeStaleDKIMKeys(dkimKey)
 
 	// Register signer in registry so outbound mail is signed immediately.
 	if h.dkimRegistry != nil {
@@ -1405,7 +1411,37 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 	// be anything but a relative path under /admin/domains/ regardless of what
 	// the URL parameter contained. Same treatment as the other user-derived
 	// paths in this package (cf. contacts.go, mail.go).
-	http.Redirect(w, r, fmt.Sprintf("/admin/domains/%s?flash=DKIM+key+generated", url.PathEscape(domain)), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, fmt.Sprintf("/admin/domains/%s?flash=DKIM+key+generated", url.PathEscape(strings.TrimSpace(rawDomain))), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// removeStaleDKIMKeys deletes case-variant duplicates of canonicalKey (for
+// example /system/domain/Example.COM/dkim left by an earlier rotation through a
+// mixed-case URL). Best-effort and a separate Raft write from the key PUT, so
+// not atomic with it: LoadStoredDKIMKeys prefers the canonical lower-case
+// record, so a failure here is logged and leaves behaviour correct.
+func (h *AdminHandler) removeStaleDKIMKeys(canonicalKey string) {
+	if h.store == nil {
+		return
+	}
+	iter, err := h.store.PrefixScan([]byte("/system/domain/"))
+	if err != nil {
+		h.logger.Warn("dkim: stale key scan failed", "error", err)
+		return
+	}
+	var stale []string
+	for iter.Next() {
+		k := string(iter.Key())
+		if k != canonicalKey && strings.EqualFold(k, canonicalKey) {
+			stale = append(stale, k)
+		}
+	}
+	iter.Close()
+	for _, k := range stale {
+		cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: []byte(k)}
+		if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+			h.logger.Warn("dkim: failed to remove stale mixed-case key", "key", k, "error", err)
+		}
+	}
 }
 
 // SetCatchAll sets the catch-all owner for a domain.
@@ -2766,8 +2802,12 @@ func (h *AdminHandler) enrichDomainDKIM(di *templates.DomainInfo) {
 	if h.store == nil {
 		return
 	}
-	dkimKey := []byte(fmt.Sprintf("/system/domain/%s/dkim", di.Name))
-	data, err := h.store.Get(dkimKey)
+	// Rotation stores under the lower-case name; legacy mixed-case domains may
+	// only have a record under their as-created name, so fall back to it.
+	data, err := h.store.Get([]byte(fmt.Sprintf("/system/domain/%s/dkim", strings.ToLower(di.Name))))
+	if err != nil {
+		data, err = h.store.Get([]byte(fmt.Sprintf("/system/domain/%s/dkim", di.Name)))
+	}
 	if err != nil {
 		return // not configured yet
 	}

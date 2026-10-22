@@ -230,6 +230,12 @@ func WithUserContext(ctx context.Context, userID, email string) context.Context 
 	return ctx
 }
 
+// WithAdminContext sets the global-admin flag in a context for use in tests.
+// Production code should use the RequireAuth middleware instead.
+func WithAdminContext(ctx context.Context, isAdmin bool) context.Context {
+	return context.WithValue(ctx, adminKey, isAdmin)
+}
+
 func validateCookie(secret []byte, value string) (*SessionData, error) {
 	payload, err := VerifyValue(secret, sessionCookiePurpose, value)
 	if err != nil {
