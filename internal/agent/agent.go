@@ -2715,8 +2715,22 @@ func (a *Agent) ensureConfiguredDomain() {
 		}
 	}
 
-	cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: key, Value: []byte("enabled")}
-	if err := a.ApplyCommand(cmd, 5*time.Second); err != nil {
+	a.seedConfiguredDomain(domain, a)
+}
+
+// seedConfiguredDomain writes the domain key for a configured domain whose key
+// is absent. Config and grants left by a delete from before the cascade
+// existed must not be inherited, so it purges first and does not create the
+// key if the purge fails (the next boot retries).
+func (a *Agent) seedConfiguredDomain(domain string, applier store.RaftApplier) {
+	if a.Store != nil {
+		if err := store.PurgeDomainConfig(a.Store, applier, domain); err != nil {
+			a.logger.Warn("startup: failed to clear stale config for configured domain", "domain", domain, "error", err)
+			return
+		}
+	}
+	cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: []byte("/system/domain/" + domain), Value: []byte("enabled")}
+	if err := applier.ApplyCommand(cmd, 5*time.Second); err != nil {
 		a.logger.Warn("startup: failed to seed configured mail domain", "domain", domain, "error", err)
 		return
 	}

@@ -15,7 +15,14 @@ type fakeRow struct {
 	valErr   error
 }
 
-func (f *fakeKV) Get([]byte) ([]byte, error) { return nil, ErrNotFound }
+func (f *fakeKV) Get(key []byte) ([]byte, error) {
+	for _, r := range f.rows {
+		if r.key == string(key) {
+			return []byte(r.val), r.valErr
+		}
+	}
+	return nil, ErrNotFound
+}
 
 func (f *fakeKV) PrefixScan(prefix []byte) (Iterator, error) {
 	var rows []fakeRow
@@ -62,10 +69,29 @@ func TestAuthorizedDomains_OwnerReadErrorFailsClosed(t *testing.T) {
 	// Control: with no read error the same data resolves normally.
 	ok := &DomainAdminStore{pebble: &fakeKV{rows: []fakeRow{
 		{key: "/system/domain/a.example/owner", val: "u2"},
+		{key: "/system/domain/b.example", val: "enabled"},
 		{key: "/system/domain/b.example/owner", val: "u1"},
 	}}}
 	got, err := ok.AuthorizedDomains("u1", false)
 	if err != nil || len(got) != 1 || got[0] != "b.example" {
 		t.Errorf("control: got %v, %v; want [b.example], nil", got, err)
+	}
+}
+
+func TestAuthorizedDomains_DomainExistenceReadErrorFailsClosed(t *testing.T) {
+	boom := errors.New("pebble read failed")
+	s := &DomainAdminStore{pebble: &fakeKV{rows: []fakeRow{
+		{key: "/system/domain_admin/a.example/u1", val: "1"},
+		{key: "/system/domain/a.example", val: "enabled", valErr: boom},
+	}}}
+	domains, err := s.AuthorizedDomains("u1", false)
+	if err == nil {
+		t.Fatalf("AuthorizedDomains returned nil error, domains %v", domains)
+	}
+	if !errors.Is(err, boom) {
+		t.Errorf("error %v does not wrap the read error", err)
+	}
+	if domains != nil {
+		t.Errorf("domains = %v, want nil on error", domains)
 	}
 }
