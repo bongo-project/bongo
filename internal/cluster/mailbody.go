@@ -1,11 +1,9 @@
 package cluster
 
 import (
-	"bytes"
 	"log/slog"
 
-	"github.com/jhillyerd/enmime"
-
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -43,7 +41,7 @@ func mailBodyText(blobs *store.BlobStore, meta *bongov1.MailMeta, logger *slog.L
 		return ""
 	}
 
-	env, err := enmime.ReadEnvelope(bytes.NewReader(raw))
+	env, _, err := mimesafe.ReadEnvelope(raw)
 	if err != nil {
 		logger.Warn("index: could not parse message for body indexing",
 			"guid", meta.GetGuid(), "error", err)

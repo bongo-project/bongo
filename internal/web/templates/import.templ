@@ -6,6 +6,7 @@ templ ImportPage(mailboxes []string) {
 	<h2>{ t(ctx, "import.importMessages") }</h2>
 	<p>{ t(ctx, "import.uploadDescription") }</p>
 	<form method="post" action="/import" enctype="multipart/form-data">
+		<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 		<label for="mbox">{ t(ctx, "import.mboxFile") }</label>
 		<input type="file" id="mbox" name="mbox" accept=".mbox,.mbx" required/>
 		<label for="mailbox">{ t(ctx, "import.targetMailbox") }</label>

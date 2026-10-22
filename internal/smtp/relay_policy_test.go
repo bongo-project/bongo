@@ -114,7 +114,6 @@ func testBackend(local ...string) (*Backend, *fakeSplitDeliverer, *fakeRelayQueu
 		resolver:     &fakeResolver{local: set},
 		relayQueue:   relay,
 		senderPolicy: &fakePolicy{},
-		perIP:        map[string]int{},
 		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	return b, deliverer, relay
@@ -184,7 +183,6 @@ func TestSMTPAuthFailuresAreRateLimited(t *testing.T) {
 	b := &Backend{
 		auth:      &fakeAuth{err: auth.ErrBadCredentials},
 		deliverer: deliverer,
-		perIP:     map[string]int{},
 		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	s := &Session{backend: b, logger: b.logger, submission: true}

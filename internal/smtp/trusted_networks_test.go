@@ -19,7 +19,6 @@ func mustParseCIDR(t *testing.T, s string) *net.IPNet {
 
 func trustedNetworksTestBackend(nets []*net.IPNet) *Backend {
 	b := &Backend{
-		perIP:  map[string]int{},
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	b.SetTrustedNetworks(nets)

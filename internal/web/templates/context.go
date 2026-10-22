@@ -83,6 +83,13 @@ func csrfHeaders(ctx context.Context) string {
 	return string(b)
 }
 
+// csrfToken returns the request's CSRF token, or "" outside enforcing roles.
+// Multipart forms render it as their first hidden field so RequireCSRF can find
+// it without reading past the start of an upload.
+func csrfToken(ctx context.Context) string {
+	return middleware.CSRFTokenFromContext(ctx)
+}
+
 // pageWindow returns the page numbers to display in a truncated pagination
 // control. It always includes page 1 and totalPages, the current page, and
 // up to 2 pages on each side. Gaps are represented by 0 (rendered as "...").

@@ -27,7 +27,6 @@ func TestRcpt_QuotaEnforcement_UnderQuota(t *testing.T) {
 		},
 		deliverer:  &fakeSplitDeliverer{},
 		relayQueue: &fakeRelayQueue{},
-		perIP:      map[string]int{},
 		logger:     testLogger(),
 	}
 	sess := &Session{backend: b, logger: testLogger()}
@@ -54,7 +53,6 @@ func TestRcpt_QuotaEnforcement_OverQuota(t *testing.T) {
 		quotaChecker: &fakeQuotaChecker{overQuota: overQuota},
 		deliverer:    &fakeSplitDeliverer{},
 		relayQueue:   &fakeRelayQueue{},
-		perIP:        map[string]int{},
 		logger:       testLogger(),
 	}
 	sess := &Session{backend: b, logger: testLogger()}
@@ -80,7 +78,6 @@ func TestRcpt_QuotaEnforcement_NilChecker(t *testing.T) {
 		resolver:   &fakeResolver{local: map[string]bool{"carol@example.com": true}},
 		deliverer:  &fakeSplitDeliverer{},
 		relayQueue: &fakeRelayQueue{},
-		perIP:      map[string]int{},
 		logger:     testLogger(),
 		// quotaChecker intentionally nil
 	}
@@ -103,7 +100,6 @@ func TestRcpt_QuotaEnforcement_NonLocalUnchanged(t *testing.T) {
 		quotaChecker: &fakeQuotaChecker{overQuota: map[string]bool{}},
 		deliverer:    &fakeSplitDeliverer{},
 		relayQueue:   &fakeRelayQueue{},
-		perIP:        map[string]int{},
 		logger:       testLogger(),
 	}
 	sess := &Session{backend: b, logger: testLogger()}
@@ -135,7 +131,6 @@ func TestRcpt_QuotaEnforcement_UnlimitedQuota(t *testing.T) {
 		},
 		deliverer:  &fakeSplitDeliverer{},
 		relayQueue: &fakeRelayQueue{},
-		perIP:      map[string]int{},
 		logger:     testLogger(),
 	}
 	sess := &Session{backend: b, logger: testLogger()}

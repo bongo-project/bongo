@@ -3,7 +3,6 @@
 package antispam
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -14,11 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jhillyerd/enmime"
-
 	"github.com/bongo-project/bongo/internal/antispam"
 	"github.com/bongo-project/bongo/internal/dnsbl"
 	"github.com/bongo-project/bongo/internal/mail"
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -227,7 +225,7 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	var subject, bodySample string
 	headers := make(map[string]string)
 
-	envelope, parseErr := enmime.ReadEnvelope(bytes.NewReader(raw))
+	envelope, _, parseErr := mimesafe.ReadEnvelope(raw)
 	if parseErr != nil {
 		p.logger.Warn("antispam: enmime parse failed, using minimal metadata", "error", parseErr)
 		// Try net/textproto for basic header extraction.

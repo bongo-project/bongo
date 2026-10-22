@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,10 +9,10 @@ import (
 	"sync"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jhillyerd/enmime"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -318,7 +317,7 @@ func (h *ScanHandler) scoreMessage(meta *bongov1.MailMeta) float32 {
 	var subject, bodySample string
 	headers := make(map[string]string)
 
-	env, parseErr := enmime.ReadEnvelope(bytes.NewReader(raw))
+	env, _, parseErr := mimesafe.ReadEnvelope(raw)
 	if parseErr == nil {
 		subject = env.GetHeader("Subject")
 		for _, key := range []string{"Message-Id", "Message-ID", "Date", "From"} {

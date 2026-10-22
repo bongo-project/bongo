@@ -72,7 +72,9 @@ function i18n(key) {
     input.type = 'hidden';
     input.name = '_csrf';
     input.value = token;
-    form.appendChild(input);
+    // First child, so a multipart body carries _csrf as its first part (the
+    // server only peeks at the start of an upload).
+    form.insertBefore(input, form.firstChild);
   }, true);
 })();
 

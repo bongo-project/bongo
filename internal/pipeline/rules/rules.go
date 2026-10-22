@@ -3,7 +3,6 @@
 package rules
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -11,8 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jhillyerd/enmime"
-
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/rules"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -179,7 +177,7 @@ func parseMessage(raw []byte) *parsedMessage {
 	}
 	headers := make(map[string]string)
 
-	env, err := enmime.ReadEnvelope(bytes.NewReader(raw))
+	env, _, err := mimesafe.ReadEnvelope(raw)
 	if err != nil {
 		// Fallback: extract headers with a simple line scanner.
 		meta.Subject, headers = extractBasicHeaders(raw)

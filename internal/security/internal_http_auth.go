@@ -26,6 +26,14 @@ const (
 
 	// blobSyncPurpose labels the subkey for node-to-node blob pulls.
 	blobSyncPurpose = "bongo/blob-sync/v1"
+
+	// maxInternalBodyBytes caps the request body buffered for signature
+	// verification. The buffering happens before the caller is authenticated,
+	// so it must be bounded. Legitimate internal bodies are small JSON
+	// documents (cluster join, user create); blob sync is GET/HEAD with an
+	// empty request body. Raise it only if an internal caller needs to send
+	// a larger body.
+	maxInternalBodyBytes = 1 << 20
 )
 
 // signedPayload builds the string covered by the HMAC. It binds the timestamp,
@@ -172,10 +180,21 @@ func verifyWithPurpose(r *http.Request, secret []byte, purpose string) bool {
 		return false
 	}
 
+	// Reject junk signatures and oversize bodies before reading anything:
+	// nothing above authenticates the caller.
+	if len(sig) != sha256.Size || r.ContentLength > maxInternalBodyBytes {
+		return false
+	}
+
 	// Hash the body and restore it so the downstream handler can still read it.
+	// Chunked bodies (ContentLength -1) are bounded by the limit reader.
 	var body []byte
 	if r.Body != nil {
-		body, _ = io.ReadAll(r.Body)
+		var readErr error
+		body, readErr = io.ReadAll(io.LimitReader(r.Body, maxInternalBodyBytes+1))
+		if readErr != nil || len(body) > maxInternalBodyBytes {
+			return false
+		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 	sum := sha256.Sum256(body)

@@ -132,7 +132,11 @@ services:
       # first. Requires DNS A/AAAA records for autoconfig.<domain> and
       # autodiscover.<domain> pointing at this host (Let's Encrypt then issues
       # their certs on demand). Harmless when those DNS records are absent.
-      - "traefik.http.routers.bongo-autoconfig-sub.rule=Host(`autoconfig.${MAIL_DOMAIN:-example.com}`) || Host(`autodiscover.${MAIL_DOMAIN:-example.com}`)${AUTOCONFIG_SUB_EXTRA_HOST_RULE:-}"
+      # Serves only the autoconfig/autodiscover paths (same set as
+      # bongo-autoconfig), so /internal/*, /metrics and the web UI are not
+      # reachable on these hosts. Keep the host group in parentheses so
+      # AUTOCONFIG_SUB_EXTRA_HOST_RULE hosts are restricted too.
+      - "traefik.http.routers.bongo-autoconfig-sub.rule=(Host(`autoconfig.${MAIL_DOMAIN:-example.com}`) || Host(`autodiscover.${MAIL_DOMAIN:-example.com}`)${AUTOCONFIG_SUB_EXTRA_HOST_RULE:-}) && (PathPrefix(`/.well-known/autoconfig`) || PathPrefix(`/autodiscover`) || PathPrefix(`/Autodiscover`) || PathPrefix(`/AutoDiscover`) || Path(`/mail/config-v1.1.xml`) || Path(`/.well-known/mobileconfig`))"
       - "traefik.http.routers.bongo-autoconfig-sub.entrypoints=websecure"
       - "traefik.http.routers.bongo-autoconfig-sub.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
       - "traefik.http.routers.bongo-autoconfig-sub.priority=200"

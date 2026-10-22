@@ -1276,3 +1276,17 @@ PATTERN: [norman] Workflow `isolation: worktree` branches from the repository's 
 ### 2026-10-21 Task 18.6 (H5/H6 signing and forwarding) DONE
 Forwards are never DKIM-signed by us; trusted-submission DMARC bypass is limited to authorised From; signer domain parsing is strict. Ported onto 18.5's shared rule after the parallel build duplicated it. Gate: make test-all EXIT=0 (integration 349s), lint 0 issues. All six HIGH findings (H1-H6) now fixed.
 Release notes for v0.7.1 (collected): see 18.1, 18.4, 18.5, 18.6 rows in TASKS.md.
+
+## 2026-10-22 — v0.7.1 released; Phase 18 batch 2 (18.7, 18.8, 18.10, 18.11, 18.12, 18.15) DONE
+
+v0.7.1 (H1-H6) merged as #35 and tagged on 60bda5a; the image published. CI needed three fixes first: Go 1.26.10 (GO-2026-6809), bcrypt MinCost in handler tests via `auth.PasswordHashCost` (the package overran the 10m timeout under -race -cover), and TestSweepOrphanedUsers waiting for Ready (SQLITE_BUSY against dev-mode startup writes).
+
+Batch 2 ran six tasks in parallel worktrees. Reviews: 18.8 and 18.10 MINOR first time; 18.12 and 18.7 REJECT then MINOR; 18.11 and 18.15 REJECT twice. The orchestrator ran one more fix round each for 18.11, 18.15, 18.12 (tests that could not fail) and 18.7 (log flood, unpinned attsplit rule), and re-ran one named mutation per fix by hand: all went red.
+
+Added tasks 18.32 (sign forwards of locally authored mail), 18.33 (SRS) and 18.34 (shutdown closes stores while a pipeline message is in flight: `pebble: closed` panic seen in the integration suite). Fixed a load-sensitive race in TestSMTPFullMailFlow (mail is indexed off the apply path).
+
+PATTERN: [testing] A bounded-read test that takes its bound from the constant under test cannot catch the constant being raised. Assert against a literal.
+PATTERN: [testing] A "success forgives failures" test must record enough failures that the total would reach the limit if nothing were forgiven; max-1 failures pass either way.
+PATTERN: [security] A connection cap enforced after a TLS handshake can be held by a client that never sends ClientHello. Refuse below the TLS listener, on the raw connection.
+PATTERN: [tooling] BSD sed does not understand `\s`; a mutation applied with it silently changes nothing and the "mutant" passes. Apply mutations with Python and diff the result before trusting a green run.
+PATTERN: [norman] Worktree diffs must be re-staged (`git add -A`) after a follow-up fix agent runs, or the exported patch misses its files.

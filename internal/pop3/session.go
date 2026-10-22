@@ -274,7 +274,7 @@ func (s *session) handlePass(args string) {
 	if err != nil {
 		s.logger.Warn("pop3: auth failed", "username", s.username, "ip", ip)
 		if s.authLimiter != nil {
-			s.authLimiter.Record(ip)
+			s.authLimiter.Fail(ip, s.username)
 		}
 		s.username = ""
 		s.respond("-ERR authentication failed")
@@ -282,7 +282,7 @@ func (s *session) handlePass(args string) {
 	}
 
 	if s.authLimiter != nil {
-		s.authLimiter.Reset(ip)
+		s.authLimiter.Succeed(ip, s.username)
 	}
 	s.userID = userID
 	s.authenticated = true

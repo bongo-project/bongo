@@ -15,6 +15,10 @@ import (
 const (
 	defaultWorkers      = 5
 	defaultPollInterval = time.Second
+
+	// defaultMessageTimeout bounds one message's trip through all stages. It is
+	// generous because clamd and rspamd scans of large attachments are slow.
+	defaultMessageTimeout = 2 * time.Minute
 )
 
 // Runner polls the spool incoming/ directory, dispatches messages to a worker pool,
@@ -26,6 +30,8 @@ type Runner struct {
 	logger       *slog.Logger
 	workers      int
 	pollInterval time.Duration
+
+	messageTimeout time.Duration
 }
 
 // RunnerOption is a functional option for Runner.
@@ -49,6 +55,16 @@ func WithPollInterval(d time.Duration) RunnerOption {
 	}
 }
 
+// WithMessageTimeout sets the time budget for one message across all stages.
+// A message that exceeds it is moved to error/. Non-positive values are ignored.
+func WithMessageTimeout(d time.Duration) RunnerOption {
+	return func(r *Runner) {
+		if d > 0 {
+			r.messageTimeout = d
+		}
+	}
+}
+
 // NewRunner creates a Runner with the given spool, blob reader, stages, and options.
 func NewRunner(spool *SpoolStore, blobs BlobReader, stages []Processor, logger *slog.Logger, opts ...RunnerOption) *Runner {
 	r := &Runner{
@@ -58,6 +74,8 @@ func NewRunner(spool *SpoolStore, blobs BlobReader, stages []Processor, logger *
 		logger:       logger,
 		workers:      defaultWorkers,
 		pollInterval: defaultPollInterval,
+
+		messageTimeout: defaultMessageTimeout,
 	}
 	for _, o := range opts {
 		o(r)
@@ -149,7 +167,20 @@ func envIdentity(env *bongov1.QueueEnvelope) []any {
 // envelope. Stages that have already been recorded in env.Flags are skipped
 // (idempotent). On completion the envelope is moved to deliver/; on quarantine
 // or error it is moved to the appropriate directory.
+//
+// The message gets a time budget (messageTimeout) shared by all its stages. The
+// budget derives from context.WithoutCancel(ctx), not ctx: cancelling the Run
+// context at shutdown must not abort an in-flight message, which is documented
+// to complete. The deadline is a backstop for stages that honour their context
+// (network calls to rspamd and clamd, the deliver stage's pre-write check). It
+// cannot interrupt CPU-bound work such as an MIME parse, which is why parsing is
+// bounded up front by internal/mimesafe. There is deliberately no
+// goroutine-and-abandon: an abandoned deliver could keep writing to Raft after
+// the envelope moved to error/, and a retry would then deliver twice.
 func (r *Runner) processMessage(ctx context.Context, env *bongov1.QueueEnvelope) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.messageTimeout)
+	defer cancel()
+
 	for _, stage := range r.stages {
 		checkedFlag, spamFlag := flagsForStage(stage.Name())
 
@@ -177,6 +208,10 @@ func (r *Runner) processMessage(ctx context.Context, env *bongov1.QueueEnvelope)
 			err = errors.Join(err, closeErr)
 		}
 		if err != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				r.logger.Error("pipeline: message exceeded time budget",
+					append(envIdentity(env), "stage", stage.Name(), "budget", r.messageTimeout)...)
+			}
 			if moveErr := r.spool.Move(env.Id, "processing", "error"); moveErr != nil {
 				r.logger.Error("pipeline: move to error failed", append(envIdentity(env), "error", moveErr)...)
 			}

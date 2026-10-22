@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/bongo-project/bongo/internal/attsplit"
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/observability"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -107,6 +108,11 @@ type SplitMessage struct {
 // whole raw as before.
 func PrepareSplit(raw []byte, minSize int) *SplitMessage {
 	if minSize <= 0 { // splitting disabled
+		return nil
+	}
+	// attsplit recurses with no depth bound; a message over the MIME limits is
+	// stored whole rather than split.
+	if _, _, err := mimesafe.Check(raw); err != nil {
 		return nil
 	}
 	sk := attsplit.Split(raw, minSize)

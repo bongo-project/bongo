@@ -265,6 +265,13 @@ type IMAPConfig struct {
 	Port          int  `hcl:"port,optional" mapstructure:"port"`
 	PortTLS       int  `hcl:"port_tls,optional" mapstructure:"port_tls"`
 	ProxyProtocol bool `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
+	// MaxConnections caps concurrent connections per listener (plain and TLS
+	// each get their own cap, as SMTP does). 0 or below means the default, 1024.
+	MaxConnections int `hcl:"max_connections,optional" mapstructure:"max_connections"`
+	// MaxConnectionsPerIP caps concurrent connections from one source IP across
+	// both listeners. 0 disables it. Behind a TCP proxy without proxy_protocol
+	// every client shares the proxy's IP, so set this to 0 or a high value.
+	MaxConnectionsPerIP int `hcl:"max_connections_per_ip,optional" mapstructure:"max_connections_per_ip"`
 }
 
 type POP3Config struct {
@@ -272,6 +279,13 @@ type POP3Config struct {
 	Port          int  `hcl:"port,optional" mapstructure:"port"`
 	PortTLS       int  `hcl:"port_tls,optional" mapstructure:"port_tls"`
 	ProxyProtocol bool `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
+	// MaxConnections caps concurrent connections per listener (plain and TLS
+	// each get their own cap, as SMTP does). 0 or below means the default, 1024.
+	MaxConnections int `hcl:"max_connections,optional" mapstructure:"max_connections"`
+	// MaxConnectionsPerIP caps concurrent connections from one source IP across
+	// both listeners. 0 disables it. Behind a TCP proxy without proxy_protocol
+	// every client shares the proxy's IP, so set this to 0 or a high value.
+	MaxConnectionsPerIP int `hcl:"max_connections_per_ip,optional" mapstructure:"max_connections_per_ip"`
 }
 
 type WebConfig struct {
@@ -773,6 +787,12 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if v := c.Pipeline.MessageTimeout; v != "" {
+		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
+			return fmt.Errorf("pipeline.message_timeout: invalid value %q (use a positive duration like \"2m\")", v)
+		}
+	}
+
 	if v := c.Pipeline.QuarantineRetention; v != "" {
 		if _, err := parseRetention(v); err != nil {
 			return fmt.Errorf("pipeline.quarantine_retention: invalid value %q (use whole days like \"30d\" or a duration like \"720h\", must be positive): %w", v, err)
@@ -807,6 +827,7 @@ type PipelineConfig struct {
 	PollInterval        string        `hcl:"poll_interval,optional" mapstructure:"poll_interval"`
 	ErrorRetention      string        `hcl:"error_retention,optional" mapstructure:"error_retention"`
 	QuarantineRetention string        `hcl:"quarantine_retention,optional" mapstructure:"quarantine_retention"`
+	MessageTimeout      string        `hcl:"message_timeout,optional" mapstructure:"message_timeout"`
 	Stages              []StageConfig `hcl:"stage,block" mapstructure:"stage"`
 }
 
@@ -906,6 +927,25 @@ func (c *PipelineConfig) ErrorRetentionDuration() time.Duration {
 	d, err := parseRetention(c.ErrorRetention)
 	if err != nil {
 		return defaultErrorRetention
+	}
+	return d
+}
+
+// defaultMessageTimeout is used when pipeline.message_timeout is unset. It is
+// generous because clamd and rspamd scans of large attachments are slow; a
+// message that exceeds it is moved to the spool error/ directory, not delivered.
+const defaultMessageTimeout = 2 * time.Minute
+
+// MessageTimeoutDuration returns the per-message processing budget. Empty,
+// unparseable or non-positive values fall back to 2 minutes; Validate rejects
+// bad values at startup.
+func (c *PipelineConfig) MessageTimeoutDuration() time.Duration {
+	if c.MessageTimeout == "" {
+		return defaultMessageTimeout
+	}
+	d, err := time.ParseDuration(c.MessageTimeout)
+	if err != nil || d <= 0 {
+		return defaultMessageTimeout
 	}
 	return d
 }
@@ -1043,11 +1083,17 @@ func Defaults() *Config {
 			Enabled: true,
 			Port:    143,
 			PortTLS: 993,
+
+			MaxConnections:      1024,
+			MaxConnectionsPerIP: 50,
 		},
 		POP3: POP3Config{
 			Enabled: true,
 			Port:    110,
 			PortTLS: 995,
+
+			MaxConnections:      1024,
+			MaxConnectionsPerIP: 50,
 		},
 		Web: WebConfig{
 			Enabled: true,
@@ -1076,6 +1122,7 @@ func Defaults() *Config {
 			PollInterval:        "1s",
 			ErrorRetention:      "30d",
 			QuarantineRetention: "30d",
+			MessageTimeout:      "2m",
 			Stages:              defaultPipelineStages(),
 		},
 		Queue: &QueueConfig{

@@ -252,6 +252,9 @@ func (h *ContactsHandler) ExportContacts(w http.ResponseWriter, r *http.Request)
 func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
+	if !parseUploadForm(w, r, contactsImportMaxBytes, "/contacts") {
+		return
+	}
 	file, _, err := r.FormFile("vcf")
 	if err != nil {
 		http.Redirect(w, r, "/contacts?flash=No+file+uploaded", http.StatusSeeOther)

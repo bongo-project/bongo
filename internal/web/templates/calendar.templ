@@ -130,6 +130,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 		<div class="sidebar-group sidebar-group-calendar-tools">
 			<a href="/calendar/export" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.exportIcs") }</a>
 			<form method="post" action="/calendar/import" enctype="multipart/form-data" class="calendar-sidebar-form">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 				<input type="file" name="ics" accept=".ics" class="calendar-sidebar-file"/>
 				<button type="submit" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.importIcs") }</button>
 			</form>

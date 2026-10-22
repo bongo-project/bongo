@@ -10,9 +10,9 @@ import (
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jhillyerd/enmime"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/rules"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -349,7 +349,7 @@ func ruleToInfo(rule *bongov1.FilterRule) templates.RuleInfo {
 }
 
 func extractBodyText(raw []byte) string {
-	env, err := enmime.ReadEnvelope(strings.NewReader(string(raw)))
+	env, _, err := mimesafe.ReadEnvelope(raw)
 	if err != nil {
 		return ""
 	}

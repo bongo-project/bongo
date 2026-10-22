@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/netutil"
+
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
 	"github.com/bongo-project/bongo/internal/netx"
@@ -36,6 +38,11 @@ type Server struct {
 	tlsListener   net.Listener
 	wg            sync.WaitGroup
 	closeCh       chan struct{}
+
+	// connLimit is shared by the plain and TLS loops; maxConn applies per
+	// listener (netutil.LimitListener), matching SMTP and IMAP.
+	connLimit *netx.PerIPLimiter
+	maxConn   int
 }
 
 // NewServer creates a new POP3 server.
@@ -58,17 +65,33 @@ func NewServer(
 		authLimiter: authlimit.New(pop3MaxAuthFailures, pop3AuthFailWindow),
 		logger:      logger,
 		closeCh:     make(chan struct{}),
+		connLimit:   netx.NewPerIPLimiter(netx.DefaultMaxConnectionsPerIP),
+		maxConn:     netx.DefaultMaxConnections,
 	}
+}
+
+// SetConnectionLimits sets the per-listener concurrent connection cap and the
+// per-IP cap. maxConn <= 0 falls back to the default; maxPerIP <= 0 disables
+// the per-IP cap. Call before Listen.
+func (s *Server) SetConnectionLimits(maxConn, maxPerIP int) {
+	if maxConn <= 0 {
+		maxConn = netx.DefaultMaxConnections
+	}
+	s.maxConn = maxConn
+	s.connLimit.SetMax(maxPerIP)
 }
 
 // Listen binds the POP3 listeners on the given addresses.
 func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool) error {
+	if s.maxConn <= 0 {
+		s.maxConn = netx.DefaultMaxConnections
+	}
 	plain, err := net.Listen("tcp", plainAddr)
 	if err != nil {
 		return fmt.Errorf("pop3 listen %s: %w", plainAddr, err)
 	}
-	s.plainListener = netx.MaybeProxyProtocol(plain, proxyProtocol)
-	s.logger.Info("pop3: listening", "addr", s.plainListener.Addr())
+	s.plainListener = netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(plain, s.maxConn), proxyProtocol), s.connLimit)
+	s.logger.Info("pop3: listening", "addr", s.plainListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 
 	if tlsAddr != "" && s.tlsCfg != nil {
 		rawTLS, err := net.Listen("tcp", tlsAddr)
@@ -79,8 +102,8 @@ func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool) error {
 			return fmt.Errorf("pop3s listen %s: %w", tlsAddr, err)
 		}
 		// PROXY header must be read before the TLS handshake.
-		s.tlsListener = tls.NewListener(netx.MaybeProxyProtocol(rawTLS, proxyProtocol), s.tlsCfg)
-		s.logger.Info("pop3s: listening", "addr", s.tlsListener.Addr())
+		s.tlsListener = tls.NewListener(netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(rawTLS, s.maxConn), proxyProtocol), s.connLimit), s.tlsCfg)
+		s.logger.Info("pop3s: listening", "addr", s.tlsListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 	}
 
 	return nil
