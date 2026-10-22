@@ -223,6 +223,10 @@ smtp {
     # messages_per_minute        = 60   # inbound accepts per source IP/min (0 = off)
     # max_connections_per_ip     = 50   # concurrent connections per source IP (0 = off)
     outbound_messages_per_minute = 30   # authenticated submissions per user/min (0 = off)
+    # External recipients per user/hour across SMTP submission and web compose.
+    # In memory and per node (restart resets; N nodes allow N times). Keep >= max_recipients.
+    outbound_recipients_per_hour = 500  # 0 = off
+    send_as_verify_max_per_hour  = 5    # send-as verification mails per user/hour (0 = off)
   }
 
   # DKIM signing for outbound mail. Strongly recommended for deliverability.

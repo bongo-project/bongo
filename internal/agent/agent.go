@@ -147,6 +147,14 @@ type Agent struct {
 	DKIMRegistry *mail.DKIMRegistry // per-domain signer registry passed to the worker
 	Relay        *bongosmtp.Relay
 	RateLimiter  *mail.RateLimiter
+	// RecipientLimiter is the per-user external-recipient budget shared by
+	// SMTP submission and web compose. Use recipientLimiter() to obtain it.
+	RecipientLimiter *mail.RateLimiter
+
+	// composeHandler and addrVerifyHandler are the handlers Run mounted, kept
+	// so tests can confirm the limiters were wired in the real startup path.
+	composeHandler    *handlers.ComposeHandler
+	addrVerifyHandler *handlers.AddressVerifyHandler
 	// ForwardTargets holds verified external forwarding targets per user; the
 	// deliver stage forwards only to targets recorded here (or hosted ones).
 	ForwardTargets *store.ForwardTargetStore
@@ -610,10 +618,38 @@ func (a *Agent) registerClamAV(proc pipeline.Processor) {
 	})
 }
 
+// recipientLimiter returns the shared per-user external-recipient budget,
+// creating it on first use. Both SMTP submission and web compose must draw on
+// the same instance. The budget is in memory and per node.
+func (a *Agent) recipientLimiter() *mail.RateLimiter {
+	if a.RecipientLimiter == nil {
+		limits := a.Config.SMTP.Limits
+		if limits.OutboundRecipientsPerHour > 0 && limits.OutboundRecipientsPerHour < limits.MaxRecipients {
+			a.logger.Warn("smtp.limits.outbound_recipients_per_hour is below max_recipients; a full-size message can never be sent",
+				"outbound_recipients_per_hour", limits.OutboundRecipientsPerHour, "max_recipients", limits.MaxRecipients)
+		}
+		a.RecipientLimiter = mail.NewRateLimiter(limits.OutboundRecipientsPerHour)
+	}
+	return a.RecipientLimiter
+}
+
+// wireComposeLimits gives web compose the shared recipient budget and the
+// per-message recipient cap.
+func (a *Agent) wireComposeLimits(h *handlers.ComposeHandler) {
+	h.SetRecipientLimiter(a.recipientLimiter())
+	h.SetMaxRecipients(a.Config.SMTP.Limits.MaxRecipients)
+}
+
+// wireAddressVerifyLimiter caps send-as verification mails per user per hour.
+func (a *Agent) wireAddressVerifyLimiter(h *handlers.AddressVerifyHandler) {
+	h.SetLimiter(mail.NewRateLimiter(a.Config.SMTP.Limits.SendAsVerifyMaxPerHour))
+}
+
 // newServerSMTPBackend builds the server-role SMTP backend and registers it as
 // a reload consumer (which also sets its trusted networks).
 func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *store.RecipientResolver) (*bongosmtp.Backend, error) {
 	backend := bongosmtp.NewBackend(a.Auth, deliverer, a.logger)
+	backend.SetRecipientLimiter(a.recipientLimiter())
 	// Operator-configured trusted networks: a connecting source IP inside one
 	// of these CIDRs is treated as trusted the same as an authenticated
 	// submission session (see (*smtp.Session).inboundMeta). Registration
@@ -1159,6 +1195,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			if a.RateLimiter != nil {
 				composeH.SetRateLimiter(a.RateLimiter)
 			}
+			a.wireComposeLimits(composeH)
+			a.composeHandler = composeH
 			if a.Preferences != nil {
 				composeH.SetPreferences(a.Preferences)
 			}
@@ -1275,6 +1313,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			addrVerifyH.SetAddressStore(a.AddressStore)
 			addrVerifyH.SetOwnershipStores(a.Store, a.Metadata, a)
 			addrVerifyH.SetVerifyStore(store.NewAddressVerifyStore(a.Store, a))
+			a.wireAddressVerifyLimiter(addrVerifyH)
+			a.addrVerifyHandler = addrVerifyH
 			if a.Blobs != nil {
 				addrVerifyH.SetBlobStore(a.Blobs)
 			}

@@ -63,6 +63,10 @@ type Backend struct {
 	hostname   string              // public hostname, used in the Received header
 	outboundRL *inboundRateLimiter // nil = disabled; per-user submission rate limit
 
+	// recipientRL is the per-user external-recipient budget shared with web
+	// compose (keyed by user ID). nil = disabled. In memory and per node.
+	recipientRL *mail.RateLimiter
+
 	connLimit *netx.PerIPLimiter  // nil = disabled; per-IP cap from config.SMTPLimits.MaxConnectionsPerIP
 	inboundRL *inboundRateLimiter // nil = disabled; set from config.SMTPLimits.MessagesPerMinute
 
@@ -88,6 +92,15 @@ func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *s
 		authFail:  authlimit.New(maxAuthFailures, authFailWindow),
 	}
 }
+
+// SetRecipientLimiter sets the per-user external-recipient budget. Share one
+// limiter with web compose so both paths draw on the same allowance.
+func (b *Backend) SetRecipientLimiter(rl *mail.RateLimiter) {
+	b.recipientRL = rl
+}
+
+// RecipientLimiter returns the per-user external-recipient budget, or nil.
+func (b *Backend) RecipientLimiter() *mail.RateLimiter { return b.recipientRL }
 
 // SetSPFChecker sets the SPF checker for inbound SPF verification.
 func (b *Backend) SetSPFChecker(checker *mail.SPFChecker) {
@@ -461,6 +474,15 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		s.logger.Warn("smtp: relay denied for non-local recipient", "to", to, "from", s.from, "ip", s.remoteIP)
 		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "Relaying denied"}
 	}
+	// Per-recipient budget on authenticated submission. This only peeks: a
+	// parallel session can spend the budget before DATA, which commits
+	// atomically. Refusing here lets the client deliver what was accepted and
+	// retry the rest (RFC 5321 s4.5.3.1.10).
+	if s.submission && s.userID != "" && s.backend.recipientRL != nil &&
+		s.backend.recipientRL.Remaining(s.userID) < len(s.externalRcpts)+1 {
+		s.logger.Warn("smtp: outbound recipient limit reached", "user", s.userID)
+		return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 5, 3}, Message: "Too many recipients, try again later"}
+	}
 	s.externalRcpts = append(s.externalRcpts, to)
 	s.logger.Debug("smtp: RCPT TO (relay)", "to", to)
 	return nil
@@ -534,6 +556,20 @@ func (s *Session) Data(r io.Reader) error {
 			return err
 		}
 		r = replay
+	}
+
+	// Commit the recipient budget once the message is otherwise acceptable, so
+	// a message rejected for its From header spends nothing, and before any
+	// blob is stored or queue entry made so a refusal leaves nothing behind.
+	// A refusal here has already spent one message-rate unit, and a later
+	// StoreBlob or Enqueue failure burns recipient budget that was never
+	// sent. Both err on the strict side.
+	if s.submission && s.authed && s.userID != "" && len(s.externalRcpts) > 0 && s.backend.recipientRL != nil {
+		if !s.backend.recipientRL.AllowN(s.userID, len(s.externalRcpts)) {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+			s.logger.Warn("smtp: outbound recipient limit exceeded", "user", s.userID, "recipients", len(s.externalRcpts))
+			return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Outbound recipient limit exceeded, try again later"}
+		}
 	}
 
 	// Build the header prefix streamed ahead of the message body (no full-message

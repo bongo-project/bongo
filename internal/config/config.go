@@ -250,6 +250,15 @@ type SMTPLimits struct {
 	// per user per minute, bounding damage from a single compromised account.
 	// 0 disables the limit.
 	OutboundMessagesPerMinute int `hcl:"outbound_messages_per_minute,optional" mapstructure:"outbound_messages_per_minute"`
+	// OutboundRecipientsPerHour caps external recipients per user per hour,
+	// counted per recipient across SMTP submission and web compose. 0 disables
+	// the limit. The budget is in memory and per node: a restart resets it and
+	// with N nodes the effective ceiling is N times this value. Values below
+	// max_recipients would refuse legitimate full-size messages permanently.
+	OutboundRecipientsPerHour int `hcl:"outbound_recipients_per_hour,optional" mapstructure:"outbound_recipients_per_hour"`
+	// SendAsVerifyMaxPerHour caps send-as verification mails per user per hour
+	// (in memory, per node). 0 disables the limit.
+	SendAsVerifyMaxPerHour int `hcl:"send_as_verify_max_per_hour,optional" mapstructure:"send_as_verify_max_per_hour"`
 }
 
 type SMTPRelay struct {
@@ -1135,6 +1144,8 @@ func Defaults() *Config {
 				MessagesPerMinute:         60,
 				MaxConnectionsPerIP:       50,
 				OutboundMessagesPerMinute: 30,
+				OutboundRecipientsPerHour: 500,
+				SendAsVerifyMaxPerHour:    5,
 			},
 			DKIM: SMTPDKIMConfig{
 				Selector: "mail",

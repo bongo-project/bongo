@@ -52,8 +52,15 @@ type AddressVerifyHandler struct {
 	pebble      *store.PebbleStore
 	metadata    *store.MetadataManager
 	applier     store.RaftApplier
+	limiter     interface{ Allow(string) bool } // nil = unlimited; per-user verification-mail cap
 	logger      *slog.Logger
 }
+
+// Limiter returns the per-user verification-mail limiter, or nil.
+func (h *AddressVerifyHandler) Limiter() interface{ Allow(string) bool } { return h.limiter }
+
+// SetLimiter sets the per-user cap on verification mails sent.
+func (h *AddressVerifyHandler) SetLimiter(l interface{ Allow(string) bool }) { h.limiter = l }
 
 // NewAddressVerifyHandler creates an AddressVerifyHandler.
 func NewAddressVerifyHandler(logger *slog.Logger) *AddressVerifyHandler {
@@ -263,6 +270,15 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 	}
 	if hasChallenge && existing != nil && existing.ExpiresAt > time.Now().Unix() {
 		http.Redirect(w, r, "/settings/addresses?error=A+verification+code+has+already+been+sent+to+this+address", http.StatusSeeOther)
+		return
+	}
+
+	// Per-user cap on verification mails. Checked after the ownership and
+	// live-challenge checks and before any write, so a refusal strands no
+	// challenge. The response is constant and never names the address.
+	if h.limiter != nil && !h.limiter.Allow(userID) {
+		h.logger.Warn("address-verify: request: per-user limit reached", "user_id", userID)
+		http.Redirect(w, r, "/settings/addresses?error=Too+many+verification+requests,+try+again+later", http.StatusSeeOther)
 		return
 	}
 

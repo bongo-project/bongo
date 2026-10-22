@@ -156,6 +156,11 @@ smtp {
     # Per-user cap on authenticated-submission messages/minute. Bounds spam
     # volume from a single compromised account. 0 disables. Default 30.
     outbound_messages_per_minute = 30
+    # External recipients per user/hour across SMTP submission and web compose.
+    # In memory and per node. Keep >= max_recipients. 0 disables. Default 500.
+    outbound_recipients_per_hour = 500
+    # Send-as verification mails per user per hour. 0 disables. Default 5.
+    send_as_verify_max_per_hour = 5
   }
 
   dkim {

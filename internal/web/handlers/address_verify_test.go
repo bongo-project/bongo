@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/queue"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -748,5 +749,43 @@ func TestHashVerificationCode_Deterministic(t *testing.T) {
 	}
 	if len(h1) != 32 {
 		t.Errorf("hash length = %d, want 32 (SHA-256)", len(h1))
+	}
+}
+
+// TestSelfServe_PerUserLimit_RefusesWithoutLeakingAddress: the verification
+// mailer is capped per user, the refusal names no address, and a refused
+// request leaves no stranded challenge.
+func TestSelfServe_PerUserLimit_RefusesWithoutLeakingAddress(t *testing.T) {
+	env := newVerifyTestEnvFull(t)
+	env.handler.SetLimiter(mail.NewRateLimiter(3))
+	userID, email := "user-cap", "alice@example.com"
+	env.seedUser(t, userID, email)
+
+	addrs := []string{"one@claimed.example", "two@claimed.example", "three@claimed.example", "four@claimed.example"}
+	for _, a := range addrs {
+		env.seedAddress(t, a, userID, "identity", false, false)
+	}
+
+	for _, a := range addrs[:3] {
+		w := env.requestVerificationHTTP(t, userID, email, a)
+		if loc := w.Header().Get("Location"); !strings.Contains(loc, "flash=") {
+			t.Fatalf("request for %s under the limit: Location=%q", a, loc)
+		}
+	}
+
+	w := env.requestVerificationHTTP(t, userID, email, addrs[3])
+	loc := w.Header().Get("Location")
+	if !strings.Contains(loc, "error=Too+many") {
+		t.Fatalf("4th request Location=%q, want the generic limit error", loc)
+	}
+	if strings.Contains(loc, "four") || strings.Contains(loc, "claimed.example") {
+		t.Errorf("refusal leaks the target address: %q", loc)
+	}
+	if _, has, _ := env.verifyStore.Get(userID, addrs[3]); has {
+		t.Error("a challenge was stored for the refused request")
+	}
+	pending, _ := env.qs.ListPending(10)
+	if len(pending) != 3 {
+		t.Errorf("queue holds %d messages, want exactly 3", len(pending))
 	}
 }

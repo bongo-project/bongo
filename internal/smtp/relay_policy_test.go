@@ -10,6 +10,7 @@ import (
 	gosmtp "github.com/emersion/go-smtp"
 
 	"github.com/bongo-project/bongo/internal/auth"
+	"github.com/bongo-project/bongo/internal/mail"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -461,5 +462,141 @@ func TestDataRejectsWhenSpoolFails(t *testing.T) {
 				t.Errorf("error = %q, want it to carry %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// recipientSession opens an authenticated submission session for alice with
+// the given external recipients, returning the session and the first RCPT error.
+func recipientSession(t *testing.T, b *Backend, rcpts ...string) (*Session, []error) {
+	t.Helper()
+	s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-alice@example.com"}
+	if err := s.Mail("alice@example.com", nil); err != nil {
+		t.Fatalf("Mail: %v", err)
+	}
+	errs := make([]error, 0, len(rcpts))
+	for _, r := range rcpts {
+		errs = append(errs, s.Rcpt(r, nil))
+	}
+	return s, errs
+}
+
+// TestOutboundRecipientLimitCountsRecipients: the budget is spent per
+// recipient, so one message to many recipients cannot count as one.
+func TestOutboundRecipientLimitCountsRecipients(t *testing.T) {
+	b, _, relay := testBackend("alice@example.com")
+	b.recipientRL = mail.NewRateLimiter(7)
+
+	// Session 1: 3 recipients, within budget.
+	s1, errs := recipientSession(t, b, "a@example.net", "b@example.net", "c@example.net")
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("session 1 rcpt %d: %v", i, err)
+		}
+	}
+	if err := s1.Data(strings.NewReader(authedMsg)); err != nil {
+		t.Fatalf("session 1 data: %v", err)
+	}
+
+	// Session 2: 5 recipients but only 4 units remain; the 5th is refused at
+	// RCPT with 452 4.5.3 and the accepted four are queued.
+	s2, errs := recipientSession(t, b, "d@example.net", "e@example.net", "f@example.net", "g@example.net", "h@example.net")
+	for i := 0; i < 4; i++ {
+		if errs[i] != nil {
+			t.Fatalf("session 2 rcpt %d should be accepted: %v", i, errs[i])
+		}
+	}
+	var se *gosmtp.SMTPError
+	if !errors.As(errs[4], &se) || se.Code != 452 || se.EnhancedCode != (gosmtp.EnhancedCode{4, 5, 3}) {
+		t.Fatalf("5th rcpt = %v, want 452 4.5.3", errs[4])
+	}
+	if err := s2.Data(strings.NewReader(authedMsg)); err != nil {
+		t.Fatalf("session 2 data: %v", err)
+	}
+	if len(relay.enqueued) != 2 {
+		t.Fatalf("enqueued = %d messages, want 2", len(relay.enqueued))
+	}
+	if got := len(relay.enqueued[1].GetRecipients()); got != 4 {
+		t.Errorf("session 2 queued %d recipients, want exactly 4", got)
+	}
+
+	// Session 3: budget is spent.
+	_, errs = recipientSession(t, b, "i@example.net")
+	if code := smtpCode(errs[0]); code != 452 {
+		t.Errorf("session 3 rcpt code = %d, want 452", code)
+	}
+}
+
+func TestOutboundRecipientLimitPositiveAndLocalControls(t *testing.T) {
+	b, _, relay := testBackend("alice@example.com", "bob@example.com")
+	b.recipientRL = mail.NewRateLimiter(7)
+
+	// Positive control: under the limit.
+	s, errs := recipientSession(t, b, "a@example.net", "b@example.net")
+	for _, err := range errs {
+		if err != nil {
+			t.Fatalf("rcpt under limit refused: %v", err)
+		}
+	}
+	if err := s.Data(strings.NewReader(authedMsg)); err != nil || len(relay.enqueued) != 1 {
+		t.Fatalf("data under limit: err=%v enqueued=%d", err, len(relay.enqueued))
+	}
+
+	// Local recipients never spend or consult the budget.
+	for i := 0; i < 20; i++ {
+		s, errs := recipientSession(t, b, "bob@example.com")
+		if errs[0] != nil {
+			t.Fatalf("local rcpt %d refused: %v", i, errs[0])
+		}
+		if err := s.Data(strings.NewReader(authedMsg)); err != nil {
+			t.Fatalf("local data %d refused: %v", i, err)
+		}
+	}
+	if got := b.recipientRL.Remaining("uid-alice@example.com"); got != 5 {
+		t.Errorf("remaining = %d, want 5 (local mail must not spend budget)", got)
+	}
+}
+
+// TestOutboundRecipientLimitDataCommitAtomic: RCPT only peeks; a parallel
+// session can drain the budget in between, so DATA must refuse the whole
+// message and queue nothing.
+func TestOutboundRecipientLimitDataCommitAtomic(t *testing.T) {
+	b, deliverer, relay := testBackend("alice@example.com")
+	b.recipientRL = mail.NewRateLimiter(7)
+
+	s, errs := recipientSession(t, b, "a@example.net", "b@example.net", "c@example.net")
+	for _, err := range errs {
+		if err != nil {
+			t.Fatalf("rcpt: %v", err)
+		}
+	}
+	// A second session spends 5 units between RCPT and DATA.
+	if !b.recipientRL.AllowN("uid-alice@example.com", 5) {
+		t.Fatal("setup drain failed")
+	}
+
+	err := s.Data(strings.NewReader(authedMsg))
+	if code := smtpCode(err); code != 452 {
+		t.Fatalf("data err = %v, want 452", err)
+	}
+	if len(relay.enqueued) != 0 {
+		t.Errorf("relay queue holds %d messages, want 0", len(relay.enqueued))
+	}
+	if len(deliverer.localCalls) != 0 {
+		t.Errorf("deliverer saw %d local calls, want 0", len(deliverer.localCalls))
+	}
+}
+
+// A message rejected for its header From must not burn recipient budget.
+func TestOutboundRecipientLimitNotSpentOnRejectedFrom(t *testing.T) {
+	b, _, _ := testBackend("alice@example.com")
+	b.recipientRL = mail.NewRateLimiter(7)
+
+	s, _ := recipientSession(t, b, "a@example.net", "b@example.net")
+	err := s.Data(strings.NewReader("From: mallory@evil.test\r\nSubject: x\r\n\r\nbody"))
+	if err == nil {
+		t.Fatal("forged header From was accepted")
+	}
+	if got := b.recipientRL.Remaining("uid-alice@example.com"); got != 7 {
+		t.Errorf("remaining = %d, want 7", got)
 	}
 }

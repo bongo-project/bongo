@@ -46,10 +46,14 @@ type ComposeHandler struct {
 	applier     store.RaftApplier
 	queueStore  *queue.QueueStore
 	rateLimiter *mail.RateLimiter
-	prefs       *store.PreferenceStore
-	resolver    localRecipientResolver // unified address→userID resolver
-	addresses   *store.AddressStore    // for send-as From picker and enforcement
-	logger      *slog.Logger
+	// recipientRL is the per-user external-recipient budget shared with SMTP
+	// submission, keyed by user ID. nil = unlimited.
+	recipientRL   *mail.RateLimiter
+	maxRecipients int // per-message cap on To+Cc; <= 0 means defaultMaxRecipients
+	prefs         *store.PreferenceStore
+	resolver      localRecipientResolver // unified address→userID resolver
+	addresses     *store.AddressStore    // for send-as From picker and enforcement
+	logger        *slog.Logger
 
 	// dedupMinSize is the attachment-dedup threshold. > 0 stores sent mail as a
 	// skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
@@ -81,6 +85,18 @@ func (h *ComposeHandler) SetQueueStore(qs *queue.QueueStore) {
 func (h *ComposeHandler) SetRateLimiter(rl *mail.RateLimiter) {
 	h.rateLimiter = rl
 }
+
+// SetRecipientLimiter sets the shared per-user external-recipient budget.
+func (h *ComposeHandler) SetRecipientLimiter(rl *mail.RateLimiter) { h.recipientRL = rl }
+
+// RecipientLimiter returns the shared per-user external-recipient budget, or nil.
+func (h *ComposeHandler) RecipientLimiter() *mail.RateLimiter { return h.recipientRL }
+
+// SetMaxRecipients sets the per-message cap on To and Cc recipients.
+func (h *ComposeHandler) SetMaxRecipients(n int) { h.maxRecipients = n }
+
+// defaultMaxRecipients matches the SMTP max_recipients default.
+const defaultMaxRecipients = 100
 
 // SetPreferences sets the preference store for per-user settings.
 func (h *ComposeHandler) SetPreferences(prefs *store.PreferenceStore) {
@@ -481,8 +497,25 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check rate limit for external recipients before persisting sender-visible state.
+	maxRcpts := h.maxRecipients
+	if maxRcpts <= 0 {
+		maxRcpts = defaultMaxRecipients
+	}
+	if len(localRecipients)+len(externalRecipients) > maxRcpts {
+		http.Error(w, "Too many recipients", http.StatusBadRequest)
+		return
+	}
+
+	// Check rate limits for external recipients before persisting sender-visible
+	// state. The recipient budget is checked last so a message refused by the
+	// message limiter spends nothing. A message refused by the recipient budget
+	// has already used one message-limiter unit; that only makes the limits
+	// slightly stricter. A refusal here leaves an unreferenced blob for the GC.
 	if len(externalRecipients) > 0 && h.rateLimiter != nil && !h.rateLimiter.Allow(email) {
+		http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
+		return
+	}
+	if len(externalRecipients) > 0 && h.recipientRL != nil && !h.recipientRL.AllowN(userID, len(externalRecipients)) {
 		http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
 		return
 	}
