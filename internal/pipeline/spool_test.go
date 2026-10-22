@@ -1,11 +1,17 @@
 package pipeline
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"sync"
 	"testing"
+	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -452,5 +458,155 @@ func TestRemoveNonExistent(t *testing.T) {
 	err = s.Remove("deliver", "no-such-id")
 	if err == nil {
 		t.Error("expected error removing non-existent file")
+	}
+}
+
+// A temp file WriteEnvelope has not yet renamed must be invisible to every
+// directory scan, otherwise the runner moves it away and the rename fails.
+func TestScansIgnoreInFlightTempFiles(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	s, err := NewSpoolStore(base, discardLogger())
+	if err != nil {
+		t.Fatalf("NewSpoolStore: %v", err)
+	}
+
+	// Reproduce WriteEnvelope's temp file mid-write, under both the current
+	// name and the legacy ".env" one an older binary may have left behind.
+	data, err := proto.Marshal(makeEnvelope("half", "a@example.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"incoming", "processing", "error"} {
+		for _, name := range []string{tmpPrefix + "half" + tmpSuffix, tmpPrefix + "half" + envSuffix} {
+			if err := os.WriteFile(filepath.Join(base, dir, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	env, err := s.Dequeue()
+	if err != nil {
+		t.Fatalf("Dequeue: %v", err)
+	}
+	if env != nil {
+		t.Fatalf("Dequeue returned temp file envelope %q", env.Id)
+	}
+	for _, dir := range []string{"incoming", "processing", "error"} {
+		envs, err := s.List(dir)
+		if err != nil {
+			t.Fatalf("List(%s): %v", dir, err)
+		}
+		if len(envs) != 0 {
+			t.Errorf("List(%s) returned %d envelopes from temp files", dir, len(envs))
+		}
+	}
+	n, err := s.RecoverCrashed()
+	if err != nil {
+		t.Fatalf("RecoverCrashed: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("RecoverCrashed moved %d temp files", n)
+	}
+}
+
+func TestNewSpoolStoreRemovesLeftoverTempFiles(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	if _, err := NewSpoolStore(base, discardLogger()); err != nil {
+		t.Fatal(err)
+	}
+	leftovers := []string{
+		filepath.Join(base, "incoming", tmpPrefix+"a"+tmpSuffix),
+		filepath.Join(base, "incoming", tmpPrefix+"b"+envSuffix),
+		filepath.Join(base, "quarantine", tmpPrefix+"c"+tmpSuffix),
+	}
+	for _, p := range leftovers {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keep := filepath.Join(base, "incoming", "real.env")
+	if err := os.WriteFile(keep, []byte{}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := NewSpoolStore(base, discardLogger()); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range leftovers {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("leftover %s not removed (err=%v)", p, err)
+		}
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("real envelope removed: %v", err)
+	}
+}
+
+// Writers and a dequeuing loop run together: every write must succeed and
+// every envelope must come out exactly once.
+func TestConcurrentWriteAndDequeue(t *testing.T) {
+	t.Parallel()
+
+	s, err := NewSpoolStore(t.TempDir(), discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const writers, perWriter = 4, 100
+	total := writers * perWriter
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, total)
+	for w := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range perWriter {
+				id := fmt.Sprintf("w%d-%03d", w, i)
+				if err := s.Enqueue(makeEnvelope(id, "a@example.com")); err != nil {
+					errCh <- err
+				}
+			}
+		}()
+	}
+	writersDone := make(chan struct{})
+	go func() { wg.Wait(); close(writersDone) }()
+
+	seen := map[string]int{}
+	deadline := time.Now().Add(30 * time.Second)
+	finished := false
+	for time.Now().Before(deadline) {
+		env, err := s.Dequeue()
+		if err != nil {
+			t.Fatalf("Dequeue: %v", err)
+		}
+		if env != nil {
+			seen[env.Id]++
+			continue
+		}
+		if finished {
+			break
+		}
+		select {
+		case <-writersDone:
+			finished = true
+		default:
+			runtime.Gosched()
+		}
+	}
+	close(errCh)
+	for err := range errCh {
+		t.Errorf("Enqueue failed: %v", err)
+	}
+	if len(seen) != total {
+		t.Errorf("dequeued %d distinct envelopes, want %d", len(seen), total)
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Errorf("envelope %s dequeued %d times", id, n)
+		}
 	}
 }

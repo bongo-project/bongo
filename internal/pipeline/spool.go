@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -13,6 +14,48 @@ import (
 )
 
 const envSuffix = ".env"
+
+var spoolDirs = []string{"incoming", "processing", "deliver", "quarantine", "error"}
+
+// WriteEnvelope stages data in a temp file before the atomic rename. The temp
+// name must not end in envSuffix: every scan selects envelopes by that suffix,
+// and a scan that saw a half-written file would move or read it before the
+// rename, failing the writer with "no such file or directory".
+const (
+	tmpPrefix = ".tmp-"
+	tmpSuffix = ".tmp"
+)
+
+// isEnvelopeFile reports whether a directory entry is a finished envelope.
+// Temp files are excluded by prefix as well as suffix so that ".tmp-*.env"
+// files left by an older binary are never treated as envelopes.
+func isEnvelopeFile(e os.DirEntry) bool {
+	name := e.Name()
+	return !e.IsDir() && filepath.Ext(name) == envSuffix && !strings.HasPrefix(name, tmpPrefix)
+}
+
+// removeStaleTempFiles deletes temp files a crash left behind in the spool
+// directories. It runs at startup, when this process has no writers yet, and
+// returns the number removed.
+func (s *SpoolStore) removeStaleTempFiles() (int, error) {
+	removed := 0
+	for _, d := range spoolDirs {
+		entries, err := os.ReadDir(filepath.Join(s.baseDir, d))
+		if err != nil {
+			return removed, fmt.Errorf("spool: read %s for temp cleanup: %w", d, err)
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), tmpPrefix) {
+				continue
+			}
+			if err := os.Remove(filepath.Join(s.baseDir, d, e.Name())); err != nil && !os.IsNotExist(err) {
+				return removed, fmt.Errorf("spool: remove stale temp %s/%s: %w", d, e.Name(), err)
+			}
+			removed++
+		}
+	}
+	return removed, nil
+}
 
 // SpoolStore manages the filesystem spool queue for the message processing pipeline.
 // Messages flow through directories as they are processed:
@@ -28,14 +71,7 @@ type SpoolStore struct {
 // NewSpoolStore creates the spool directory structure and returns a SpoolStore.
 // It calls RecoverCrashed to move any messages left in processing/ back to incoming/.
 func NewSpoolStore(baseDir string, logger *slog.Logger) (*SpoolStore, error) {
-	dirs := []string{
-		"incoming",
-		"processing",
-		"deliver",
-		"quarantine",
-		"error",
-	}
-	for _, d := range dirs {
+	for _, d := range spoolDirs {
 		path := filepath.Join(baseDir, d)
 		if err := os.MkdirAll(path, 0o750); err != nil {
 			return nil, fmt.Errorf("spool: create directory %s: %w", path, err)
@@ -45,6 +81,12 @@ func NewSpoolStore(baseDir string, logger *slog.Logger) (*SpoolStore, error) {
 	s := &SpoolStore{
 		baseDir: baseDir,
 		logger:  logger,
+	}
+
+	if n, err := s.removeStaleTempFiles(); err != nil {
+		return nil, err
+	} else if n > 0 {
+		logger.Warn("spool: removed stale temp files", "count", n)
 	}
 
 	n, err := s.RecoverCrashed()
@@ -74,7 +116,7 @@ func (s *SpoolStore) Dequeue() (*bongov1.QueueEnvelope, error) {
 	// Collect .env files and sort by name (lexicographic = chronological for UUID v7 or timestamp-prefixed IDs).
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && filepath.Ext(e.Name()) == envSuffix {
+		if isEnvelopeFile(e) {
 			names = append(names, e.Name())
 		}
 	}
@@ -121,7 +163,7 @@ func (s *SpoolStore) List(dir string) ([]*bongov1.QueueEnvelope, error) {
 
 	var envs []*bongov1.QueueEnvelope
 	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != envSuffix {
+		if !isEnvelopeFile(e) {
 			continue
 		}
 		id := e.Name()[:len(e.Name())-len(envSuffix)]
@@ -160,7 +202,7 @@ func (s *SpoolStore) WriteEnvelope(dir string, env *bongov1.QueueEnvelope) error
 	}
 
 	dirPath := filepath.Join(s.baseDir, dir)
-	tmpPath := filepath.Join(dirPath, ".tmp-"+env.Id+envSuffix)
+	tmpPath := filepath.Join(dirPath, tmpPrefix+env.Id+tmpSuffix)
 	finalPath := filepath.Join(dirPath, env.Id+envSuffix)
 
 	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
@@ -195,7 +237,7 @@ func (s *SpoolStore) RecoverCrashed() (int, error) {
 
 	recovered := 0
 	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != envSuffix {
+		if !isEnvelopeFile(e) {
 			continue
 		}
 		src := filepath.Join(s.baseDir, "processing", e.Name())
