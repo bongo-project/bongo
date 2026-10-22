@@ -1023,6 +1023,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Every cookie-authenticated group is RequireAuth then Require2FA, so
 		// the require_2fa policy covers the admin console too.
 		r.Use(middleware.Require2FA(a))
+		r.Use(middleware.InjectLocale(a))
 		r.Use(middleware.RequireAdminOrDomainAdmin(func(userID string, isGlobalAdmin bool) ([]string, error) {
 			if domainAdminStoreForAdmin == nil {
 				return nil, nil
@@ -1275,6 +1276,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			if a.DomainQuota != nil {
 				calendarH.SetQuotaChecker(a.DomainQuota)
 			}
+			calendarH.SetShareResolver(sharedResolver)
 			r.Get("/calendar", calendarH.CalendarIndex)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/{year}/{month}", calendarH.MonthView)
@@ -1500,6 +1502,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
 			r.Use(middleware.Require2FA(a))
+			r.Use(middleware.InjectLocale(a))
 			r.Use(middleware.RequireAdmin(sessionSecret))
 			r.Use(middleware.RequireSameOrigin())
 			// Double-submit CSRF token, defence-in-depth on top of same-origin.

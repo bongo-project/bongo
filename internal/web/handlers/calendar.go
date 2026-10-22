@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/mail"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +29,20 @@ type CalendarHandler struct {
 	calendars *store.CalendarStore
 	search    *store.SearchManager
 	quota     QuotaChecker // nil = unlimited
+	shares    shareTargetResolver
 }
+
+// maxCalendarShares caps how many users one calendar can be shared with.
+const maxCalendarShares = 50
+
+// shareTargetResolver maps an address to the user ID of an existing, enabled
+// local account. It must not resolve through catch-alls.
+type shareTargetResolver interface {
+	ResolveAccount(email string) (string, error)
+}
+
+// SetShareResolver wires the resolver ShareCalendar uses to validate targets.
+func (h *CalendarHandler) SetShareResolver(r shareTargetResolver) { h.shares = r }
 
 // NewCalendarHandler creates a CalendarHandler.
 func NewCalendarHandler(events *store.EventStore, calendars *store.CalendarStore, search *store.SearchManager) *CalendarHandler {
@@ -260,21 +275,44 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	shareWith := r.FormValue("share_with")
+	shareWith := strings.TrimSpace(r.FormValue("share_with"))
 	if shareWith == "" {
 		http.Error(w, "share_with is required", http.StatusBadRequest)
 		return
 	}
-
-	// Avoid duplicates.
-	for _, u := range cal.SharedWith {
-		if u == shareWith {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+	if h.shares == nil {
+		http.Error(w, "sharing is unavailable", http.StatusServiceUnavailable)
+		return
 	}
 
-	cal.SharedWith = append(cal.SharedWith, shareWith)
+	// Every negative outcome (malformed, unknown, disabled, catch-all only,
+	// self) gets the same reply so the response does not say which it was.
+	const refused = "cannot share with that address"
+	// The cap is checked before resolving so a full calendar cannot be used
+	// to tell a valid address from an invalid one.
+	if len(cal.SharedWith) >= maxCalendarShares {
+		http.Error(w, refused, http.StatusBadRequest)
+		return
+	}
+	parsed, err := mail.ParseAddress(shareWith)
+	if err != nil || parsed.Name != "" {
+		http.Error(w, refused, http.StatusBadRequest)
+		return
+	}
+	// The stored value is the target's user ID, which is what
+	// CalendarStore.IsSharedWith compares against; an address would never match.
+	targetID, err := h.shares.ResolveAccount(parsed.Address)
+	if err != nil || targetID == userID {
+		http.Error(w, refused, http.StatusBadRequest)
+		return
+	}
+
+	if slices.Contains(cal.SharedWith, targetID) {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	cal.SharedWith = append(cal.SharedWith, targetID)
 	if err := h.calendars.Update(userID, calID, cal); err != nil {
 		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
 		return
