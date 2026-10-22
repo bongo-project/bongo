@@ -228,6 +228,10 @@ TLS as well as raft transport.
 | `imap.enabled` | `agent.go:1307` | ctor | RESTART |
 | `imap.port`, `imap.port_tls` | `agent.go:1329-1330,1342-1343`; `agent.go:572-573` (autoconfig) | ctor | RESTART |
 | `imap.proxy_protocol` | `agent.go:1345` | ctor (`IMAP.Listen`) | RESTART |
+| `imap.max_connections` | `imap/server.go` `SetConnectionLimits` | `netutil.LimitListener` per listener, fixed at `Listen` | RESTART |
+| `imap.max_connections_per_ip` | `imap/server.go` `SetConnectionLimits` | `netx.PerIPLimiter` shared by plain and TLS | RESTART |
+| `pop3.max_connections` | `pop3/server.go` `SetConnectionLimits` | `netutil.LimitListener` per listener, fixed at `Listen` | RESTART |
+| `pop3.max_connections_per_ip` | `pop3/server.go` `SetConnectionLimits` | `netx.PerIPLimiter` shared by plain and TLS | RESTART |
 | `pop3.enabled` | `agent.go:1357` | ctor | RESTART |
 | `pop3.port`, `pop3.port_tls` | `agent.go:1374-1375,1385-1386` | ctor | RESTART |
 | `pop3.proxy_protocol` | `agent.go:1388` | ctor | RESTART |

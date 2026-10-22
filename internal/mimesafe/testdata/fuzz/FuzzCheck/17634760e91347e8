@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Content-TYpe:multipart/;BoundArY=b0\n\n--b0\nContent-TYpe:BoundArY\f=b1\n\n--b1\n")

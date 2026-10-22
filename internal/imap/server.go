@@ -9,6 +9,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
+	"golang.org/x/net/netutil"
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
@@ -33,6 +34,12 @@ type Server struct {
 
 	plainListener net.Listener
 	tlsListener   net.Listener
+
+	// connLimit is shared by the plain and TLS servers so one client cannot
+	// double its allowance by mixing port 143 and 993. maxConn is applied per
+	// listener (netutil.LimitListener), as SMTP does.
+	connLimit *netx.PerIPLimiter
+	maxConn   int
 }
 
 // NewServer creates an IMAP server.
@@ -59,6 +66,9 @@ func NewServer(
 	// Shared across all connections so per-IP failure counts survive reconnects
 	// (go-imap creates a new session per connection).
 	authLimiter := authlimit.New(imapMaxAuthFailures, imapAuthFailWindow)
+
+	// Starts at the default so a lost SetConnectionLimits call fails safe.
+	connLimit := netx.NewPerIPLimiter(netx.DefaultMaxConnectionsPerIP)
 
 	newSession := func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 		var remoteIP net.IP
@@ -95,8 +105,10 @@ func NewServer(
 	}
 
 	s := &Server{
-		server: imapserver.New(opts),
-		logger: logger,
+		server:    imapserver.New(opts),
+		logger:    logger,
+		connLimit: connLimit,
+		maxConn:   netx.DefaultMaxConnections,
 	}
 
 	// For implicit TLS (port 993/1993), create a separate server instance.
@@ -113,15 +125,29 @@ func NewServer(
 	return s
 }
 
+// SetConnectionLimits sets the per-listener concurrent connection cap and the
+// per-IP cap. maxConn <= 0 falls back to the default; maxPerIP <= 0 disables
+// the per-IP cap. Call before Listen.
+func (s *Server) SetConnectionLimits(maxConn, maxPerIP int) {
+	if maxConn <= 0 {
+		maxConn = netx.DefaultMaxConnections
+	}
+	s.maxConn = maxConn
+	s.connLimit.SetMax(maxPerIP)
+}
+
 // Listen binds the IMAP listeners. When proxyProtocol is set, the PROXY header
 // is read before TLS so the real client IP is preserved behind a TCP proxy.
 func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config, proxyProtocol bool) error {
+	if s.maxConn <= 0 {
+		s.maxConn = netx.DefaultMaxConnections
+	}
 	plain, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("imap listen %s: %w", addr, err)
 	}
-	s.plainListener = netx.MaybeProxyProtocol(plain, proxyProtocol)
-	s.logger.Info("imap: listening", "addr", s.plainListener.Addr())
+	s.plainListener = netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(plain, s.maxConn), proxyProtocol), s.connLimit)
+	s.logger.Info("imap: listening", "addr", s.plainListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 
 	if addrTLS != "" && tlsCfg != nil {
 		rawTLS, err := net.Listen("tcp", addrTLS)
@@ -133,8 +159,8 @@ func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config, proxyProtocol 
 		}
 		// PROXY header must be read before the TLS handshake, so wrap the raw
 		// listener first and layer TLS on top.
-		s.tlsListener = tls.NewListener(netx.MaybeProxyProtocol(rawTLS, proxyProtocol), tlsCfg)
-		s.logger.Info("imaps: listening", "addr", s.tlsListener.Addr())
+		s.tlsListener = tls.NewListener(netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(rawTLS, s.maxConn), proxyProtocol), s.connLimit), tlsCfg)
+		s.logger.Info("imaps: listening", "addr", s.tlsListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 	}
 
 	return nil

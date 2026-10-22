@@ -525,6 +525,9 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
+	if !parseUploadForm(w, r, calendarImportMaxBytes, "/calendar") {
+		return
+	}
 	file, _, err := r.FormFile("ics")
 	if err != nil {
 		http.Redirect(w, r, "/calendar?flash=No+file+uploaded", http.StatusSeeOther)

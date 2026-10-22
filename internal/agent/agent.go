@@ -1335,6 +1335,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.PipelineRunner = pipeline.NewRunner(spool, blobReader, stages, a.logger,
 			pipeline.WithWorkers(a.Config.Pipeline.Workers),
 			pipeline.WithPollInterval(a.Config.Pipeline.PipelinePollInterval()),
+			pipeline.WithMessageTimeout(a.Config.Pipeline.MessageTimeoutDuration()),
 		)
 
 		pipelineCtx, pipelineCancel := context.WithCancel(ctx)
@@ -1553,6 +1554,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		plainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapPort))
 		tlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapTLSPort))
 
+		a.IMAP.SetConnectionLimits(a.Config.IMAP.MaxConnections, a.Config.IMAP.MaxConnectionsPerIP)
 		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol); err != nil {
 			return fmt.Errorf("imap listen: %w", err)
 		}
@@ -1596,6 +1598,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		pop3PlainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(pop3Port))
 		pop3TlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(pop3TLSPort))
 
+		a.POP3.SetConnectionLimits(a.Config.POP3.MaxConnections, a.Config.POP3.MaxConnectionsPerIP)
 		if err := a.POP3.Listen(pop3PlainAddr, pop3TlsAddr, a.Config.POP3.ProxyProtocol); err != nil {
 			return fmt.Errorf("pop3 listen: %w", err)
 		}
@@ -3344,7 +3347,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 
 	userID, err := authn.Authenticate(username, password)
 	if err != nil {
-		if limiter.Record(ip) {
+		if limiter.Fail(ip, username) {
 			logger.Warn("dav: basic auth locked out after repeated failures", "ip", ip)
 			http.Error(w, "Too many authentication failures, try again later", http.StatusTooManyRequests)
 			return "", false
@@ -3354,7 +3357,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 		return "", false
 	}
 
-	limiter.Reset(ip)
+	limiter.Succeed(ip, username)
 	return userID, true
 }
 

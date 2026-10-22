@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jhillyerd/enmime"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
 )
@@ -230,7 +230,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	// Parse the RFC 5322 message with enmime.
 	stepStart = time.Now()
-	parsed, err := enmime.ReadEnvelope(strings.NewReader(string(raw)))
+	parsed, _, err := mimesafe.ReadEnvelope(raw)
 	if err != nil {
 		p.logger.Warn("deliver: failed to parse message envelope, using minimal metadata", "error", err, "id", env.Id)
 		parsed = nil
@@ -372,6 +372,14 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 				Filename:    att.FileName,
 			})
 		}
+	}
+
+	// Honour the per-message time budget once, before the first Raft write, and
+	// never inside the loop: stopping part-way through a multi-recipient delivery
+	// would leave some recipients delivered, and the retry from error/ would then
+	// deliver to them a second time.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("deliver: message %s abandoned before delivery: %w", env.Id, err)
 	}
 
 	// Deliver to each recipient. Check account-level forwarding preferences.

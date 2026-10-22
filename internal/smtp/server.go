@@ -13,7 +13,6 @@ import (
 	netmail "net/mail"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -64,9 +63,7 @@ type Backend struct {
 	hostname   string              // public hostname, used in the Received header
 	outboundRL *inboundRateLimiter // nil = disabled; per-user submission rate limit
 
-	mu        sync.Mutex
-	perIP     map[string]int
-	maxPerIP  int                 // 0 = disabled; set from config.SMTPLimits.MaxConnectionsPerIP
+	connLimit *netx.PerIPLimiter  // nil = disabled; per-IP cap from config.SMTPLimits.MaxConnectionsPerIP
 	inboundRL *inboundRateLimiter // nil = disabled; set from config.SMTPLimits.MessagesPerMinute
 
 	// authFail tracks failed AUTH attempts per source IP so a source can be
@@ -87,7 +84,7 @@ func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *s
 		auth:      authenticator,
 		deliverer: deliverer,
 		logger:    logger,
-		perIP:     make(map[string]int),
+		connLimit: netx.NewPerIPLimiter(0),
 		authFail:  authlimit.New(maxAuthFailures, authFailWindow),
 	}
 }
@@ -196,16 +193,9 @@ func (b *Backend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
 	// Per-IP concurrent-connection cap.
 	// NOTE: behind a TCP-proxying reverse proxy without PROXY protocol, all
 	// inbound connections share the proxy's IP, so this is a coarse safety net.
-	if remoteIP != nil && b.maxPerIP > 0 {
-		ipStr := remoteIP.String()
-		b.mu.Lock()
-		if b.perIP[ipStr] >= b.maxPerIP {
-			b.mu.Unlock()
-			b.logger.Warn("smtp: too many connections from source, rejecting", "ip", ipStr)
-			return nil, &gosmtp.SMTPError{Code: 421, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many connections from your address"}
-		}
-		b.perIP[ipStr]++
-		b.mu.Unlock()
+	if !b.connLimit.Acquire(remoteIP) {
+		b.logger.Warn("smtp: too many connections from source, rejecting", "ip", remoteIP.String())
+		return nil, &gosmtp.SMTPError{Code: 421, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many connections from your address"}
 	}
 
 	// Detect whether this connection landed on the submission listener.
@@ -258,7 +248,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	userID, err := s.backend.auth.Authenticate(username, password)
 	if err != nil {
 		s.authFailures++
-		s.backend.authFail.Record(ip)
+		s.backend.authFail.Fail(ip, username)
 		s.logger.Warn("smtp: auth failed", "username", username, "ip", s.remoteIP)
 		return err
 	}
@@ -266,7 +256,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	s.authed = true
 	s.userID = userID
 	s.authFailures = 0
-	s.backend.authFail.Reset(ip)
+	s.backend.authFail.Succeed(ip, username)
 	s.logger.Debug("smtp: auth succeeded", "username", username)
 	return nil
 }
@@ -702,17 +692,7 @@ func extractDomain(email string) string {
 
 // Logout is called when the connection is closed.
 func (s *Session) Logout() error {
-	if s.remoteIP != nil {
-		ip := s.remoteIP.String()
-		s.backend.mu.Lock()
-		if s.backend.perIP[ip] > 0 {
-			s.backend.perIP[ip]--
-			if s.backend.perIP[ip] == 0 {
-				delete(s.backend.perIP, ip)
-			}
-		}
-		s.backend.mu.Unlock()
-	}
+	s.backend.connLimit.Release(s.remoteIP)
 	return nil
 }
 
@@ -820,7 +800,7 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 
 	// Wire per-IP limits into the backend. These are read from config so operators
 	// can tune or disable them (0 = disabled).
-	backend.maxPerIP = cfg.Limits.MaxConnectionsPerIP
+	backend.connLimit.SetMax(cfg.Limits.MaxConnectionsPerIP)
 	backend.inboundRL = newInboundRateLimiter(cfg.Limits.MessagesPerMinute)
 	backend.outboundRL = newInboundRateLimiter(cfg.Limits.OutboundMessagesPerMinute)
 	backend.hostname = banner

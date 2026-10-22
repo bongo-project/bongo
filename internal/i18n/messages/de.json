@@ -26,6 +26,7 @@
   "mail.sourceTitle": "Originalnachricht",
   "mail.sourceTruncated": "Diese Nachricht ist zu groß, um vollständig angezeigt zu werden. Es wird nur der Anfang angezeigt.",
   "mail.sourceDownloadFull": "Vollständige Nachricht herunterladen",
+  "mail.tooComplex": "Diese Nachricht hat eine ungewöhnlich komplexe Struktur und kann nicht angezeigt werden. Verwenden Sie „Original anzeigen“, um sie herunterzuladen.",
   "mail.print": "Drucken",
   "mail.back": "Zurück",
   "mail.moveTo": "Verschieben nach...",

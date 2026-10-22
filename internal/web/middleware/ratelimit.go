@@ -3,8 +3,9 @@ package middleware
 import (
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
+
+	"github.com/bongo-project/bongo/internal/authlimit"
 )
 
 const (
@@ -14,74 +15,40 @@ const (
 	DefaultWindow = 15 * time.Minute
 )
 
-// bucket tracks failed attempts for a single IP address.
-type bucket struct {
-	count   int
-	resetAt time.Time
-}
-
-// LoginRateLimiter tracks failed login attempts per IP address.
+// LoginRateLimiter tracks failed login attempts per IP address, backed by
+// authlimit. A successful login forgives only the failures recorded under the
+// same account from the same IP, so logging in to one's own account between
+// guesses at someone else's does not reset the throttle.
 type LoginRateLimiter struct {
-	mu          sync.RWMutex
-	buckets     map[string]*bucket
-	maxAttempts int
-	window      time.Duration
-	stopCh      chan struct{}
+	lim    *authlimit.Limiter
+	window time.Duration
 }
 
 // NewLoginRateLimiter creates a new LoginRateLimiter with the given limits.
-// A background goroutine prunes expired entries every 5 minutes; call Stop() to
-// shut it down.
+// Expired entries are swept lazily by the underlying limiter.
 func NewLoginRateLimiter(maxAttempts int, window time.Duration) *LoginRateLimiter {
-	rl := &LoginRateLimiter{
-		buckets:     make(map[string]*bucket),
-		maxAttempts: maxAttempts,
-		window:      window,
-		stopCh:      make(chan struct{}),
-	}
-	go rl.pruneLoop()
-	return rl
+	return &LoginRateLimiter{lim: authlimit.New(maxAttempts, window), window: window}
 }
 
-// Stop terminates the background pruning goroutine.
-func (rl *LoginRateLimiter) Stop() {
-	close(rl.stopCh)
+// Stop is retained for callers that manage the limiter lifecycle; there is no
+// background goroutine to terminate.
+func (rl *LoginRateLimiter) Stop() {}
+
+// RecordFailure counts a failed attempt against the IP and the (IP, account) pair.
+func (rl *LoginRateLimiter) RecordFailure(ip, account string) {
+	rl.lim.Fail(ip, account)
 }
 
-// RecordFailure increments the failure counter for the given IP.
-func (rl *LoginRateLimiter) RecordFailure(ip string) {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	b, ok := rl.buckets[ip]
-	if !ok || time.Now().After(b.resetAt) {
-		rl.buckets[ip] = &bucket{count: 1, resetAt: time.Now().Add(rl.window)}
-		return
-	}
-	b.count++
-}
-
-// Reset clears the failure counter for the given IP (e.g. on successful login).
-func (rl *LoginRateLimiter) Reset(ip string) {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	delete(rl.buckets, ip)
+// Succeed forgives the failures recorded for this account from this IP. It
+// never clears failures recorded under other account names.
+func (rl *LoginRateLimiter) Succeed(ip, account string) {
+	rl.lim.Succeed(ip, account)
 }
 
 // IsLimited reports whether the given IP has exceeded the maximum number of
 // failed attempts within the configured window.
 func (rl *LoginRateLimiter) IsLimited(ip string) bool {
-	rl.mu.RLock()
-	defer rl.mu.RUnlock()
-
-	b, ok := rl.buckets[ip]
-	if !ok {
-		return false
-	}
-	if time.Now().After(b.resetAt) {
-		return false
-	}
-	return b.count >= rl.maxAttempts
+	return rl.lim.Blocked(ip)
 }
 
 // LoginRateLimit returns chi-compatible middleware that rejects requests from
@@ -98,30 +65,5 @@ func (rl *LoginRateLimiter) LoginRateLimit() func(http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		})
-	}
-}
-
-// pruneLoop runs in the background and removes expired buckets every 5 minutes.
-func (rl *LoginRateLimiter) pruneLoop() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			rl.prune()
-		case <-rl.stopCh:
-			return
-		}
-	}
-}
-
-func (rl *LoginRateLimiter) prune() {
-	now := time.Now()
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	for ip, b := range rl.buckets {
-		if now.After(b.resetAt) {
-			delete(rl.buckets, ip)
-		}
 	}
 }

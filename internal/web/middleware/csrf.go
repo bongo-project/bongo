@@ -16,6 +16,14 @@ const (
 	csrfHeaderName = "X-CSRF-Token"
 	csrfFieldName  = "_csrf"
 	csrfPurpose    = "bongo/csrf-token/v1"
+
+	// csrfPeekLimit bounds how much of a multipart body is read to find the
+	// leading _csrf part. csrfFieldMaxBytes bounds that part's value.
+	csrfPeekLimit     = 64 << 10
+	csrfFieldMaxBytes = 256
+	// csrfFormMaxBytes caps a url-encoded form body read by the middleware.
+	// It matches net/http's own ParseForm limit, so it adds no new exposure.
+	csrfFormMaxBytes = 10 << 20
 )
 
 // csrfToken derives a stateless, session-bound CSRF token from the authenticated
@@ -53,9 +61,17 @@ func CSRFTokenFromContext(ctx context.Context) string {
 // RequireCSRF enforces the token on state-changing requests. The expected token
 // is recomputed from the authenticated user and must be echoed in the
 // X-CSRF-Token header (HTMX sends it via the hx-headers rendered on <body>).
-// Only the header is consulted so the request body is never pre-consumed
-// (important for multipart uploads). Safe methods and unauthenticated requests
-// (which rely on RequireSameOrigin) pass through.
+// When the header is present the body is never touched. Native <form>
+// submissions cannot set a header, so they carry a hidden _csrf field instead:
+//   - url-encoded forms are parsed with the standard 10MB ParseForm cap;
+//   - multipart forms are NOT parsed here (that would buffer up to 32MB, spill
+//     the rest to unbounded temp files and make every handler's MaxBytesReader
+//     moot). Only the first part is peeked, within csrfPeekLimit, and must be
+//     _csrf; the consumed bytes are replayed so the handler sees the full body.
+//     Forms must therefore render _csrf as their first field.
+//
+// Safe methods and unauthenticated requests (which rely on RequireSameOrigin)
+// pass through.
 //
 // enforce gates the check: it is disabled in dev mode (mirroring
 // AllowInsecureAuth), where the local single-user server has no CSRF exposure
@@ -82,13 +98,8 @@ func RequireCSRF(secret []byte, enforce bool) func(http.Handler) http.Handler {
 
 			want := csrfToken(secret, userID)
 			got := r.Header.Get(csrfHeaderName)
-			// Native <form> submissions cannot set a header; accept a hidden _csrf
-			// field. Only read the form when the header is absent, so JSON/fetch
-			// request bodies (which carry the header) are never pre-consumed. For a
-			// multipart form this parses the body, but such handlers read the form
-			// anyway (ParseMultipartForm caches), so it is compatible.
 			if got == "" {
-				got = r.PostFormValue(csrfFieldName)
+				got = formCSRFToken(w, r)
 			}
 			if got == "" || !hmac.Equal([]byte(got), []byte(want)) {
 				http.Error(w, "Forbidden: invalid CSRF token", http.StatusForbidden)

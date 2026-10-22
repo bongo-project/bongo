@@ -38,6 +38,7 @@ type MessageDetail struct {
 	Date             time.Time
 	HTMLBody         string
 	TextBody         string
+	MIMETooComplex   bool
 	Attachments      []Attachment
 	Seen             bool
 	Flagged          bool
@@ -182,6 +183,9 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 					</div>
 				}
 				<div class="msg-body">
+					if msg.MIMETooComplex {
+						<p><em>{ t(ctx, "mail.tooComplex") }</em></p>
+					}
 					if msg.HTMLBody != "" {
 						<div class="email-body">
 							@templ.Raw(msg.HTMLBody)
@@ -253,6 +257,9 @@ templ MessagePaneContent(msg MessageDetail) {
 					</div>
 				}
 				<div class="msg-body">
+					if msg.MIMETooComplex {
+						<p><em>{ t(ctx, "mail.tooComplex") }</em></p>
+					}
 					if msg.HTMLBody != "" {
 						<div class="email-body">
 							@templ.Raw(msg.HTMLBody)
@@ -307,6 +314,9 @@ templ ThreadMessageArticle(msg MessageDetail, borderless bool) {
 				</div>
 			}
 			<div class="msg-body">
+				if msg.MIMETooComplex {
+					<p><em>{ t(ctx, "mail.tooComplex") }</em></p>
+				}
 				if msg.HTMLBody != "" {
 					<div class="email-body">
 						@templ.Raw(msg.HTMLBody)

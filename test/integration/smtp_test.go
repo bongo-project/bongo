@@ -133,7 +133,11 @@ func TestSMTPFullMailFlow(t *testing.T) {
 		}
 	}
 
-	// Verify per-user SQLite has storeobject + maildocument rows.
+	// Verify per-user SQLite has storeobject + maildocument rows. Mail keys are
+	// indexed off the Raft apply path, so let the derived indexer drain first.
+	if !a.Raft.FSM.WaitIdle(10 * time.Second) {
+		t.Fatal("derived indexer did not drain")
+	}
 	objs, err := a.Metadata.QueryByType(userID, store.DocTypeMail)
 	if err != nil {
 		t.Fatalf("QueryByType: %v", err)

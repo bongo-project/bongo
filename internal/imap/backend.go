@@ -13,11 +13,11 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
-	"github.com/jhillyerd/enmime"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -218,13 +218,13 @@ func (s *session) Login(username, password string) error {
 	userID, err := s.auth.Authenticate(username, password)
 	if err != nil {
 		s.logger.Warn("imap: login failed", "username", username, "ip", s.remoteIP)
-		if s.authLimiter.Record(ip) {
+		if s.authLimiter.Fail(ip, username) {
 			return errAuthRateLimited
 		}
 		return imapserver.ErrAuthFailed
 	}
 	s.userID = userID
-	s.authLimiter.Reset(ip)
+	s.authLimiter.Succeed(ip, username)
 	s.logger.Debug("imap: login succeeded", "username", username, "user_id", userID)
 	return nil
 }
@@ -520,7 +520,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	}
 
 	// Parse envelope for metadata.
-	envelope, _ := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	envelope, _, _ := mimesafe.ReadEnvelope(rawMsg)
 
 	subject := ""
 	messageID := ""
@@ -1041,7 +1041,7 @@ func (s *session) loadMailContent(guid string) (*bongov1.MailMeta, []byte, error
 }
 
 func (s *session) buildEnvelope(meta *bongov1.MailMeta, rawMsg []byte) *imap.Envelope {
-	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil {
 		// Fall back to proto metadata.
 		return &imap.Envelope{
@@ -1124,7 +1124,7 @@ func parseAddress(s string) imap.Address {
 }
 
 func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
-	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil {
 		return &imap.BodyStructureSinglePart{
 			Type:    "text",
@@ -1284,7 +1284,7 @@ func (s *session) writeBodySection(respW *imapserver.FetchResponseWriter, sectio
 }
 
 func (s *session) extractMIMEPart(rawMsg []byte, partPath []int) []byte {
-	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil {
 		return nil
 	}
