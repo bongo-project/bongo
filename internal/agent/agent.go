@@ -95,6 +95,11 @@ const (
 
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
+	// blobSweepBeforeDelete, when set, runs between the sweep plan and the
+	// delete. Tests use it to land a dedup write in that window; it is nil in
+	// production.
+	blobSweepBeforeDelete func()
+
 	// proxyTrust is the shared PROXY/X-Forwarded-* trust set (see installProxyTrust).
 	proxyTrust *netx.TrustedProxies
 
@@ -2233,14 +2238,15 @@ func planBlobSweep(referenced map[string]bool, blobMTimes map[string]time.Time, 
 // spared (referenced since the original scan). Order is preserved in both
 // slices so the sweep log stays deterministic.
 //
-// This is the barrier for the dedup gap in the minAge grace: BlobStore.Put and
-// PutReader early-return without touching the file when Exists(hash) is true,
-// so a deduplicated write leaves the blob's mtime at its ORIGINAL write time.
-// A year-old blob that becomes referenced again during the scan is therefore
+// This is the barrier for a reference that reappears after the original scan:
+// a year-old blob that becomes referenced again during the scan is
 // simultaneously absent from the reference snapshot, older than the cutoff,
 // and a two-pass candidate -- exactly the combination that deleted a live mail
 // body on 2026-08-30. Re-checking immediately before delete closes that
-// window regardless of how the reference reappeared.
+// window regardless of how the reference reappeared. A dedup write whose
+// MailMeta is not yet committed has no reference to find; that case is
+// covered by the mtime refresh in BlobStore.Put and the mtime re-check in
+// deleteSweptBlobs.
 func reconfirmSweep(toDelete []string, fresh map[string]bool) (survivors, spared []string) {
 	for _, h := range toDelete {
 		if fresh[h] {
@@ -2278,12 +2284,17 @@ func revalidateSweepCandidates(ps *store.PebbleStore, spool *pipeline.SpoolStore
 // deleteSweptBlobs re-validates every candidate against a FRESH reference scan
 // and then reclaims (or in dryrun, only logs) whatever survives, returning how
 // many were actually removed and which candidates were spared by
-// re-validation. This is the barrier for the dedup gap in the minAge grace:
-// BlobStore.Put/PutReader leave a deduplicated write's mtime untouched, so a
-// blob that is re-referenced during the sweep is simultaneously absent from
-// the ORIGINAL reference scan, older than the cutoff, and a two-pass
-// candidate -- exactly the combination that deleted a live mail body on
-// 2026-08-30.
+// re-validation. This is the barrier for a blob that is re-referenced during
+// the sweep: it is absent from the ORIGINAL reference scan, older than the
+// cutoff, and a two-pass candidate -- exactly the combination that deleted a
+// live mail body on 2026-08-30.
+//
+// Re-validation only sees committed references. A writer that dedups against
+// an existing blob (BlobStore.Put refreshes its mtime) has not committed its
+// MailMeta yet, so each survivor is also re-checked against cutoff, the same
+// cutoff the plan used: a blob touched since the plan is spared. The check and
+// the removal are atomic with respect to the touch (DeleteIfNotModifiedSince),
+// so a touch cannot slip in between them.
 //
 // The re-validation lives HERE, inside the only function that calls
 // Blobs.Delete, rather than at the sweepOrphanedBlobs call site. A call-site
@@ -2293,7 +2304,7 @@ func revalidateSweepCandidates(ps *store.PebbleStore, spool *pipeline.SpoolStore
 // criterion literally: re-validate each candidate "immediately before
 // deleting" it.
 //
-// dryRun gates ONLY the Blobs.Delete call below -- re-validation and the
+// dryRun gates ONLY the Blobs.DeleteIfNotModifiedSince call below -- re-validation and the
 // spared list are computed either way. The dryrun candidate list is what an
 // operator reviews to decide whether to trust the sweep before re-enabling
 // deletion (task 14.9); a list that skipped re-validation would over-report
@@ -2312,18 +2323,29 @@ func revalidateSweepCandidates(ps *store.PebbleStore, spool *pipeline.SpoolStore
 // to when the GC has to be made safe in a hurry. If it ever deleted, the one
 // control people reach for when they do not trust the sweep would be the
 // destructive one -- and the summary line would still say dry_run=true.
-func (a *Agent) deleteSweptBlobs(toDelete []string, dryRun bool) (deleted int, spared []string, err error) {
+func (a *Agent) deleteSweptBlobs(toDelete []string, cutoff time.Time, dryRun bool) (deleted int, spared []string, err error) {
 	survivors, spared, err := revalidateSweepCandidates(a.Store, a.Spool, toDelete)
 	if err != nil {
 		return 0, nil, fmt.Errorf("re-validating before delete: %w", err)
 	}
 	for _, h := range survivors {
-		a.logSweepCandidate(h, dryRun)
 		if dryRun {
+			// Mirror the real pass: a blob touched since the plan is spared.
+			if mt, err := a.Blobs.ModTime(h); err == nil && mt.After(cutoff) {
+				spared = append(spared, h)
+				continue
+			}
+			a.logSweepCandidate(h, dryRun)
 			continue
 		}
-		if err := a.Blobs.Delete(h); err != nil {
+		a.logSweepCandidate(h, dryRun)
+		ok, err := a.Blobs.DeleteIfNotModifiedSince(h, cutoff)
+		if err != nil {
 			a.logger.Warn("blob-gc: deleting orphaned blob failed", "hash", h, "error", err)
+			continue
+		}
+		if !ok {
+			spared = append(spared, h)
 			continue
 		}
 		deleted++
@@ -2367,15 +2389,19 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 			mtimes[h] = mt
 		}
 	}
-	current, toDelete := planBlobSweep(referenced, mtimes, prev, time.Now().Add(-minAge))
+	cutoff := time.Now().Add(-minAge)
+	current, toDelete := planBlobSweep(referenced, mtimes, prev, cutoff)
 	candidates := len(toDelete)
 
-	deleted, spared, err := a.deleteSweptBlobs(toDelete, dryRun)
+	if a.blobSweepBeforeDelete != nil {
+		a.blobSweepBeforeDelete()
+	}
+	deleted, spared, err := a.deleteSweptBlobs(toDelete, cutoff, dryRun)
 	if err != nil {
 		a.logger.Warn("blob-gc: re-validation scan failed, deleting nothing this pass",
 			"error", err, "candidates", candidates)
 	} else if len(spared) > 0 {
-		a.logger.Info("blob-gc: spared blob(s) referenced since the initial scan",
+		a.logger.Info("blob-gc: spared by re-validation (new reference or mtime refresh)",
 			"hashes", spared, "count", len(spared))
 	}
 
