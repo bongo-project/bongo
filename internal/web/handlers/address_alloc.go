@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/store"
@@ -41,12 +39,5 @@ func domainHostedLocally(ps keyGetter, domain string) (bool, error) {
 	if ps == nil || (reflect.ValueOf(ps).Kind() == reflect.Pointer && reflect.ValueOf(ps).IsNil()) {
 		return false, errors.New("pebble store not available")
 	}
-	_, err := ps.Get([]byte("/system/domain/" + strings.ToLower(domain)))
-	if err == nil {
-		return true, nil
-	}
-	if errors.Is(err, store.ErrNotFound) {
-		return false, nil
-	}
-	return false, fmt.Errorf("checking domain %s: %w", domain, err)
+	return store.DomainHosted(ps, domain)
 }

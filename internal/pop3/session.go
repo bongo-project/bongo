@@ -59,8 +59,11 @@ type session struct {
 	// Transaction state.
 	authenticated bool
 	userID        string
-	messages      []popMsg // 0-indexed; POP3 message numbers are 1-based
-	deleted       map[int]bool
+	// epoch is the credential fingerprint recorded at PASS; a mismatch later
+	// means the password was reset.
+	epoch    string
+	messages []popMsg // 0-indexed; POP3 message numbers are 1-based
+	deleted  map[int]bool
 }
 
 func newSession(
@@ -137,6 +140,13 @@ func (s *session) handle() {
 		cmd, args := s.parseCommand(line)
 		cmd = strings.ToUpper(cmd)
 
+		// A revoked account gets nothing further, and in particular its pending
+		// DELE marks are not applied (no UPDATE state).
+		if s.authenticated && !s.accountLive() {
+			s.respond("-ERR account no longer available")
+			return
+		}
+
 		switch cmd {
 		case "QUIT":
 			s.handleQuit()
@@ -205,6 +215,25 @@ func (s *session) flushWriter() {
 	if err := s.writer.Flush(); err != nil {
 		s.logger.Warn("pop3: failed to flush response", "error", err)
 	}
+}
+
+// accountLive reports whether the authenticated account is still enabled,
+// still exists and still has the password it logged in with. It costs one
+// Pebble Get per command. A missing profile fails closed; a store read error
+// fails open (as the web session check does) so an outage does not drop every
+// client, while PASS itself is stricter and fails closed on any error.
+func (s *session) accountLive() bool {
+	st, err := s.auth.AccountState(s.userID)
+	if err != nil {
+		s.logger.Warn("pop3: account state check failed, allowing command", "user", s.userID, "error", err)
+		return true
+	}
+	if st.Live(s.epoch) {
+		return true
+	}
+	s.logger.Info("pop3: closing session, account no longer valid", "user", s.userID,
+		"missing", st.Missing, "disabled", st.Disabled)
+	return false
 }
 
 func (s *session) handleQuit() {
@@ -284,6 +313,16 @@ func (s *session) handlePass(args string) {
 	if s.authLimiter != nil {
 		s.authLimiter.Succeed(ip, s.username)
 	}
+	// Fail closed at login: without a baseline epoch the session could never
+	// notice a later password reset.
+	st, err := s.auth.AccountState(userID)
+	if err != nil || !st.Live(st.Epoch) {
+		s.logger.Warn("pop3: auth refused, account state unavailable", "username", s.username, "ip", ip)
+		s.username = ""
+		s.respond("-ERR authentication failed")
+		return
+	}
+	s.epoch = st.Epoch
 	s.userID = userID
 	s.authenticated = true
 	s.logger.Debug("pop3: auth succeeded", "username", s.username, "user_id", userID)

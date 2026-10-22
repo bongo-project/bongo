@@ -17,9 +17,18 @@ message QueueEnvelope {
   string current_stage = 10;             // Stage currently processing
   string target_mailbox = 11;            // Override destination (set by rules/spam)
   repeated string pending_tags = 12;     // Tags to apply at delivery (accumulated by rules stage)
-  repeated string forward_addresses = 13; // External addresses to forward this message to
+  repeated string forward_addresses = 13; // Legacy unattributed forwards; never sent (superseded by forward_requests)
   bool trusted = 14;                     // Message arrived authenticated or from trusted network
   string auth_user_id = 15;              // Authenticated submitter's user ID; empty for trusted-network or unauthenticated sources
+  repeated ForwardRequest forward_requests = 16; // Forwards attributed to the owning user; enforced by the deliver stage
+}
+
+// ForwardRequest is one forward asked for by a rule, attributed to the user
+// whose rule asked for it, so the deliver stage can check that user's verified
+// targets and rate limit. Unattributed entries (user_id empty) are never sent.
+message ForwardRequest {
+  string user_id = 1;
+  string target = 2;
 }
 
 message StageResult {

@@ -58,9 +58,12 @@ type AdminHandler struct {
 	// authorizedDomainsFn resolves a user's admin scope (owned and granted
 	// domains). Set by SetDomainAdminStore; replaceable in tests.
 	authorizedDomainsFn func(userID string, isGlobalAdmin bool) ([]string, error)
-	domainQuota         *store.DomainQuotaStore
-	startTime           time.Time
-	mailHostname        string // configured SMTP hostname; used as MX expected-value hint
+	// domainKeyExistsFn reports whether a domain key exists in any
+	// capitalisation. Defaults to store.DomainKeyExists; replaceable in tests.
+	domainKeyExistsFn func(domain string) (bool, error)
+	domainQuota       *store.DomainQuotaStore
+	startTime         time.Time
+	mailHostname      string // configured SMTP hostname; used as MX expected-value hint
 }
 
 // GossipLister returns gossip member info.
@@ -1111,10 +1114,39 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := strings.TrimSpace(r.FormValue("domain"))
+	domain := strings.ToLower(strings.TrimSpace(r.FormValue("domain")))
 	if domain == "" {
 		http.Error(w, "domain is required", http.StatusBadRequest)
 		return
+	}
+
+	// Re-adding a live domain must never purge: that would wipe its admins,
+	// catch-all and DKIM key. Only an absent domain key means leftovers are stale.
+	existsFn := h.domainKeyExistsFn
+	if existsFn == nil {
+		existsFn = func(d string) (bool, error) { return store.DomainKeyExists(h.store, d) }
+	}
+	exists, err := existsFn(domain)
+	if err != nil {
+		h.logger.Error("admin: domain existence check failed", "domain", domain, "error", err)
+		http.Error(w, "failed to add domain", http.StatusInternalServerError)
+		return
+	}
+	if exists {
+		http.Error(w, "domain already exists", http.StatusConflict)
+		return
+	}
+
+	// Defence in depth for a partially completed DeleteDomain (or deletes from
+	// before the cascade existed): a new tenant must not inherit the previous
+	// tenant's admins, owner, catch-all, quota or orphaned address records.
+	if err := store.PurgeDomainConfig(h.store, h.applier, domain); err != nil {
+		h.logger.Error("admin: failed to clear stale domain config", "domain", domain, "error", err)
+		http.Error(w, "failed to add domain", http.StatusInternalServerError)
+		return
+	}
+	if h.dkimRegistry != nil {
+		h.dkimRegistry.Remove(domain)
 	}
 
 	// Check MX records.
@@ -1201,27 +1233,88 @@ func (h *AdminHandler) ToggleDomain(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/domains?flash=Domain+toggled", http.StatusSeeOther)
 }
 
-// DeleteDomain removes a domain.
+// DeleteDomain removes a domain and the configuration it owns.
+//
+// Deletion is refused (nothing is removed) while any user, alias or live
+// address record (including send-as identities) is on the domain: silently
+// orphaning those would strand mail. If a dependent scan fails the request
+// fails closed.
+//
+// There is no composite Raft command, so the cascade is a series of single
+// deletes. Partial-failure semantics: the security-relevant keys (domain-admin
+// grants, everything under /system/domain/{d}/, catch-all, orphaned address
+// records) go first and the /system/domain/{d} key goes last. If any step
+// fails the request returns 500, the domain stays listed and the delete can be
+// retried. CreateDomain purges leftovers and AuthorizedDomains ignores domains
+// whose key is missing, so a half-finished delete never leaks admin scope to a
+// re-created domain. The DKIM signer is removed from this node's registry
+// only; other nodes drop it on restart. Blobs are never touched (GC only).
 func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
 	scope := middleware.AdminScopeFromContext(r.Context())
 	if !requireDomainAccess(w, scope, domain) {
 		return
 	}
+	lower := strings.ToLower(strings.TrimSpace(domain))
 
-	key := []byte(fmt.Sprintf("/system/domain/%s", domain))
-	cmd := &bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: key,
+	deps, err := store.DomainDependentCounts(h.store, lower)
+	if err != nil {
+		h.logger.Error("admin: domain dependents scan failed", "domain", domain, "error", err)
+		http.Error(w, "failed to delete domain", http.StatusInternalServerError)
+		return
 	}
-	if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+	if deps.Any() {
+		h.logger.Warn("admin: domain delete refused", "domain", domain,
+			"users", deps.Users, "aliases", deps.Aliases, "addresses", deps.Addresses)
+		msg := fmt.Sprintf("Domain %s has %d users, %d aliases and %d addresses; remove them first",
+			lower, deps.Users, deps.Aliases, deps.Addresses)
+		h.hxRedirect(w, "/admin/domains?flash="+url.QueryEscape(msg))
+		return
+	}
+
+	if err := store.PurgeDomainConfig(h.store, h.applier, lower); err != nil {
+		h.logger.Error("admin: failed to purge domain config", "domain", domain, "error", err)
 		http.Error(w, "failed to delete domain", http.StatusInternalServerError)
 		return
 	}
 
+	// The domain key may exist as typed (older mixed-case) and lower-cased;
+	// delete both, last.
+	keys := []string{domain}
+	if lower != domain {
+		keys = append(keys, lower)
+	}
+	for _, k := range keys {
+		cmd := &bongov1.RaftCommand{
+			Op:  bongov1.Op_OP_DELETE,
+			Key: []byte("/system/domain/" + k),
+		}
+		if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+			h.logger.Error("admin: failed to delete domain key", "domain", domain, "error", err)
+			http.Error(w, "failed to delete domain", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if h.dkimRegistry != nil {
+		h.dkimRegistry.Remove(lower)
+	}
+
 	if h.metadata != nil && h.metadata.System != nil {
-		if _, err := h.metadata.System.DB().Exec("DELETE FROM domains WHERE name = ?", domain); err != nil {
-			h.logger.Warn("admin: failed to delete domain from sqlite", "domain", domain, "error", err)
+		db := h.metadata.System.DB()
+		suffix := "@" + lower
+		stmts := []struct {
+			query string
+			args  []any
+		}{
+			{"DELETE FROM domains WHERE name = ? OR lower(name) = ?", []any{domain, lower}},
+			{"DELETE FROM aliases WHERE substr(lower(address), -length(?)) = ?", []any{suffix, suffix}},
+			{"DELETE FROM addresses WHERE substr(lower(address), -length(?)) = ?", []any{suffix, suffix}},
+		}
+		for _, st := range stmts {
+			if _, err := db.Exec(st.query, st.args...); err != nil {
+				h.logger.Warn("admin: failed to clean domain rows from sqlite", "domain", domain, "error", err)
+			}
 		}
 	}
 

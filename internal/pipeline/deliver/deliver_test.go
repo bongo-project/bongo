@@ -439,15 +439,16 @@ func TestDeliverForwardAddressesEnqueued(t *testing.T) {
 
 	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
 	proc.SetQueuer(queuer)
+	proc.SetForwardTargets(allowAllTargets{})
 
 	rawMsg := minimalMessage("bob@example.com", "alice@example.com", "Hello", "Hi!\r\n")
 	env := &bongov1.QueueEnvelope{
-		Id:               "env-fwd",
-		Sender:           "bob@example.com",
-		Recipients:       []string{"alice@example.com"},
-		ReceivedAt:       time.Now().Unix(),
-		BlobHash:         "fwdhash",
-		ForwardAddresses: []string{"external@other.com"},
+		Id:              "env-fwd",
+		Sender:          "bob@example.com",
+		Recipients:      []string{"alice@example.com"},
+		ReceivedAt:      time.Now().Unix(),
+		BlobHash:        "fwdhash",
+		ForwardRequests: []*bongov1.ForwardRequest{{UserId: "user-alice", Target: "external@other.com"}},
 	}
 
 	result, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
@@ -512,6 +513,7 @@ func TestDeliverAccountForwarding(t *testing.T) {
 
 			proc := NewDeliverProcessor(applier, resolver, newTestLogger())
 			proc.SetQueuer(queuer)
+			proc.SetForwardTargets(allowAllTargets{})
 			proc.SetPreferences(prefs)
 
 			rawMsg := minimalMessage("bob@example.com", "alice@example.com", "Hello", "Hi!\r\n")
@@ -553,12 +555,12 @@ func TestDeliverNoForwardWithoutQueuer(t *testing.T) {
 
 	rawMsg := minimalMessage("bob@example.com", "alice@example.com", "Hello", "Hi!\r\n")
 	env := &bongov1.QueueEnvelope{
-		Id:               "env-no-queuer",
-		Sender:           "bob@example.com",
-		Recipients:       []string{"alice@example.com"},
-		ReceivedAt:       time.Now().Unix(),
-		BlobHash:         "noqhash",
-		ForwardAddresses: []string{"external@other.com"},
+		Id:              "env-no-queuer",
+		Sender:          "bob@example.com",
+		Recipients:      []string{"alice@example.com"},
+		ReceivedAt:      time.Now().Unix(),
+		BlobHash:        "noqhash",
+		ForwardRequests: []*bongov1.ForwardRequest{{UserId: "user-alice", Target: "external@other.com"}},
 	}
 
 	result, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
@@ -709,15 +711,16 @@ func TestDeliverEmptyEnvelopeSenderForwarded(t *testing.T) {
 
 	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
 	proc.SetQueuer(queuer)
+	proc.SetForwardTargets(allowAllTargets{})
 
 	rawMsg := minimalMessage("MAILER-DAEMON <postmaster@example.test>", "alice@example.com", "Undelivered Mail Returned to Sender", "bounce body\r\n")
 	env := &bongov1.QueueEnvelope{
-		Id:               "env-dsn-fwd",
-		Sender:           "",
-		Recipients:       []string{"alice@example.com"},
-		ReceivedAt:       time.Now().Unix(),
-		BlobHash:         "dsnfwdhash",
-		ForwardAddresses: []string{"external@other.com"},
+		Id:              "env-dsn-fwd",
+		Sender:          "",
+		Recipients:      []string{"alice@example.com"},
+		ReceivedAt:      time.Now().Unix(),
+		BlobHash:        "dsnfwdhash",
+		ForwardRequests: []*bongov1.ForwardRequest{{UserId: "user-alice", Target: "external@other.com"}},
 	}
 
 	result, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))

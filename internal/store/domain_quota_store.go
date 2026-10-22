@@ -26,8 +26,10 @@ func DomainQuotaKey(domain string) []byte {
 // DomainUsageKey returns the Pebble key for a per-domain aggregate usage record.
 //
 // /system/domain/{domain}/usage stores a little-endian int64 byte count
-// (total raw_message blob bytes for all users whose primary domain is {domain}).
-// Written only by the leader-only usage-recompute job; read by the SMTP RCPT path.
+// (raw_message bytes of all mail plus inline ical_raw and vcard_raw bytes of all
+// events and contacts, for users whose primary domain is {domain}).
+// Written only by the leader-only usage-recompute job; read by the SMTP RCPT,
+// IMAP APPEND and CalDAV/CardDAV PUT paths.
 func DomainUsageKey(domain string) []byte {
 	return []byte("/system/domain/" + strings.ToLower(domain) + "/usage")
 }

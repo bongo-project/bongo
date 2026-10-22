@@ -392,3 +392,31 @@ func TestStrictFromDomain(t *testing.T) {
 		})
 	}
 }
+
+func TestDKIMRegistry_Remove(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := NewDKIMSignerFromKey("s", "example.com", key)
+
+	reg := NewDKIMRegistry()
+	reg.Add("Example.COM", signer)
+	reg.Remove("example.com")
+	if reg.Get("example.com") != nil {
+		t.Error("added signer survived Remove")
+	}
+	reg.Remove("unknown.test") // no-op
+
+	// A config-seeded signer is kept, until something else replaces it.
+	reg.Seed("example.com", signer)
+	reg.Remove("example.com")
+	if reg.Get("example.com") != signer {
+		t.Error("seeded signer dropped by Remove")
+	}
+	reg.Add("example.com", signer)
+	reg.Remove("example.com")
+	if reg.Get("example.com") != nil {
+		t.Error("signer re-added over a seed survived Remove")
+	}
+}

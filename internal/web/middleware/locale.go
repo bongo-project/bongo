@@ -28,6 +28,11 @@ func LocaleFromContext(ctx context.Context) string {
 	return "en"
 }
 
+// WithLocale returns ctx carrying the given locale, as InjectLocale would set it.
+func WithLocale(ctx context.Context, locale string) context.Context {
+	return context.WithValue(ctx, localeKey, locale)
+}
+
 // InjectLocale returns middleware that reads the user's locale preference from
 // Pebble and stores it in the request context. Must run after RequireAuth so
 // that a user ID is available. If the preference cannot be loaded the locale

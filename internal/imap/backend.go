@@ -22,6 +22,13 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
+// quotaChecker is satisfied by *store.DomainQuotaStore, the same checker SMTP
+// RCPT uses (smtp.QuotaChecker), so both protocols decide "over quota" with
+// one implementation.
+type quotaChecker interface {
+	RecipientOverQuota(userID string) (bool, error)
+}
+
 // session implements imapserver.Session and imapserver.SessionMove.
 type session struct {
 	auth      auth.Authenticator
@@ -34,12 +41,22 @@ type session struct {
 	notifier  *Notifier
 	logger    *slog.Logger
 
+	// quota gates APPEND. Nil means unlimited (dev, tests, edge).
+	quota quotaChecker
+
 	// Brute-force defence: per-source-IP failed-LOGIN throttling. authLimiter is
 	// shared across connections; remoteIP identifies this connection's source.
 	remoteIP    net.IP
 	authLimiter *authlimit.Limiter
 
-	userID          string
+	// conn is the live connection, used to send BYE when the account is revoked.
+	// Nil in unit tests that build a bare session.
+	conn *imapserver.Conn
+
+	userID string
+	// epoch is the account's credential fingerprint recorded at LOGIN; a
+	// mismatch later means the password was reset.
+	epoch           string
 	selectedMailbox string
 	readOnly        bool
 
@@ -203,6 +220,60 @@ func (s *session) requireNoMailbox(name string) error {
 	}
 }
 
+// idleRecheckInterval is how often an IDLE session re-validates its account.
+// A variable so tests can shorten it.
+var idleRecheckInterval = 30 * time.Second
+
+// accountStateReader is implemented by authenticators that can report the live
+// standing of an account (auth.LocalAuth). Authenticators without it get no
+// per-command check.
+type accountStateReader interface {
+	AccountState(userID string) (auth.AccountState, error)
+}
+
+func (s *session) accountReader() accountStateReader {
+	r, _ := s.auth.(accountStateReader)
+	return r
+}
+
+// errAccountRevoked is what a revoked session's command is answered with, just
+// after an untagged BYE.
+var errAccountRevoked = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Text: "Account no longer available",
+}
+
+// checkAccount ends the session when the account was disabled or deleted or
+// its password was reset since LOGIN. It must run at the start of every
+// authenticated command: go-imap calls Poll only after a command has already
+// succeeded, so Poll alone would let the first command after revocation
+// return data. The cost is one Pebble Get per command (never per message).
+//
+// A missing profile fails closed. A store read error fails open, like the web
+// session check, so a storage outage does not drop every client; the command
+// itself fails if the store is really down. (LOGIN is stricter: it fails closed
+// on any error.)
+func (s *session) checkAccount() error {
+	reader := s.accountReader()
+	if reader == nil || s.userID == "" {
+		return nil
+	}
+	st, err := reader.AccountState(s.userID)
+	if err != nil {
+		s.logger.Warn("imap: account state check failed, allowing command", "user", s.userID, "error", err)
+		return nil
+	}
+	if st.Live(s.epoch) {
+		return nil
+	}
+	s.logger.Info("imap: closing session, account no longer valid", "user", s.userID,
+		"missing", st.Missing, "disabled", st.Disabled)
+	if s.conn != nil {
+		_ = s.conn.Bye("Account no longer available")
+	}
+	return errAccountRevoked
+}
+
 // Login authenticates the user, throttling brute-force attempts per source IP.
 func (s *session) Login(username, password string) error {
 	ip := ""
@@ -223,6 +294,17 @@ func (s *session) Login(username, password string) error {
 		}
 		return imapserver.ErrAuthFailed
 	}
+	if reader := s.accountReader(); reader != nil {
+		// Authenticate already refused disabled and missing profiles. This read
+		// records the epoch, and fails closed: without a baseline the session
+		// could never notice a later password reset.
+		st, err := reader.AccountState(userID)
+		if err != nil || !st.Live(st.Epoch) {
+			s.logger.Warn("imap: login refused, account state unavailable", "username", username)
+			return imapserver.ErrAuthFailed
+		}
+		s.epoch = st.Epoch
+	}
 	s.userID = userID
 	s.authLimiter.Succeed(ip, username)
 	s.logger.Debug("imap: login succeeded", "username", username, "user_id", userID)
@@ -231,6 +313,9 @@ func (s *session) Login(username, password string) error {
 
 // Select opens a mailbox.
 func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.SelectData, error) {
+	if err := s.checkAccount(); err != nil {
+		return nil, err
+	}
 	meta, err := s.mailboxes.GetMailbox(s.userID, mailbox)
 	if err != nil {
 		return nil, mailboxLookupError(mailbox, err, errNoSuchMailbox)
@@ -273,6 +358,9 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 
 // Create creates a new mailbox.
 func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	if err := s.requireNoMailbox(mailbox); err != nil {
 		return err
 	}
@@ -286,6 +374,9 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 
 // Delete deletes a mailbox.
 func (s *session) Delete(mailbox string) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	// RFC 3501 section 6.3.4: deleting a nonexistent mailbox is an error.
 	if err := s.requireMailbox(mailbox, errNoSuchMailbox); err != nil {
 		return err
@@ -300,6 +391,9 @@ func (s *session) Delete(mailbox string) error {
 
 // Rename renames a mailbox.
 func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	if err := s.requireMailbox(mailbox, errNoSuchMailbox); err != nil {
 		return err
 	}
@@ -318,6 +412,9 @@ func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) e
 
 // Subscribe adds a mailbox to the user's subscription set.
 func (s *session) Subscribe(mailbox string) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, true); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			// Client error, not worth a WARN.
@@ -332,6 +429,9 @@ func (s *session) Subscribe(mailbox string) error {
 
 // Unsubscribe removes a mailbox from the user's subscription set.
 func (s *session) Unsubscribe(mailbox string) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, false); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			// RFC 3501 section 6.3.7: UNSUBSCRIBE of a name that no longer
@@ -347,6 +447,9 @@ func (s *session) Unsubscribe(mailbox string) error {
 
 // List returns mailbox listings matching the pattern.
 func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, options *imap.ListOptions) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	mailboxes, err := s.mailboxes.ListMailboxes(s.userID)
 	if err != nil {
 		return fmt.Errorf("listing mailboxes: %w", err)
@@ -438,6 +541,9 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 
 // Status returns mailbox status data.
 func (s *session) Status(mailbox string, options *imap.StatusOptions) (*imap.StatusData, error) {
+	if err := s.checkAccount(); err != nil {
+		return nil, err
+	}
 	return s.statusForMailbox(mailbox, options)
 }
 
@@ -493,10 +599,34 @@ func (s *session) AppendLimit() uint32 {
 
 // Append stores a message in the specified mailbox.
 func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
+	if err := s.checkAccount(); err != nil {
+		return nil, err
+	}
 	// RFC 3501 section 6.3.11: the server MUST NOT create the mailbox
 	// implicitly. Checked before any blob work; go-imap drains the literal.
 	if err := s.requireMailbox(mailbox, errTryCreate); err != nil {
 		return nil, err
+	}
+
+	// Storage quota, checked before any blob or metadata is written so a
+	// refused APPEND leaves nothing behind. Same checker as SMTP RCPT, so it has
+	// the same limits: usage is recomputed every few minutes and the check does
+	// not weigh this message's size, so a user just under quota can still land
+	// one APPEND (up to maxAppendBytes) before the next recompute. A checker
+	// error fails open, as SMTP does. Nothing here blocks EXPUNGE, COPY or MOVE,
+	// so a user over quota can still free space.
+	if s.quota != nil {
+		over, qErr := s.quota.RecipientOverQuota(s.userID)
+		if qErr != nil {
+			s.logger.Warn("imap: quota check error (fail open)", "mailbox", mailbox, "user", s.userID, "error", qErr)
+		} else if over {
+			s.logger.Warn("imap: append refused: domain over storage quota", "mailbox", mailbox, "user", s.userID)
+			return nil, &imap.Error{
+				Type: imap.StatusResponseTypeNo,
+				Code: imap.ResponseCodeOverQuota,
+				Text: "Storage quota exceeded",
+			}
+		}
 	}
 
 	// Store raw message as a blob.
@@ -656,6 +786,9 @@ type updateWriter interface {
 // message appended to Sent was stored correctly and then stayed invisible until
 // the client restarted and issued a fresh SELECT.
 func (s *session) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	return s.pollUpdates(w, allowExpunge)
 }
 
@@ -729,9 +862,24 @@ func (s *session) pollUpdates(w updateWriter, allowExpunge bool) error {
 
 // Idle waits for updates and notifies the client.
 func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
+	// A long IDLE sends no commands, so revocation is noticed on a timer.
+	recheck := time.NewTicker(idleRecheckInterval)
+	defer recheck.Stop()
+
 	if s.selectedMailbox == "" || s.notifier == nil {
-		<-stop
-		return nil
+		for {
+			select {
+			case <-stop:
+				return nil
+			case <-recheck.C:
+				if err := s.checkAccount(); err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	ch := s.notifier.Subscribe(s.userID, s.selectedMailbox)
@@ -741,6 +889,10 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 		select {
 		case <-stop:
 			return nil
+		case <-recheck.C:
+			if err := s.checkAccount(); err != nil {
+				return err
+			}
 		case notif, ok := <-ch:
 			if !ok {
 				return nil
@@ -806,6 +958,9 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 
 // Unselect closes the selected mailbox.
 func (s *session) Unselect() error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	s.selectedMailbox = ""
 	s.cachedMsgs = nil
 	s.reportedUIDs = nil
@@ -814,6 +969,9 @@ func (s *session) Unselect() error {
 
 // Expunge removes messages marked as deleted.
 func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	if s.readOnly {
 		return errMailboxReadOnly
 	}
@@ -847,6 +1005,9 @@ func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error 
 
 // Search searches for messages matching the criteria.
 func (s *session) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria, options *imap.SearchOptions) (*imap.SearchData, error) {
+	if err := s.checkAccount(); err != nil {
+		return nil, err
+	}
 	if s.selectedMailbox == "" {
 		return nil, fmt.Errorf("no mailbox selected")
 	}
@@ -913,6 +1074,9 @@ func (s *session) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria,
 
 // Fetch retrieves message data.
 func (s *session) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, options *imap.FetchOptions) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	if s.selectedMailbox == "" {
 		return fmt.Errorf("no mailbox selected")
 	}
@@ -1310,6 +1474,9 @@ func (s *session) extractMIMEPart(rawMsg []byte, partPath []int) []byte {
 
 // Store updates message flags.
 func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *imap.StoreFlags, options *imap.StoreOptions) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	if s.selectedMailbox == "" {
 		return fmt.Errorf("no mailbox selected")
 	}
@@ -1465,7 +1632,16 @@ func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsO
 }
 
 // Copy copies messages to another mailbox.
+//
+// COPY (and MOVE, which is COPY plus removal) is deliberately not quota-gated
+// and does not count toward usage. It writes a new MailboxMessage that points
+// at the existing MailMeta and blob: no new bytes are stored, and usage is
+// summed per MailMeta, so the copy is free under the existing accounting.
+// Refusing it would also block moving mail to Trash to get back under quota.
 func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) {
+	if err := s.checkAccount(); err != nil {
+		return nil, err
+	}
 	if s.selectedMailbox == "" {
 		return nil, fmt.Errorf("no mailbox selected")
 	}
@@ -1523,6 +1699,9 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 
 // Move moves messages to another mailbox (MOVE extension).
 func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string) error {
+	if err := s.checkAccount(); err != nil {
+		return err
+	}
 	if s.selectedMailbox == "" {
 		return fmt.Errorf("no mailbox selected")
 	}

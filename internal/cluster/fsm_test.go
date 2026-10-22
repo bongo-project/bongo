@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
@@ -614,4 +615,62 @@ func (o *orderRecorder) seen() []string {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return append([]string(nil), o.guids...)
+}
+
+func bayesFSMCount(t *testing.T, ps *store.PebbleStore, key []byte) uint64 {
+	t.Helper()
+	data, err := ps.Get(key)
+	if err != nil || len(data) == 0 {
+		return 0
+	}
+	n, _ := binary.Uvarint(data)
+	return n
+}
+
+func TestFSMBayesTrainCounts(t *testing.T) {
+	env := newFSMTestEnv(t)
+	cmd, err := store.BuildBayesTrainCommand("u1", "g1", []string{"alpha", "beta"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := env.fsm.Apply(makeProtoLog(1, cmd)); res != nil {
+		t.Fatalf("Apply returned %v", res)
+	}
+	if n := bayesFSMCount(t, env.pebble, store.BayesTokenKey("u1", store.BayesSpam, "alpha")); n != 1 {
+		t.Errorf("alpha spam count = %d, want 1", n)
+	}
+	if n := bayesFSMCount(t, env.pebble, store.BayesTrainedKey("u1")); n != 1 {
+		t.Errorf("trained = %d, want 1", n)
+	}
+	// Control: the command must not have been stored as a literal key.
+	if data, err := env.pebble.Get(cmd.Key); err == nil && len(data) > 0 {
+		t.Error("synthetic command stored as a literal key")
+	}
+}
+
+func TestFSMBayesTrainMalformedReturnsError(t *testing.T) {
+	cases := map[string]string{
+		"bad json":     "nope",
+		"bad category": `{"user_id":"u1","category":"x","tokens":["alpha"]}`,
+	}
+	for name, payload := range cases {
+		t.Run(name, func(t *testing.T) {
+			env := newFSMTestEnv(t)
+			cmd := &bongov1.RaftCommand{
+				Op:    bongov1.Op_OP_PUT,
+				Key:   []byte("/__bayes_train__/u1"),
+				Value: []byte(payload),
+			}
+			res := env.fsm.Apply(makeProtoLog(1, cmd))
+			if err, ok := res.(error); !ok || err == nil {
+				t.Fatalf("Apply result = %v, want an error", res)
+			}
+			if n := bayesFSMCount(t, env.pebble, store.BayesTokenKey("u1", store.BayesSpam, "alpha")); n != 0 {
+				t.Errorf("token written despite error: %d", n)
+			}
+			if data, err := env.pebble.Get(cmd.Key); err == nil && len(data) > 0 {
+				t.Error("malformed command stored as a literal key")
+			}
+		})
+	}
 }

@@ -183,3 +183,65 @@ func TestComputeAndWriteDomainUsage_Idempotent(t *testing.T) {
 		t.Errorf("idempotent: want 1000 after 2 passes, got %d", usage)
 	}
 }
+
+// Events and contacts keep their iCal/vCard inline in Pebble, so they count
+// toward domain usage by len(ical_raw)/len(vcard_raw). Otherwise a user could
+// dodge the quota through CalDAV/CardDAV.
+func TestComputeAndWriteDomainUsage_CountsEventsAndContacts(t *testing.T) {
+	ps, dqs, _ := newRecomputeTestEnv(t)
+	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
+	writeRecomputeProfile(t, ps, "u2", "bob@other.com")
+
+	writeMailMeta(t, ps, "u1", "m1", 1000)
+	for key, msg := range map[string]proto.Message{
+		"/user/u1/event/e1":   &bongov1.Event{Guid: "e1", IcalRaw: make([]byte, 317)},
+		"/user/u1/event/e2":   &bongov1.Event{Guid: "e2", IcalRaw: make([]byte, 41)},
+		"/user/u1/contact/c1": &bongov1.Contact{Guid: "c1", VcardRaw: make([]byte, 203)},
+		"/user/u2/contact/c2": &bongov1.Contact{Guid: "c2", VcardRaw: make([]byte, 59)},
+	} {
+		b, err := proto.Marshal(msg)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", key, err)
+		}
+		if err := ps.Set([]byte(key), b); err != nil {
+			t.Fatalf("set %s: %v", key, err)
+		}
+	}
+
+	computeAndWriteDomainUsage(ps, dqs, testLogger())
+
+	if got, _ := dqs.GetUsage("example.com"); got != 1000+317+41+203 {
+		t.Errorf("example.com usage = %d, want %d", got, 1000+317+41+203)
+	}
+	if got, _ := dqs.GetUsage("other.com"); got != 59 {
+		t.Errorf("other.com usage = %d, want 59", got)
+	}
+}
+
+// IMAP COPY/MOVE write a second MailboxMessage that points at the same
+// MailGuid. No MailMeta and no blob is added, so usage must not move.
+func TestComputeAndWriteDomainUsage_CopyDoesNotCount(t *testing.T) {
+	ps, dqs, _ := newRecomputeTestEnv(t)
+	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
+	writeMailMeta(t, ps, "u1", "m1", 1234)
+
+	for _, key := range []string{
+		"/user/u1/mailbox/INBOX/msg/1",
+		"/user/u1/mailbox/Archive/msg/1",
+		"/user/u1/mailbox/Archive/msg/2",
+	} {
+		b, err := proto.Marshal(&bongov1.MailboxMessage{MailGuid: "m1", Uid: 1})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if err := ps.Set([]byte(key), b); err != nil {
+			t.Fatalf("set %s: %v", key, err)
+		}
+	}
+
+	computeAndWriteDomainUsage(ps, dqs, testLogger())
+
+	if got, _ := dqs.GetUsage("example.com"); got != 1234 {
+		t.Errorf("usage with copied references = %d, want 1234", got)
+	}
+}

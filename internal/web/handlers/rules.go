@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,6 +28,38 @@ type RulesHandler struct {
 	pebble    *store.PebbleStore
 	blobs     *store.BlobStore
 	engine    *rules.Engine
+	forwarder *ForwardVerifier
+}
+
+// SetForwardVerifier injects the forwarding-target verifier. Without it a
+// forward rule is saved but never fires until its target is verified.
+func (h *RulesHandler) SetForwardVerifier(v *ForwardVerifier) { h.forwarder = v }
+
+// ensureForwardTarget records a forward rule's external target as pending and
+// starts its verification. It reports the flash suffix to show and whether the
+// request was handled (false means an error response was already written).
+func (h *RulesHandler) ensureForwardTarget(w http.ResponseWriter, r *http.Request, userID, email string, rule *bongov1.FilterRule) (string, bool) {
+	if rule.Action == nil || !strings.EqualFold(rule.Action.Type, "forward") || rule.Action.Target == "" {
+		return "", true
+	}
+	if _, ok := parseForwardTarget(rule.Action.Target); !ok {
+		fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
+		return "", false
+	}
+	if h.forwarder == nil {
+		return "", true
+	}
+	if err := h.forwarder.Ensure(userID, email, rule.Action.Target); err != nil {
+		if msg, soft := forwardOutcomeMessage(r, err); soft {
+			return ". " + msg, true
+		}
+		fwdError(w, r, "settings.fwdErrStart", http.StatusInternalServerError)
+		return "", false
+	}
+	if h.forwarder.Pending(userID, rule.Action.Target) {
+		return ". " + fwdText(r, "settings.fwdRuleVerify"), true
+	}
+	return "", true
 }
 
 // NewRulesHandler creates a RulesHandler.
@@ -76,7 +109,7 @@ func (h *RulesHandler) NewRule(w http.ResponseWriter, r *http.Request) {
 
 // CreateRule processes the new rule form.
 func (h *RulesHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid form", http.StatusBadRequest)
 		return
@@ -97,12 +130,16 @@ func (h *RulesHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule.Priority = maxPriority + 1
 
+	note, ok := h.ensureForwardTarget(w, r, userID, email, rule)
+	if !ok {
+		return
+	}
 	if err := h.rules.Save(userID, rule); err != nil {
 		http.Error(w, "Failed to save rule", http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, "/settings/rules?flash=Rule+created", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/rules?flash="+url.QueryEscape("Rule created"+note), http.StatusSeeOther)
 }
 
 // EditRule renders the edit rule form.
@@ -124,7 +161,7 @@ func (h *RulesHandler) EditRule(w http.ResponseWriter, r *http.Request) {
 
 // UpdateRule processes the edit rule form.
 func (h *RulesHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	ruleID := chi.URLParam(r, "id")
 
 	existing, err := h.rules.Get(userID, ruleID)
@@ -144,12 +181,16 @@ func (h *RulesHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 	rule.CreatedAt = existing.CreatedAt
 	rule.UpdatedAt = time.Now().Unix()
 
+	note, ok := h.ensureForwardTarget(w, r, userID, email, rule)
+	if !ok {
+		return
+	}
 	if err := h.rules.Save(userID, rule); err != nil {
 		http.Error(w, "Failed to save rule", http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, "/settings/rules?flash=Rule+updated", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/rules?flash="+url.QueryEscape("Rule updated"+note), http.StatusSeeOther)
 }
 
 // DeleteRule removes a rule.

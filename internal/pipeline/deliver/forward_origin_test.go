@@ -28,7 +28,7 @@ func TestDeliverForwardMarkedForwardOrigin(t *testing.T) {
 		{
 			name: "rule forward addresses",
 			env: func() *bongov1.QueueEnvelope {
-				return &bongov1.QueueEnvelope{Id: "env-origin-2", Sender: "ceo@hosted.example", Recipients: []string{"alice@example.com"}, ReceivedAt: time.Now().Unix(), BlobHash: "h2", ForwardAddresses: []string{"external@other.com"}}
+				return &bongov1.QueueEnvelope{Id: "env-origin-2", Sender: "ceo@hosted.example", Recipients: []string{"alice@example.com"}, ReceivedAt: time.Now().Unix(), BlobHash: "h2", ForwardRequests: []*bongov1.ForwardRequest{{UserId: "user-alice", Target: "external@other.com"}}}
 			},
 		},
 	}
@@ -37,6 +37,7 @@ func TestDeliverForwardMarkedForwardOrigin(t *testing.T) {
 			queuer := &mockQueuer{}
 			proc := NewDeliverProcessor(&mockApplier{}, &mockResolver{mapping: map[string]string{"alice@example.com": "user-alice"}}, newTestLogger())
 			proc.SetQueuer(queuer)
+			proc.SetForwardTargets(allowAllTargets{})
 			if tt.prefs != nil {
 				proc.SetPreferences(&mockPrefs{prefs: tt.prefs})
 			}

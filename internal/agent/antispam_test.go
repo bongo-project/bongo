@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -137,7 +139,7 @@ func TestBuildAntispamProcessorHonoursResolver(t *testing.T) {
 	// TrainedCount>=20 gate so the blend path - and therefore resolution -
 	// actually engages.
 	for i := 0; i < 25; i++ {
-		if err := bayesFilter.Train("resolved-user-id", []string{"spam", "offer", "buy"}, true); err != nil {
+		if err := bayesFilter.Train("resolved-user-id", fmt.Sprintf("g%d", i), []string{"spam", "offer", "buy"}, true); err != nil {
 			t.Fatalf("Train: %v", err)
 		}
 	}
@@ -183,6 +185,16 @@ func (f *fakeBayesStore) Get(key []byte) ([]byte, error) {
 }
 
 func (f *fakeBayesStore) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsBayesSyntheticCommand(cmd.Key) {
+		writes, err := store.PlanBayesTrain(func(k []byte) ([]byte, error) { return f.data[string(k)], nil }, cmd)
+		if err != nil {
+			return err
+		}
+		for _, w := range writes {
+			f.data[string(w.Key)] = w.Value
+		}
+		return nil
+	}
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
 		f.data[string(cmd.Key)] = cmd.Value

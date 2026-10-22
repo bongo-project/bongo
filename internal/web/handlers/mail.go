@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	internalmail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -50,19 +51,20 @@ func (h *MailHandler) ensureTrash(userID string) error {
 
 // MailHandler handles mail browsing endpoints.
 type MailHandler struct {
-	pebble    *store.PebbleStore
-	blobs     *store.BlobStore
-	mailboxes *store.MailboxStore
-	threads   *store.ThreadStore
-	applier   store.RaftApplier
-	prefs     *store.PreferenceStore
-	contacts  *store.ContactStore
-	bayes     *antispam.BayesFilter
-	sanitizer *bluemonday.Policy
-	logger    *slog.Logger
-	metadata  *store.MetadataManager
-	search    *store.SearchManager
-	tags      *store.TagStore
+	pebble       *store.PebbleStore
+	blobs        *store.BlobStore
+	mailboxes    *store.MailboxStore
+	threads      *store.ThreadStore
+	applier      store.RaftApplier
+	prefs        *store.PreferenceStore
+	contacts     *store.ContactStore
+	bayes        *antispam.BayesFilter
+	trainLimiter *internalmail.RateLimiter
+	sanitizer    *bluemonday.Policy
+	logger       *slog.Logger
+	metadata     *store.MetadataManager
+	search       *store.SearchManager
+	tags         *store.TagStore
 }
 
 // SetThreadStore sets the thread store for conversation grouping.
@@ -109,6 +111,12 @@ func (h *MailHandler) SetPreferences(prefs *store.PreferenceStore) {
 // SetContacts sets the contact store for sender lookup.
 func (h *MailHandler) SetContacts(contacts *store.ContactStore) {
 	h.contacts = contacts
+}
+
+// SetTrainLimiter sets the per-user limit on Bayes training actions. Nil
+// disables the limit.
+func (h *MailHandler) SetTrainLimiter(rl *internalmail.RateLimiter) {
+	h.trainLimiter = rl
 }
 
 // SetBayes sets the Bayesian filter for spam training.
@@ -2173,8 +2181,20 @@ func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSp
 		}
 	}
 
+	// The move, the score update and training are separate Raft commands and
+	// are not atomic. If training fails the message has already moved and
+	// carries its new score; the request fails so the user can retry, and the
+	// retry skips the move (realMailbox == target) and applies training once,
+	// because training is a single idempotent command.
 	if h.bayes != nil {
-		h.trainBayes(userID, msg.MailGuid, isSpam)
+		if h.trainLimiter != nil && !h.trainLimiter.Allow(userID) {
+			h.logger.Warn("web: bayes training rate limit reached, skipping training", "user", userID, "mailbox", mailbox, "uid", uid)
+			flash += "+-+training+skipped+(too+many+requests)"
+		} else if err := h.trainBayes(userID, msg.MailGuid, isSpam); err != nil {
+			h.logger.Error("web: bayes training failed", "user", userID, "guid", msg.MailGuid, "spam", isSpam, "error", err)
+			http.Error(w, "Training failed", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	h.logger.Info("web: "+action, "mailbox", mailbox, "uid", uid, "user", userID)
@@ -2183,35 +2203,29 @@ func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSp
 	w.WriteHeader(http.StatusOK)
 }
 
-// trainBayes extracts text from a message and trains the Bayes filter.
-func (h *MailHandler) trainBayes(userID, guid string, isSpam bool) {
+// trainBayes extracts text from a message and trains the Bayes filter with a
+// single Raft command. Every failure is returned: training that silently did
+// nothing would leave the filter diverging from what the user was told.
+func (h *MailHandler) trainBayes(userID, guid string, isSpam bool) error {
 	meta := h.loadMailMeta(userID, guid)
 	if meta == nil || meta.RawMessage == nil {
-		return
+		return fmt.Errorf("mail metadata for %s not found", guid)
 	}
 
 	rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 	if err != nil {
-		return
+		return fmt.Errorf("reading message body: %w", err)
 	}
 
 	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil {
-		return
+		return fmt.Errorf("parsing message: %w", err)
 	}
 
-	subject := env.GetHeader("Subject")
-	bodyText := env.Text
-	if len(bodyText) > 4096 {
-		bodyText = bodyText[:4096]
+	// Tokenize bounds the subject, body and token count itself.
+	tokens := antispam.Tokenize(env.GetHeader("Subject"), env.Text)
+	if err := h.bayes.Train(userID, guid, tokens, isSpam); err != nil {
+		return fmt.Errorf("training: %w", err)
 	}
-
-	tokens := antispam.Tokenize(subject, bodyText)
-	if err := h.bayes.Train(userID, tokens, isSpam); err != nil {
-		h.logger.Warn("web: bayes training failed", "user", userID, "guid", guid, "spam", isSpam, "error", err)
-		return
-	}
-	if err := h.bayes.IncrementTrained(userID); err != nil {
-		h.logger.Warn("web: bayes trained counter update failed", "user", userID, "guid", guid, "spam", isSpam, "error", err)
-	}
+	return nil
 }

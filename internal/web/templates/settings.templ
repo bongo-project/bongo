@@ -2,7 +2,7 @@ package templates
 
 import bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
-templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
+templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, fwd ForwardView) {
 	@LayoutWithContent(t(ctx, "settings.settings"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			<nav aria-label={ t(ctx, "settings.navAriaLabel") }>
@@ -181,6 +181,45 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 							<a href="/mail/INBOX" class="btn-cancel">{ t(ctx, "settings.cancel") }</a>
 						</div>
 					</form>
+					if len(fwd.Targets) > 0 || fwd.Error != "" {
+						<!-- Forwarding targets: separate forms, so they sit outside the settings form -->
+						<div class="settings-section" x-bind:hidden="activeTab !== 4">
+							<h2 class="settings-section-title">{ t(ctx, "settings.forwardTargets") }</h2>
+							if fwd.Error != "" {
+								@FlashMessage(fwd.Error, "error")
+							}
+							<div class="settings-card">
+								for _, tg := range fwd.Targets {
+									<div class="settings-row">
+										<div class="settings-row-label">
+											<div class="settings-row-title"><code class="u-font-088">{ tg.Address }</code></div>
+											if tg.State == "pending" {
+												<span class="badge badge-user">{ t(ctx, "settings.forwardStatePending") }</span>
+												<p class="u-text-muted u-font-088">{ t(ctx, "settings.forwardVerifyHint") }</p>
+											} else if tg.State == "grandfathered" {
+												<span class="badge">{ t(ctx, "settings.forwardStateGrandfathered") }</span>
+											} else {
+												<span class="badge badge-active">{ t(ctx, "settings.forwardStateVerified") }</span>
+											}
+										</div>
+										if tg.State == "pending" {
+											<div>
+												<form method="post" action="/settings/forwarding/verify" class="u-flex-gap-4">
+													<input type="hidden" name="address" value={ tg.Address }/>
+													<input type="text" name="code" placeholder={ t(ctx, "settings.codeInputPlaceholder") } required class="form-input u-m0"/>
+													<button type="submit" class="btn-primary">{ t(ctx, "settings.verifyCode") }</button>
+												</form>
+												<form method="post" action="/settings/forwarding/request" class="u-mt-8px">
+													<input type="hidden" name="address" value={ tg.Address }/>
+													<button type="submit" class="btn-flush">{ t(ctx, "settings.forwardResend") }</button>
+												</form>
+											</div>
+										}
+									</div>
+								}
+							</div>
+						</div>
+					}
 				</div>
 			</div>
 		</main>

@@ -485,15 +485,16 @@ func TestDeliverForwardKeepsOriginalBlobHash(t *testing.T) {
 	proc, _, _ := traceProc(t, "mail.example.com", 0.5)
 	queuer := &mockQueuer{}
 	proc.SetQueuer(queuer)
+	proc.SetForwardTargets(allowAllTargets{})
 
 	raw := minimalMessage("bob@example.com", "alice@example.com", "Hello", "Hi!\r\n")
 	env := &bongov1.QueueEnvelope{
-		Id:               "env-fwd-trace",
-		Sender:           "bob@example.com",
-		Recipients:       []string{"alice@example.com"},
-		ReceivedAt:       time.Now().Unix(),
-		BlobHash:         "fwdoriginal",
-		ForwardAddresses: []string{"external@other.com"},
+		Id:              "env-fwd-trace",
+		Sender:          "bob@example.com",
+		Recipients:      []string{"alice@example.com"},
+		ReceivedAt:      time.Now().Unix(),
+		BlobHash:        "fwdoriginal",
+		ForwardRequests: []*bongov1.ForwardRequest{{UserId: "user-alice", Target: "external@other.com"}},
 	}
 
 	if _, err := proc.Process(context.Background(), env, strings.NewReader(raw)); err != nil {

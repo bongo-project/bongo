@@ -2,6 +2,7 @@ package antispam
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -314,12 +315,9 @@ func TestApplyDNSBL_AfterBayesBlend_NotDiluted(t *testing.T) {
 	store := newFakeBayesStore()
 	bayes := antispam.NewBayesFilter(store, store)
 	spamTokens := antispam.Tokenize(subject, body)
-	for range 20 {
-		if err := bayes.Train(userID, spamTokens, true); err != nil {
+	for i := range 20 {
+		if err := bayes.Train(userID, fmt.Sprintf("g%d", i), spamTokens, true); err != nil {
 			t.Fatalf("Train: %v", err)
-		}
-		if err := bayes.IncrementTrained(userID); err != nil {
-			t.Fatalf("IncrementTrained: %v", err)
 		}
 	}
 	if got := bayes.TrainedCount(userID); got < 20 {

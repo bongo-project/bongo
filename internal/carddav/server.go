@@ -29,6 +29,41 @@ type Backend struct {
 	contacts *store.ContactStore
 	search   *store.SearchManager
 	logger   *slog.Logger
+
+	// quota gates PUT. Nil means unlimited (dev, tests, edge). DELETE is never
+	// gated so a user over quota can still free space.
+	quota QuotaChecker
+}
+
+// QuotaChecker is satisfied by *store.DomainQuotaStore, the checker SMTP RCPT
+// and IMAP APPEND use, so every protocol shares one definition of "over quota".
+type QuotaChecker interface {
+	RecipientOverQuota(userID string) (bool, error)
+}
+
+// ErrStorageQuotaExceeded is wrapped into the 507 Insufficient Storage that a
+// PUT returns when the owner's domain is at or over its storage quota.
+var ErrStorageQuotaExceeded = errors.New("storage quota exceeded")
+
+// SetQuotaChecker installs the storage-quota checker. Call before serving.
+func (b *Backend) SetQuotaChecker(qc QuotaChecker) { b.quota = qc }
+
+// checkQuota refuses a write when the user's domain is over quota. A checker
+// error fails open, matching SMTP RCPT: a transient store error must not turn
+// into data loss for a user's calendar or contacts.
+func (b *Backend) checkQuota(userID string) error {
+	if b.quota == nil {
+		return nil
+	}
+	over, err := b.quota.RecipientOverQuota(userID)
+	if err != nil {
+		b.logger.Warn("quota check error (fail open)", "user", userID, "error", err)
+		return nil
+	}
+	if over {
+		return webdav.NewHTTPError(http.StatusInsufficientStorage, ErrStorageQuotaExceeded)
+	}
+	return nil
 }
 
 // NewBackend creates a CardDAV backend.
@@ -186,6 +221,10 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 	guid := guidFromPath(path)
 	if guid == "" {
 		return nil, fmt.Errorf("invalid path")
+	}
+
+	if err := b.checkQuota(userID); err != nil {
+		return nil, err
 	}
 
 	// Encode vCard to raw bytes.
