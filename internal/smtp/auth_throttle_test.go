@@ -14,7 +14,6 @@ import (
 func throttleTestBackend(authErr error) *Backend {
 	return &Backend{
 		auth:     &fakeAuth{err: authErr},
-		perIP:    map[string]int{},
 		authFail: authlimit.New(maxAuthFailures, authFailWindow),
 		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}

@@ -265,6 +265,13 @@ type IMAPConfig struct {
 	Port          int  `hcl:"port,optional" mapstructure:"port"`
 	PortTLS       int  `hcl:"port_tls,optional" mapstructure:"port_tls"`
 	ProxyProtocol bool `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
+	// MaxConnections caps concurrent connections per listener (plain and TLS
+	// each get their own cap, as SMTP does). 0 or below means the default, 1024.
+	MaxConnections int `hcl:"max_connections,optional" mapstructure:"max_connections"`
+	// MaxConnectionsPerIP caps concurrent connections from one source IP across
+	// both listeners. 0 disables it. Behind a TCP proxy without proxy_protocol
+	// every client shares the proxy's IP, so set this to 0 or a high value.
+	MaxConnectionsPerIP int `hcl:"max_connections_per_ip,optional" mapstructure:"max_connections_per_ip"`
 }
 
 type POP3Config struct {
@@ -272,6 +279,13 @@ type POP3Config struct {
 	Port          int  `hcl:"port,optional" mapstructure:"port"`
 	PortTLS       int  `hcl:"port_tls,optional" mapstructure:"port_tls"`
 	ProxyProtocol bool `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
+	// MaxConnections caps concurrent connections per listener (plain and TLS
+	// each get their own cap, as SMTP does). 0 or below means the default, 1024.
+	MaxConnections int `hcl:"max_connections,optional" mapstructure:"max_connections"`
+	// MaxConnectionsPerIP caps concurrent connections from one source IP across
+	// both listeners. 0 disables it. Behind a TCP proxy without proxy_protocol
+	// every client shares the proxy's IP, so set this to 0 or a high value.
+	MaxConnectionsPerIP int `hcl:"max_connections_per_ip,optional" mapstructure:"max_connections_per_ip"`
 }
 
 type WebConfig struct {
@@ -1069,11 +1083,17 @@ func Defaults() *Config {
 			Enabled: true,
 			Port:    143,
 			PortTLS: 993,
+
+			MaxConnections:      1024,
+			MaxConnectionsPerIP: 50,
 		},
 		POP3: POP3Config{
 			Enabled: true,
 			Port:    110,
 			PortTLS: 995,
+
+			MaxConnections:      1024,
+			MaxConnectionsPerIP: 50,
 		},
 		Web: WebConfig{
 			Enabled: true,

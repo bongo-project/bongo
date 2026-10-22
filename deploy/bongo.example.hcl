@@ -258,6 +258,9 @@ imap {
   port     = 143   # STARTTLS
   port_tls = 993   # implicit TLS
   # proxy_protocol = false   # true only behind a trusted PROXY-protocol proxy
+  # max_connections        = 1024   # concurrent connections per listener (plain and TLS each)
+  # max_connections_per_ip = 50     # per source IP, both listeners (0 = off). Set 0 or high behind a
+  #                                 # TCP proxy WITHOUT proxy_protocol: all clients share the proxy IP
 }
 
 
@@ -269,6 +272,9 @@ pop3 {
   port     = 110
   port_tls = 995
   # proxy_protocol = false
+  # max_connections        = 1024   # concurrent connections per listener (plain and TLS each)
+  # max_connections_per_ip = 50     # per source IP, both listeners (0 = off). Set 0 or high behind a
+  #                                 # TCP proxy WITHOUT proxy_protocol: all clients share the proxy IP
 }
 
 

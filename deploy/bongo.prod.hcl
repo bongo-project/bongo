@@ -164,6 +164,8 @@ imap {
   port           = 143   # STARTTLS  (Traefik entrypoint: imap)
   port_tls       = 993   # implicit TLS (Traefik entrypoint: imaps, passthrough)
   proxy_protocol = true  # read PROXY header from Traefik to see the real client IP
+  # Default caps (1024 per listener, 50 per source IP) apply; per-IP is safe
+  # because proxy_protocol exposes the real client address.
 }
 
 pop3 {

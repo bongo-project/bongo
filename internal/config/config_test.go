@@ -1441,3 +1441,26 @@ func TestDefaultsDevRoleValidates(t *testing.T) {
 		t.Fatalf("Defaults() with role dev must validate: %v", err)
 	}
 }
+
+func TestConnectionLimitDefaults(t *testing.T) {
+	cfg := Defaults()
+	tests := []struct {
+		name     string
+		gotMax   int
+		gotPerIP int
+	}{
+		{"smtp", cfg.SMTP.Limits.MaxConnections, cfg.SMTP.Limits.MaxConnectionsPerIP},
+		{"imap", cfg.IMAP.MaxConnections, cfg.IMAP.MaxConnectionsPerIP},
+		{"pop3", cfg.POP3.MaxConnections, cfg.POP3.MaxConnectionsPerIP},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.gotMax != 1024 {
+				t.Errorf("max_connections = %d, want 1024", tt.gotMax)
+			}
+			if tt.gotPerIP != 50 {
+				t.Errorf("max_connections_per_ip = %d, want 50", tt.gotPerIP)
+			}
+		})
+	}
+}
