@@ -1,8 +1,9 @@
 package handlers
 
 import (
-	"encoding/base32"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -160,7 +161,7 @@ func (h *AuthHandler) sessionEpoch(userID string) string {
 	if err != nil {
 		return ""
 	}
-	return security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled)
+	return security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration)
 }
 
 // TwoFactorPage renders the 2FA verification form.
@@ -187,87 +188,72 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 	ip := middleware.ClientIP(r)
 	code := r.FormValue("code")
 
-	// Load profile to get TOTP secret and recovery codes.
+	// Serialise load-check-write per user so two concurrent submissions of the
+	// same code cannot both pass before either records it.
+	defer lockUser(pending.UserID)()
 	profile, err := h.loadProfile(pending.UserID)
 	if err != nil {
-		if h.limiter != nil {
-			h.limiter.RecordFailure(ip, pending.Email)
-		}
+		h.recordFailure(ip, pending.Email)
 		http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
 		return
 	}
 
-	// Convert TOTP secret bytes to base32 string for validation.
-	totpSecret := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(profile.TotpSecret)
+	ok, usedRecovery := consumeSecondFactor(profile, code, time.Now())
+	if !ok {
+		h.recordFailure(ip, pending.Email)
+		http.Redirect(w, r, "/login/2fa?error="+urlEncode("Invalid code. Please try again."), http.StatusSeeOther)
+		return
+	}
 
-	var recoveryWarning string
+	// The consumed factor (TOTP step or recovery code) must be recorded before
+	// the session is issued. Fail closed: if it cannot be written the code
+	// would stay replayable, so the login is refused.
+	if err := h.saveProfile(pending.UserID, profile); err != nil {
+		h.recordFailure(ip, pending.Email)
+		http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
+		return
+	}
 
-	if auth.ValidateTOTP(totpSecret, code) {
-		// TOTP code valid — complete login.
+	if !usedRecovery {
 		h.completeLogin(w, r, pending)
 		return
 	}
 
-	// Try recovery code.
-	matched, idx := auth.ValidateRecoveryCode(profile.RecoveryCodes, code)
-	if matched {
-		// Remove the used recovery code from stored codes via Raft.
-		newCodes := make([]string, 0, len(profile.RecoveryCodes)-1)
-		for i, c := range profile.RecoveryCodes {
-			if i != idx {
-				newCodes = append(newCodes, c)
-			}
-		}
-		profile.RecoveryCodes = newCodes
-
-		if h.raft == nil {
-			if h.limiter != nil {
-				h.limiter.RecordFailure(ip, pending.Email)
-			}
-			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
-			return
-		}
-		key := []byte(fmt.Sprintf("/user/%s/profile", pending.UserID))
-		profileBytes, marshalErr := proto.Marshal(profile)
-		if marshalErr != nil {
-			if h.limiter != nil {
-				h.limiter.RecordFailure(ip, pending.Email)
-			}
-			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
-			return
-		}
-		cmd := &bongov1.RaftCommand{
-			Op:    bongov1.Op_OP_PUT,
-			Key:   key,
-			Value: profileBytes,
-		}
-		if err := h.raft.ApplyCommand(cmd, 5*time.Second); err != nil {
-			if h.limiter != nil {
-				h.limiter.RecordFailure(ip, pending.Email)
-			}
-			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
-			return
-		}
-
-		remaining := len(newCodes)
-		recoveryWarning = "Recovery code used. You have " + strconv.Itoa(remaining) + " code(s) remaining."
-
-		// Complete login with recovery warning passed as query param.
-		http.SetCookie(w, middleware.ClearPendingCookie())
-		if h.limiter != nil {
-			h.limiter.Succeed(ip, pending.Email)
-		}
-		cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, h.sessionEpoch(pending.UserID))
-		http.SetCookie(w, cookie)
-		http.Redirect(w, r, "/mail/INBOX?warning="+urlEncode(recoveryWarning), http.StatusSeeOther)
-		return
-	}
-
-	// Both TOTP and recovery code failed.
+	recoveryWarning := "Recovery code used. You have " + strconv.Itoa(len(profile.RecoveryCodes)) + " code(s) remaining."
+	http.SetCookie(w, middleware.ClearPendingCookie())
 	if h.limiter != nil {
-		h.limiter.RecordFailure(ip, pending.Email)
+		h.limiter.Succeed(ip, pending.Email)
 	}
-	http.Redirect(w, r, "/login/2fa?error="+urlEncode("Invalid code. Please try again."), http.StatusSeeOther)
+	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, h.sessionEpoch(pending.UserID))
+	http.SetCookie(w, cookie)
+	http.Redirect(w, r, "/mail/INBOX?warning="+urlEncode(recoveryWarning), http.StatusSeeOther)
+}
+
+func (h *AuthHandler) recordFailure(ip, email string) {
+	if h.limiter != nil {
+		h.limiter.RecordFailure(ip, email)
+	}
+}
+
+// saveProfile writes the profile through Raft. It errors when no applier is
+// wired (edge nodes), which callers treat as a refusal.
+func (h *AuthHandler) saveProfile(userID string, profile *bongov1.UserProfile) error {
+	if h.raft == nil {
+		return errors.New("no raft applier")
+	}
+	data, err := proto.Marshal(profile)
+	if err != nil {
+		return fmt.Errorf("marshaling profile: %w", err)
+	}
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/profile", userID)),
+		Value: data,
+	}
+	if err := h.raft.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return fmt.Errorf("applying profile: %w", err)
+	}
+	return nil
 }
 
 // completeLogin clears the pending cookie, sets the session cookie, and redirects to inbox.
@@ -320,8 +306,47 @@ func (h *AuthHandler) loadProfile(userID string) (*bongov1.UserProfile, error) {
 	return &profile, nil
 }
 
-// Logout clears the session and redirects to login.
+// Logout clears the session cookie and revokes the session on the server by
+// bumping the profile's session generation, which is part of the epoch every
+// RequireAuth re-checks. A copied or stolen cookie therefore stops working too.
+//
+// The generation is per user, not per session: logging out signs the user out
+// of every web session on every device. A per-session marker would need a
+// session ID in the cookie plus a revocation set with garbage collection.
+// Protocol sessions (IMAP, POP3, SMTP) use an epoch that ignores the
+// generation and are unaffected.
+//
+// Only a validly signed, unexpired cookie whose epoch is still current may bump
+// the generation, so a stale cookie cannot force a global logout. The route is
+// public, so the cookie is verified here. Revocation is best-effort: the
+// cookie is cleared and the user redirected whatever happens, and a failed
+// write is logged. Cookies issued without an epoch are never epoch-checked and
+// cannot be revoked; they expire within the cookie lifetime.
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	h.revokeSession(r)
 	http.SetCookie(w, middleware.ClearSessionCookie())
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (h *AuthHandler) revokeSession(r *http.Request) {
+	if h.profiles == nil || h.raft == nil {
+		slog.Warn("logout: session not revoked server-side, no profile store or applier wired")
+		return
+	}
+	data, err := middleware.ParseSessionCookie(h.sessionSecret, r)
+	if err != nil || data.Epoch == "" {
+		return
+	}
+	defer lockUser(data.UserID)()
+	profile, err := h.loadProfile(data.UserID)
+	if err != nil {
+		return
+	}
+	if data.Epoch != security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration) {
+		return
+	}
+	profile.SessionGeneration++
+	if err := h.saveProfile(data.UserID, profile); err != nil {
+		slog.Warn("logout: session revocation failed", "user_id", data.UserID, "error", err)
+	}
 }

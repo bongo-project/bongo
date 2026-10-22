@@ -346,8 +346,9 @@ func TestTOTPSetupAndLogin(t *testing.T) {
 		}
 		totpClient.Jar = jar2
 
-		// Generate a fresh TOTP code and submit.
-		freshCode, err := totp.GenerateCode(manualKey, time.Now())
+		// The setup confirmation consumed the current time-step, so use the
+		// next one (inside the accepted +1 step window).
+		freshCode, err := totp.GenerateCode(manualKey, time.Now().Add(30*time.Second))
 		if err != nil {
 			t.Fatalf("totp.GenerateCode: %v", err)
 		}
@@ -984,3 +985,45 @@ func TestDAVLockoutHoldsAgainstACorrectPassword(t *testing.T) {
 // test widens the package's API for no production reason. If they drift, the
 // sanity check above fails loudly rather than the test passing vacuously.
 const davMaxAuthFailuresForTest = 5
+
+// TestReauthIsThrottled drives the real server: repeated wrong current
+// passwords on the settings page must hit the shared limiter and return 429,
+// after which even the right password is refused.
+func TestReauthIsThrottled(t *testing.T) {
+	baseURL, _, cancel := startSecurityTestAgent(t)
+	defer cancel()
+
+	jar, _ := cookiejar.New(nil)
+	client := newNoRedirectClient(jar)
+	resp, err := doLogin(client, baseURL, "admin@localhost", "admin")
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	resp.Body.Close()
+
+	post := func(current string) int {
+		resp, err := client.PostForm(baseURL+"/settings/security/password", url.Values{
+			"current_password": {current},
+			"new_password":     {"newpassword123"},
+			"confirm_password": {"newpassword123"},
+		})
+		if err != nil {
+			t.Fatalf("POST /settings/security/password: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests && resp.Header.Get("Retry-After") == "" {
+			t.Error("429 without Retry-After")
+		}
+		return resp.StatusCode
+	}
+
+	const maxAttempts = 5
+	for i := range maxAttempts {
+		if got := post("wrongpassword"); got == http.StatusTooManyRequests {
+			t.Fatalf("attempt %d throttled early", i+1)
+		}
+	}
+	if got := post("admin"); got != http.StatusTooManyRequests {
+		t.Errorf("right password after %d failures: status %d, want 429", maxAttempts, got)
+	}
+}

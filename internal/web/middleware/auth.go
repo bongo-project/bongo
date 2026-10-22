@@ -236,6 +236,24 @@ func WithAdminContext(ctx context.Context, isAdmin bool) context.Context {
 	return context.WithValue(ctx, adminKey, isAdmin)
 }
 
+// ParseSessionCookie returns the session data in r's cookie if it is validly
+// signed and unexpired. It does not consult live account state; callers that
+// act on the result (logout) must compare the epoch themselves.
+func ParseSessionCookie(secret []byte, r *http.Request) (*SessionData, error) {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		return nil, err
+	}
+	data, err := validateCookie(secret, cookie.Value)
+	if err != nil {
+		return nil, err
+	}
+	if data.UserID == "" || time.Now().Unix() > data.Exp {
+		return nil, http.ErrNoCookie
+	}
+	return data, nil
+}
+
 func validateCookie(secret []byte, value string) (*SessionData, error) {
 	payload, err := VerifyValue(secret, sessionCookiePurpose, value)
 	if err != nil {

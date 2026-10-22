@@ -231,6 +231,7 @@
   "security.twoFactorEnabled": "Two-factor authentication is currently enabled for your account.",
   "security.twoFactorDescription": "Add an extra layer of security to your account by enabling two-factor authentication.",
   "security.enterPasswordToDisable": "Enter your password to disable 2FA",
+  "security.reauthCode": "Authentication code or recovery code",
   "security.scanQrCode": "Scan the QR code below with your authenticator app (such as Google Authenticator, Authy, or 1Password).",
   "security.manualKeyPrompt": "If you cannot scan the QR code, enter this key manually:",
   "security.verificationCode": "Verification Code",

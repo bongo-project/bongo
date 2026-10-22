@@ -264,7 +264,7 @@ func sessionStateFromProfile(get func([]byte) ([]byte, error), logger *slog.Logg
 		Found:    true,
 		Disabled: profile.Disabled,
 		IsAdmin:  profile.IsAdmin,
-		Epoch:    security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled),
+		Epoch:    security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration),
 	}
 }
 
@@ -1082,6 +1082,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Security settings (TOTP, password change).
 		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
 		securityH.SetTLSEnabled(tlsEnabled)
+		securityH.SetRateLimiter(loginRL)
 		r.Get("/settings/security", securityH.SecuritySettings)
 		r.Post("/settings/security/totp/setup", securityH.SetupTOTP)
 		r.Post("/settings/security/totp/confirm", securityH.ConfirmTOTP)

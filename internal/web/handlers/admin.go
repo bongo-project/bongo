@@ -405,6 +405,10 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	scope := middleware.AdminScopeFromContext(r.Context())
 
+	// Same per-user lock as login and logout: this read-modify-write must not
+	// overwrite TotpLastStep or SessionGeneration with an older value.
+	defer lockUser(userID)()
+
 	profile, ok := h.requireUserAccess(w, scope, userID)
 	if !ok {
 		return
@@ -438,6 +442,10 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	scope := middleware.AdminScopeFromContext(r.Context())
+
+	// Same per-user lock as login and logout: this read-modify-write must not
+	// overwrite TotpLastStep or SessionGeneration with an older value.
+	defer lockUser(userID)()
 
 	profile, ok := h.requireUserAccess(w, scope, userID)
 	if !ok {
@@ -475,6 +483,10 @@ func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	scope := middleware.AdminScopeFromContext(r.Context())
+
+	// Same per-user lock as login and logout: this read-modify-write must not
+	// overwrite TotpLastStep or SessionGeneration with an older value.
+	defer lockUser(userID)()
 
 	profile, ok := h.requireUserAccess(w, scope, userID)
 	if !ok {
@@ -2619,6 +2631,7 @@ func (h *AdminHandler) saveProfile(userID string, profile *bongov1.UserProfile) 
 }
 
 func (h *AdminHandler) updateProfileFields(userID string, isAdmin, disabled bool, quotaStr, displayName string) {
+	defer lockUser(userID)()
 	profile, err := h.loadProfile(userID)
 	if err != nil {
 		return

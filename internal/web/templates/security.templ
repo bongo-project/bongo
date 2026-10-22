@@ -38,6 +38,12 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 									<label class="form-label" for="confirm_password">{ t(ctx, "settings.confirmPassword") }</label>
 									<input type="password" name="confirm_password" id="confirm_password" class="form-input" required minlength="8"/>
 								</div>
+								if totpEnabled {
+									<div class="form-group u-mb-16px">
+										<label class="form-label" for="change_totp_code">{ t(ctx, "security.reauthCode") }</label>
+										<input type="text" name="totp_code" id="change_totp_code" class="form-input" autocomplete="one-time-code" required/>
+									</div>
+								}
 								<button type="submit" class="btn-primary">{ t(ctx, "settings.changePassword") }</button>
 							</form>
 						</div>
@@ -60,6 +66,10 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 										<div class="form-group u-mb-12px">
 											<label class="form-label" for="disable_password">{ t(ctx, "security.enterPasswordToDisable") }</label>
 											<input type="password" name="password" id="disable_password" class="form-input" required/>
+										</div>
+										<div class="form-group u-mb-12px">
+											<label class="form-label" for="disable_totp_code">{ t(ctx, "security.reauthCode") }</label>
+											<input type="text" name="totp_code" id="disable_totp_code" class="form-input" autocomplete="one-time-code" required/>
 										</div>
 										<button type="submit" class="btn-secondary">{ t(ctx, "security.disableTwoFactor") }</button>
 									</form>

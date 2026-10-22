@@ -46,6 +46,24 @@ address. These are not reachable in a single-node deployment but become live whe
 a cluster is formed. Run cluster traffic on a trusted private network and do not
 expose ports 8300 or 8301. Reports in this area are still welcome.
 
+**Web logout signs the user out everywhere.** Logout bumps a per-user session
+generation that is part of the session epoch, so every web session for that user,
+on every device, stops working, including a copied cookie. Revocation is
+best-effort: if the write fails the cookie is still cleared locally and a warning
+is logged. Cookies issued before session epochs existed carry no epoch and cannot
+be revoked this way; they expire within 30 days. IMAP, POP3 and SMTP sessions are
+unaffected by a web logout.
+
+**Re-authentication and TOTP replay.** Changing the password or disabling 2FA
+needs the current password and, for 2FA accounts, a TOTP or recovery code, and is
+throttled by the same per-IP budget as login (so mistyped passwords on the
+settings page count against the IP's login allowance). A TOTP code is single-use:
+the last accepted time-step is stored on the profile and anything at or below it
+is refused. The record is written through Raft and a failed write refuses the
+request. The per-user lock that serialises this is per node; two nodes (or a
+follower that has not applied the previous write) can race inside a few
+milliseconds. DAV Basic Auth and protocol logins do not use TOTP.
+
 **Shutdown waits up to 30 seconds for in-flight mail.** On shutdown the server
 waits for pipeline messages and store-touching background workers to finish
 before stopping Raft and closing storage. If a message is still running after the

@@ -138,3 +138,18 @@ func TestSessionStateFromProfile(t *testing.T) {
 		})
 	}
 }
+
+// Logout revocation depends on the live epoch following the profile's session
+// generation; a profile with a bumped generation must yield a different epoch.
+func TestSessionStateEpochFollowsGeneration(t *testing.T) {
+	epochFor := func(gen uint64) string {
+		data, err := proto.Marshal(&bongov1.UserProfile{PasswordHash: []byte("h"), SessionGeneration: gen})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sessionStateFromProfile(func([]byte) ([]byte, error) { return data, nil }, nil, "u1").Epoch
+	}
+	if epochFor(0) == epochFor(1) {
+		t.Fatal("bumping the session generation did not change the live epoch")
+	}
+}
