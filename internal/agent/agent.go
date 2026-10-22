@@ -3505,13 +3505,28 @@ func (a *Agent) Shutdown() error {
 	// enough, and the deliver stage needs Raft alive to finish. Shutting Raft
 	// down first would fail its ApplyCommand and push a part-delivered
 	// envelope into error/, which is never retried.
-	for _, cancel := range []context.CancelFunc{
-		a.pipelineCancel, a.queueWorkerCancel, a.reminderCancel,
-		a.quarantinePurgeCancel, a.blobSyncCancel, a.orphanGCCancel, a.usageCancel,
-	} {
-		if cancel != nil {
-			cancel()
-		}
+	// Each cancel is called by name rather than from a slice so that gosec
+	// (G118) can see every stored CancelFunc is called.
+	if a.pipelineCancel != nil {
+		a.pipelineCancel()
+	}
+	if a.queueWorkerCancel != nil {
+		a.queueWorkerCancel()
+	}
+	if a.reminderCancel != nil {
+		a.reminderCancel()
+	}
+	if a.quarantinePurgeCancel != nil {
+		a.quarantinePurgeCancel()
+	}
+	if a.blobSyncCancel != nil {
+		a.blobSyncCancel()
+	}
+	if a.orphanGCCancel != nil {
+		a.orphanGCCancel()
+	}
+	if a.usageCancel != nil {
+		a.usageCancel()
 	}
 	if err := a.waitForWorkers(); err != nil {
 		// Leave Raft and every store open so the straggler can finish or be
