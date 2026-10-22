@@ -365,6 +365,12 @@ func (h *AdminHandler) ShowUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.renderUserForm(w, r, email, userID, profile, flash, "")
+}
+
+// renderUserForm renders the edit form. tempPassword is non-empty only for the
+// response to a password reset.
+func (h *AdminHandler) renderUserForm(w http.ResponseWriter, r *http.Request, email, userID string, profile *bongov1.UserProfile, flash, tempPassword string) {
 	info := &templates.AdminUserInfo{
 		UserID:       userID,
 		Email:        profile.Email,
@@ -373,6 +379,7 @@ func (h *AdminHandler) ShowUser(w http.ResponseWriter, r *http.Request) {
 		Disabled:     profile.Disabled,
 		QuotaBytes:   profile.QuotaBytes,
 		PrimaryEmail: strings.ToLower(strings.TrimSpace(profile.Email)),
+		TempPassword: tempPassword,
 	}
 
 	// Populate the address list from the SQLite derived index (best-effort;
@@ -495,7 +502,11 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 
 	// Generate random password.
 	buf := make([]byte, 8)
-	rand.Read(buf)
+	if _, err := rand.Read(buf); err != nil {
+		h.logger.Error("admin: password reset: random source failed", "user_id", userID, "error", err)
+		http.Error(w, "failed to generate password", http.StatusInternalServerError)
+		return
+	}
 	tempPassword := hex.EncodeToString(buf)
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), auth.PasswordHashCost)
@@ -512,8 +523,13 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: password reset", "user_id", userID, "email", profile.Email)
 
-	flash := fmt.Sprintf("Password+reset.+Temporary+password:+%s", tempPassword)
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	// Render the password in this response instead of redirecting: a URL ends
+	// up in access logs, browser history and Referer headers. The response is
+	// not cacheable and the password is not stored anywhere recoverable.
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	_, email := middleware.UserFromContext(r.Context())
+	h.renderUserForm(w, r, email, userID, profile, "", tempPassword)
 }
 
 // countAdmins returns the number of users whose profile has the admin flag set.

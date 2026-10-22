@@ -2,8 +2,11 @@ package smtp
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
 )
@@ -118,5 +121,44 @@ func TestAuthRefusedOnMXSession(t *testing.T) {
 	mx := &Session{backend: b, logger: b.logger, submission: false}
 	if _, err := mx.Auth(sasl.Plain); err != gosmtp.ErrAuthUnsupported {
 		t.Errorf("Auth on MX session err = %v, want ErrAuthUnsupported", err)
+	}
+}
+
+// AUTH failures reach the client verbatim through go-smtp, so a backend's
+// internal error text (here a secret-looking string) must never be relayed.
+func TestAuthFailureDoesNotLeakBackendError(t *testing.T) {
+	const secret = "parsing profile: proto: cannot parse invalid wire-format data hunter2-hash"
+	tests := []struct {
+		name     string
+		authErr  error
+		wantCode int
+		wantEnh  gosmtp.EnhancedCode
+	}{
+		{"bad credentials", auth.ErrBadCredentials, 535, gosmtp.EnhancedCode{5, 7, 8}},
+		{"wrapped bad credentials", fmt.Errorf("lookup: %w", auth.ErrBadCredentials), 535, gosmtp.EnhancedCode{5, 7, 8}},
+		{"internal error", errors.New(secret), 454, gosmtp.EnhancedCode{4, 7, 0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := throttleTestBackend(tt.authErr)
+			s := newSessionForIP(b, "203.0.113.20")
+
+			err := s.AuthPlain("bob@example.com", "pw")
+			se, ok := err.(*gosmtp.SMTPError)
+			if !ok {
+				t.Fatalf("AuthPlain err = %T (%v), want *gosmtp.SMTPError", err, err)
+			}
+			if se.Code != tt.wantCode || se.EnhancedCode != tt.wantEnh {
+				t.Errorf("got %d %v, want %d %v", se.Code, se.EnhancedCode, tt.wantCode, tt.wantEnh)
+			}
+			for _, leak := range []string{"hunter2", "parsing profile", "proto", "lookup"} {
+				if strings.Contains(se.Error(), leak) {
+					t.Errorf("client-visible error %q leaks %q", se.Error(), leak)
+				}
+			}
+			if s.authed {
+				t.Error("session must not be authenticated")
+			}
+		})
 	}
 }

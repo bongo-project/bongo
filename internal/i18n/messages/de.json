@@ -664,5 +664,8 @@
   "admin.dnsGuideDownload": "BIND-Zonendatei herunterladen",
   "admin.spfRecord": "SPF",
   "admin.dkimRecord": "DKIM",
-  "admin.dmarcRecord": "DMARC"
+  "admin.dmarcRecord": "DMARC",
+  "settings.sendAsRequested": "Anfrage erhalten. Wenn die Adresse hinzugefügt werden kann, erscheint sie jetzt in Ihrer Liste.",
+  "admin.tempPasswordLabel": "Temporäres Passwort",
+  "admin.tempPasswordNotice": "Passwort zurückgesetzt. Dieses temporäre Passwort wird nur einmal angezeigt und kann nicht erneut abgerufen werden. Geben Sie es jetzt an den Benutzer weiter."
 }

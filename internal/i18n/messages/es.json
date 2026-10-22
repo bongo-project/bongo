@@ -664,5 +664,8 @@
   "admin.dnsGuideDownload": "Descargar archivo de zona BIND",
   "admin.spfRecord": "SPF",
   "admin.dkimRecord": "DKIM",
-  "admin.dmarcRecord": "DMARC"
+  "admin.dmarcRecord": "DMARC",
+  "settings.sendAsRequested": "Solicitud recibida. Si la dirección se puede añadir, ahora aparece en su lista.",
+  "admin.tempPasswordLabel": "Contraseña temporal",
+  "admin.tempPasswordNotice": "Contraseña restablecida. Esta contraseña temporal se muestra una sola vez y no se puede recuperar. Entréguesela al usuario ahora."
 }

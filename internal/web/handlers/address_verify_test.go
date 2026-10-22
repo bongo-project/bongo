@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -662,13 +663,15 @@ func TestSelfServe_AddSendAsAddress_CrossUser_Rejected(t *testing.T) {
 	w := httptest.NewRecorder()
 	env.handler.AddSendAsAddress(w, r)
 
-	// Should redirect with error (cross-user ownership).
+	// The reply must not reveal that the address is taken; the store shows it.
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("AddSendAsAddress cross-user = %d", w.Code)
 	}
-	loc := w.Header().Get("Location")
-	if !strings.Contains(loc, "error") {
-		t.Errorf("AddSendAsAddress cross-user should redirect with error; Location: %s", loc)
+	if loc := w.Header().Get("Location"); strings.Contains(loc, "error") {
+		t.Errorf("AddSendAsAddress cross-user must not redirect with an error; Location: %s", loc)
+	}
+	if addrs, _ := env.addresses.ListByUser(userID2); slices.Contains(addrs, sharedAddr) {
+		t.Errorf("attacker's address list holds %s", sharedAddr)
 	}
 
 	// Address record must still belong to user1.

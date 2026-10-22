@@ -50,8 +50,14 @@ func TestAdminProfileWritesTakeUserLock(t *testing.T) {
 			unlock()
 			select {
 			case code := <-done:
-				if code != http.StatusSeeOther {
-					t.Fatalf("status %d after unlock, want 303", code)
+				// ResetPassword renders the new password in its response
+				// instead of redirecting.
+				want := http.StatusSeeOther
+				if name == "ResetPassword" {
+					want = http.StatusOK
+				}
+				if code != want {
+					t.Fatalf("status %d after unlock, want %d", code, want)
 				}
 			case <-time.After(10 * time.Second):
 				t.Fatal("handler did not finish after unlock")

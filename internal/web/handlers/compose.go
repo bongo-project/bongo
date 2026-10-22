@@ -595,7 +595,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.logger.Info("web: message sent", "from", fromAddr, "to_count", len(allRecipients), "subject", subject, "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
+	h.logger.Info("web: message sent", "from", fromAddr, "to_count", len(allRecipients), "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
 
 	// Build flash message based on delivery type.
 	flash := "Message+sent"
@@ -729,7 +729,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("web: draft saved", "user", userID, "subject", subject)
+	h.logger.Info("web: draft saved", "user", userID)
 
 	http.Redirect(w, r, "/mail/Drafts?flash=Draft+saved", http.StatusSeeOther)
 }

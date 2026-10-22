@@ -75,6 +75,17 @@ trusted proxy, forwarded headers are ignored: rate limits and lockout see the
 proxy's IP and `/metrics` sees a private address, so keep the proxy-level
 restriction on `/metrics`.
 
+**Send-as claims are visible in the address list, and unverified.** Adding a
+send-as address gives the same reply whether the address was free, taken, hosted
+here or an alias, and verification requests answer "not found" for both missing
+and foreign addresses. The address list itself still shows whether your claim
+took, so a user can probe which external addresses are unclaimed. The same
+design lets anyone claim an external address unverified and so block a
+legitimate user on another tenant from adding it. Closing both needs the global
+address record to be created only after verification succeeds, with a per-user
+pending claim until then. Query-string `flash` and `error` messages are also
+still reflected (escaped) on many pages.
+
 **Shutdown waits up to 30 seconds for in-flight mail.** On shutdown the server
 waits for pipeline messages and store-touching background workers to finish
 before stopping Raft and closing storage. If a message is still running after the

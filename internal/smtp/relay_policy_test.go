@@ -433,7 +433,7 @@ func TestDataRejectsWhenSpoolFails(t *testing.T) {
 			name:    "outbound relay unavailable",
 			rcpt:    "outsider@example.net",
 			setup:   func(b *Backend, d *fakeSplitDeliverer, q *fakeRelayQueue) { b.relayQueue = nil },
-			wantErr: "",
+			wantErr: "disk full",
 		},
 	}
 
@@ -458,8 +458,12 @@ func TestDataRejectsWhenSpoolFails(t *testing.T) {
 				t.Fatal("DATA returned 250 for a message that was never spooled: " +
 					"the sender will delete its copy and the mail is lost")
 			}
-			if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("error = %q, want it to carry %q", err, tt.wantErr)
+			// The failure is temporary and must not echo internal detail.
+			if smtpCode(err) != 451 {
+				t.Errorf("error = %v, want a temporary 451", err)
+			}
+			if strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q leaks internal detail %q", err, tt.wantErr)
 			}
 		})
 	}

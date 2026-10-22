@@ -364,7 +364,6 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		"action", action,
 		"reasons", reasons,
 		"sender", env.GetSender(),
-		"subject", subject,
 		"trusted", trusted,
 	)
 

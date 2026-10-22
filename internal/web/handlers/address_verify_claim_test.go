@@ -50,8 +50,10 @@ func assertAlreadyOwned(t *testing.T, w *httptest.ResponseRecorder) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303; body %s", w.Code, w.Body.String())
 	}
-	if loc := w.Header().Get("Location"); !strings.Contains(loc, "already+owned") {
-		t.Errorf("Location = %q, want already-owned error", loc)
+	// The reply is the same as for a successful add; the refusal shows in the
+	// store (callers assert that), never in the message.
+	if loc := w.Header().Get("Location"); strings.Contains(loc, "owned") || strings.Contains(loc, "error=") {
+		t.Errorf("Location = %q, must not reveal ownership", loc)
 	}
 }
 
@@ -110,8 +112,8 @@ func TestSelfServe_AddSendAsAddress_TakenOrHosted_Rejected(t *testing.T) {
 			if w.Code != http.StatusSeeOther {
 				t.Fatalf("status = %d, want 303", w.Code)
 			}
-			if loc := w.Header().Get("Location"); strings.Contains(loc, "flash=") || !strings.Contains(loc, "error=") {
-				t.Errorf("Location = %q, want an error redirect", loc)
+			if loc := w.Header().Get("Location"); strings.Contains(loc, "error=") {
+				t.Errorf("Location = %q, must not be an ownership-revealing error", loc)
 			}
 			rec, ok, _ := env.addresses.Get(tt.address)
 			if ok && rec.UserId == "userA" {
@@ -128,7 +130,7 @@ func TestSelfServe_AddSendAsAddress_ExternalAndOwn(t *testing.T) {
 
 	for i := range 2 { // second call is the no-op for an address the caller already holds
 		w := env.postAdd(t, "userA", "a@example.com", "me@external.example")
-		if loc := w.Header().Get("Location"); !strings.Contains(loc, "flash=Address+added") {
+		if loc := w.Header().Get("Location"); !strings.HasPrefix(loc, "/settings/addresses?flash=") || strings.Contains(loc, "error=") {
 			t.Fatalf("call %d: Location = %q", i, loc)
 		}
 	}
