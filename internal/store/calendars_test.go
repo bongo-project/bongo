@@ -1,7 +1,11 @@
 package store
 
 import (
+	"fmt"
+	"strings"
 	"testing"
+
+	"google.golang.org/protobuf/proto"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -156,5 +160,83 @@ func TestCalendarStore_Delete(t *testing.T) {
 	got, err := cs.Get(userID, guid)
 	if err == nil && got != nil {
 		t.Error("Get after delete should fail or return nil")
+	}
+}
+
+func TestCalendarStore_IsSharedWith(t *testing.T) {
+	ps, err := NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	cs := NewCalendarStore(ps, &directApplier{store: ps})
+
+	mk := func(owner, name string, with ...string) {
+		t.Helper()
+		if _, err := cs.Create(owner, &bongov1.Calendar{Name: name, SharedWith: with}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+	mk("bob", "b1", "alice")
+	mk("bob", "b2")
+	mk("carol", "c1", "alice")
+	mk("erin", "e1", "zed")
+	for i := range 100 {
+		if err := ps.Set([]byte(fmt.Sprintf("/user/dave/mail/%03d", i)), []byte("x")); err != nil {
+			t.Fatalf("Set: %v", err)
+		}
+	}
+
+	// Raw keys the guards must keep unreachable: a slash-steered owner that
+	// would otherwise match, and an empty-string share entry.
+	raw, err := proto.Marshal(&bongov1.Calendar{Name: "steered", SharedWith: []string{"alice"}})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := ps.Set([]byte("/user/bob/x/calendar/c1"), raw); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	mk("frank", "f1", "")
+
+	var prefixes []string
+	cs.scan = func(prefix []byte) (Iterator, error) {
+		prefixes = append(prefixes, string(prefix))
+		return ps.PrefixScan(prefix)
+	}
+
+	tests := []struct {
+		name          string
+		owner, caller string
+		want          bool
+	}{
+		{"shared", "bob", "alice", true},
+		{"other owner shares, not this one", "erin", "alice", false},
+		{"not shared with caller", "bob", "zed", false},
+		{"carol shares but bob asked", "dave", "alice", false},
+		{"unknown owner", "nobody", "alice", false},
+		{"empty owner", "", "alice", false},
+		{"empty caller", "frank", "", false},
+		{"owner with slash", "bob/x", "alice", false},
+		{"case differs", "bob", "ALICE", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prefixes = nil
+			got, err := cs.IsSharedWith(tt.owner, tt.caller)
+			if err != nil {
+				t.Fatalf("IsSharedWith: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+			if strings.Contains(tt.owner, "/") && len(prefixes) != 0 {
+				t.Errorf("slash owner must not scan, got %q", prefixes)
+			}
+			for _, p := range prefixes {
+				if p != "/user/"+tt.owner+"/calendar/" {
+					t.Errorf("scanned prefix %q outside the owner's calendars", p)
+				}
+			}
+		})
 	}
 }

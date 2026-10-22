@@ -14,4 +14,6 @@ message UserProfile {
   bool disabled = 7;
   repeated string recovery_codes = 8;  // bcrypt hashed recovery codes
   bool totp_enabled = 9;               // whether 2FA is active
+  uint64 session_generation = 10;      // bumped on web logout; mixed into the session epoch when non-zero
+  int64 totp_last_step = 11;           // last accepted TOTP time-step (unix/30); codes at or below it are replays
 }

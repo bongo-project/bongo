@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
@@ -32,6 +33,33 @@ func GenerateTOTP(email string) (*otp.Key, error) {
 // ValidateTOTP validates a 6-digit TOTP code against the secret.
 func ValidateTOTP(secret, code string) bool {
 	return totp.Validate(code, secret)
+}
+
+// totpPeriod is the RFC 6238 time-step length in seconds.
+const totpPeriod = 30
+
+// ValidateTOTPStep validates a 6-digit TOTP code against the secret within one
+// step either side of now, and accepts it only if its time-step is later than
+// lastStep, the step of the last code the account consumed. It returns the
+// matched step so the caller can record it; a code accepted once is therefore
+// refused for the rest of its validity window.
+func ValidateTOTPStep(secret, code string, now time.Time, lastStep int64) (int64, bool) {
+	cur := now.Unix() / totpPeriod
+	for step := cur - 1; step <= cur+1; step++ {
+		if step <= lastStep {
+			continue
+		}
+		ok, err := totp.ValidateCustom(code, secret, time.Unix(step*totpPeriod, 0), totp.ValidateOpts{
+			Period:    totpPeriod,
+			Skew:      0,
+			Digits:    otp.DigitsSix,
+			Algorithm: otp.AlgorithmSHA1,
+		})
+		if err == nil && ok {
+			return step, true
+		}
+	}
+	return 0, false
 }
 
 // GenerateRecoveryCodes generates recovery codes.

@@ -114,3 +114,31 @@ func TestGossipThreeNodes(t *testing.T) {
 		t.Errorf("expected 3 server roles, got %d", roleCount["server"])
 	}
 }
+
+func TestGossipLoopbackAdvertiseBindsLoopback(t *testing.T) {
+	ext := nonLoopbackIPv4()
+	if ext == "" {
+		t.Skip("no non-loopback IPv4 interface")
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	cfg := config.Defaults()
+	cfg.Server.Role = "server"
+	cfg.Server.Name = "gossip-bind"
+	cfg.Server.BindAddr = "0.0.0.0"
+	cfg.Server.AdvertiseAddr = "127.0.0.1"
+	port := freePort(t)
+	cfg.Cluster.Gossip.Port = port
+
+	node, err := NewGossipNode(cfg, "127.0.0.1:8080", "", logger)
+	if err != nil {
+		t.Fatalf("NewGossipNode: %v", err)
+	}
+	defer node.Shutdown()
+
+	if !dialable(net.JoinHostPort("127.0.0.1", fmt.Sprint(port))) {
+		t.Fatal("gossip not reachable on loopback")
+	}
+	if dialable(net.JoinHostPort(ext, fmt.Sprint(port))) {
+		t.Errorf("gossip reachable on %s although advertise address is loopback", ext)
+	}
+}

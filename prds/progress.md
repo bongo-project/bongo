@@ -132,7 +132,7 @@ PATTERN: [ci] `gosec@latest` / `govulncheck@latest` in CI means a new upstream r
 PATTERN: [ci] When CI reports a finding you cannot reproduce, FIX THE TOOLING GAP FIRST — install the same version CI uses and reproduce locally.
 PATTERN: [ci] An intentionally fragile CI step needs its rationale AT THE STEP. Unpinned scanners look like drift to anyone who did not choose it.
 PATTERN: [ci] A green deploy pipeline alongside a red test pipeline hides breakage indefinitely: the artefact still ships, so nothing feels broken. Check per-JOB status, not "did a run happen".
-PATTERN: [container] no-new-privileges and setcap file-caps are mutually exclusive for non-root privileged-port binding; omit no-new-privileges when using setcap+su-exec.
+PATTERN: [container] Non-root low-port binding no longer needs setcap: run as the target uid with sysctl net.ipv4.ip_unprivileged_port_start=0, cap_drop ALL and no-new-privileges (18.19). The old setcap/su-exec model ruled out no-new-privileges.
 PATTERN: [rate-limiting] inject nowFn for deterministic window tests; sweep map every N calls to bound memory without a background timer.
 PATTERN: [pipeline] A composite/fallback processor that returns one backend's result verbatim drops any field only the OTHER backend populates. Adding a field to StageResult means auditing every place a StageResult is chosen.
 PATTERN: [integration] web-UI integration tests need agent.NewAgent + a.Run (dev role, admin@localhost/admin) — the raft createTestNode/sharedStartHTTP helpers only expose /internal routes. Run with `go test -tags integration ./test/integration/`.
@@ -1303,3 +1303,22 @@ PATTERN: [security] "Local" for a forward or relay decision must mean the addres
 PATTERN: [testing] A "disabled" case built by rewriting the profile with a re-hashed password also changes the session epoch, so it silently tests password reset instead. Flip only the field under test.
 PATTERN: [norman] Never `git add -u` after applying a worker patch when prds/ has uncommitted edits; stage the patch's own paths. Recovering cost a commit rebuild.
 PATTERN: [tooling] `git cherry-pick` has no `-q`; a failed option in a loop under `set -e` still let later commands move a branch. Check each step's exit code explicitly before moving refs.
+
+## 2026-10-22 — PR #37 merged; paused with Phase 18 batch 4 in flight
+
+PR #37 (batch 3) squash-merged as d49554b after one fix: CI's gosec flagged G118 because 18.34 called the shutdown cancels from a slice; they are now called by name. Local gosec had been passing without checking anything: under Go 1.27 it loads no packages and exits 0. `prds/config.md` now runs it under GOTOOLCHAIN=go1.26.10. Batch 2 and 3 "gosec clean" claims rested on CI alone.
+
+Paused for travel. Batch 4 (18.18, 18.19, 18.20, 18.21, 18.22, 18.27, 18.29) runs as workflow wf_592260b1-3b8 in worktrees .claude/worktrees/p18-<task>, based on b02fc50 (identical to d49554b except the G118 change in agent.go). Branch norman/phase18-low sits on d49554b. To resume: read the workflow journal (or resume the run with resumeFromRunId if it died), verify each fix with one mutation, re-run gosec under go1.26.10, apply patches task by task staging only each patch's paths, full gate, PR, merge on green. Then batch 5 (18.23-18.26, 18.28, 18.30, 18.31) and batch 6 (18.36, 18.37, then 18.32 before 18.33).
+
+PATTERN: [tooling] gosec run under a newer Go than go.mod loads nothing and exits 0. A clean security scan with no findings at all after a big change is a reason to check the tool ran, not a pass.
+
+## 2026-10-22 — Phase 18 batch 4 (18.18-18.22, 18.27, 18.29) DONE
+
+Resumed after the pause: the batch 4 workflow had finished with five agents killed by a network error (two reviews, two re-reviews, one fix round); `resumeFromRunId` with identical args replayed the 21 finished agents from cache and re-ran only those five. 18.19 never reached review because it has no Go test by design and the pipeline's evidence gate marked it FAILED; the orchestrator reviewed it by hand from the recorded docker run (including a negative control: with the sysctl at 1024, bind :25 fails).
+
+Reviews: 18.18, 18.20, 18.29 MINOR; 18.27 PASS; 18.21 and 18.22 REJECT (the login-path TOTP lock and the agent-role SMTP trust wiring had no test). One fix round each, plus small follow-ups on 18.18, 18.19, 18.20, 18.29. The orchestrator re-ran one named mutation per task; all red. Two patch conflicts (middleware/auth.go between 18.29 and 18.21; SECURITY.md and config_test.go between 18.21/18.18 and 18.22) were both "two additions at the same spot" and resolved by keeping both.
+
+Release blocker carried into the PR: deploy/bongo.prod.hcl sets trusted_proxies to a placeholder; with proxy_protocol on, a wrong value silently turns every client into Traefik's address.
+
+PATTERN: [norman] A task whose proof is not a Go test (container, deploy config) fails the workflow's test-evidence gate and skips review. Review it by hand from recorded command output, and ask for a negative control in that output.
+PATTERN: [testing] A mutant that removes the only use of an import does not compile; keep the call (e.g. `len(x) > 0 || slices.Contains(...)`) so the mutant builds and actually runs.

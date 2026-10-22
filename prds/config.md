@@ -18,7 +18,11 @@ build: go build ./...
 # (fmt-check + race + integration, ~6 min), so a worker that passes locally
 # passes CI.
 test: make test-all
-lint: make lint && gosec ./...   # golangci-lint is what CI runs; gosec alone missed a govet finding (2026-10-12)
+# Both tools must run under the go.mod toolchain: under the local Go 1.27,
+# golangci-lint fails its typecheck and gosec silently loads nothing and exits
+# 0 (found 2026-10-22, when CI's gosec caught G118 that "clean" local runs had
+# missed).
+lint: GOTOOLCHAIN=go1.26.10 make lint && GOTOOLCHAIN=go1.26.10 gosec -quiet -exclude-generated -severity=medium ./...
 # Not a canonical norman key — kept deliberately. templ compiles .templ files to
 # Go, so a build after touching any template fails without it.
 generate: templ generate

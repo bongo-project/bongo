@@ -48,9 +48,15 @@ func selfSignedConfig(t *testing.T) *tls.Config {
 // (loopback is a trusted proxy) so each test dial chooses its client IP.
 func startLimitedServer(t *testing.T, maxConn, maxPerIP int) (plain, pop3s string) {
 	t.Helper()
+	return startLimitedServerTrusting(t, maxConn, maxPerIP, mustTrust(t, "127.0.0.1/32"))
+}
+
+// startLimitedServerTrusting is startLimitedServer with an explicit trust set.
+func startLimitedServerTrusting(t *testing.T, maxConn, maxPerIP int, trust *netx.TrustedProxies) (plain, pop3s string) {
+	t.Helper()
 	s := NewServer(nil, nil, nil, nil, selfSignedConfig(t), false, slog.New(slog.DiscardHandler))
 	s.SetConnectionLimits(maxConn, maxPerIP)
-	if err := s.Listen("127.0.0.1:0", "127.0.0.1:0", true); err != nil {
+	if err := s.Listen("127.0.0.1:0", "127.0.0.1:0", true, trust); err != nil {
 		t.Fatal(err)
 	}
 	go func() { _ = s.Serve() }()
@@ -251,5 +257,44 @@ func TestPOP3NewServerDefaultsPerIPCap(t *testing.T) {
 	s := NewServer(nil, nil, nil, nil, nil, false, slog.New(slog.DiscardHandler))
 	if got := s.connLimit.Max(); got != netx.DefaultMaxConnectionsPerIP {
 		t.Fatalf("default per-IP cap = %d, want %d", got, netx.DefaultMaxConnectionsPerIP)
+	}
+}
+
+func mustTrust(t *testing.T, entries ...string) *netx.TrustedProxies {
+	t.Helper()
+	tp, err := netx.ParseTrustedProxies(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tp
+}
+
+// TestPROXYHeaderFromUnlistedPeerIgnored proves a PROXY header from a peer
+// outside the trust set is dropped on both listeners: every connection keys
+// on the real peer (127.0.0.1), so forged distinct sources share one cap.
+func TestPOP3PROXYHeaderFromUnlistedPeerIgnored(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		trust *netx.TrustedProxies
+	}{
+		{"empty", nil},
+		{"other peer listed", mustTrust(t, "10.9.9.9/32")},
+	} {
+		for _, useTLS := range []bool{false, true} {
+			t.Run(tc.name, func(t *testing.T) {
+				plain, tlsAddr := startLimitedServerTrusting(t, 100, 2, tc.trust)
+				addr := plain
+				if useTLS {
+					addr = tlsAddr
+				}
+				c1 := dialAs(t, addr, clientA, useTLS)
+				c1.wantGreeting(t, "+OK")
+				c2 := dialAs(t, addr, clientB, useTLS)
+				c2.wantGreeting(t, "+OK")
+				// Distinct forged sources, one real peer: the third is over cap.
+				c3 := dialAs(t, addr, "192.0.2.55", useTLS)
+				c3.wantRefused(t)
+			})
+		}
 	}
 }

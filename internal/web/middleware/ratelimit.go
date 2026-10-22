@@ -45,6 +45,12 @@ func (rl *LoginRateLimiter) Succeed(ip, account string) {
 	rl.lim.Succeed(ip, account)
 }
 
+// Window returns the failure window, which is also how long a limited client
+// should wait before retrying.
+func (rl *LoginRateLimiter) Window() time.Duration {
+	return rl.window
+}
+
 // IsLimited reports whether the given IP has exceeded the maximum number of
 // failed attempts within the configured window.
 func (rl *LoginRateLimiter) IsLimited(ip string) bool {

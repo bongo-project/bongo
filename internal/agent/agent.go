@@ -43,6 +43,7 @@ import (
 	"github.com/bongo-project/bongo/internal/i18n"
 	bongoimap "github.com/bongo-project/bongo/internal/imap"
 	"github.com/bongo-project/bongo/internal/mail"
+	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
@@ -94,6 +95,9 @@ const (
 
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
+	// proxyTrust is the shared PROXY/X-Forwarded-* trust set (see installProxyTrust).
+	proxyTrust *netx.TrustedProxies
+
 	Config *config.Config
 
 	// spamThresholds is the one tag/quarantine holder shared by every antispam
@@ -264,7 +268,7 @@ func sessionStateFromProfile(get func([]byte) ([]byte, error), logger *slog.Logg
 		Found:    true,
 		Disabled: profile.Disabled,
 		IsAdmin:  profile.IsAdmin,
-		Epoch:    security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled),
+		Epoch:    security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration),
 	}
 }
 
@@ -711,6 +715,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	sharedResolver := store.NewRecipientResolver(a.AddressStore, a.Store, sharedSys)
 
+	// Forwarded headers (X-Forwarded-For, X-Forwarded-Proto) are believed only
+	// from the configured proxies.
+	a.installProxyTrust()
+
 	// Set up HTTP routes.
 	r := chi.NewRouter()
 	r.Use(middleware.SecurityHeaders())
@@ -720,7 +728,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Get("/health/ready", health.Ready)
 	// /metrics is control-plane data; gate it to private/loopback clients at the
 	// code layer so exposure never depends on the reverse proxy's IP allow-list alone.
-	r.With(middleware.PrivateOnly()).Handle("/metrics", observability.Handler())
+	r.With(middleware.PrivateOnly(a.Config.Web.BehindTLSProxy)).Handle("/metrics", observability.Handler())
 
 	// Session secret. Every session/2FA/setup cookie is HMAC'd with a key
 	// derived from this value; a weak secret is offline-guessable from a single
@@ -955,6 +963,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// injects an AdminScope into the context for per-handler isolation checks.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
+		// Every cookie-authenticated group is RequireAuth then Require2FA, so
+		// the require_2fa policy covers the admin console too.
+		r.Use(middleware.Require2FA(a))
 		r.Use(middleware.RequireAdminOrDomainAdmin(func(userID string, isGlobalAdmin bool) ([]string, error) {
 			if domainAdminStoreForAdmin == nil {
 				return nil, nil
@@ -1079,6 +1090,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Security settings (TOTP, password change).
 		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
 		securityH.SetTLSEnabled(tlsEnabled)
+		securityH.SetRateLimiter(loginRL)
 		r.Get("/settings/security", securityH.SecuritySettings)
 		r.Post("/settings/security/totp/setup", securityH.SetupTOTP)
 		r.Post("/settings/security/totp/confirm", securityH.ConfirmTOTP)
@@ -1414,6 +1426,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Register quarantine admin routes (spool is now available).
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
+			r.Use(middleware.Require2FA(a))
 			r.Use(middleware.RequireAdmin(sessionSecret))
 			r.Use(middleware.RequireSameOrigin())
 			// Double-submit CSRF token, defence-in-depth on top of same-origin.
@@ -1439,7 +1452,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			return err
 		}
 
-		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
+		a.SMTP = a.newSMTPServer(backend, isDev)
 		if err := a.SMTP.Listen(); err != nil {
 			return fmt.Errorf("smtp listen: %w", err)
 		}
@@ -1610,7 +1623,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.IMAP.SetQuotaChecker(a.DomainQuota)
 		}
 		a.IMAP.SetConnectionLimits(a.Config.IMAP.MaxConnections, a.Config.IMAP.MaxConnectionsPerIP)
-		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol); err != nil {
+		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol, a.proxyTrust); err != nil {
 			return fmt.Errorf("imap listen: %w", err)
 		}
 		go func() {
@@ -1654,7 +1667,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		pop3TlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(pop3TLSPort))
 
 		a.POP3.SetConnectionLimits(a.Config.POP3.MaxConnections, a.Config.POP3.MaxConnectionsPerIP)
-		if err := a.POP3.Listen(pop3PlainAddr, pop3TlsAddr, a.Config.POP3.ProxyProtocol); err != nil {
+		if err := a.POP3.Listen(pop3PlainAddr, pop3TlsAddr, a.Config.POP3.ProxyProtocol, a.proxyTrust); err != nil {
 			return fmt.Errorf("pop3 listen: %w", err)
 		}
 		go func() {
@@ -3193,7 +3206,8 @@ func (a *Agent) startSMTPAgent() error {
 	}
 
 	isDev := false // agents are never in dev mode
-	a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
+	a.installProxyTrust()
+	a.SMTP = a.newSMTPServer(backend, isDev)
 	if err := a.SMTP.Listen(); err != nil {
 		return fmt.Errorf("smtp listen: %w", err)
 	}
@@ -3762,4 +3776,48 @@ func startErrorPurge(ctx context.Context, spool *pipeline.SpoolStore, cfg *confi
 	retention := cfg.Pipeline.ErrorRetentionDuration()
 	go run(ctx, spool, retention, time.Hour, logger)
 	logger.Info("pipeline: error-spool purge started", "retention", retention.String())
+}
+
+// trustedProxies returns the parsed server.trusted_proxies set. Config
+// validation has already rejected malformed entries, so a parse failure here
+// (a config that skipped Validate) trusts nobody rather than guessing.
+func (a *Agent) trustedProxies() *netx.TrustedProxies {
+	tp, err := a.Config.Server.ParseTrustedProxies()
+	if err != nil {
+		a.logger.Error("ignoring invalid server.trusted_proxies; trusting no proxy", "error", err)
+		return nil
+	}
+	return tp
+}
+
+// newSMTPServer builds the SMTP server for every role and hands it the shared
+// proxy trust set. Run and startSMTPAgent both use it so neither can build a
+// PROXY-protocol listener without the operator's trusted_proxies.
+func (a *Agent) newSMTPServer(backend *bongosmtp.Backend, isDev bool) *bongosmtp.Server {
+	srv := bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
+	srv.SetTrustedProxies(a.proxyTrust)
+	return srv
+}
+
+// installProxyTrust resolves server.trusted_proxies once, stores it in
+// a.proxyTrust for every PROXY-protocol listener (SMTP, IMAP, POP3) and feeds
+// the same set to the web middleware, so all of them share one trust check.
+func (a *Agent) installProxyTrust() {
+	a.proxyTrust = a.trustedProxies()
+	middleware.SetTrustedProxies(a.proxyTrust)
+	a.logProxyTrust()
+}
+
+// logProxyTrust states the proxy trust boundary at startup, loudly when a
+// proxy-fronted listener is configured without any trusted proxy.
+func (a *Agent) logProxyTrust() {
+	tp := a.trustedProxies()
+	if !tp.Empty() {
+		a.logger.Info("trusted proxies: PROXY protocol and X-Forwarded-* headers are honoured only from these peers", "trusted_proxies", tp.Strings())
+		return
+	}
+	a.logger.Info("trusted proxies: none configured; PROXY protocol and X-Forwarded-* headers are ignored")
+	if a.Config.Web.BehindTLSProxy {
+		a.logger.Warn("web.behind_tls_proxy is set but server.trusted_proxies is empty: X-Forwarded-For and X-Forwarded-Proto are ignored, so rate limits and lockout see the proxy's IP, HSTS is not emitted, and /metrics sees the proxy's private address; set server.trusted_proxies to the proxy's address")
+	}
 }

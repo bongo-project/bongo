@@ -130,6 +130,8 @@ func TestTwoFactorThrottleOtherAccountSuccessDoesNotClear(t *testing.T) {
 		"u-victim":   []byte("victim-secret-123456"),
 	}
 	ah.SetProfileLoader(&throttleProfiles{secrets: secrets})
+	// A successful TOTP login now records the consumed step through Raft.
+	ah.SetRaftApplier(discardApplier{})
 
 	attacker := middleware.CreatePendingCookie(throttleSessionSecret, "u-attacker", "attacker@example.com", false, false, false)
 	victim := middleware.CreatePendingCookie(throttleSessionSecret, "u-victim", "victim@example.com", false, false, false)
@@ -150,3 +152,9 @@ func TestTwoFactorThrottleOtherAccountSuccessDoesNotClear(t *testing.T) {
 		t.Fatalf("2FA after attacker success = %d, want 429", rr.Code)
 	}
 }
+
+// discardApplier accepts every write; for tests that only need the TOTP step
+// record to succeed.
+type discardApplier struct{}
+
+func (discardApplier) ApplyCommand(*bongov1.RaftCommand, time.Duration) error { return nil }

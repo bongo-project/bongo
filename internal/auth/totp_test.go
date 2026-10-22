@@ -194,3 +194,42 @@ func TestValidateRecoveryCode(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTOTPStep(t *testing.T) {
+	const secret = "JBSWY3DPEHPK3PXP"
+	now := time.Unix(1_700_000_010, 0)
+	cur := now.Unix() / 30
+
+	codeAt := func(step int64) string {
+		c, err := totp.GenerateCode(secret, time.Unix(step*30, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+
+	tests := []struct {
+		name     string
+		code     string
+		last     int64
+		wantStep int64
+		wantOK   bool
+	}{
+		{"current step, fresh", codeAt(cur), 0, cur, true},
+		{"step before, fresh", codeAt(cur - 1), 0, cur - 1, true},
+		{"step after, fresh", codeAt(cur + 1), 0, cur + 1, true},
+		{"current step, already used", codeAt(cur), cur, 0, false},
+		{"older step than last used", codeAt(cur - 1), cur, 0, false},
+		{"next step after last used", codeAt(cur + 1), cur, cur + 1, true},
+		{"outside skew", codeAt(cur + 2), 0, 0, false},
+		{"wrong code", "000000", 0, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			step, ok := ValidateTOTPStep(secret, tt.code, now, tt.last)
+			if ok != tt.wantOK || (ok && step != tt.wantStep) {
+				t.Errorf("got (%d, %v), want (%d, %v)", step, ok, tt.wantStep, tt.wantOK)
+			}
+		})
+	}
+}

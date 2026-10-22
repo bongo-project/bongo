@@ -164,6 +164,7 @@ func TestLoginRateLimit_RetryAfterHeader(t *testing.T) {
 }
 
 func TestClientIP_RemoteAddr(t *testing.T) {
+	withTrustedProxies(t, "10.0.0.1/32")
 	tests := []struct {
 		name       string
 		remoteAddr string

@@ -39,6 +39,15 @@ server {
   # A human-readable node name (defaults to the machine hostname).
   name = "bongo-1"
 
+  # Reverse proxies whose PROXY protocol headers (smtp/imap/pop3 proxy_protocol)
+  # and X-Forwarded-For / X-Forwarded-Proto headers (web.behind_tls_proxy) are
+  # believed. Bare IPs or CIDRs. Empty by default: NOBODY is trusted, not even
+  # loopback or private-network peers, because any co-tenant container could
+  # otherwise forge a client IP and defeat lockout, rate limits, SPF and DNSBL.
+  # Enabling proxy_protocol with this empty fails startup. List the proxy's
+  # exact address (a /32) rather than its whole network where you can.
+  # trusted_proxies = ["172.18.0.5/32"]
+
   # Datacenter label (informational; used for clustering topology).
   # datacenter = "dc1"
 
@@ -47,7 +56,10 @@ server {
 
   # Address Raft/gossip advertise to peers. For a SINGLE node this only ever
   # talks to itself, so loopback is correct. Set to the node's routable IP only
-  # if you later form a multi-node cluster.
+  # if you later form a multi-node cluster. While this is loopback (or
+  # "localhost"), raft and gossip listen on loopback only regardless of
+  # bind_addr; a routable value makes them follow bind_addr. A server with
+  # cluster.join set is refused if this is loopback.
   advertise_addr = "127.0.0.1"
 
   # agents — ONLY for role = "agent". The list of protocol processors this agent
@@ -152,7 +164,7 @@ smtp {
   # trusted_networks below, per-IP rate limiting, SPF, and the antispam
   # dnsbl block. Set it wrong and those all evaluate the proxy instead of
   # the sender.
-  # proxy_protocol = false
+  # proxy_protocol = false   # requires server.trusted_proxies
 
   # CIDR blocks whose connecting source IP is exempt from inbound origin
   # authentication: SPF, DKIM alignment and DMARC policy are not applied to
@@ -257,7 +269,7 @@ imap {
   enabled  = true
   port     = 143   # STARTTLS
   port_tls = 993   # implicit TLS
-  # proxy_protocol = false   # true only behind a trusted PROXY-protocol proxy
+  # proxy_protocol = false   # true only behind a trusted PROXY-protocol proxy; requires server.trusted_proxies
   # max_connections        = 1024   # concurrent connections per listener (plain and TLS each)
   # max_connections_per_ip = 50     # per source IP, both listeners (0 = off). Set 0 or high behind a
   #                                 # TCP proxy WITHOUT proxy_protocol: all clients share the proxy IP
@@ -301,6 +313,9 @@ web {
   # auth cookies are still marked Secure and HSTS is emitted. Change port to 8080.
   # plain_http       = true
   # behind_tls_proxy = true
+  # Also list the proxy in server.trusted_proxies: X-Forwarded-For and
+  # X-Forwarded-Proto are ignored otherwise, so rate limits and lockout see the
+  # proxy's IP and HSTS is not emitted.
 }
 
 

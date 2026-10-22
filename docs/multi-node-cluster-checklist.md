@@ -1,10 +1,13 @@
 # Multi-node cluster pre-flight checklist
 
 The shipped deployment is a **single node**: one `server`-role process that only
-ever talks to itself (`advertise_addr = 127.0.0.1`, no peers, raft/gossip ports
-unpublished). In that mode the cluster transports are unreachable, so the
-transport-hardening findings in `security-review-2026-07-06.md` (H3/H4/M8/L6)
-are not exploitable and were deferred.
+ever talks to itself (`advertise_addr = 127.0.0.1`, no peers). In that mode raft
+and gossip bind to loopback only, whatever `bind_addr` says, so they are not
+reachable from other hosts or containers. Leaving the ports unpublished is not
+what protects them: other containers on a shared compose network can reach
+unpublished ports. The transport-hardening findings in
+`security-review-2026-07-06.md` (H3/H4/M8) are therefore not exploitable on a
+single node and were deferred; L6 is addressed for single node.
 
 The moment you add a peer, that changes. bongo enforces this: a `server` with a
 non-empty `cluster.join` **refuses to start** until gossip encryption and raft
@@ -24,7 +27,11 @@ what that gate is guarding — work through it before forming a cluster.
 - **M8 — blob-sync / join over HTTP.** Blob pulls and raft auto-join go over
   cleartext HTTP; on a real network that exposes user mail in transit.
 - **L6 — cluster bind address.** Raft and gossip share one `bind_addr` that
-  defaults to `0.0.0.0`. Bind the cluster transports to a private interface.
+  defaults to `0.0.0.0`. A node advertising a loopback address now binds both
+  transports to loopback (single node: addressed). For a multi-node cluster, set
+  `advertise_addr` to the node's private IP and keep `bind_addr` to that
+  interface where the protocol listeners allow it; a join with a loopback
+  advertise address is refused at startup.
 
 ## Checklist
 

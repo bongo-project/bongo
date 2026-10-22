@@ -185,7 +185,7 @@ func TestServerListenAndClose(t *testing.T) {
 		closeCh: make(chan struct{}),
 	}
 
-	if err := s.Listen("127.0.0.1:0", "", false); err != nil {
+	if err := s.Listen("127.0.0.1:0", "", false, nil); err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
 
@@ -208,7 +208,7 @@ func TestServerListenTLS(t *testing.T) {
 		closeCh: make(chan struct{}),
 	}
 
-	if err := s.Listen("127.0.0.1:0", "127.0.0.1:0", false); err != nil {
+	if err := s.Listen("127.0.0.1:0", "127.0.0.1:0", false, nil); err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
 

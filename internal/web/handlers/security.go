@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image/png"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/a-h/templ"
@@ -39,6 +40,7 @@ type SecurityHandler struct {
 	authenticator auth.Authenticator
 	sessionSecret []byte
 	tlsEnabled    bool
+	limiter       ReauthLimiter
 }
 
 // NewSecurityHandler creates a SecurityHandler.
@@ -49,6 +51,13 @@ func NewSecurityHandler(profiles ProfileLoader, applier store.RaftApplier, authe
 		authenticator: authenticator,
 		sessionSecret: sessionSecret,
 	}
+}
+
+// SetRateLimiter wires the shared login throttle so re-authentication on this
+// page (password change, 2FA disable) cannot be used to guess the password or
+// second factor of a hijacked session without limit.
+func (h *SecurityHandler) SetRateLimiter(l ReauthLimiter) {
+	h.limiter = l
 }
 
 // SetTLSEnabled configures whether cookies should have the Secure flag.
@@ -74,7 +83,14 @@ func (h *SecurityHandler) SecuritySettings(w http.ResponseWriter, r *http.Reques
 
 // SetupTOTP generates a new TOTP key and renders the setup page.
 func (h *SecurityHandler) SetupTOTP(w http.ResponseWriter, r *http.Request) {
-	_, email := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
+
+	// Replacing an enrolled second factor would bypass the re-authentication
+	// DisableTOTP demands, so it must be disabled first.
+	if h.totpEnrolled(userID) {
+		http.Redirect(w, r, totpAlreadyEnabledRedirect, http.StatusSeeOther)
+		return
+	}
 
 	key, err := auth.GenerateTOTP(email)
 	if err != nil {
@@ -118,18 +134,28 @@ func (h *SecurityHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate code against pending secret.
-	if !auth.ValidateTOTP(secret, code) {
+	// Validate code against pending secret. The matched step is recorded below
+	// so the setup code cannot then be replayed to log in or re-authenticate.
+	setupStep, valid := auth.ValidateTOTPStep(secret, code, time.Now(), 0)
+	if !valid {
 		// Re-render setup page with error.
 		// Re-generate QR code from the pending secret.
 		http.Redirect(w, r, "/settings/security?flash=Invalid+code.+Please+try+again.", http.StatusSeeOther)
 		return
 	}
 
-	// Load profile, enable TOTP.
+	// Load profile, enable TOTP. The lock keeps the enrolment check and the
+	// write together on this node.
+	defer lockUser(userID)()
 	profile, err := h.loadProfile(userID)
 	if err != nil {
 		http.Error(w, "Failed to load profile", http.StatusInternalServerError)
+		return
+	}
+	// A session alone must not be able to replace an enrolled second factor:
+	// that would sidestep the password and code DisableTOTP requires.
+	if profile.TotpEnabled {
+		http.Redirect(w, r, totpAlreadyEnabledRedirect, http.StatusSeeOther)
 		return
 	}
 
@@ -141,6 +167,7 @@ func (h *SecurityHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	profile.TotpSecret = secretBytes
 	profile.TotpEnabled = true
+	profile.TotpLastStep = setupStep
 
 	// Generate recovery codes.
 	plaintextCodes, hashedCodes, err := auth.GenerateRecoveryCodes(8)
@@ -163,7 +190,8 @@ func (h *SecurityHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.TOTPRecoveryCodes(plaintextCodes)).ServeHTTP(w, r)
 }
 
-// DisableTOTP disables 2FA for the user after password confirmation.
+// DisableTOTP disables 2FA for the user after re-authentication: the current
+// password and, because 2FA is on by definition here, a TOTP or recovery code.
 func (h *SecurityHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 
@@ -173,17 +201,9 @@ func (h *SecurityHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify current password.
-	_, err := h.authenticator.Authenticate(email, password)
-	if err != nil {
-		http.Redirect(w, r, "/settings/security?flash=Invalid+password", http.StatusSeeOther)
-		return
-	}
-
-	// Load profile, disable TOTP.
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "Failed to load profile", http.StatusInternalServerError)
+	defer lockUser(userID)()
+	profile, ok := h.reauthenticate(w, r, userID, email, password)
+	if !ok {
 		return
 	}
 
@@ -195,6 +215,7 @@ func (h *SecurityHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save profile", http.StatusInternalServerError)
 		return
 	}
+	h.succeed(r, email)
 
 	http.Redirect(w, r, "/settings/security?flash=Two-factor+authentication+disabled", http.StatusSeeOther)
 }
@@ -228,10 +249,9 @@ func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Verify current password.
-	_, err := h.authenticator.Authenticate(email, currentPassword)
-	if err != nil {
-		http.Redirect(w, r, "/settings/security?flash=Current+password+is+incorrect", http.StatusSeeOther)
+	defer lockUser(userID)()
+	profile, ok := h.reauthenticate(w, r, userID, email, currentPassword)
+	if !ok {
 		return
 	}
 
@@ -241,22 +261,73 @@ func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return
 	}
-
-	// Load and update profile.
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "Failed to load profile", http.StatusInternalServerError)
-		return
-	}
-
 	profile.PasswordHash = hash
 
 	if err := h.saveProfile(userID, profile); err != nil {
 		http.Error(w, "Failed to save profile", http.StatusInternalServerError)
 		return
 	}
+	h.succeed(r, email)
 
 	http.Redirect(w, r, "/settings/security?flash=Password+changed+successfully", http.StatusSeeOther)
+}
+
+const totpAlreadyEnabledRedirect = "/settings/security?flash=Two-factor+authentication+is+already+enabled.+Disable+it+first+to+replace+it."
+
+// totpEnrolled reports whether the user already has 2FA enabled. A profile
+// that cannot be read counts as enrolled, so the guard fails closed.
+func (h *SecurityHandler) totpEnrolled(userID string) bool {
+	profile, err := h.loadProfile(userID)
+	return err != nil || profile.TotpEnabled
+}
+
+// reauthenticate checks the password and, for a 2FA account, the second factor
+// from the totp_code field. On success it returns the freshly loaded profile
+// with the consumed factor already applied to it (TOTP step advanced, or the
+// recovery code removed); the caller persists it together with its own change,
+// so the factor is only spent when the change is written. On failure it has
+// already written the response and returns ok=false. The caller holds the
+// per-user lock across this call and its write.
+func (h *SecurityHandler) reauthenticate(w http.ResponseWriter, r *http.Request, userID, email, password string) (*bongov1.UserProfile, bool) {
+	ip := middleware.ClientIP(r)
+	if h.limiter != nil && h.limiter.IsLimited(ip) {
+		w.Header().Set("Retry-After", strconv.Itoa(int(h.limiter.Window().Seconds())))
+		http.Error(w, "Too many attempts. Please try again later.", http.StatusTooManyRequests)
+		return nil, false
+	}
+
+	if _, err := h.authenticator.Authenticate(email, password); err != nil {
+		h.fail(ip, email)
+		http.Redirect(w, r, "/settings/security?flash=Invalid+password", http.StatusSeeOther)
+		return nil, false
+	}
+
+	profile, err := h.loadProfile(userID)
+	if err != nil {
+		http.Error(w, "Failed to load profile", http.StatusInternalServerError)
+		return nil, false
+	}
+
+	if profile.TotpEnabled {
+		if ok, _ := consumeSecondFactor(profile, r.FormValue("totp_code"), time.Now()); !ok {
+			h.fail(ip, email)
+			http.Redirect(w, r, "/settings/security?flash=Invalid+authentication+code", http.StatusSeeOther)
+			return nil, false
+		}
+	}
+	return profile, true
+}
+
+func (h *SecurityHandler) fail(ip, email string) {
+	if h.limiter != nil {
+		h.limiter.RecordFailure(ip, email)
+	}
+}
+
+func (h *SecurityHandler) succeed(r *http.Request, email string) {
+	if h.limiter != nil {
+		h.limiter.Succeed(middleware.ClientIP(r), email)
+	}
 }
 
 // --- Internal helpers ---

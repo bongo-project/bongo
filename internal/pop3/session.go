@@ -98,7 +98,8 @@ func newSession(
 
 // clientIP returns the remote client's IP for auth-throttle keying. The POP3
 // listeners are wrapped with the PROXY-protocol reader, so RemoteAddr reflects
-// the real client behind the proxy.
+// the real client behind the proxy when that proxy is listed in
+// server.trusted_proxies; otherwise it is the TCP peer.
 func (s *session) clientIP() string {
 	if s.conn == nil {
 		return ""

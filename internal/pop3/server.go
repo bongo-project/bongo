@@ -82,7 +82,7 @@ func (s *Server) SetConnectionLimits(maxConn, maxPerIP int) {
 }
 
 // Listen binds the POP3 listeners on the given addresses.
-func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool) error {
+func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool, trust *netx.TrustedProxies) error {
 	if s.maxConn <= 0 {
 		s.maxConn = netx.DefaultMaxConnections
 	}
@@ -90,7 +90,7 @@ func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool) error {
 	if err != nil {
 		return fmt.Errorf("pop3 listen %s: %w", plainAddr, err)
 	}
-	s.plainListener = netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(plain, s.maxConn), proxyProtocol), s.connLimit)
+	s.plainListener = netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(plain, s.maxConn), proxyProtocol, trust, netx.WithRejectLogger(s.logger)), s.connLimit)
 	s.logger.Info("pop3: listening", "addr", s.plainListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 
 	if tlsAddr != "" && s.tlsCfg != nil {
@@ -102,7 +102,7 @@ func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool) error {
 			return fmt.Errorf("pop3s listen %s: %w", tlsAddr, err)
 		}
 		// PROXY header must be read before the TLS handshake.
-		s.tlsListener = tls.NewListener(netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(rawTLS, s.maxConn), proxyProtocol), s.connLimit), s.tlsCfg)
+		s.tlsListener = tls.NewListener(netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(rawTLS, s.maxConn), proxyProtocol, trust, netx.WithRejectLogger(s.logger)), s.connLimit), s.tlsCfg)
 		s.logger.Info("pop3s: listening", "addr", s.tlsListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 	}
 

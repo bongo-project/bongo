@@ -182,6 +182,48 @@ func TestViewSourceCrossUserReturns404(t *testing.T) {
 	}
 }
 
+// TestViewSourceAdminCannotReadOtherUsersMessage: administrators have no
+// special view of another user's message source. The request also carries
+// user/owner query parameters, which an admin bypass would plausibly honour.
+func TestViewSourceAdminCannotReadOtherUsersMessage(t *testing.T) {
+	routerOwner, ps, mailboxes, bs := setupViewSourceRouter(t, "user1")
+	raw := "From: sender@example.test\r\n" +
+		"To: user1@example.test\r\n" +
+		"Subject: Admin Must Not See\r\n" +
+		"\r\n" +
+		"Private body for the owner only.\r\n"
+	uid := deliverRawMessage(t, mailboxes, bs, "user1", "Admin Must Not See", raw)
+
+	path := fmt.Sprintf("/mail/INBOX/%d/source", uid)
+	wOwner := httptest.NewRecorder()
+	routerOwner.ServeHTTP(wOwner, httptest.NewRequest(http.MethodGet, path, nil))
+	if wOwner.Code != http.StatusOK || !strings.Contains(wOwner.Body.String(), "Admin Must Not See") {
+		t.Fatalf("owner control failed: status %d; the admin assertion would be vacuous", wOwner.Code)
+	}
+
+	h := NewMailHandler(ps, bs, mailboxes, discardLogger())
+	adminRouter := chi.NewRouter()
+	adminRouter.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := middleware.WithUserContext(req.Context(), "admin1", "admin1@example.test")
+			ctx = middleware.WithAdminContext(ctx, true)
+			ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	adminRouter.Get("/mail/{mailbox}/{uid}/source", h.ViewSource)
+
+	w := httptest.NewRecorder()
+	adminRouter.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path+"?user=user1&owner=user1", nil))
+	if w.Code != http.StatusNotFound && w.Code != http.StatusForbidden {
+		t.Fatalf("admin status = %d, want 404 or 403", w.Code)
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "Admin Must Not See") || strings.Contains(body, "Private body") {
+		t.Fatalf("admin response leaked message content: %q", body)
+	}
+}
+
 // TestViewSourceTruncatesLargeMessage: a message larger than the size cap
 // renders the truncation notice, the export link, and a bounded body.
 func TestViewSourceTruncatesLargeMessage(t *testing.T) {

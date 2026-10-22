@@ -42,7 +42,7 @@ func TestServerRoutesLibraryLogsToSlog(t *testing.T) {
 	var out syncBuffer
 	logger := slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, tlsCfg, true, logger)
-	if err := s.Listen("127.0.0.1:0", "127.0.0.1:0", tlsCfg, false); err != nil {
+	if err := s.Listen("127.0.0.1:0", "127.0.0.1:0", tlsCfg, false, nil); err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	go func() { _ = s.Serve() }()

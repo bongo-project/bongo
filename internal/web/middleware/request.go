@@ -4,10 +4,24 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
+
+	"github.com/bongo-project/bongo/internal/netx"
 )
 
+// trustedProxies is the operator-configured set of proxies whose forwarded
+// headers are believed (server.trusted_proxies). Unset trusts nobody.
+var trustedProxies atomic.Pointer[netx.TrustedProxies]
+
+// SetTrustedProxies installs the proxy set ClientIP and IsHTTPS consult. The
+// agent calls it once before the router starts; nil trusts nobody.
+func SetTrustedProxies(t *netx.TrustedProxies) {
+	trustedProxies.Store(t)
+}
+
 // ClientIP returns the client IP for the request. Forwarded headers are only
-// trusted when the direct peer is on a trusted local network.
+// trusted when the direct peer is listed in server.trusted_proxies; a private
+// or loopback address alone is not enough.
 //
 // When trusted, it takes the RIGHTMOST X-Forwarded-For entry — the value the
 // immediate trusted proxy (e.g. Traefik) appended for the real client. Taking
@@ -18,7 +32,7 @@ func ClientIP(r *http.Request) string {
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	if !trustForwardedFor(host) {
+	if !trustedProxies.Load().TrustsHost(host) {
 		return host
 	}
 
@@ -47,7 +61,7 @@ func IsHTTPS(r *http.Request) bool {
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	if !trustForwardedFor(host) {
+	if !trustedProxies.Load().TrustsHost(host) {
 		return false
 	}
 	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
@@ -58,9 +72,18 @@ func IsHTTPS(r *http.Request) bool {
 // loopback, private, or link-local. It keeps control-plane endpoints such as
 // /metrics off the public internet at the code layer instead of relying solely
 // on the reverse proxy's IP allow-list.
-func PrivateOnly() func(http.Handler) http.Handler {
+//
+// behindTLSProxy is web.behind_tls_proxy. In that deployment every request
+// reaches us from the proxy's private address, so with no trusted proxy
+// configured ClientIP can only ever see that address and the private-range
+// check would pass public clients. The guard then fails closed with 403.
+func PrivateOnly(behindTLSProxy bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if behindTLSProxy && trustedProxies.Load().Empty() {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
 			ip := net.ParseIP(ClientIP(r))
 			if ip == nil || (!ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast()) {
 				http.Error(w, "Forbidden", http.StatusForbidden)
@@ -69,15 +92,4 @@ func PrivateOnly() func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func trustForwardedFor(host string) bool {
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return false
-	}
-	if ip.IsLoopback() || ip.IsPrivate() {
-		return true
-	}
-	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
 }

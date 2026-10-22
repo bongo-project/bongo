@@ -22,18 +22,20 @@ const (
 )
 
 type UserProfile struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
-	DisplayName   string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	PasswordHash  []byte                 `protobuf:"bytes,3,opt,name=password_hash,json=passwordHash,proto3" json:"password_hash,omitempty"`
-	TotpSecret    []byte                 `protobuf:"bytes,4,opt,name=totp_secret,json=totpSecret,proto3" json:"totp_secret,omitempty"`
-	QuotaBytes    int64                  `protobuf:"varint,5,opt,name=quota_bytes,json=quotaBytes,proto3" json:"quota_bytes,omitempty"`
-	IsAdmin       bool                   `protobuf:"varint,6,opt,name=is_admin,json=isAdmin,proto3" json:"is_admin,omitempty"`
-	Disabled      bool                   `protobuf:"varint,7,opt,name=disabled,proto3" json:"disabled,omitempty"`
-	RecoveryCodes []string               `protobuf:"bytes,8,rep,name=recovery_codes,json=recoveryCodes,proto3" json:"recovery_codes,omitempty"` // bcrypt hashed recovery codes
-	TotpEnabled   bool                   `protobuf:"varint,9,opt,name=totp_enabled,json=totpEnabled,proto3" json:"totp_enabled,omitempty"`      // whether 2FA is active
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Email             string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	DisplayName       string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	PasswordHash      []byte                 `protobuf:"bytes,3,opt,name=password_hash,json=passwordHash,proto3" json:"password_hash,omitempty"`
+	TotpSecret        []byte                 `protobuf:"bytes,4,opt,name=totp_secret,json=totpSecret,proto3" json:"totp_secret,omitempty"`
+	QuotaBytes        int64                  `protobuf:"varint,5,opt,name=quota_bytes,json=quotaBytes,proto3" json:"quota_bytes,omitempty"`
+	IsAdmin           bool                   `protobuf:"varint,6,opt,name=is_admin,json=isAdmin,proto3" json:"is_admin,omitempty"`
+	Disabled          bool                   `protobuf:"varint,7,opt,name=disabled,proto3" json:"disabled,omitempty"`
+	RecoveryCodes     []string               `protobuf:"bytes,8,rep,name=recovery_codes,json=recoveryCodes,proto3" json:"recovery_codes,omitempty"`               // bcrypt hashed recovery codes
+	TotpEnabled       bool                   `protobuf:"varint,9,opt,name=totp_enabled,json=totpEnabled,proto3" json:"totp_enabled,omitempty"`                    // whether 2FA is active
+	SessionGeneration uint64                 `protobuf:"varint,10,opt,name=session_generation,json=sessionGeneration,proto3" json:"session_generation,omitempty"` // bumped on web logout; mixed into the session epoch when non-zero
+	TotpLastStep      int64                  `protobuf:"varint,11,opt,name=totp_last_step,json=totpLastStep,proto3" json:"totp_last_step,omitempty"`              // last accepted TOTP time-step (unix/30); codes at or below it are replays
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *UserProfile) Reset() {
@@ -129,11 +131,25 @@ func (x *UserProfile) GetTotpEnabled() bool {
 	return false
 }
 
+func (x *UserProfile) GetSessionGeneration() uint64 {
+	if x != nil {
+		return x.SessionGeneration
+	}
+	return 0
+}
+
+func (x *UserProfile) GetTotpLastStep() int64 {
+	if x != nil {
+		return x.TotpLastStep
+	}
+	return 0
+}
+
 var File_proto_bongo_v1_profile_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_profile_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/bongo/v1/profile.proto\x12\bbongo.v1\"\xae\x02\n" +
+	"\x1cproto/bongo/v1/profile.proto\x12\bbongo.v1\"\x83\x03\n" +
 	"\vUserProfile\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12#\n" +
@@ -145,7 +161,10 @@ const file_proto_bongo_v1_profile_proto_rawDesc = "" +
 	"\bis_admin\x18\x06 \x01(\bR\aisAdmin\x12\x1a\n" +
 	"\bdisabled\x18\a \x01(\bR\bdisabled\x12%\n" +
 	"\x0erecovery_codes\x18\b \x03(\tR\rrecoveryCodes\x12!\n" +
-	"\ftotp_enabled\x18\t \x01(\bR\vtotpEnabledB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"\ftotp_enabled\x18\t \x01(\bR\vtotpEnabled\x12-\n" +
+	"\x12session_generation\x18\n" +
+	" \x01(\x04R\x11sessionGeneration\x12$\n" +
+	"\x0etotp_last_step\x18\v \x01(\x03R\ftotpLastStepB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_profile_proto_rawDescOnce sync.Once

@@ -163,6 +163,8 @@ separate certbot would just conflict.
 >
 > Bongo loads the mail cert once at startup, so also restart after each renewal
 > (a renewal hook or a weekly `restart bongo` cron is fine for a test).
+> certs-dumper chowns the dumped files to uid 10001 itself (`--post-hook`), so
+> the restart is all that is needed (see section 11 for the one-time host chown).
 
 ---
 
@@ -267,6 +269,12 @@ controlling terminal on a foreground `serve`, and a process started under
   which the container does not see until it restarts. Edit in place, or check
   what the container sees before sending the signal:
   `docker compose exec bongo cat /etc/bongo/bongo.hcl`.
+- **Cluster ports are loopback-only on a single node.** With
+  `advertise_addr = "127.0.0.1"` (the shipped default), raft (8300) and gossip
+  (8301) listen on loopback inside the container even though `bind_addr` is
+  `0.0.0.0` for the mail and HTTP listeners. Not publishing the ports is not
+  enough on its own: other containers on the `traefik` network could otherwise
+  reach them. Setting a routable `advertise_addr` restores the wide bind.
 - **Config is per node.** SIGHUP reloads the node that receives it. In a
   cluster, edit the file and send the signal on every node.
 
@@ -379,31 +387,80 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   from `cluster.tls`, which is why `bongo.prod.hcl` sets it to the same
   Let's Encrypt cert as `smtp.tls`. Worth refactoring to a dedicated `imap.tls`
   block later. (POP3 is disabled here — no Traefik entrypoint for it.)
-- **Container runs as uid 10001 (non-root).** The entrypoint starts as root,
-  chowns `/data`, `/logs`, and `/certs`, then drops to the dedicated `bongo`
-  user (uid/gid 10001) via `su-exec`.  The binary carries `cap_net_bind_service`
-  as a file capability so ports 25, 587, 143, 993 still bind from non-root.
-  Two one-off host commands are required before first start:
+- **Container runs as uid 10001 (non-root) from the start.** There is no root
+  entrypoint, no `su-exec` and no file capability. The compose service sets
+  `user: "10001:10001"`, `cap_drop: [ALL]` (nothing added back),
+  `security_opt: [no-new-privileges:true]` and the sysctl
+  `net.ipv4.ip_unprivileged_port_start=0`, which is what lets the process bind
+  ports 25, 587, 143 and 993 without any capability. The image no longer
+  chowns anything at start, so ownership of the bind-mounted directories is an
+  operator step. Run this once before first start:
 
   ```bash
-  # DKIM key: /secrets/dkim.key is :ro and cannot be chowned inside the
-  # container. The host file must be readable by uid 10001.
-  chown 10001 deploy/secrets/dkim.key
-
-  # Log directory: bind-mounted from the host, may arrive root-owned.
-  mkdir -p deploy/logs
-  chown -R 10001:10001 deploy/logs
+  cd deploy
+  mkdir -p data logs certs
+  chown -R 10001:10001 data logs certs
+  # DKIM key: mounted :ro, so the host file must be readable by uid 10001.
+  chown 10001 secrets/dkim.key        # or: chmod 0644 secrets/dkim.key
   ```
 
-  The `/certs` volume (TLS keys from certs-dumper) is handled automatically:
-  the entrypoint chowns it on each startup.  After a cert renewal the directory
-  reverts to root ownership; a `docker compose restart bongo` restores it.
+  **Migrating an existing deployment.** The previous image also used uid 10001
+  and chowned `/data` and `/logs` on every start, so those are normally already
+  correct. `./certs` may hold root-owned files written by certs-dumper since the
+  last restart. Before pulling the new image, run the same command once; it is
+  idempotent:
+
+  ```bash
+  chown -R 10001:10001 data logs certs
+  ```
+
+  If it is missed, bongo exits at startup with a permission error opening
+  Pebble or raft under `/data`, or serves STARTTLS/IMAPS without the Let's
+  Encrypt certificate because it cannot read `privatekey.key`.
+
+  **Certificate ownership after renewals.** certs-dumper stays root, and its
+  `--post-hook=chown -R 10001:10001 /certs` hands every dump to uid 10001, so
+  a renewal followed by `docker compose restart bongo` just works and `/certs`
+  is mounted read-only into bongo. (In `--watch` mode `--post-hook` also runs
+  on the first dump when certs-dumper starts, but the manual `chown` above
+  remains the safe step when upgrading.)
+
+  **Debugging.** `bongo-go` is now the image ENTRYPOINT, so use
+  `docker exec -it bongo sh` or `docker run --entrypoint sh` for a shell.
+
+  **Nomad / infra repo.** Production runs as a Nomad job in the infra repo, not
+  from this compose file, and needs the matching change, applied by the
+  operator: in the docker driver `config` set `user = "10001:10001"`,
+  `cap_drop = ["ALL"]` (and no `cap_add`), `security_opt = ["no-new-privileges:true"]`
+  and `sysctl = { "net.ipv4.ip_unprivileged_port_start" = "0" }` (this needs
+  bridge networking; Docker rejects the sysctl under host networking), and
+  chown the host volumes for data, logs and certs to 10001:10001. Do the chown
+  before deploying the new image.
 - **Secure cookies behind a proxy:** with `plain_http=true`, the app doesn't set
   the `Secure` cookie flag itself (TLS is at Traefik). Fine for a test; revisit
   for production.
 - **No log rotation on `bongo.jsonl`:** add `logrotate` or cap it if it runs for
   a long time.
-- **Inbound SPF is blind behind Traefik TCP.** Because inbound SMTP (port 25) is
+- **Set `trusted_proxies` before the first deploy.** `deploy/bongo.prod.hcl`
+  ships `172.18.0.0/16`, a placeholder, not Traefik's real address. Find Traefik's
+  address on the shared network with
+  `docker network inspect ${TRAEFIK_NETWORK} --format '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{"\n"}}{{end}}'`
+  (or `docker inspect <traefik-container> --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`),
+  or pin Traefik to a static IP and use that. Put it in `trusted_proxies` as a
+  `/32`. After deploying, watch the first minutes of logs: the WARN
+  `proxy protocol header from a peer not in server.trusted_proxies was ignored`
+  (logged at most once a minute, with the peer IP only) means the value is wrong,
+  and the `peer` field is the address to list.
+- **`server.trusted_proxies` must name Traefik.** PROXY protocol and
+  `X-Forwarded-*` headers are believed only from the addresses listed in
+  `server.trusted_proxies` in `bongo.prod.hcl`; no private or loopback peer is
+  trusted implicitly, and startup fails if `proxy_protocol` is on and the list is
+  empty. Pin Traefik to a static IP on `${TRAEFIK_NETWORK}` (in Traefik's own
+  compose project) and list it as a `/32`. The fallback is the network CIDR from
+  `docker network inspect traefik_web`, but that trusts every container on the
+  network, so any of them can forge a client IP; treat it as a stopgap. Upgrading
+  from a release without this key: set it before deploying or bongo will not start.
+- **Inbound SPF (historical note).** Because inbound SMTP (port 25) is
   routed through Traefik's TCP entrypoint, bongo sees Traefik's IP as the sender,
   not the real remote — so SPF checks and per-IP abuse controls don't see the
   true client. Before relying on inbound spam filtering, either enable PROXY
