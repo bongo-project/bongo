@@ -63,6 +63,32 @@ func (h *AdminHandler) requireUserAccess(w http.ResponseWriter, scope middleware
 	return profile, true
 }
 
+// requireTargetUser checks the second object of a domain-scoped write: the
+// user an alias, catch-all or domain-admin grant is pointed at. The target's
+// primary address must lie in the caller's domains.
+//
+// This deliberately differs from requireUserAccess. That helper decides
+// whether the caller may MANAGE the user, so it also refuses global admins and
+// users who administer other domains. Here the question is only whether the
+// user may receive this domain's mail or hold this domain's admin role, which
+// the primary-domain rule answers.
+//
+// Zero-leak semantics: a nonexistent user, a profile that fails to load and an
+// out-of-scope user all produce the identical 403, so the response is not an
+// existence oracle. Global admins pass without a lookup and keep their
+// informative errors from the calling handler.
+func (h *AdminHandler) requireTargetUser(w http.ResponseWriter, scope middleware.AdminScope, userID string) bool {
+	if scope.Global {
+		return true
+	}
+	profile, err := h.loadProfile(userID)
+	if err != nil || !scope.HasDomain(domainFromEmail(profile.Email)) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
 // targetWithinScope reports whether a domain-admin may manage the target: the
 // target must not be a global admin, and every domain the target administers
 // (owned or granted) must lie inside the caller's scope. Fails closed when the

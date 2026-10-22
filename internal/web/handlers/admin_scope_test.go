@@ -955,7 +955,7 @@ func TestCreateAlias_DomainAdmin_D2Forbidden(t *testing.T) {
 		http.MethodPost, "/admin/aliases",
 		url.Values{
 			"address":     {"newaliasind2@" + testDomain2},
-			"target_user": {env.d2UserID},
+			"target_user": {"user2@" + testDomain2},
 		},
 		nil,
 		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
@@ -972,13 +972,13 @@ func TestCreateAlias_DomainAdmin_D1OK(t *testing.T) {
 		http.MethodPost, "/admin/aliases",
 		url.Values{
 			"address":     {"newaliasind1@" + testDomain1},
-			"target_user": {env.d1UserID},
+			"target_user": {"user1@" + testDomain1},
 		},
 		nil,
 		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
 	)
-	if w.Code == http.StatusForbidden {
-		t.Errorf("CreateAlias d1 (domain-admin of d1) status = 403, should be allowed")
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("CreateAlias d1 (domain-admin of d1) status = %d, want 303", w.Code)
 	}
 }
 
@@ -1577,7 +1577,7 @@ func TestAdversarialSweep_AllEndpoints_DomainAdmin(t *testing.T) {
 		{name: "CreateAlias/d2", fn: env.h.CreateAlias, method: http.MethodPost,
 			body: url.Values{
 				"address":     {"sweep-alias@" + testDomain2},
-				"target_user": {env.d2UserID},
+				"target_user": {"user2@" + testDomain2},
 			}, wantDenied: true},
 		{name: "DeleteAlias/d2", fn: env.h.DeleteAlias, method: http.MethodPost,
 			params:     map[string]string{"address": "sweep-alias2@" + testDomain2},
@@ -1612,6 +1612,18 @@ func TestAdversarialSweep_AllEndpoints_DomainAdmin(t *testing.T) {
 		{name: "GrantSend/d1-user-d2-addr", fn: env.h.GrantSend, method: http.MethodPost,
 			params: map[string]string{"userID": env.d1UserID},
 			body:   url.Values{"address": {"spoof@" + testDomain2}}, wantDenied: true},
+		// Second-object scope: d1 resource aimed at a d2 user -> 403.
+		{name: "CreateAlias/d1-addr-d2-target", fn: env.h.CreateAlias, method: http.MethodPost,
+			body: url.Values{
+				"address":     {"sweep-second@" + testDomain1},
+				"target_user": {"user2@" + testDomain2},
+			}, wantDenied: true},
+		{name: "SetCatchAll/d1-d2-owner", fn: env.h.SetCatchAll, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain1},
+			body:   url.Values{"owner_user_id": {env.d2UserID}}, wantDenied: true},
+		{name: "GrantDomainAdmin/d1-d2-user", fn: env.h.GrantDomainAdmin, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain1},
+			body:   url.Values{"user_id": {env.d2UserID}}, wantDenied: true},
 		// CreateUser in d2 -> 403.
 		{name: "CreateUser/d2", fn: env.h.CreateUser, method: http.MethodPost,
 			body: url.Values{
@@ -1631,12 +1643,16 @@ func TestAdversarialSweep_AllEndpoints_DomainAdmin(t *testing.T) {
 				if w.Code != http.StatusForbidden {
 					t.Errorf("expected 403, got %d", w.Code)
 				}
-				// Zero-leak: response must not contain d2 identifiers in error text.
+				// Zero-leak: every denial is the bare "Forbidden" body, which
+				// cannot carry d2 data.
 				body := w.Body.String()
-				if strings.Contains(body, testDomain2) && !strings.Contains(tc.name, "d2") {
-					// Only flag d2 content leaks in tests NOT targeting d2 (to avoid
-					// false positives from test names embedded in the URL path).
-					t.Errorf("response body contains %q — potential data leak", testDomain2)
+				if body != "Forbidden\n" {
+					t.Errorf("body = %q, want %q", body, "Forbidden\n")
+				}
+				for _, leak := range []string{testDomain2, env.d2UserID} {
+					if strings.Contains(body, leak) {
+						t.Errorf("response body contains %q — data leak", leak)
+					}
 				}
 			} else {
 				if w.Code == http.StatusForbidden {

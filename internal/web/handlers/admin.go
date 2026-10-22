@@ -1343,6 +1343,12 @@ func (h *AdminHandler) SetCatchAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The owner must be in the caller's scope; checked before the SQLite
+	// lookup so an unknown ID and an out-of-scope ID look the same.
+	if !h.requireTargetUser(w, scope, ownerUserID) {
+		return
+	}
+
 	// Best-effort owner validation: check the local SQLite users table.
 	// Reads per-node SQLite which may be stale on followers (same caveat as
 	// existing createUserViaRaft/domain handlers). Treat as UX guard, not
@@ -1470,6 +1476,12 @@ func (h *AdminHandler) GrantDomainAdmin(w http.ResponseWriter, r *http.Request) 
 	userID := strings.TrimSpace(r.FormValue("user_id"))
 	if userID == "" {
 		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Checked before Grant so its "user not found" error cannot reach a
+	// domain admin as an existence oracle.
+	if !h.requireTargetUser(w, scope, userID) {
 		return
 	}
 
@@ -1641,6 +1653,15 @@ func (h *AdminHandler) ListAliases(w http.ResponseWriter, r *http.Request) {
 		aliases = filtered
 	}
 	users := h.loadUserEmails()
+	if !scope.Global {
+		inScope := users[:0]
+		for _, u := range users {
+			if scope.HasDomain(domainFromEmail(u)) {
+				inScope = append(inScope, u)
+			}
+		}
+		users = inScope
+	}
 	templ.Handler(templates.AdminAliasList(aliases, users, email, flash)).ServeHTTP(w, r)
 }
 
@@ -1683,11 +1704,21 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 	var targetID string
 	if err := h.metadata.System.DB().QueryRow("SELECT id FROM users WHERE username = ?", targetUser).Scan(&targetID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if !scope.Global {
+				// Same response as an out-of-scope target: no existence oracle.
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
 			http.Error(w, "target user not found", http.StatusBadRequest)
 			return
 		}
 		h.logger.Error("admin: alias target lookup failed", "target", targetUser, "error", err)
 		http.Error(w, "failed to create alias", http.StatusInternalServerError)
+		return
+	}
+	// Scope is decided from the Pebble profile's primary address, not the
+	// SQLite username string.
+	if !h.requireTargetUser(w, scope, targetID) {
 		return
 	}
 

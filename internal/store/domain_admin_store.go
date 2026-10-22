@@ -43,8 +43,16 @@ func domainAdminPrefixForDomain(domain string) []byte {
 // read-modify-write hazard that would arise when GenerateDKIMKey rebuilds the
 // record from scratch. Each key holds exactly the data it cares about.
 type DomainAdminStore struct {
-	pebble  *PebbleStore
+	pebble  kvReader
 	applier RaftApplier
+}
+
+// kvReader is the read side of PebbleStore that DomainAdminStore uses. It is a
+// seam so tests can inject iterator value errors, which a real Pebble store
+// cannot be made to produce.
+type kvReader interface {
+	Get(key []byte) ([]byte, error)
+	PrefixScan(prefix []byte) (Iterator, error)
 }
 
 // NewDomainAdminStore creates a DomainAdminStore.
@@ -274,7 +282,10 @@ func (s *DomainAdminStore) AuthorizedDomains(userID string, isGlobalAdmin bool) 
 	if err != nil {
 		return nil, fmt.Errorf("authorized domains: scan owners: %w", err)
 	}
-	func() {
+	// An unreadable owner key must fail the whole call: skipping it would
+	// return a scope that silently omits a domain, and callers treat an
+	// error as deny.
+	scanErr := func() error {
 		defer iter.Close()
 		for iter.Next() {
 			key := string(iter.Key())
@@ -288,13 +299,17 @@ func (s *DomainAdminStore) AuthorizedDomains(userID string, isGlobalAdmin bool) 
 			}
 			val, vErr := iter.Value()
 			if vErr != nil {
-				continue
+				return fmt.Errorf("authorized domains: read owner %q: %w", domain, vErr)
 			}
 			if strings.TrimSpace(string(val)) == userID {
 				add(domain)
 			}
 		}
+		return nil
 	}()
+	if scanErr != nil {
+		return nil, scanErr
+	}
 
 	// Domains granted to user.
 	granted, err := s.ListForUser(userID)
