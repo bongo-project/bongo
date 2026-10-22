@@ -823,12 +823,21 @@ var knownBackends = map[string]bool{
 
 // PipelineConfig controls the inbound mail processing pipeline.
 type PipelineConfig struct {
-	Workers             int           `hcl:"workers,optional" mapstructure:"workers"`
-	PollInterval        string        `hcl:"poll_interval,optional" mapstructure:"poll_interval"`
-	ErrorRetention      string        `hcl:"error_retention,optional" mapstructure:"error_retention"`
-	QuarantineRetention string        `hcl:"quarantine_retention,optional" mapstructure:"quarantine_retention"`
-	MessageTimeout      string        `hcl:"message_timeout,optional" mapstructure:"message_timeout"`
-	Stages              []StageConfig `hcl:"stage,block" mapstructure:"stage"`
+	Workers             int    `hcl:"workers,optional" mapstructure:"workers"`
+	PollInterval        string `hcl:"poll_interval,optional" mapstructure:"poll_interval"`
+	ErrorRetention      string `hcl:"error_retention,optional" mapstructure:"error_retention"`
+	QuarantineRetention string `hcl:"quarantine_retention,optional" mapstructure:"quarantine_retention"`
+	MessageTimeout      string `hcl:"message_timeout,optional" mapstructure:"message_timeout"`
+	// ForwardMaxPerHour caps messages forwarded off-server per user per hour;
+	// ForwardVerifyMaxPerHour caps forward-verification mails per user per
+	// hour. Zero disables the limit. Both limits are hourly only (there is no
+	// daily cap) and are counted in memory on each node: a restart resets them
+	// and, with several nodes, each node enforces its own budget, so the
+	// effective cluster-wide ceiling is the limit multiplied by the number of
+	// nodes that process mail. There is deliberately no cluster-wide counter.
+	ForwardMaxPerHour       int           `hcl:"forward_max_per_hour,optional" mapstructure:"forward_max_per_hour"`
+	ForwardVerifyMaxPerHour int           `hcl:"forward_verify_max_per_hour,optional" mapstructure:"forward_verify_max_per_hour"`
+	Stages                  []StageConfig `hcl:"stage,block" mapstructure:"stage"`
 }
 
 // QueueConfig controls the outbound-delivery queue worker.
@@ -1118,12 +1127,14 @@ func Defaults() *Config {
 			},
 		},
 		Pipeline: PipelineConfig{
-			Workers:             5,
-			PollInterval:        "1s",
-			ErrorRetention:      "30d",
-			QuarantineRetention: "30d",
-			MessageTimeout:      "2m",
-			Stages:              defaultPipelineStages(),
+			Workers:                 5,
+			PollInterval:            "1s",
+			ErrorRetention:          "30d",
+			QuarantineRetention:     "30d",
+			MessageTimeout:          "2m",
+			ForwardMaxPerHour:       100,
+			ForwardVerifyMaxPerHour: 5,
+			Stages:                  defaultPipelineStages(),
 		},
 		Queue: &QueueConfig{
 			PollInterval: "5s",

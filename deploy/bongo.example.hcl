@@ -536,6 +536,18 @@ pipeline {
   # large attachments. It stops stages waiting on rspamd or clamd, not CPU-bound
   # work. Changing it needs a restart.
   message_timeout      = "2m"
+  # Messages forwarded to external addresses per user per hour (account
+  # forwarding and rule forward actions). Forwards over the limit are dropped
+  # and the local copy is still delivered. 0 disables the limit. The limit is
+  # hourly only (no daily cap) and is counted in memory per node: it resets on
+  # restart, and in a cluster each node keeps its own count, so the effective
+  # ceiling is this value times the number of nodes processing mail. There is
+  # no cluster-wide counter. Default 100.
+  forward_max_per_hour = 100
+  # Forward-verification mails sent per user per hour. 0 disables the limit.
+  # Hourly only and counted in memory per node, like forward_max_per_hour.
+  # Default 5.
+  forward_verify_max_per_hour = 5
 
   stage "antispam" {
     enabled = true

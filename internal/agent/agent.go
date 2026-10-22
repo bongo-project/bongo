@@ -143,8 +143,11 @@ type Agent struct {
 	DKIMRegistry *mail.DKIMRegistry // per-domain signer registry passed to the worker
 	Relay        *bongosmtp.Relay
 	RateLimiter  *mail.RateLimiter
-	SPFChecker   *mail.SPFChecker
-	BounceGen    *mail.BounceGenerator
+	// ForwardTargets holds verified external forwarding targets per user; the
+	// deliver stage forwards only to targets recorded here (or hosted ones).
+	ForwardTargets *store.ForwardTargetStore
+	SPFChecker     *mail.SPFChecker
+	BounceGen      *mail.BounceGenerator
 
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
@@ -498,6 +501,13 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 	if a.Preferences != nil {
 		deliverProc.SetPreferences(a.Preferences)
 	}
+	// Every forward is checked against the owning user's verified targets and
+	// rate limit. Without a store no target can be verified, so none is sent.
+	if ft := a.forwardTargetStore(); ft != nil {
+		deliverProc.SetForwardTargets(ft)
+	}
+	deliverProc.SetForwardLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardMaxPerHour))
+	deliverProc.SetHostedDomains(a.domainHosted)
 	// Attachment deduplication: store large attachments as separate
 	// content-addressed blobs + a message skeleton, reconstructed byte-exact
 	// on read. The self-check inside the deliver stage falls back to whole-raw
@@ -1201,8 +1211,23 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/calendar/search", calendarH.SearchEvents)
 		}
 
+		// Forwarding-target verification, shared by the settings page and the
+		// rules editor. Hosted targets resolve through the same resolver the
+		// deliver stage uses, so both agree on what needs verifying.
+		var fwdVerifier *handlers.ForwardVerifier
+		if ft := a.forwardTargetStore(); ft != nil {
+			fwdVerifier = handlers.NewForwardVerifier(ft, a.hostedForwardTarget(sharedResolver), a.logger)
+			if a.Blobs != nil && a.QueueStore != nil {
+				fwdVerifier.SetMailer(a.Blobs, a.QueueStore)
+			}
+			fwdVerifier.SetLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardVerifyMaxPerHour))
+			r.Post("/settings/forwarding/request", fwdVerifier.Request)
+			r.Post("/settings/forwarding/verify", fwdVerifier.Submit)
+		}
+
 		if a.Preferences != nil {
 			prefH := handlers.NewPreferencesHandler(a.Preferences)
+			prefH.SetForwardVerifier(fwdVerifier)
 			r.Get("/settings", prefH.ShowSettings)
 			r.Post("/settings", prefH.SaveSettings)
 			r.Get("/api/user-prefs", prefH.UserPrefsJSON)
@@ -1210,6 +1235,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Rules != nil && a.Mailboxes != nil {
 			rulesH := handlers.NewRulesHandler(a.Rules, a.Mailboxes, a.Store, a.Blobs)
+			rulesH.SetForwardVerifier(fwdVerifier)
 			r.Get("/settings/rules", rulesH.ListRules)
 			r.Get("/settings/rules/new", rulesH.NewRule)
 			r.Post("/settings/rules", rulesH.CreateRule)
@@ -1667,6 +1693,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Leader-only, idempotent, additive — never deletes or modifies existing
 	// users, aliases, profiles, or mailboxes.
 	a.migrateAddressIndex()
+
+	// Forwards that predate verification are grandfathered so they keep
+	// working, then listed so the operator can decide. Runs after the address
+	// index is populated so hosted targets resolve and are skipped.
+	a.migrateForwardTargets()
+	a.reportGrandfatheredForwards()
 
 	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
 	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
@@ -2815,6 +2847,105 @@ func (a *Agent) reportShadowedIdentities() {
 	}
 	if len(found) > 0 {
 		a.logger.Warn("startup: shadowed identity report", "count", len(found))
+	}
+}
+
+// forwardTargetStore returns the forward-target store, creating it on first
+// use. It is nil when there is no Pebble store (edge and agent roles).
+func (a *Agent) forwardTargetStore() *store.ForwardTargetStore {
+	if a.ForwardTargets == nil && a.Store != nil {
+		a.ForwardTargets = store.NewForwardTargetStore(a.Store, a)
+	}
+	return a.ForwardTargets
+}
+
+// domainHosted reports whether this server hosts the domain. A failed read
+// counts as not hosted, so the target is held for verification.
+func (a *Agent) domainHosted(domain string) bool {
+	if a.Store == nil {
+		return false
+	}
+	ok, err := store.DomainHosted(a.Store, domain)
+	return err == nil && ok
+}
+
+// hostedForwardTarget returns the test for forward targets that need no
+// verification: the address's domain is hosted here and it resolves to a local
+// user. Resolving alone would also match another user's verified send-as
+// identity on an external domain. The deliver stage, the settings and rules
+// handlers and the migration all use this one rule.
+func (a *Agent) hostedForwardTarget(resolver *store.RecipientResolver) func(string) bool {
+	return func(addr string) bool {
+		at := strings.LastIndexByte(addr, '@')
+		if at < 0 || !a.domainHosted(strings.ToLower(addr[at+1:])) {
+			return false
+		}
+		_, err := resolver.ResolveRecipient(addr)
+		return err == nil
+	}
+}
+
+// migrateForwardTargets writes a grandfathered forward-target record for every
+// existing external forward (account ForwardAddress and rule forward actions)
+// so they keep working after forwards began requiring a verified target. A
+// missing record means "not allowed", so without this every existing forward
+// would stop. Leader-only, additive and run to completion once: a marker at
+// /system/migration/fwdtargets stops later boots grandfathering forwards that
+// were saved since (by an old-version node, restored from backup, or whose
+// target stopped being hosted), which must go through verification. Failures
+// are logged and do not abort startup, and leave the marker unset so a later
+// boot retries.
+func (a *Agent) migrateForwardTargets() {
+	ft := a.forwardTargetStore()
+	if ft == nil || a.Raft == nil || !a.IsLeader() {
+		return
+	}
+	var sys *store.SystemIndex
+	if a.Metadata != nil {
+		sys = a.Metadata.System
+	}
+	if done, err := ft.MigrationDone(); err != nil {
+		a.logger.Warn("startup: forward target migration marker unreadable", "error", err)
+		return
+	} else if done {
+		return
+	}
+	resolver := store.NewRecipientResolver(a.AddressStore, a.Store, sys)
+	n, err := ft.MigrateForwardTargets(a.hostedForwardTarget(resolver))
+	if err != nil {
+		a.logger.Warn("startup: forward target migration failed", "written", n, "error", err)
+		return
+	}
+	if n > 0 {
+		a.logger.Info("startup: grandfathered existing forward targets", "count", n)
+	}
+	if err := ft.MarkMigrationDone(); err != nil {
+		a.logger.Warn("startup: forward target migration marker not written", "error", err)
+	}
+}
+
+// reportGrandfatheredForwards lists forwards that work only because they
+// predate verification, so the operator can decide whether to keep them.
+// Read-only.
+func (a *Agent) reportGrandfatheredForwards() {
+	ft := a.forwardTargetStore()
+	if ft == nil {
+		return
+	}
+	found, err := ft.ListGrandfathered()
+	if err != nil {
+		a.logger.Warn("startup: grandfathered forward report failed", "error", err)
+		return
+	}
+	for _, f := range found {
+		a.logger.Warn("startup: external forward predates verification and is still active",
+			"user_id", f.UserID,
+			"forward_to", f.Address,
+			"fix", "ask the user to re-enter the address to verify it, or remove the fwdtarget record to stop the forward",
+		)
+	}
+	if len(found) > 0 {
+		a.logger.Warn("startup: grandfathered forward report", "count", len(found))
 	}
 }
 

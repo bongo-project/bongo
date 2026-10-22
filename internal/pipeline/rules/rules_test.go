@@ -2,6 +2,7 @@ package rules_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -428,7 +429,7 @@ func TestRulesTagDeduplication(t *testing.T) {
 }
 
 func TestRulesForwardAction(t *testing.T) {
-	// A "forward" rule should populate env.ForwardAddresses and record it in reasons.
+	// A "forward" rule should populate env.ForwardRequests and record it in reasons.
 	provider := &mockRuleProvider{
 		rules: map[string][]*bongov1.FilterRule{
 			"alice@example.com": {
@@ -466,12 +467,16 @@ func TestRulesForwardAction(t *testing.T) {
 	if result.Action != "pass" {
 		t.Errorf("expected action=pass, got %q", result.Action)
 	}
-	// ForwardAddresses should contain the target.
-	if len(env.ForwardAddresses) != 1 {
-		t.Fatalf("expected 1 forward address, got %v", env.ForwardAddresses)
+	// ForwardRequests should carry the target, attributed to the rule's owner
+	// (the recipient itself here: this processor has no resolver).
+	if len(env.ForwardRequests) != 1 {
+		t.Fatalf("expected 1 forward request, got %v", env.ForwardRequests)
 	}
-	if env.ForwardAddresses[0] != "external@other.com" {
-		t.Errorf("forward address = %q, want %q", env.ForwardAddresses[0], "external@other.com")
+	if got := env.ForwardRequests[0]; got.UserId != "alice@example.com" || got.Target != "external@other.com" {
+		t.Errorf("forward request = %v, want alice@example.com -> external@other.com", got)
+	}
+	if len(env.ForwardAddresses) != 0 {
+		t.Errorf("legacy unattributed ForwardAddresses = %v, want none", env.ForwardAddresses)
 	}
 	// Reasons should include "forward:external@other.com".
 	found := false
@@ -487,6 +492,44 @@ func TestRulesForwardAction(t *testing.T) {
 	// TargetMailbox should not be changed.
 	if env.TargetMailbox != "" {
 		t.Errorf("forward action must not set TargetMailbox, got %q", env.TargetMailbox)
+	}
+}
+
+type mapResolver map[string]string
+
+func (m mapResolver) ResolveRecipient(email string) (string, error) {
+	if id, ok := m[email]; ok {
+		return id, nil
+	}
+	return "", errors.New("not local")
+}
+
+// Each forward request carries its own rule owner's resolved user ID, not the
+// first recipient's or the recipient address.
+func TestRulesForwardRequestsAttributedPerOwner(t *testing.T) {
+	fwd := func(target string) []*bongov1.FilterRule {
+		return []*bongov1.FilterRule{{
+			Id: "r", Enabled: true,
+			Conditions: []*bongov1.Condition{{Field: "subject", Operator: "contains", Value: "Hello"}},
+			Action:     &bongov1.FilterAction{Type: "forward", Target: target},
+		}}
+	}
+	provider := &mockRuleProvider{rules: map[string][]*bongov1.FilterRule{
+		"user-alice": fwd("a@other.com"),
+		"user-bob":   fwd("b@other.com"),
+	}}
+	p := rulesprocessor.NewRulesProcessor(provider, nil)
+	p.SetResolver(mapResolver{"alice@example.com": "user-alice", "bob@example.com": "user-bob"})
+	env := &bongov1.QueueEnvelope{Recipients: []string{"alice@example.com", "bob@example.com"}}
+	if _, err := p.Process(context.Background(), env, strings.NewReader(minimalMessage("x@y.com", "alice@example.com", "Hello", "hi"))); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	got := map[string]string{}
+	for _, r := range env.ForwardRequests {
+		got[r.Target] = r.UserId
+	}
+	if len(env.ForwardRequests) != 2 || got["a@other.com"] != "user-alice" || got["b@other.com"] != "user-bob" {
+		t.Fatalf("forward requests = %v, want a->user-alice and b->user-bob", env.ForwardRequests)
 	}
 }
 

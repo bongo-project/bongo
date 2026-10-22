@@ -42,6 +42,24 @@ type PreferenceProvider interface {
 	Get(userID string) *bongov1.UserPreferences
 }
 
+// ForwardTargetChecker reports whether a user may forward mail to an external
+// address (a verified or grandfathered target). An error must be treated as a
+// denial.
+type ForwardTargetChecker interface {
+	Allowed(userID, target string) (bool, error)
+}
+
+// HostedDomainChecker reports whether this server hosts a mail domain. It
+// decides which forward targets are exempt from verification, and must be a
+// property of the domain: an external address can resolve to a local user
+// through a verified send-as identity without being hosted here.
+type HostedDomainChecker func(domain string) bool
+
+// ForwardLimiter rate limits forwards per key (the owning user ID).
+type ForwardLimiter interface {
+	Allow(key string) bool
+}
+
 // DeliverProcessor is the final pipeline stage. It receives a fully-scored
 // QueueEnvelope (with blob already written to the blob store), parses the raw
 // message from the io.Reader, constructs a MailMeta protobuf for each
@@ -52,6 +70,14 @@ type DeliverProcessor struct {
 	logger   *slog.Logger
 	queuer   ForwardQueuer
 	prefs    PreferenceProvider
+
+	// fwdTargets and fwdLimiter gate every forward. With no checker set no
+	// forward is sent (fail closed); a nil limiter applies no rate limit.
+	fwdTargets ForwardTargetChecker
+	fwdLimiter ForwardLimiter
+	// hostedDomain exempts targets on locally hosted domains from
+	// verification; nil means no target is exempt.
+	hostedDomain HostedDomainChecker
 
 	// blobs and dedupMinSize enable attachment deduplication: when set,
 	// inbound messages with an attachment part whose encoded body is >=
@@ -124,6 +150,16 @@ func (p *DeliverProcessor) SetQueuer(q ForwardQueuer) { p.queuer = q }
 
 // SetPreferences sets the preference provider for account-level forwarding.
 func (p *DeliverProcessor) SetPreferences(pp PreferenceProvider) { p.prefs = pp }
+
+// SetForwardTargets sets the verified-target check applied to every forward.
+func (p *DeliverProcessor) SetForwardTargets(c ForwardTargetChecker) { p.fwdTargets = c }
+
+// SetHostedDomains sets the check for locally hosted domains; forward targets
+// on them need no verification.
+func (p *DeliverProcessor) SetHostedDomains(c HostedDomainChecker) { p.hostedDomain = c }
+
+// SetForwardLimiter sets the per-user forward rate limiter.
+func (p *DeliverProcessor) SetForwardLimiter(l ForwardLimiter) { p.fwdLimiter = l }
 
 // SetAttachmentDedup enables attachment splitting with the given blob store and
 // minimum encoded-attachment size in bytes. A non-positive size disables it.
@@ -382,6 +418,12 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		return nil, fmt.Errorf("deliver: message %s abandoned before delivery: %w", env.Id, err)
 	}
 
+	// Decide every forward before the recipient loop needs the answer: a user who
+	// forwards without keeping a copy must still get the mail locally whenever
+	// the forward will not actually be sent.
+	gate := p.newForwardGate(env, raw, spamScore, spamTag)
+	gate.vetRuleRequests()
+
 	// Deliver to each recipient. Check account-level forwarding preferences.
 	stepStart = time.Now()
 	for _, rcpt := range env.Recipients {
@@ -400,14 +442,15 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			prefs := p.prefs.Get(userID)
 			tPrefs += mark(prefsStart)
 			if prefs.ForwardAddress != "" {
-				env.ForwardAddresses = append(env.ForwardAddresses, prefs.ForwardAddress)
-				p.logger.Info("deliver: account-level forwarding enabled",
+				sent := gate.permit(userID, prefs.ForwardAddress)
+				p.logger.Info("deliver: account-level forwarding",
 					"recipient", rcpt,
 					"user", userID,
 					"forward_to", prefs.ForwardAddress,
 					"keep_copy", prefs.ForwardKeepCopy,
+					"forwarded", sent,
 				)
-				if !prefs.ForwardKeepCopy {
+				if sent && !prefs.ForwardKeepCopy {
 					skipLocal = true
 				}
 			}
@@ -489,42 +532,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	tRecipients = mark(stepStart)
 
-	// Enqueue forwarded copies to external addresses, with loop protection.
-	if len(env.ForwardAddresses) > 0 && p.queuer != nil {
-		// Hop-count guard: each inbound pass through the MX adds a Received
-		// header, so a message that re-enters via a local forward accumulates
-		// hops. Past the ceiling, suppress forwarding to break the loop.
-		if hops := countReceivedHeaders(raw); hops > maxForwardHops {
-			p.logger.Warn("deliver: forwarding suppressed, hop limit exceeded",
-				"id", env.Id, "hops", hops, "forward_to", env.ForwardAddresses)
-		} else if targets := p.forwardTargets(env.ForwardAddresses, env.Recipients); len(targets) > 0 {
-			// Envelope sender: the original MAIL FROM is kept (there is no SRS), so
-			// SPF will fail at the next hop. DMARC survives only through the
-			// original author's DKIM-Signature, which stays valid because the
-			// queue relays FORWARD messages unmodified and never re-signs them.
-			// Mail that was authored locally and is forwarded externally therefore
-			// leaves unsigned.
-			fwdMsg := &bongov1.OutboundMessage{
-				Id:          uuid.New().String(),
-				SenderEmail: env.Sender,
-				Recipients:  targets,
-				BlobHash:    env.BlobHash,
-				Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD,
-			}
-			if err := p.queuer.Enqueue(fwdMsg); err != nil {
-				p.logger.Warn("deliver: failed to enqueue forwarded message",
-					"id", env.Id,
-					"forward_to", targets,
-					"error", err,
-				)
-			} else {
-				p.logger.Info("deliver: forwarded message enqueued",
-					"id", env.Id,
-					"forward_to", targets,
-				)
-			}
-		}
-	}
+	p.enqueueForwards(env, gate.approved)
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
 	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)
@@ -537,6 +545,194 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		ProcessedAt: time.Now().Unix(),
 		DurationMs:  durationMs,
 	}, nil
+}
+
+// forwardGate collects the forwards one message is allowed to send. Every
+// forward, whether from an account preference or a rule, passes through permit,
+// which is the single enforcement point: the owning user's verified targets,
+// spam suppression, the hop limit and the per-user rate limit.
+type forwardGate struct {
+	p       *DeliverProcessor
+	env     *bongov1.QueueEnvelope
+	raw     []byte
+	blocked string // message-level reason no forward may be sent; empty if none
+	hops    *bool  // lazily computed: only messages that forward pay for the scan
+	decided map[string]bool
+	// approved lists the targets to forward to, in decision order.
+	approved []string
+}
+
+func (p *DeliverProcessor) newForwardGate(env *bongov1.QueueEnvelope, raw []byte, spamScore, spamTag float32) *forwardGate {
+	g := &forwardGate{p: p, env: env, raw: raw, decided: make(map[string]bool)}
+	if forwardedAsSpam(env, spamScore, spamTag) {
+		g.blocked = "spam"
+	}
+	return g
+}
+
+// forwardedAsSpam reports whether the pipeline marked the message as spam,
+// junk or quarantined. Such mail is never forwarded: it would relay spam to a
+// third party under this server's name.
+func forwardedAsSpam(env *bongov1.QueueEnvelope, spamScore, spamTag float32) bool {
+	if spamScore >= spamTag {
+		return true
+	}
+	if mb := strings.ToLower(env.GetTargetMailbox()); mb == "junk" || mb == "quarantine" {
+		return true
+	}
+	for _, st := range env.GetStages() {
+		// Antispam backends mark spam with action "tag" (rspamd add-header,
+		// SpamAssassin) at scores that can sit below the builtin threshold, and
+		// a later rule may overwrite TargetMailbox, so the verdict itself is
+		// what counts. A message released from quarantine keeps its audit
+		// "quarantine" result and is therefore never forwarded.
+		if st.GetStage() == "antispam" && (st.GetAction() == "tag" || st.GetAction() == "quarantine") {
+			return true
+		}
+		if st.GetAction() == "quarantine" {
+			return true
+		}
+	}
+	return false
+}
+
+// vetRuleRequests runs the forwards requested by rules through the gate.
+// Entries without an owning user cannot be checked against anyone's verified
+// targets, so they are dropped.
+func (g *forwardGate) vetRuleRequests() {
+	for _, req := range g.env.GetForwardRequests() {
+		if req.GetUserId() == "" {
+			g.p.logger.Warn("deliver: dropping unattributed forward request",
+				"id", g.env.Id, "forward_to", req.GetTarget())
+			continue
+		}
+		g.permit(req.GetUserId(), req.GetTarget())
+	}
+	if len(g.env.GetForwardAddresses()) > 0 {
+		g.p.logger.Warn("deliver: dropping legacy unattributed forward addresses",
+			"id", g.env.Id, "count", len(g.env.GetForwardAddresses()))
+	}
+}
+
+// permit decides whether userID's forward to target is sent, records it when
+// so, and reports the decision. The answer is cached per (user, target) so an
+// alias and its account in one message use one rate-limit slot, not two.
+func (g *forwardGate) permit(userID, target string) bool {
+	target = strings.TrimSpace(target)
+	key := userID + "|" + strings.ToLower(target)
+	if d, ok := g.decided[key]; ok {
+		return d
+	}
+	reason := g.deny(userID, target)
+	g.decided[key] = reason == ""
+	if reason != "" {
+		g.p.logger.Warn("deliver: forward not sent",
+			"id", g.env.Id, "user", userID, "forward_to", target, "reason", reason)
+		return false
+	}
+	g.approved = append(g.approved, target)
+	return true
+}
+
+// deny returns why the forward must not be sent, or "" when it may be. The
+// rate-limit slot is taken last so a forward that is refused for another
+// reason does not use up the user's budget.
+func (g *forwardGate) deny(userID, target string) string {
+	p := g.p
+	if g.blocked != "" {
+		return g.blocked
+	}
+	if target == "" {
+		return "empty target"
+	}
+	if p.queuer == nil {
+		return "no outbound queue"
+	}
+	// Each inbound pass through the MX adds a Received header, so a message
+	// caught in a forward loop accumulates hops; past the ceiling forwarding
+	// is suppressed to break the loop.
+	if g.hops == nil {
+		over := countReceivedHeaders(g.raw) > maxForwardHops
+		g.hops = &over
+	}
+	if *g.hops {
+		return "hop limit exceeded"
+	}
+	if len(p.forwardTargets([]string{target}, g.env.Recipients)) == 0 {
+		return "forwards to a recipient of this message"
+	}
+	if !p.isHostedAddress(target) {
+		if p.fwdTargets == nil {
+			return "target verification not configured"
+		}
+		ok, err := p.fwdTargets.Allowed(userID, target)
+		if err != nil {
+			p.logger.Warn("deliver: forward target lookup failed, denying",
+				"id", g.env.Id, "user", userID, "error", err)
+			return "target lookup failed"
+		}
+		if !ok {
+			return "target not verified"
+		}
+	}
+	if p.fwdLimiter != nil && !p.fwdLimiter.Allow(userID) {
+		return "rate limit exceeded"
+	}
+	return ""
+}
+
+// isHostedAddress reports whether address is delivered locally: its domain is
+// hosted here and it resolves to a local user. Resolving alone is not enough,
+// because a verified send-as identity on an external domain resolves to its
+// owner. Hosted targets need no verification; every other target does.
+func (p *DeliverProcessor) isHostedAddress(address string) bool {
+	if p.resolver == nil || p.hostedDomain == nil {
+		return false
+	}
+	at := strings.LastIndexByte(address, '@')
+	if at < 0 || !p.hostedDomain(strings.ToLower(address[at+1:])) {
+		return false
+	}
+	_, err := p.resolver.ResolveRecipient(address)
+	return err == nil
+}
+
+// enqueueForwards relays one copy of the message to every approved target. It
+// is the only place a forward is queued; callers must have passed each target
+// through forwardGate.permit first.
+func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, approved []string) {
+	if len(approved) == 0 || p.queuer == nil {
+		return
+	}
+	targets := p.forwardTargets(approved, env.Recipients)
+	if len(targets) == 0 {
+		return
+	}
+	// Envelope sender: the original MAIL FROM is kept (there is no SRS), so
+	// SPF will fail at the next hop. DMARC survives only through the
+	// original author's DKIM-Signature, which stays valid because the
+	// queue relays FORWARD messages unmodified and never re-signs them.
+	// Mail that was authored locally and is forwarded externally therefore
+	// leaves unsigned.
+	fwdMsg := &bongov1.OutboundMessage{
+		Id:          uuid.New().String(),
+		SenderEmail: env.Sender,
+		Recipients:  targets,
+		BlobHash:    env.BlobHash,
+		Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD,
+	}
+	if err := p.queuer.Enqueue(fwdMsg); err != nil {
+		p.logger.Warn("deliver: failed to enqueue forwarded message",
+			"id", env.Id,
+			"forward_to", targets,
+			"error", err,
+		)
+		return
+	}
+	p.logger.Info("deliver: forwarded message enqueued",
+		"id", env.Id,
+		"forward_to", targets,
+	)
 }
 
 // maxForwardHops caps how many Received headers a message may carry before the
