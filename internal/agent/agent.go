@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -178,6 +179,25 @@ type Agent struct {
 	reminderCancel        context.CancelFunc
 	pipelineCancel        context.CancelFunc
 	quarantinePurgeCancel context.CancelFunc
+	orphanGCCancel        context.CancelFunc
+	usageCancel           context.CancelFunc
+
+	// pipelineDone is closed by startPipelineRunner once Runner.Run has
+	// returned. Nil when no runner was started.
+	pipelineDone chan struct{}
+	// bgWG tracks background workers that read or write the stores, so
+	// Shutdown can wait for them before tearing the stores down.
+	bgWG sync.WaitGroup
+	// bgStarted counts goWorker launches; tests use it to prove the real
+	// workers are tracked.
+	bgStarted atomic.Int32
+	// bgMu guards bgLive, the names of workers started through goWorker that
+	// have not returned yet. Shutdown reports them when the grace expires.
+	bgMu   sync.Mutex
+	bgLive map[string]int
+	// shutdownGrace bounds how long Shutdown waits for the pipeline runner
+	// and bgWG workers. Unexported so tests can shrink it.
+	shutdownGrace time.Duration
 
 	// dataDir is the resolved data directory (tmp dir in dev mode).
 	dataDir string
@@ -296,8 +316,9 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	i18n.Init("en")
 
 	a := &Agent{
-		Config: cfg,
-		logger: logger,
+		Config:        cfg,
+		logger:        logger,
+		shutdownGrace: defaultShutdownGrace,
 	}
 
 	// Create the shared threshold holder now, before any goroutine can reach
@@ -1305,7 +1326,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.Raft.FSM.StartIndexer(indexerCtx)
 		a.logger.Info("fsm: derived index worker started")
 
-		go a.BlobSync.Run(blobSyncCtx)
+		a.goWorker("blob-sync", func() { a.BlobSync.Run(blobSyncCtx) })
 		a.logger.Info("blob syncer started")
 	}
 
@@ -1340,11 +1361,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		pipelineCtx, pipelineCancel := context.WithCancel(ctx)
 		a.pipelineCancel = pipelineCancel
-		go func() {
-			if err := a.PipelineRunner.Run(pipelineCtx); err != nil {
-				a.logger.Error("pipeline runner error", "error", err)
-			}
-		}()
+		a.startPipelineRunner(pipelineCtx)
 		a.logger.Info("pipeline: runner started",
 			"spool_dir", spoolDir,
 			"workers", a.Config.Pipeline.Workers,
@@ -1469,7 +1486,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			queue.WithPollInterval(a.Config.Queue.QueuePollInterval()))
 		queueCtx, queueCancel := context.WithCancel(ctx)
 		a.queueWorkerCancel = queueCancel
-		go a.QueueWorker.Run(queueCtx)
+		a.goWorker("queue-worker", func() { a.QueueWorker.Run(queueCtx) })
 
 		// Queue HTTP routes.
 		r.Group(func(r chi.Router) {
@@ -1511,7 +1528,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Events != nil && a.Notifier != nil {
 		reminderCtx, reminderCancel := context.WithCancel(ctx)
 		a.reminderCancel = reminderCancel
-		go a.runReminderChecker(reminderCtx)
+		a.goWorker("reminder-checker", func() { a.runReminderChecker(reminderCtx) })
 		a.logger.Info("event reminder checker started")
 	}
 
@@ -1643,13 +1660,17 @@ func (a *Agent) Run(ctx context.Context) error {
 	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
 	// self-gating; conservative two-pass sweep.
 	if a.Raft != nil {
-		go a.runOrphanGC(ctx, orphanGCInterval, orphanGCMinAge)
+		gcCtx, gcCancel := context.WithCancel(ctx)
+		a.orphanGCCancel = gcCancel
+		a.goWorker("orphan-gc", func() { a.runOrphanGC(gcCtx, orphanGCInterval, orphanGCMinAge) })
 	}
 
 	// Recompute per-domain aggregate storage usage.
 	// Leader-only, periodic, idempotent. Used by the SMTP RCPT quota check.
 	if a.Raft != nil && a.DomainQuota != nil {
-		go a.runUsageRecompute(ctx, usageRecomputeInterval)
+		usageCtx, usageCancel := context.WithCancel(ctx)
+		a.usageCancel = usageCancel
+		a.goWorker("usage-recompute", func() { a.runUsageRecompute(usageCtx, usageRecomputeInterval) })
 	}
 
 	a.ready.Store(true)
@@ -3157,7 +3178,103 @@ func (a *Agent) mailListenerTLS(proto, certFile, keyFile string, hosts []string)
 	return cfg, nil
 }
 
+// defaultShutdownGrace bounds how long Shutdown waits for in-flight pipeline
+// messages and store-touching background workers before giving up.
+const defaultShutdownGrace = 30 * time.Second
+
+// startPipelineRunner runs the pipeline runner on its own goroutine and
+// records pipelineDone, which is closed once Runner.Run has returned.
+func (a *Agent) startPipelineRunner(ctx context.Context) {
+	done := make(chan struct{})
+	a.pipelineDone = done
+	go func() {
+		defer close(done)
+		if err := a.PipelineRunner.Run(ctx); err != nil {
+			a.logger.Error("pipeline runner error", "error", err)
+		}
+	}()
+}
+
+// goWorker runs fn as a background worker that Shutdown waits for. The name
+// is kept in a live set so a grace timeout can say which workers are stuck.
+func (a *Agent) goWorker(name string, fn func()) {
+	a.bgStarted.Add(1)
+	a.bgWG.Add(1)
+	a.bgMu.Lock()
+	if a.bgLive == nil {
+		a.bgLive = make(map[string]int)
+	}
+	a.bgLive[name]++
+	a.bgMu.Unlock()
+	go func() {
+		defer a.bgWG.Done()
+		defer func() {
+			a.bgMu.Lock()
+			if a.bgLive[name]--; a.bgLive[name] <= 0 {
+				delete(a.bgLive, name)
+			}
+			a.bgMu.Unlock()
+		}()
+		fn()
+	}()
+}
+
+// liveWorkers returns the sorted names of workers that have not returned.
+func (a *Agent) liveWorkers() []string {
+	a.bgMu.Lock()
+	defer a.bgMu.Unlock()
+	names := make([]string, 0, len(a.bgLive))
+	for n := range a.bgLive {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// waitForWorkers waits for the pipeline runner and bgWG workers under a single
+// shutdownGrace deadline, logging each "stopped" line only once it is true.
+func (a *Agent) waitForWorkers() error {
+	grace := a.shutdownGrace
+	if grace <= 0 {
+		grace = defaultShutdownGrace
+	}
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+
+	if a.pipelineDone != nil {
+		select {
+		case <-a.pipelineDone:
+			a.logger.Info("pipeline runner stopped")
+		case <-timer.C:
+			return fmt.Errorf("pipeline runner still processing messages after %s", grace)
+		}
+	}
+
+	bgDone := make(chan struct{})
+	go func() {
+		a.bgWG.Wait()
+		close(bgDone)
+	}()
+	select {
+	case <-bgDone:
+		a.logger.Info("background workers stopped")
+		return nil
+	case <-timer.C:
+		return fmt.Errorf("background workers still running after %s: %s", grace, strings.Join(a.liveWorkers(), ", "))
+	}
+}
+
 // Shutdown closes all resources held by the agent.
+//
+// It cancels the pipeline runner and the store-touching background workers
+// (queue worker, reminder checker, blob syncer, orphan GC, usage recompute)
+// and waits for them, bounded by shutdownGrace (30s), before touching Raft or
+// any store. If the grace expires, Shutdown returns an error and deliberately
+// leaves Raft and the stores open: the running message is not pushed into
+// error/ by a shutdown-induced failure, its envelope stays in
+// spool/processing/, and RecoverCrashed requeues it on the next start. If the
+// process then exits mid-delivery, the retry may deliver again to recipients
+// already served (duplicates, never loss), the same as a crash today.
 func (a *Agent) Shutdown() error {
 	var errs []error
 
@@ -3201,34 +3318,27 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	// 3.5. Pipeline runner.
-	if a.pipelineCancel != nil {
-		a.pipelineCancel()
-		a.logger.Info("pipeline runner stopped")
+	// 3.5. Stop the pipeline runner and store-touching background workers, and
+	// wait for them. This must precede Gossip, Raft and every store close: an
+	// in-flight message runs under context.WithoutCancel, so cancelling is not
+	// enough, and the deliver stage needs Raft alive to finish. Shutting Raft
+	// down first would fail its ApplyCommand and push a part-delivered
+	// envelope into error/, which is never retried.
+	for _, cancel := range []context.CancelFunc{
+		a.pipelineCancel, a.queueWorkerCancel, a.reminderCancel,
+		a.quarantinePurgeCancel, a.blobSyncCancel, a.orphanGCCancel, a.usageCancel,
+	} {
+		if cancel != nil {
+			cancel()
+		}
 	}
-
-	// 3.6. Queue worker.
-	if a.queueWorkerCancel != nil {
-		a.queueWorkerCancel()
-		a.logger.Info("queue worker stopped")
-	}
-
-	// 3.7. Reminder checker.
-	if a.reminderCancel != nil {
-		a.reminderCancel()
-		a.logger.Info("reminder checker stopped")
-	}
-
-	// 3.8. Quarantine auto-purge.
-	if a.quarantinePurgeCancel != nil {
-		a.quarantinePurgeCancel()
-		a.logger.Info("quarantine auto-purge stopped")
-	}
-
-	// 4. Blob sync cancel.
-	if a.blobSyncCancel != nil {
-		a.blobSyncCancel()
-		a.logger.Info("blob syncer stopped")
+	if err := a.waitForWorkers(); err != nil {
+		// Leave Raft and every store open so the straggler can finish or be
+		// killed cleanly; the envelope stays in spool/processing/ and
+		// RecoverCrashed requeues it on the next start.
+		a.logger.Error("shutdown: workers still running after grace; leaving stores open", "error", err)
+		errs = append(errs, err)
+		return fmt.Errorf("shutdown errors: %v", errs)
 	}
 
 	// 4. Gossip.

@@ -46,6 +46,17 @@ address. These are not reachable in a single-node deployment but become live whe
 a cluster is formed. Run cluster traffic on a trusted private network and do not
 expose ports 8300 or 8301. Reports in this area are still welcome.
 
+**Shutdown waits up to 30 seconds for in-flight mail.** On shutdown the server
+waits for pipeline messages and store-touching background workers to finish
+before stopping Raft and closing storage. If a message is still running after the
+grace, shutdown returns an error and leaves storage open; the envelope stays in
+`spool/processing/` and is requeued on the next start. If the process is then
+killed part-way through a multi-recipient delivery, the retry can deliver again to
+recipients already served (duplicates, not loss). Set the orchestrator kill timeout
+(for example Nomad `kill_timeout`) to about 45 seconds so a normal shutdown can
+finish. SMTP and IMAP session goroutines still running after their listeners close
+are not waited for.
+
 ## Scope
 
 In scope: the server (`internal/`, `cmd/`), the protocol implementations, and the
