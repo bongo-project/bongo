@@ -1322,3 +1322,12 @@ Release blocker carried into the PR: deploy/bongo.prod.hcl sets trusted_proxies 
 
 PATTERN: [norman] A task whose proof is not a Go test (container, deploy config) fails the workflow's test-evidence gate and skips review. Review it by hand from recorded command output, and ask for a negative control in that output.
 PATTERN: [testing] A mutant that removes the only use of an import does not compile; keep the call (e.g. `len(x) > 0 || slices.Contains(...)`) so the mutant builds and actually runs.
+
+## 2026-10-23 — Phase 18 batch 5 (18.23-18.26, 18.28, 18.30, 18.31) DONE
+
+Correction first: production is not behind Traefik. It is internet-facing with proxy_protocol false, its live config is in the infra repo, and deploy/bongo.prod.hcl is a template. The 172.18.0.0/16 placeholder recorded as a release blocker in batch 4 was itself the risk (it is bongo's own sidecar network); commit 8ef9668 ships the template's trusted_proxies empty.
+
+Workflow wf_acffa308-bb7 in worktrees from 8b76a88. First reviews rejected all seven; after the one fix round, 18.25 and 18.31 passed and 18.23, 18.24, 18.26, 18.28 and 18.30 were rejected again, all for surviving mutations (untested wiring in Agent.Run, an untested resolver fallback branch, index bound and ordering, compose not read by the certs test, the touch lock). A second targeted fix round per task closed each one with a test that the named mutation turns red. The orchestrator re-ran its own mutation per task (all red). All seven patches applied with --3way without conflicts. Review follow-ups recorded as 18.39 and in 18.38.
+
+PATTERN: [norman] Parallel worktrees that run dev-agent tests clash on gossip 8301 and IMAP 1143; agents report "address already in use" and pass on a rerun. Treat a bind error as noise only after a clean rerun.
+PATTERN: [testing] A wiring helper extracted for testability is not tested until something checks that Run calls it; delete the call as a mutation.

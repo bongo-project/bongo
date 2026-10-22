@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/queue"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -661,13 +663,15 @@ func TestSelfServe_AddSendAsAddress_CrossUser_Rejected(t *testing.T) {
 	w := httptest.NewRecorder()
 	env.handler.AddSendAsAddress(w, r)
 
-	// Should redirect with error (cross-user ownership).
+	// The reply must not reveal that the address is taken; the store shows it.
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("AddSendAsAddress cross-user = %d", w.Code)
 	}
-	loc := w.Header().Get("Location")
-	if !strings.Contains(loc, "error") {
-		t.Errorf("AddSendAsAddress cross-user should redirect with error; Location: %s", loc)
+	if loc := w.Header().Get("Location"); strings.Contains(loc, "error") {
+		t.Errorf("AddSendAsAddress cross-user must not redirect with an error; Location: %s", loc)
+	}
+	if addrs, _ := env.addresses.ListByUser(userID2); slices.Contains(addrs, sharedAddr) {
+		t.Errorf("attacker's address list holds %s", sharedAddr)
 	}
 
 	// Address record must still belong to user1.
@@ -748,5 +752,43 @@ func TestHashVerificationCode_Deterministic(t *testing.T) {
 	}
 	if len(h1) != 32 {
 		t.Errorf("hash length = %d, want 32 (SHA-256)", len(h1))
+	}
+}
+
+// TestSelfServe_PerUserLimit_RefusesWithoutLeakingAddress: the verification
+// mailer is capped per user, the refusal names no address, and a refused
+// request leaves no stranded challenge.
+func TestSelfServe_PerUserLimit_RefusesWithoutLeakingAddress(t *testing.T) {
+	env := newVerifyTestEnvFull(t)
+	env.handler.SetLimiter(mail.NewRateLimiter(3))
+	userID, email := "user-cap", "alice@example.com"
+	env.seedUser(t, userID, email)
+
+	addrs := []string{"one@claimed.example", "two@claimed.example", "three@claimed.example", "four@claimed.example"}
+	for _, a := range addrs {
+		env.seedAddress(t, a, userID, "identity", false, false)
+	}
+
+	for _, a := range addrs[:3] {
+		w := env.requestVerificationHTTP(t, userID, email, a)
+		if loc := w.Header().Get("Location"); !strings.Contains(loc, "flash=") {
+			t.Fatalf("request for %s under the limit: Location=%q", a, loc)
+		}
+	}
+
+	w := env.requestVerificationHTTP(t, userID, email, addrs[3])
+	loc := w.Header().Get("Location")
+	if !strings.Contains(loc, "error=Too+many") {
+		t.Fatalf("4th request Location=%q, want the generic limit error", loc)
+	}
+	if strings.Contains(loc, "four") || strings.Contains(loc, "claimed.example") {
+		t.Errorf("refusal leaks the target address: %q", loc)
+	}
+	if _, has, _ := env.verifyStore.Get(userID, addrs[3]); has {
+		t.Error("a challenge was stored for the refused request")
+	}
+	pending, _ := env.qs.ListPending(10)
+	if len(pending) != 3 {
+		t.Errorf("queue holds %d messages, want exactly 3", len(pending))
 	}
 }

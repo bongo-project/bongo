@@ -17,6 +17,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
+	"github.com/jhillyerd/enmime"
 	"github.com/microcosm-cc/bluemonday"
 	"google.golang.org/protobuf/proto"
 
@@ -573,7 +574,7 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 				// reconstructs and decodes it. Non-split records (sent mail with
 				// decoded attachment blobs, or legacy whole-raw) keep the hash.
 				isSplit := len(meta.Layout) > 0
-				for i, att := range env.Attachments {
+				for i, att := range servableParts(env) {
 					a := templates.Attachment{
 						Filename:    att.FileName,
 						ContentType: att.ContentType,
@@ -601,8 +602,14 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 		}
 	}
 
-	// Also add attachments from proto that weren't matched above.
+	// Also add attachments from proto that weren't matched above. A split
+	// record's blobs are encoded spans that must never be linked directly;
+	// servableParts already covers each of them, so skip them here.
 	for _, blobRef := range meta.Attachments {
+		if len(meta.Layout) > 0 {
+			// On purpose: a ReadEnvelope error shows no attachments rather than raw spans.
+			break
+		}
 		found := false
 		for _, existing := range detail.Attachments {
 			if existing.Hash == blobRef.Hash || (existing.Filename != "" && existing.Filename == blobRef.Filename) {
@@ -620,6 +627,25 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 			})
 		}
 	}
+}
+
+// servableParts returns the parts addressable as /attachment/{idx}: the
+// envelope's attachments first (so existing indexes stay stable), then any
+// inline-disposition part that carries a filename, then any part with a
+// filename but no Content-Disposition (enmime files those under OtherParts).
+// attsplit stores all of these as attachments, so they must be reachable
+// through the decoding route.
+func servableParts(env *enmime.Envelope) []*enmime.Part {
+	parts := make([]*enmime.Part, 0, len(env.Attachments)+len(env.Inlines)+len(env.OtherParts))
+	parts = append(parts, env.Attachments...)
+	for _, group := range [][]*enmime.Part{env.Inlines, env.OtherParts} {
+		for _, p := range group {
+			if p.FileName != "" {
+				parts = append(parts, p)
+			}
+		}
+	}
+	return parts
 }
 
 // attachmentURL returns the download endpoint for an attachment. When the
@@ -1079,6 +1105,7 @@ func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
 	// Sanitize filename from subject.
 	filename := sanitizeFilename(meta.Subject) + ".eml"
 
+	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Content-Type", "message/rfc822")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	// Length of the reconstructed message (skeleton size would be wrong for split records).
@@ -1226,15 +1253,37 @@ func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 	// authenticated user could read another user's attachments by hash. A 404
 	// (not 403) avoids confirming that the blob exists.
 	userID, _ := middleware.UserFromContext(r.Context())
-	if userID == "" || !h.userOwnsBlob(userID, hash) {
+	var owned *ownedBlob
+	if userID != "" {
+		owned = h.findOwnedBlob(userID, hash)
+	}
+	if owned == nil {
 		http.Error(w, "Blob not found", http.StatusNotFound)
 		return
 	}
 
-	rc, err := h.blobs.Get(hash)
-	if err != nil {
+	var rc io.ReadCloser
+	switch {
+	case owned.split && owned.raw:
+		// The stored blob is only the skeleton; serve the reconstructed message.
+		full, err := store.RawMessageBytes(h.blobs, owned.meta)
+		if err != nil {
+			http.Error(w, "Blob not found", http.StatusNotFound)
+			return
+		}
+		rc = io.NopCloser(bytes.NewReader(full))
+	case owned.split:
+		// Encoded span of a split message: never serve base64 as a file. The
+		// UI links the decoding message-scoped route instead.
 		http.Error(w, "Blob not found", http.StatusNotFound)
 		return
+	default:
+		var err error
+		rc, err = h.blobs.Get(hash)
+		if err != nil {
+			http.Error(w, "Blob not found", http.StatusNotFound)
+			return
+		}
 	}
 	defer rc.Close()
 
@@ -1246,7 +1295,7 @@ func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 	// text/plain attachment whose bytes look like HTML); serve exactly the
 	// declared type.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 
 	switch {
 	case inline && inlineTextTypes[contentType]:
@@ -1324,13 +1373,21 @@ func (h *MailHandler) ServeAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	env, _, err := mimesafe.ReadEnvelope(rawMsg)
-	if err != nil || idx >= len(env.Attachments) {
+	if err != nil {
 		http.Error(w, "Attachment not found", http.StatusNotFound)
 		return
 	}
-	att := env.Attachments[idx]
+	parts := servableParts(env)
+	if idx >= len(parts) {
+		http.Error(w, "Attachment not found", http.StatusNotFound)
+		return
+	}
+	att := parts[idx]
 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// The URL is keyed by mailbox/uid/index, not content, so never let a
+	// shared cache keep it.
+	w.Header().Set("Cache-Control", "private, no-store")
 
 	// Inline display is opt-in (?inline=1) and restricted to the safe raster
 	// image and PDF allowlist — never SVG or arbitrary types — so an
@@ -2032,17 +2089,26 @@ func (h *MailHandler) resolveMessage(userID, mailbox string, uid uint32) (*bongo
 	return msg, mailbox, err
 }
 
-// userOwnsBlob reports whether the user has a message whose raw content or an
-// attachment references the given blob hash. Used to authorize blob downloads:
-// blobs are shared/deduplicated across users, so ownership must be proven per
-// request rather than trusting the hash. Returns as soon as a match is found.
-func (h *MailHandler) userOwnsBlob(userID, hash string) bool {
+// ownedBlob describes how a user's message references a blob hash.
+type ownedBlob struct {
+	meta  *bongov1.MailMeta
+	raw   bool // the hash is the message's RawMessage (the skeleton when split)
+	split bool // the referencing message is a split (de-MIME'd) record
+}
+
+// findOwnedBlob returns how the user's mail references the given blob hash, or
+// nil when no message of theirs does. Used to authorize blob downloads: blobs
+// are shared/deduplicated across users, so ownership must be proven per
+// request rather than trusting the hash. A non-split reference is preferred
+// over a split one, since the same hash may be referenced by several messages.
+func (h *MailHandler) findOwnedBlob(userID, hash string) *ownedBlob {
 	iter, err := h.pebble.PrefixScan([]byte(fmt.Sprintf("/user/%s/mail/", userID)))
 	if err != nil {
-		return false
+		return nil
 	}
 	defer iter.Close()
 
+	var found *ownedBlob
 	for iter.Next() {
 		val, err := iter.Value()
 		if err != nil {
@@ -2052,16 +2118,26 @@ func (h *MailHandler) userOwnsBlob(userID, hash string) bool {
 		if err := proto.Unmarshal(val, &meta); err != nil {
 			continue
 		}
-		if meta.RawMessage != nil && meta.RawMessage.Hash == hash {
-			return true
-		}
+		isRaw := meta.RawMessage != nil && meta.RawMessage.Hash == hash
+		isAtt := false
 		for _, att := range meta.Attachments {
 			if att.Hash == hash {
-				return true
+				isAtt = true
+				break
 			}
 		}
+		if !isRaw && !isAtt {
+			continue
+		}
+		cand := &ownedBlob{meta: &meta, raw: isRaw, split: len(meta.Layout) > 0}
+		if !cand.split {
+			return cand
+		}
+		if found == nil {
+			found = cand
+		}
 	}
-	return false
+	return found
 }
 
 func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {

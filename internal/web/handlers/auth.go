@@ -13,6 +13,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/security"
+	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -115,9 +116,15 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Load profile to check admin and disabled status.
 	var isAdmin bool
 	var totpEnabled bool
+	// canonical is the stored login, never the typed string: Authenticate
+	// accepts differently-cased and whitespace-wrapped logins.
+	canonical := store.NormaliseAddress(email)
 	if h.profiles != nil {
 		profile, err := h.loadProfile(userID)
 		if err == nil {
+			if profile.Email != "" {
+				canonical = profile.Email
+			}
 			if profile.Disabled {
 				if h.limiter != nil {
 					h.limiter.RecordFailure(ip, email)
@@ -135,7 +142,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// If TOTP is enabled, issue a short-lived pending cookie and redirect to 2FA page.
 	if totpEnabled {
-		cookie := middleware.CreatePendingCookie(h.sessionSecret, userID, email, remember, isAdmin, h.tlsEnabled)
+		cookie := middleware.CreatePendingCookie(h.sessionSecret, userID, canonical, remember, isAdmin, h.tlsEnabled)
 		http.SetCookie(w, cookie)
 		http.Redirect(w, r, "/login/2fa", http.StatusSeeOther)
 		return
@@ -145,7 +152,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		h.limiter.Succeed(ip, email)
 	}
 
-	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, email, remember, isAdmin, h.tlsEnabled, h.sessionEpoch(userID))
+	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, canonical, remember, isAdmin, h.tlsEnabled, h.sessionEpoch(userID))
 	http.SetCookie(w, cookie)
 	http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
 }
@@ -196,6 +203,11 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		h.recordFailure(ip, pending.Email)
 		http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
 		return
+	}
+
+	// Cookies issued before canonicalisation may carry the typed login.
+	if profile.Email != "" {
+		pending.Email = profile.Email
 	}
 
 	ok, usedRecovery := consumeSecondFactor(profile, code, time.Now())

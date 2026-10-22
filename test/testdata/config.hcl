@@ -46,6 +46,8 @@ smtp {
     max_recipients   = 50
     max_connections  = 512
     flood_threshold  = 25
+    outbound_recipients_per_hour = 77
+    send_as_verify_max_per_hour  = 3
   }
 
   relay {

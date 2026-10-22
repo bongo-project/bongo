@@ -60,6 +60,17 @@ func TestHostedForwardTargetIgnoresExternalIdentities(t *testing.T) {
 	a := blobGCLeaderTestAgent(t)
 	resolver := store.NewRecipientResolver(a.AddressStore, a.Store, a.Metadata.System)
 
+	// The resolver only routes to accounts that exist.
+	for _, id := range []string{"user-alice", "user-carol"} {
+		pb, err := proto.Marshal(&bongov1.UserProfile{Email: id + "@live.example"})
+		if err != nil {
+			t.Fatalf("marshal profile: %v", err)
+		}
+		if err := a.Store.Set([]byte("/user/"+id+"/profile"), pb); err != nil {
+			t.Fatalf("write profile: %v", err)
+		}
+	}
+
 	if err := a.AddressStore.Put("alice@gmail.example", &bongov1.AddressRecord{
 		UserId: "user-alice", Domain: "gmail.example", Kind: "identity", Verified: true,
 	}); err != nil {

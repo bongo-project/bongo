@@ -664,5 +664,8 @@
   "admin.dnsGuideDownload": "Telecharger le fichier de zone BIND",
   "admin.spfRecord": "SPF",
   "admin.dkimRecord": "DKIM",
-  "admin.dmarcRecord": "DMARC"
+  "admin.dmarcRecord": "DMARC",
+  "settings.sendAsRequested": "Demande reçue. Si l'adresse peut être ajoutée, elle apparaît maintenant dans votre liste.",
+  "admin.tempPasswordLabel": "Mot de passe temporaire",
+  "admin.tempPasswordNotice": "Mot de passe réinitialisé. Ce mot de passe temporaire n'est affiché qu'une fois et ne peut pas être récupéré. Transmettez-le à l'utilisateur maintenant."
 }

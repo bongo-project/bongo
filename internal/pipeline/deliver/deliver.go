@@ -524,7 +524,6 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			"recipient", rcpt,
 			"user", userID,
 			"guid", guid,
-			"subject", subject,
 			"id", env.Id,
 			"target_mailbox", targetMailbox,
 		)

@@ -63,6 +63,8 @@ func TestLoadFromFile(t *testing.T) {
 		{"smtp.port", cfg.SMTP.Port, 2525},
 		{"smtp.submission_port", cfg.SMTP.SubmissionPort, 2587},
 		{"smtp.limits.max_recipients", cfg.SMTP.Limits.MaxRecipients, 50},
+		{"smtp.limits.outbound_recipients_per_hour", cfg.SMTP.Limits.OutboundRecipientsPerHour, 77},
+		{"smtp.limits.send_as_verify_max_per_hour", cfg.SMTP.Limits.SendAsVerifyMaxPerHour, 3},
 		{"smtp.dkim.selector", cfg.SMTP.DKIM.Selector, "test"},
 		{"smtp.dkim.domain", cfg.SMTP.DKIM.Domain, "test.example"},
 		{"imap.port", cfg.IMAP.Port, 1143},
@@ -1050,6 +1052,16 @@ func TestShippedConfigsPassValidate(t *testing.T) {
 			cfg, err := LoadFromFile(path)
 			if err != nil {
 				t.Fatalf("LoadFromFile(%q) failed: %v", path, err)
+			}
+			if strings.HasSuffix(path, "bongo.prod.hcl") {
+				// The Traefik template ships trusted_proxies empty on purpose,
+				// so startup refuses until the operator lists Traefik. Prove
+				// that is the only thing standing between it and a valid config.
+				err := cfg.Validate()
+				if err == nil || !strings.Contains(err.Error(), "trusted_proxies") {
+					t.Fatalf("Validate() on %q = %v, want the trusted_proxies refusal", path, err)
+				}
+				cfg.Server.TrustedProxies = []string{"192.0.2.10/32"}
 			}
 			if err := cfg.Validate(); err != nil {
 				t.Fatalf("Validate() on %q failed: %v", path, err)

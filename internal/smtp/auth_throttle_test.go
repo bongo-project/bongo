@@ -29,8 +29,8 @@ func TestAuthThrottleSameSession(t *testing.T) {
 	s := newSessionForIP(b, "203.0.113.7")
 
 	for i := 0; i < maxAuthFailures; i++ {
-		if code := smtpCode(s.AuthPlain("bob@example.com", "nope")); code != 0 {
-			t.Fatalf("attempt %d should return the raw auth error, got SMTP code %d", i+1, code)
+		if code := smtpCode(s.AuthPlain("bob@example.com", "nope")); code != 535 {
+			t.Fatalf("attempt %d should return 535, got SMTP code %d", i+1, code)
 		}
 	}
 	if code := smtpCode(s.AuthPlain("bob@example.com", "nope")); code != 454 {
@@ -55,7 +55,7 @@ func TestAuthThrottlePersistsAcrossSessions(t *testing.T) {
 
 	// A different IP is unaffected.
 	s3 := newSessionForIP(b, "198.51.100.1")
-	if code := smtpCode(s3.AuthPlain("bob@example.com", "nope")); code != 0 {
+	if code := smtpCode(s3.AuthPlain("bob@example.com", "nope")); code != 535 {
 		t.Fatalf("unrelated IP should not be throttled, got code %d", code)
 	}
 }
