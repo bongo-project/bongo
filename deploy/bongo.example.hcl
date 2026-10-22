@@ -524,6 +524,12 @@ pipeline {
   error_retention      = "30d"
   # Format: whole days with "d" ("30d") or a Go duration ("720h"). Default 30d; must be positive.
   quarantine_retention = "30d"
+  # Time budget for one message across all pipeline stages (a Go duration).
+  # Default 2m; must be positive. A message that exceeds it is moved to the
+  # error spool and not delivered, so keep it generous for slow virus scans of
+  # large attachments. It stops stages waiting on rspamd or clamd, not CPU-bound
+  # work. Changing it needs a restart.
+  message_timeout      = "2m"
 
   stage "antispam" {
     enabled = true

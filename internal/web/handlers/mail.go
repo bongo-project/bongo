@@ -17,11 +17,11 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
-	"github.com/jhillyerd/enmime"
 	"github.com/microcosm-cc/bluemonday"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -548,8 +548,9 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 	if meta.RawMessage != nil && meta.RawMessage.Hash != "" && h.blobs != nil {
 		rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 		if err == nil {
-			env, perr := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+			env, degraded, perr := mimesafe.ReadEnvelope(rawMsg)
 			if perr == nil {
+				detail.MIMETooComplex = degraded
 				if env.HTML != "" {
 					inlined := inlineStyleBlocks(env.HTML)
 					sanitized := h.sanitizer.Sanitize(inlined)
@@ -951,7 +952,7 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Parse headers for metadata.
-		env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+		env, _, err := mimesafe.ReadEnvelope(rawMsg)
 		if err != nil {
 			failed++
 			continue
@@ -1314,7 +1315,7 @@ func (h *MailHandler) ServeAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil || idx >= len(env.Attachments) {
 		http.Error(w, "Attachment not found", http.StatusNotFound)
 		return
@@ -2089,7 +2090,7 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 		return
 	}
 
-	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil {
 		return
 	}
@@ -2194,7 +2195,7 @@ func (h *MailHandler) trainBayes(userID, guid string, isSpam bool) {
 		return
 	}
 
-	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil {
 		return
 	}

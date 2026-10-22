@@ -112,7 +112,7 @@ var restartKeys = []string{
 	"antispam.dmarc_disabled", "antispam.dmarc_monitor_only",
 	"antivirus.clamav.enabled", "antivirus.clamav.socket",
 	"pipeline.workers", "pipeline.poll_interval", "pipeline.error_retention",
-	"pipeline.quarantine_retention",
+	"pipeline.quarantine_retention", "pipeline.message_timeout",
 	"pipeline.stage.name", "pipeline.stage.enabled", "pipeline.stage.backend",
 	"queue.poll_interval",
 	"telemetry.log.format", "telemetry.log.file", "telemetry.log.max_size_mb",

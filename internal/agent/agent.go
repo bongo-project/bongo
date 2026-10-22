@@ -1335,6 +1335,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.PipelineRunner = pipeline.NewRunner(spool, blobReader, stages, a.logger,
 			pipeline.WithWorkers(a.Config.Pipeline.Workers),
 			pipeline.WithPollInterval(a.Config.Pipeline.PipelinePollInterval()),
+			pipeline.WithMessageTimeout(a.Config.Pipeline.MessageTimeoutDuration()),
 		)
 
 		pipelineCtx, pipelineCancel := context.WithCancel(ctx)

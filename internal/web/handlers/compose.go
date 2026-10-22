@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -17,10 +16,10 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
-	"github.com/jhillyerd/enmime"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/mail"
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/queue"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -731,7 +730,7 @@ func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
 	var htmlBody, plainBody string
 	if meta.RawMessage != nil && h.blobs != nil {
 		if raw, err := store.RawMessageBytes(h.blobs, meta); err == nil {
-			if env, err := enmime.ReadEnvelope(bytes.NewReader(raw)); err == nil {
+			if env, _, err := mimesafe.ReadEnvelope(raw); err == nil {
 				if env.HTML != "" {
 					htmlBody = sanitize.Compose(env.HTML)
 				}
@@ -859,7 +858,7 @@ func (h *ComposeHandler) loadQuotedBody(userID string, meta *bongov1.MailMeta) s
 	if err != nil {
 		return ""
 	}
-	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil {
 		return ""
 	}

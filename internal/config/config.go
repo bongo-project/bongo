@@ -773,6 +773,12 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if v := c.Pipeline.MessageTimeout; v != "" {
+		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
+			return fmt.Errorf("pipeline.message_timeout: invalid value %q (use a positive duration like \"2m\")", v)
+		}
+	}
+
 	if v := c.Pipeline.QuarantineRetention; v != "" {
 		if _, err := parseRetention(v); err != nil {
 			return fmt.Errorf("pipeline.quarantine_retention: invalid value %q (use whole days like \"30d\" or a duration like \"720h\", must be positive): %w", v, err)
@@ -807,6 +813,7 @@ type PipelineConfig struct {
 	PollInterval        string        `hcl:"poll_interval,optional" mapstructure:"poll_interval"`
 	ErrorRetention      string        `hcl:"error_retention,optional" mapstructure:"error_retention"`
 	QuarantineRetention string        `hcl:"quarantine_retention,optional" mapstructure:"quarantine_retention"`
+	MessageTimeout      string        `hcl:"message_timeout,optional" mapstructure:"message_timeout"`
 	Stages              []StageConfig `hcl:"stage,block" mapstructure:"stage"`
 }
 
@@ -906,6 +913,25 @@ func (c *PipelineConfig) ErrorRetentionDuration() time.Duration {
 	d, err := parseRetention(c.ErrorRetention)
 	if err != nil {
 		return defaultErrorRetention
+	}
+	return d
+}
+
+// defaultMessageTimeout is used when pipeline.message_timeout is unset. It is
+// generous because clamd and rspamd scans of large attachments are slow; a
+// message that exceeds it is moved to the spool error/ directory, not delivered.
+const defaultMessageTimeout = 2 * time.Minute
+
+// MessageTimeoutDuration returns the per-message processing budget. Empty,
+// unparseable or non-positive values fall back to 2 minutes; Validate rejects
+// bad values at startup.
+func (c *PipelineConfig) MessageTimeoutDuration() time.Duration {
+	if c.MessageTimeout == "" {
+		return defaultMessageTimeout
+	}
+	d, err := time.ParseDuration(c.MessageTimeout)
+	if err != nil || d <= 0 {
+		return defaultMessageTimeout
 	}
 	return d
 }
@@ -1076,6 +1102,7 @@ func Defaults() *Config {
 			PollInterval:        "1s",
 			ErrorRetention:      "30d",
 			QuarantineRetention: "30d",
+			MessageTimeout:      "2m",
 			Stages:              defaultPipelineStages(),
 		},
 		Queue: &QueueConfig{

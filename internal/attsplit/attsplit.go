@@ -19,6 +19,8 @@ import (
 	"net/textproto"
 	"sort"
 	"strings"
+
+	"github.com/bongo-project/bongo/internal/mimesafe"
 )
 
 // Part is an extracted attachment: the exact encoded bytes as they appear in the
@@ -103,7 +105,13 @@ func Split(raw []byte, minSize int) *Skeleton {
 	var spans []span
 	if bodyStart, hdr := topHeaders(raw); bodyStart >= 0 {
 		if mt, params := parseContentType(hdr); strings.HasPrefix(mt, "multipart/") && params["boundary"] != "" {
-			collect(raw, bodyStart, len(raw), params["boundary"], minSize, &spans)
+			w := &walk{}
+			collect(raw, bodyStart, len(raw), params["boundary"], minSize, &spans, w, 1)
+			if w.over {
+				// Pathological nesting or delimiter count: leave the message
+				// whole rather than split a partial view of it.
+				spans = nil
+			}
 		}
 	}
 	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
@@ -139,9 +147,26 @@ func Split(raw []byte, minSize int) *Skeleton {
 	return sk
 }
 
+// walk bounds collect's work. attsplit accepts any line starting with
+// "--boundary" as a delimiter, which is looser than a real MIME parser, so
+// the limits are enforced here rather than relying on a pre-scan.
+type walk struct {
+	delims int
+	over   bool
+}
+
 // collect recursively finds attachment body ranges within a multipart region
-// [bs,be) delimited by boundary, appending them to out.
-func collect(raw []byte, bs, be int, boundary string, minSize int, out *[]span) {
+// [bs,be) delimited by boundary, appending them to out. It stops and sets
+// w.over once nesting passes mimesafe.MaxDepth or the total delimiter count
+// passes mimesafe.MaxParts, which keeps total work linear in the message size.
+func collect(raw []byte, bs, be int, boundary string, minSize int, out *[]span, w *walk, depth int) {
+	if w.over {
+		return
+	}
+	if depth > mimesafe.MaxDepth {
+		w.over = true
+		return
+	}
 	dashB := []byte("--" + boundary)
 
 	// Find boundary delimiter lines (occurrences of "--boundary" at line start).
@@ -154,6 +179,10 @@ func collect(raw []byte, bs, be int, boundary string, minSize int, out *[]span) 
 		p := i + j
 		if p == bs || raw[p-1] == '\n' {
 			delims = append(delims, p)
+			if w.delims++; w.delims > mimesafe.MaxParts {
+				w.over = true
+				return
+			}
 		}
 		nl := bytes.IndexByte(raw[p:be], '\n')
 		if nl < 0 {
@@ -187,7 +216,10 @@ func collect(raw []byte, bs, be int, boundary string, minSize int, out *[]span) 
 		mt, params, disp, dispParams := parsePartHeaders(raw[partStart:partBodyStart])
 
 		if strings.HasPrefix(mt, "multipart/") && params["boundary"] != "" {
-			collect(raw, partBodyStart, bodyEnd, params["boundary"], minSize, out)
+			collect(raw, partBodyStart, bodyEnd, params["boundary"], minSize, out, w, depth+1)
+			if w.over {
+				return
+			}
 			continue
 		}
 		name := dispParams["filename"]

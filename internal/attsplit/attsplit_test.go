@@ -2,8 +2,11 @@ package attsplit
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/bongo-project/bongo/internal/mimesafe"
 )
 
 // b64block returns a base64-like body of n characters, wrapped at 76 cols with
@@ -191,5 +194,40 @@ func TestQuotedPrintableAttachment(t *testing.T) {
 	sk := mustRoundTrip(t, raw, 200)
 	if len(sk.Parts) != 1 {
 		t.Fatalf("parts = %d, want 1", len(sk.Parts))
+	}
+}
+
+// overLimitWithAttachment is a multipart whose first part is a large
+// attachment, followed by a delimiter chain that trips attsplit's depth cap.
+// The attachment is collected before the cap is hit, so only the "stored whole
+// when over" rule keeps it out of the result. mimesafe.Check sees no nesting.
+func overLimitWithAttachment(levels int) string {
+	var b strings.Builder
+	b.WriteString("From: a@ext.test\r\nSubject: z\r\nContent-Type: multipart/mixed; boundary=q00000\r\n\r\n")
+	b.WriteString("--q00000\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"a.pdf\"\r\n\r\n")
+	b.WriteString(b64block(4000) + "\r\n")
+	b.WriteString("--q00000Z\r\nContent-Type: multipart/mixed; boundary=q00001\r\n\r\n")
+	for i := 1; i < levels; i++ {
+		fmt.Fprintf(&b, "--q%05dZ\r\nContent-Type: multipart/mixed; boundary=q%05d\r\n\r\n", i, i+1)
+	}
+	for i := levels - 1; i >= 0; i-- {
+		fmt.Fprintf(&b, "\r\n--q%05dZ--\r\n", i)
+	}
+	return b.String()
+}
+
+func TestSplitOverLimitStoredWhole(t *testing.T) {
+	// Control: without the chain the same attachment is extracted.
+	control := overLimitWithAttachment(1)
+	if sk := Split([]byte(control), 1024); len(sk.Parts) != 1 {
+		t.Fatalf("control: parts = %d, want 1", len(sk.Parts))
+	}
+	raw := overLimitWithAttachment(mimesafe.MaxDepth + 8)
+	sk := Split([]byte(raw), 1024)
+	if len(sk.Parts) != 0 {
+		t.Errorf("over-limit message yielded %d attachment parts, want 0 (stored whole)", len(sk.Parts))
+	}
+	if got := sk.Reconstruct(); !bytes.Equal(got, []byte(raw)) {
+		t.Error("over-limit message does not reconstruct byte-exact")
 	}
 }
