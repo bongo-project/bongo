@@ -383,6 +383,18 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 		return nil
 	}
 
+	// Bayes training arrives as one composite command: the FSM does the
+	// counting, so concurrent trainings cannot lose updates and a message's
+	// counters, trained total and marker commit together. Like the queue hook
+	// it skips derived-index updates.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsBayesSyntheticCommand(cmd.Key) {
+		if err := store.ApplyBayesTrainCommand(f.store, cmd); err != nil {
+			f.logger.Error("fsm: bayes synthetic command failed", "error", err)
+			return err
+		}
+		return nil
+	}
+
 	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:

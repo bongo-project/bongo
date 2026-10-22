@@ -129,7 +129,9 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /user/{user_id}/rule/{guid}          → mail filter rule
 /user/{user_id}/tag/{name}           → TagMeta protobuf (colour, sort_order)
 /user/{user_id}/addrverify/{address} → send-as verification challenge
-/user/{user_id}/bayes/{category}/{token} → Bayes token counts
+/user/{user_id}/bayes/{category}/{token} → Bayes token counts (uvarint)
+/user/{user_id}/bayes/trained        → Bayes trained-message count (uvarint)
+/user/{user_id}/bayes/msg/{guid}     → category a message was last trained as (spam|ham)
 /system/domain/{domain}              → domain config
 /system/domain_admin/{domain}/{user_id} → domain-admin grant marker
 /system/alias/{alias}                → alias → target user
@@ -215,6 +217,8 @@ built.
 - Chi route ordering: static segments (`/mail/tag/{name}`) must be registered before wildcard segments (`/mail/{mailbox}`).
 
 ## Repo-Specific Guardrails
+
+- **Bayes training is one composite Raft command** (`/__bayes_train__/{user}`, `internal/store/bayescommand.go`) counted inside the FSM, capped at 1024 tokens. An older-binary node applies it as a literal key and counts nothing, so replicas diverge for as long as the cluster runs mixed versions. Upgrade every node before anyone trains; counts trained during a mixed window are not recoverable by replay.
 
 - **Never expose `/internal/*` routes on the public web router without real protection.**
   Naming a route "internal" is not a security boundary. Internal control-plane endpoints must either live on a private listener, require explicit auth, or both.

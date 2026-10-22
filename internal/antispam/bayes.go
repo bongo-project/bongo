@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -50,9 +52,33 @@ func NewBayesFilter(store PebbleGetter, applier RaftApplier) *BayesFilter {
 	}
 }
 
-// Tokenize splits text into lowercase tokens, filtering out stopwords and short tokens.
+const (
+	// maxSubjectBytes and maxBodyBytes bound the text Tokenize reads, so one
+	// message cannot make training or classification do unbounded work.
+	maxSubjectBytes = 1024
+	maxBodyBytes    = 4096
+)
+
+// truncateUTF8 cuts s to at most n bytes without splitting a rune.
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// Tokenize splits text into lowercase tokens, filtering out stopwords and short
+// tokens. The result is bounded: the subject is read to 1KB and the body to
+// 4KB, tokens over store.MaxBayesTokenLen bytes are skipped, and at most
+// store.MaxBayesTokens distinct tokens are kept, first in subject-then-body
+// order. First-N rather than most-significant is deliberate: it is
+// deterministic and needs no reads, so re-tokenising the same message yields
+// the same list. Training undo depends on that.
 func Tokenize(subject, bodyText string) []string {
-	text := strings.ToLower(subject + " " + bodyText)
+	text := strings.ToLower(truncateUTF8(subject, maxSubjectBytes) + " " + truncateUTF8(bodyText, maxBodyBytes))
 
 	// Split on non-letter/digit characters.
 	tokens := strings.FieldsFunc(text, func(r rune) bool {
@@ -63,7 +89,7 @@ func Tokenize(subject, bodyText string) []string {
 	seen := make(map[string]bool)
 	var result []string
 	for _, tok := range tokens {
-		if len(tok) < 3 {
+		if len(tok) < 3 || len(tok) > store.MaxBayesTokenLen {
 			continue
 		}
 		if stopwords[tok] {
@@ -74,24 +100,24 @@ func Tokenize(subject, bodyText string) []string {
 		}
 		seen[tok] = true
 		result = append(result, tok)
+		if len(result) >= store.MaxBayesTokens {
+			break
+		}
 	}
 	return result
 }
 
-// Train updates token counts for a user. isSpam=true trains as spam, false as ham.
-func (b *BayesFilter) Train(userID string, tokens []string, isSpam bool) error {
-	category := "ham"
-	if isSpam {
-		category = "spam"
+// Train records a message's tokens as spam or ham with a single Raft command.
+// The FSM does the counting, so a repeat call for the same guid is a no-op and
+// a call with the opposite category moves the message between classes. guid
+// must not be empty.
+func (b *BayesFilter) Train(userID, guid string, tokens []string, isSpam bool) error {
+	cmd, err := store.BuildBayesTrainCommand(userID, guid, tokens, isSpam)
+	if err != nil {
+		return fmt.Errorf("building bayes training command: %w", err)
 	}
-
-	for _, token := range tokens {
-		key := fmt.Sprintf("/user/%s/bayes/%s/%s", userID, category, token)
-		count := b.getCount([]byte(key))
-		count++
-		if err := b.setCount([]byte(key), count); err != nil {
-			return fmt.Errorf("training token %q: %w", token, err)
-		}
+	if err := b.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return fmt.Errorf("applying bayes training: %w", err)
 	}
 	return nil
 }
@@ -106,8 +132,8 @@ func (b *BayesFilter) Classify(userID string, tokens []string) float64 {
 	counted := 0
 
 	for _, token := range tokens {
-		spamKey := fmt.Sprintf("/user/%s/bayes/spam/%s", userID, token)
-		hamKey := fmt.Sprintf("/user/%s/bayes/ham/%s", userID, token)
+		spamKey := string(store.BayesTokenKey(userID, store.BayesSpam, token))
+		hamKey := string(store.BayesTokenKey(userID, store.BayesHam, token))
 
 		spamCount := b.getCount([]byte(spamKey))
 		hamCount := b.getCount([]byte(hamKey))
@@ -145,19 +171,12 @@ func (b *BayesFilter) Classify(userID string, tokens []string) float64 {
 // TrainedCount returns the total number of trained tokens for a user.
 func (b *BayesFilter) TrainedCount(userID string) int {
 	// We count by checking a summary key.
-	key := fmt.Sprintf("/user/%s/bayes/trained", userID)
+	key := string(store.BayesTrainedKey(userID))
 	count := b.getCount([]byte(key))
 	if bits.UintSize == 32 && count > math.MaxInt32 {
 		return math.MaxInt32
 	}
 	return int(count) // #nosec G115 -- 64-bit platforms fit uint64 counts used here; 32-bit is clamped above
-}
-
-// IncrementTrained increments the trained message count.
-func (b *BayesFilter) IncrementTrained(userID string) error {
-	key := fmt.Sprintf("/user/%s/bayes/trained", userID)
-	count := b.getCount([]byte(key))
-	return b.setCount([]byte(key), count+1)
 }
 
 func (b *BayesFilter) getCount(key []byte) uint64 {
@@ -167,18 +186,6 @@ func (b *BayesFilter) getCount(key []byte) uint64 {
 	}
 	val, _ := binary.Uvarint(data)
 	return val
-}
-
-func (b *BayesFilter) setCount(key []byte, count uint64) error {
-	buf := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutUvarint(buf, count)
-
-	cmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   key,
-		Value: buf[:n],
-	}
-	return b.applier.ApplyCommand(cmd, 5*time.Second)
 }
 
 // UpdateSpamScore updates a mail message's spam score via Raft.

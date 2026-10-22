@@ -1083,6 +1083,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			bayesFilter := antispam.NewBayesFilter(a.Store, a)
 			mailH.SetBayes(bayesFilter)
+			// 120 training actions per user per hour: each costs a Raft entry
+			// and up to ~2k Pebble reads in the FSM.
+			mailH.SetTrainLimiter(mail.NewRateLimiter(120))
 			if a.Metadata != nil {
 				mailH.SetMetadata(a.Metadata)
 			}

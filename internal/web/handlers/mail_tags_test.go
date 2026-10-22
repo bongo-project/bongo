@@ -44,6 +44,11 @@ func (a *directApplierTags) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Durati
 		return nil
 	}
 
+	// Bayes training is a composite command interpreted by the FSM.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsBayesSyntheticCommand(cmd.Key) {
+		return store.ApplyBayesTrainCommand(a.ps, cmd)
+	}
+
 	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:

@@ -286,11 +286,8 @@ func TestBayesianTraining(t *testing.T) {
 			fmt.Sprintf("free viagra cheap pills offer %d", i),
 			"buy now discount limited time offer free money winner prize claim reward bonus cash gift",
 		)
-		if err := bayesFilter.Train(userID, tokens, true); err != nil {
+		if err := bayesFilter.Train(userID, fmt.Sprintf("spam-%d", i), tokens, true); err != nil {
 			t.Fatalf("Train spam %d: %v", i, err)
-		}
-		if err := bayesFilter.IncrementTrained(userID); err != nil {
-			t.Fatalf("IncrementTrained spam %d: %v", i, err)
 		}
 	}
 
@@ -300,11 +297,8 @@ func TestBayesianTraining(t *testing.T) {
 			fmt.Sprintf("meeting notes project update %d", i),
 			"please review the attached document and provide feedback on the quarterly report deadline",
 		)
-		if err := bayesFilter.Train(userID, tokens, false); err != nil {
+		if err := bayesFilter.Train(userID, fmt.Sprintf("ham-%d", i), tokens, false); err != nil {
 			t.Fatalf("Train ham %d: %v", i, err)
-		}
-		if err := bayesFilter.IncrementTrained(userID); err != nil {
-			t.Fatalf("IncrementTrained ham %d: %v", i, err)
 		}
 	}
 
