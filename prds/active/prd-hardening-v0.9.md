@@ -1311,3 +1311,39 @@ From the Phase 20 reviews (2026-10-23):
 - `test/integration/srs_bounce_test.go`: one run with relaySRSBounce
   short-circuited reported a race, probably teardown after the 60 s failure;
   not reproduced. (20.7)
+
+From the Phase 21 batch 1 reviews (2026-10-23):
+
+- The rules stage sets one TargetMailbox and one delete verdict for a whole
+  envelope, so on the SMTP multi-RCPT path one recipient's rule files or drops
+  every other recipient's copy. Compose avoids it with one envelope per local
+  recipient. (21.1)
+- Compose spool writes, the external enqueue and the Sent copy are separate
+  writes: a failure after some envelopes were written returns 500 with those
+  recipients already queued, so a retry duplicates their copies. (21.1)
+- The compose flash strings ("Message sent", "queued") and its http.Error
+  texts, including "Local delivery is not available on this node", are
+  hard-coded English. (21.1)
+- Release note: web-composed local mail now runs antispam scoring, gets a new
+  pipeline GUID and Authentication-Results header, and the recipient's
+  forwards are charged to the author's budget as LOCAL forwards. (21.1)
+- `ExportCalendar` copies only VEVENT children out of `ical_raw`, so an
+  exported event with a TZID loses its VTIMEZONE; imports now carry TZIDs, so
+  this affects every zoned import. (21.6)
+- Import gives every event a fresh GUID, so re-importing a file duplicates its
+  events; events imported before this release have an empty `ical_raw` and are
+  not regrouped. (21.6)
+- The import quota pre-check uses the upload size; grouped `ical_raw` with
+  VTIMEZONEs can differ slightly. (21.6)
+- `PebbleStore.Get` has no fault-injection seam, so a profile read error
+  counting as an orphan in `ReconcileOrphanUsers` is checked by reading the
+  code only. (21.8)
+- The orphan report lower-cases a legacy alias value before checking it, while
+  the resolver looks up `users.username` with the case as stored; an alias
+  differing only in case from its username is reported live but does not
+  resolve. (21.7)
+- The agent gRPC listener (`internal/agent/grpc/server.go`) still listens on
+  `:port` and ignores `server.bind_addr`. (21.10)
+- Release note and operator check: a specific `server.bind_addr` now limits
+  SMTP to that address; check the live config in the infra repo before
+  deploying. (21.10)
