@@ -1360,3 +1360,11 @@ Process change, at the user's request: Phase 18 ends here. Review findings no lo
 
 PATTERN: [norman] When a review cannot finish its mutation run, the orchestrator runs the reviewer's list before merge; surviving mutants on error branches are the usual gap.
 PATTERN: [process] A review finding outside the task goes into the next PRD's candidate list, not straight into TASKS.md.
+
+## 2026-10-23 — v0.8.2 tagged; hardening PRD imported as Phases 19-22
+
+v0.8.2 tagged at 0a76063 after a rerun: the first main CI run failed TestUserManagement with 'connection refused' on the first login. The cause is in code: Agent.Run sets ready before the web listener binds, so the start helper's bind retry never sees a web bind failure (now 20.4).
+
+Phase 18 is closed and archived (43 tasks, v0.8.0 to v0.8.2). The open follow-ups and backlog items went through a PRD instead of new rows: prds/backlog/prd-hardening-v0.9.md, 39 stories, each checked against 0a76063 and tagged with its source. Already fixed and left out: B8, B9, B16, B17, B18 (78b6477), B12, B15. Operator decisions: one release per phase group (v0.9.0 = Phases 19 and 20, v0.10.0 = 21, v0.11.0 = 22); B7 cluster transport back in scope; the drafter's defaults accepted; US-010 uses a non-relaying bounce sink, not an SRS flag. Review findings during these releases go to the PRD's section 8.2, not to TASKS.md.
+
+PATTERN: [process] Before scoping a release from old backlog rows, verify each against the code and git log: seven of the fourteen status-less rows were already fixed.
