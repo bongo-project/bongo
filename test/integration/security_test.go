@@ -432,6 +432,11 @@ func TestPasswordChange(t *testing.T) {
 	}
 	resp.Body.Close()
 
+	// A second device holding the same pre-change session.
+	baseU, _ := url.Parse(baseURL)
+	otherJar, _ := cookiejar.New(nil)
+	otherJar.SetCookies(baseU, client.Jar.Cookies(baseU))
+
 	// Change password.
 	resp, err = client.PostForm(baseURL+"/settings/security/password", url.Values{
 		"current_password": {"admin"},
@@ -446,6 +451,24 @@ func TestPasswordChange(t *testing.T) {
 	// Should redirect to /settings/security with a flash.
 	if !strings.Contains(resp.Request.URL.Path, "/settings/security") {
 		t.Logf("final URL after password change: %s", resp.Request.URL.String())
+	}
+
+	// This device stays signed in; the other device's session has ended.
+	thisResp, err := newNoRedirectClient(client.Jar).Get(baseURL + "/settings/security")
+	if err != nil {
+		t.Fatalf("GET /settings/security (this device): %v", err)
+	}
+	thisResp.Body.Close()
+	if thisResp.StatusCode != http.StatusOK {
+		t.Errorf("this device after password change = %d, want 200", thisResp.StatusCode)
+	}
+	otherResp, err := newNoRedirectClient(otherJar).Get(baseURL + "/settings/security")
+	if err != nil {
+		t.Fatalf("GET /settings/security (other device): %v", err)
+	}
+	otherResp.Body.Close()
+	if otherResp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(otherResp.Header.Get("Location"), "/login") {
+		t.Errorf("other device after password change = %d %q, want redirect to /login", otherResp.StatusCode, otherResp.Header.Get("Location"))
 	}
 
 	// Logout.

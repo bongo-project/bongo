@@ -111,6 +111,28 @@ func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin,
 	}
 }
 
+// ReissueSessionCookie re-signs an existing session with a new epoch while
+// keeping its original expiry, so a credential change keeps the calling device
+// signed in without extending the session lifetime. The caller must have
+// obtained data from ParseSessionCookie (so Exp is in the future).
+func ReissueSessionCookie(secret []byte, data SessionData, secure bool, epoch string) *http.Cookie {
+	data.Epoch = epoch
+	payload, _ := json.Marshal(data)
+	maxAge := int(data.Exp - time.Now().Unix())
+	if maxAge < 1 {
+		maxAge = 1
+	}
+	return &http.Cookie{ // #nosec G124 -- Secure is set from runtime TLS/proxy config so dev HTTP can still log in
+		Name:     cookieName,
+		Value:    SignValue(secret, sessionCookiePurpose, payload),
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   maxAge,
+	}
+}
+
 // ClearSessionCookie returns a cookie that clears the session.
 func ClearSessionCookie() *http.Cookie {
 	return &http.Cookie{ // #nosec G124 -- clearing must also work for non-Secure dev cookies
