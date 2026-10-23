@@ -1381,3 +1381,10 @@ Workflow wf_97948b7e-fd7 in worktrees from 749bb32, four workflow tasks. 19.8 pa
 
 PATTERN: [testing] When a check runs against two stores (Pebble and its SQLite index), each needs its own negative case; the other store hides a mutation in one.
 PATTERN: [forwarding] Grouping forwards by user rather than by destination can queue one target twice; deduplicate across the whole approved list.
+
+## 2026-10-23 — Phase 20 (20.1-20.8) DONE; v0.9.0 scope complete
+
+Workflow wf_75087717-98e in worktrees from bff481e, four workflow tasks, all accepted (20.1-20.3 after one fix: the deploy workflow's exit-code check was dead under set +e). 20.5 found the real cause of the TestSMTPFullMailFlow flake: FSM.Apply made the Pebble write visible before the derived-index item was counted, so WaitIdle could report idle mid-apply; 1/16 failed before, 30/30 passed after, and a unit test that freezes Apply between write and enqueue is the deterministic guard (the integration test alone does not reliably catch the regression). 20.4: TestUserManagement 20/20 after Ready waits for the bound web listener; the taken-port test is the deterministic guard, the 50-dial test is probabilistic. Review findings went to section 8.2 of the PRD.
+
+PATTERN: [flakes] For a flake, the deterministic guard is a unit test that freezes the racing step (here via a log hook between write and enqueue); a repeat-count integration run is evidence of a fix, not a regression test.
+PATTERN: [ci] A path-filtered workflow should never hold a check every PR needs; put such checks in the unfiltered CI workflow.
