@@ -355,7 +355,8 @@ go-webdav, which parses the whole body before our quota check runs
       user's usage unchanged. The same with `Transfer-Encoding: chunked` and
       no `Content-Length`.
 - [ ] The same for a CardDAV `PUT`.
-- [ ] A 100 KiB `PUT` succeeds as today (201 for create, 204 for update).
+- [ ] A 100 KiB `PUT` succeeds as today (201 for create and for update: go-webdav
+      v0.7.0 answers every PUT with 201, see its TODO; amended 2026-10-23).
 - [ ] An unauthenticated oversized `PUT` still returns 401 without reading
       the body.
 
@@ -1211,4 +1212,27 @@ that raised them, unless the story's own change introduced them (those are
 fixed before merge). This list is the starting point for the v0.10 scope.
 Nothing goes from here into TASKS.md during v0.9.
 
-- (none yet)
+From the Phase 19 batch 1 reviews (2026-10-23):
+
+- `internal/web/handlers/auth.go:121-126`: web Login still falls back to
+  `Authenticate` for authenticators without `AuthenticateProfile`
+  (production uses `LocalAuth`, which has it). (19.6)
+- `internal/web/handlers/security.go` ChangePassword and the admin profile
+  writes have no compare-and-swap; `lockUser` is per process, so a write on
+  another node between read and write can be overwritten. (19.7)
+- `internal/pop3/session.go` handlePass calls `authLimiter.Succeed` before the
+  nil/disabled profile guard (unreachable with `LocalAuth`). (19.6 review)
+- DAV PUT on update answers 201, not 204 (go-webdav v0.7.0). (19.11)
+- No global budget for DAV bodies in flight: each authenticated request can
+  hold up to 10 MiB. (19.11)
+- `internal/smtp/server.go`: a client can declare a small `SIZE` and send up
+  to the message cap; DATA does not check actual size against the declared
+  one. (19.12)
+- Compose checks each local recipient's domain separately, so several copies
+  landing in one domain are each admitted against the same headroom. (19.13)
+- `internal/store/domain_quota_store.go`: `RecipientOverQuota` has no
+  production caller left. (19.12)
+- The per-node share limiter resets on restart and multiplies by the number of
+  web-serving nodes. (19.1)
+- `internal/agent` tests bind fixed ports 8301 and 1143 and collide when two
+  runs overlap. (19.1, 19.11 reviews)
