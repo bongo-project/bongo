@@ -80,7 +80,7 @@ func TestSMTPPerIPConnectionCap(t *testing.T) {
 		ProxyProtocol:  true,
 		Limits:         config.SMTPLimits{MaxConnections: 100, MaxConnectionsPerIP: 2},
 	}
-	srv := NewServer(cfg, NewBackend(nil, nil, testLogger()), true, testLogger())
+	srv := NewServer(cfg, "", NewBackend(nil, nil, testLogger()), true, testLogger())
 	tp, err := netx.ParseTrustedProxies([]string{"127.0.0.1/32"})
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestSMTPPROXYHeaderFromUnlistedPeerIgnored(t *testing.T) {
 				ProxyProtocol:  true,
 				Limits:         config.SMTPLimits{MaxConnections: 100, MaxConnectionsPerIP: 2},
 			}
-			srv := NewServer(cfg, NewBackend(nil, nil, testLogger()), true, testLogger())
+			srv := NewServer(cfg, "", NewBackend(nil, nil, testLogger()), true, testLogger())
 			tp, err := netx.ParseTrustedProxies(tc.trusted)
 			if err != nil {
 				t.Fatal(err)

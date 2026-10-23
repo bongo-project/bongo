@@ -22,8 +22,9 @@ func NewAddressRepairHandler(pebble *store.PebbleStore, addresses *store.Address
 	return &AddressRepairHandler{pebble: pebble, addresses: addresses, logger: logger}
 }
 
-// List reports address-index records whose owning user no longer exists.
-// Read-only: this is the dry run.
+// List reports address-index records whose owning user no longer exists, plus
+// leftover legacy aliases and catch-alls (report-only kinds that Repair does
+// not touch). Read-only: this is the dry run.
 func (h *AddressRepairHandler) List(w http.ResponseWriter, r *http.Request) {
 	orphans, err := store.FindOrphanedAddresses(h.pebble)
 	if err != nil {
@@ -46,7 +47,15 @@ func (h *AddressRepairHandler) Repair(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to scan address index", http.StatusInternalServerError)
 		return
 	}
-	deleted, err := store.DeleteOrphanedAddresses(h.pebble, h.addresses, orphans)
+	// Only address-index records are repairable; the legacy alias and catch-all
+	// kinds are reported for hand removal.
+	repairable := make([]store.OrphanedAddress, 0, len(orphans))
+	for _, o := range orphans {
+		if o.Kind != store.KindLegacyAlias && o.Kind != store.KindCatchAll {
+			repairable = append(repairable, o)
+		}
+	}
+	deleted, err := store.DeleteOrphanedAddresses(h.pebble, h.addresses, repairable)
 	for _, addr := range deleted {
 		h.logger.Warn("address repair: removed orphaned address index record", "address", addr)
 	}

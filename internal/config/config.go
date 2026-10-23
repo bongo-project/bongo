@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"os"
@@ -1240,20 +1241,53 @@ func Defaults() *Config {
 	}
 }
 
+// FileStamp identifies the config file content that was actually read.
+type FileStamp struct {
+	ModTime time.Time
+	Size    int64
+}
+
+// LogAttrs returns slog attributes for the stamp: file_mtime (RFC 3339, UTC)
+// and file_size in bytes.
+func (s FileStamp) LogAttrs() []any {
+	return []any{"file_mtime", s.ModTime.UTC().Format(time.RFC3339), "file_size", s.Size}
+}
+
 // LoadFromFile parses an HCL config file and merges it onto defaults.
 func LoadFromFile(path string) (*Config, error) {
+	cfg, _, err := LoadFile(path)
+	return cfg, err
+}
+
+// LoadFile is LoadFromFile that also returns the mtime and size of the file
+// as read. The stamp comes from the open handle, so it describes the bytes
+// parsed even if the path is replaced a moment later.
+func LoadFile(path string) (*Config, FileStamp, error) {
 	cfg := Defaults()
-	if err := hclsimple.DecodeFile(path, nil, cfg); err != nil {
-		return nil, fmt.Errorf("parsing config file: %w", err)
+	f, err := os.Open(path) // #nosec G304 -- operator-supplied config path
+	if err != nil {
+		return nil, FileStamp{}, fmt.Errorf("parsing config file: %w", err)
 	}
-	return cfg, nil
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, FileStamp{}, fmt.Errorf("parsing config file: %w", err)
+	}
+	src, err := io.ReadAll(f)
+	if err != nil {
+		return nil, FileStamp{}, fmt.Errorf("parsing config file: %w", err)
+	}
+	if err := hclsimple.Decode(path, src, nil, cfg); err != nil {
+		return nil, FileStamp{}, fmt.Errorf("parsing config file: %w", err)
+	}
+	return cfg, FileStamp{ModTime: info.ModTime(), Size: info.Size()}, nil
 }
 
 // Load returns a fully-merged config using the precedence: CLI flags > env vars > file > defaults.
 // The viper instance should have CLI flags and file path already bound before calling this.
 // Deprecated: prefer LoadWithDiscovery which also returns the resolved config file path.
 func Load(v *viper.Viper) (*Config, error) {
-	cfg, _, err := LoadWithDiscovery(v)
+	cfg, _, _, err := LoadWithDiscovery(v)
 	return cfg, err
 }
 
@@ -1291,7 +1325,7 @@ func ApplyOverrides(v *viper.Viper, cfg *Config) {
 
 // LoadWithDiscovery runs config file discovery, loads the file if found, applies viper overrides,
 // and returns the config together with the resolved config file path (empty string means defaults only).
-func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
+func LoadWithDiscovery(v *viper.Viper) (*Config, string, FileStamp, error) {
 	cfg := Defaults()
 
 	// Run discovery: explicit flag > BONGO_CONFIG env > ./bongo.hcl > /etc/bongo/bongo.hcl
@@ -1302,21 +1336,22 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 		var err error
 		configFile, err = DiscoverConfigFile(flagPath)
 		if err != nil {
-			return nil, "", fmt.Errorf("discovering config file: %w", err)
+			return nil, "", FileStamp{}, fmt.Errorf("discovering config file: %w", err)
 		}
 	}
 
+	var stamp FileStamp
 	if configFile != "" {
-		fileCfg, err := LoadFromFile(configFile)
+		fileCfg, st, err := LoadFile(configFile)
 		if err != nil {
-			return nil, "", err
+			return nil, "", FileStamp{}, err
 		}
-		cfg = fileCfg
+		cfg, stamp = fileCfg, st
 	}
 
 	ApplyOverrides(v, cfg)
 
-	return cfg, configFile, nil
+	return cfg, configFile, stamp, nil
 }
 
 // IsLoopbackHost reports whether host is a loopback IP literal or "localhost".

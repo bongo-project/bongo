@@ -27,6 +27,7 @@ type composeSendAsEnv struct {
 	qs        *queue.QueueStore
 	applier   *directApplierTags
 	handler   *ComposeHandler
+	spool     *fakeSpool
 }
 
 func newComposeSendAsEnv(t *testing.T) *composeSendAsEnv {
@@ -60,6 +61,8 @@ func newComposeSendAsEnv(t *testing.T) *composeSendAsEnv {
 	h.SetAddressStore(as)
 	h.SetLocalResolver(resolver)
 	h.SetQueueStore(qs)
+	spool := &fakeSpool{}
+	h.SetSpool(spool)
 
 	return &composeSendAsEnv{
 		ps:        ps,
@@ -70,6 +73,7 @@ func newComposeSendAsEnv(t *testing.T) *composeSendAsEnv {
 		qs:        qs,
 		applier:   applier,
 		handler:   h,
+		spool:     spool,
 	}
 }
 

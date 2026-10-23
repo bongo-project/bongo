@@ -1394,3 +1394,11 @@ PATTERN: [ci] A path-filtered workflow should never hold a check every PR needs;
 v0.9.0 tagged at 0d9b5b2 (CI, Deploy and Publish image green). Dependabot's first run after #47 opened twelve PRs (#48-#59) and its Go modules job failed on a hashicorp/raft bump that needs memberlist and go-metrics upgraded together. At the operator's request Dependabot is removed and the PRs closed; vulnerable dependencies come through govulncheck in CI and the release gate, and go through the PRD flow like any other finding. The version bumps it raised are listed in PRD 8.2.
 
 PATTERN: [process] Automated per-dependency PRs bypass the release-scope flow; dependency work goes through govulncheck findings and a release scope instead.
+
+## 2026-10-23 — Phase 21 batch 1 (21.1, 21.3, 21.5-21.10) DONE
+
+Workflow wf_cd549871-54d in worktrees from ce66b8c, four workflow tasks. 21.5+21.6 passed first time; the other three took one fix round each. The final reviews left gaps the orchestrator closed before merge: the orphan report aborted on one corrupt alias-target record, so a single bad record made GET and repair of real orphans return 500 (now counted as live, never a false orphan); a disabled owner found only through an alias record was untested; Master's DTSTART fallback for an unparsable RECURRENCE-ID and the import create-failure count had surviving mutants; compose refused a send with no spool only after the rate limiters had charged it. Each fix was mutation-tested (red). Review findings went to section 8.2 of the PRD.
+
+PATTERN: [rules] The rules stage decides per envelope, not per recipient; any path that queues several local recipients needs one envelope each.
+PATTERN: [reporting] A report pass that aborts on one corrupt record blocks repair of everything else; skip what cannot be read, as the existing pass does, unless skipping produces a false positive.
+

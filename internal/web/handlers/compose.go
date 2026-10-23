@@ -16,6 +16,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/mail"
@@ -55,11 +56,23 @@ type ComposeHandler struct {
 	addresses     *store.AddressStore    // for send-as From picker and enforcement
 	logger        *slog.Logger
 	quota         QuotaChecker // nil = unlimited
+	spool         localSpooler // inbound pipeline spool for local recipients
 
 	// dedupMinSize is the attachment-dedup threshold. > 0 stores sent mail as a
 	// skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
 	dedupMinSize int
 }
+
+// localSpooler is the slice of the inbound pipeline spool compose needs:
+// writing one QueueEnvelope for asynchronous local delivery.
+// *pipeline.SpoolStore satisfies it.
+type localSpooler interface {
+	Enqueue(env *bongov1.QueueEnvelope) error
+}
+
+// SetSpool sets the inbound pipeline spool that local recipients are delivered
+// through, the same path SMTP submission uses.
+func (h *ComposeHandler) SetSpool(s localSpooler) { h.spool = s }
 
 // SetQuotaChecker enables the domain storage-quota check on Send and SaveDraft.
 func (h *ComposeHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
@@ -482,9 +495,15 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, rcpt := range localRecipients {
 		if rid := h.resolveLocalUser(rcpt); rid != "" && quotaExceeded(h.quota, h.logger, rid, msgSize) {
-			http.Error(w, quotaRecipientText(r, rcpt), http.StatusInsufficientStorage)
+			refuseQuotaText(w, r, quotaRecipientText(r, rcpt))
 			return
 		}
+	}
+	// Refuse before anything is stored or the rate limiters spend budget.
+	if len(localRecipients) > 0 && h.spool == nil {
+		h.logger.Error("web: cannot send to local recipients: inbound spool not configured", "user", userID)
+		http.Error(w, "Local delivery is not available on this node", http.StatusServiceUnavailable)
+		return
 	}
 
 	// Store the message: a skeleton + deduplicated attachment blobs when it
@@ -552,25 +571,54 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deliver to local recipients.
-	for _, rcpt := range localRecipients {
-		recipientID := h.resolveLocalUser(rcpt)
-		if recipientID == "" {
-			continue
+	// Hand local recipients to the inbound pipeline, the same path SMTP
+	// submission uses, so each recipient's rules and forwarding run. The
+	// envelope is Trusted with AuthUserId set to the author: compose is the
+	// second source of Trusted besides smtp.Session.inboundMeta, and AuthUserId
+	// comes only from the authenticated session, never from form input.
+	//
+	// Delivery is asynchronous: "sent" means accepted. Quota was checked above
+	// with the size the recompute counts (msgSize) for the sender and each
+	// local recipient, and the pipeline does not check it again, so it is
+	// checked exactly once. The pipeline stores its stamped copy (msgSize plus
+	// trace headers), the same small gap SMTP has with its declared SIZE.
+	//
+	// One envelope per recipient: the rules stage takes one TargetMailbox and
+	// one delete verdict for a whole envelope, so a shared envelope would apply
+	// one recipient's filing or delete rule to every other recipient.
+	//
+	// The spool writes, the external enqueue and the Sent copy are separate
+	// writes and not atomic. A failure on a later write after earlier envelopes
+	// were written returns 500 with those recipients already queued, so a retry
+	// can duplicate their copies. The writes are local disk writes, so this is
+	// rare.
+	if len(localRecipients) > 0 {
+		// The envelope must name the whole RFC 5322 message: the pipeline
+		// reads BlobHash as the full message, but rawHash is a skeleton when
+		// the Sent copy was split.
+		envHash := rawHash
+		if len(layout) > 0 {
+			wh, err := h.blobs.Put(rawMsg)
+			if err != nil {
+				http.Error(w, "Failed to store message", http.StatusInternalServerError)
+				return
+			}
+			envHash = wh
 		}
-
-		recipientMeta := proto.Clone(meta).(*bongov1.MailMeta)
-		if _, err := h.mailboxes.DeliverMessage(recipientID, "INBOX", recipientMeta, 0); err != nil {
-			h.logger.Warn("web: failed to deliver local recipient copy", "recipient", rcpt, "user_id", recipientID, "guid", guid, "error", err)
-			http.Error(w, "Failed to deliver local recipient copy", http.StatusInternalServerError)
-			return
-		}
-
-		// Index for search. In rich mode index the derived plain text; in plain
-		// mode index the submitted body directly — both are captured in searchBody.
-		if h.search != nil {
-			if err := h.search.IndexMail(recipientID, guid, subject, fromAddr, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
-				h.logger.Warn("web: failed to index recipient mail", "guid", guid, "error", err)
+		for _, rcpt := range localRecipients {
+			env := &bongov1.QueueEnvelope{
+				Id:         uuid.New().String(),
+				Sender:     fromAddr, // already checked against send-as
+				Recipients: []string{rcpt},
+				ReceivedAt: time.Now().Unix(),
+				BlobHash:   envHash,
+				Trusted:    true,
+				AuthUserId: userID,
+			}
+			if err := h.spool.Enqueue(env); err != nil {
+				h.logger.Warn("web: failed to spool local recipient copy", "recipient", rcpt, "guid", guid, "error", err)
+				http.Error(w, "Failed to deliver local recipient copy", http.StatusInternalServerError)
+				return
 			}
 		}
 	}

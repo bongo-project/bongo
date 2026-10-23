@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"runtime/pprof"
+	"strings"
 	"testing"
 	"time"
 
@@ -654,5 +655,93 @@ func TestNewAgentReconcilesStaleUserEnabled(t *testing.T) {
 	}
 	if enabled != 0 {
 		t.Fatalf("users.enabled = %d after restart, want 0", enabled)
+	}
+}
+
+// TestNewAgentReconcilesOrphanUsers restarts a follower-state server agent
+// (Run is never called, so the leader-only sweep cannot be what acts) over a
+// data directory holding a users row and GAL entry with no Pebble profile.
+func TestNewAgentReconcilesOrphanUsers(t *testing.T) {
+	dir := t.TempDir()
+	newCfg := func() *config.Config {
+		cfg := config.Defaults()
+		cfg.Server.Role = "server"
+		cfg.Server.BindAddr = "127.0.0.1"
+		cfg.Storage.DataDir = dir
+		return cfg
+	}
+	const removedMsg = "orphan users rows removed at startup"
+
+	a, err := NewAgent(newCfg(), testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	live, _ := proto.Marshal(&bongov1.UserProfile{Email: "live@example.com"})
+	if err := a.Store.Set([]byte("/user/live1/profile"), live); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range [][2]string{{"live1", "live@example.com"}, {"orph1", "orphan@example.com"}} {
+		if _, err := a.Metadata.System.DB().Exec(
+			"INSERT INTO users (id, username, display_name, enabled, created_at) VALUES (?, ?, ?, 1, 0)",
+			r[0], r[1], r[0]); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Search.IndexProfile(r[0], r[1], r[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	var buf bytes.Buffer
+	a2, err := NewAgent(newCfg(), slog.New(slog.NewTextHandler(&buf, nil)))
+	if err != nil {
+		t.Fatalf("NewAgent restart: %v", err)
+	}
+	if a2.IsLeader() {
+		t.Fatal("agent is leader before Run; test would not prove the follower path")
+	}
+	rows := func(a *Agent, id string) int {
+		var c int
+		if err := a.Metadata.System.DB().QueryRow("SELECT COUNT(*) FROM users WHERE id = ?", id).Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	if rows(a2, "orph1") != 0 {
+		t.Error("orphan users row survived startup")
+	}
+	if rows(a2, "live1") != 1 {
+		t.Error("live users row removed")
+	}
+	gal, err := a2.Search.SearchGAL("orphan", 10, "x@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gal) != 0 {
+		t.Errorf("orphan GAL entry survived: %v", gal)
+	}
+	if gal, _ := a2.Search.SearchGAL("live", 10, "x@example.com"); len(gal) != 1 {
+		t.Errorf("live GAL entry = %v, want 1", gal)
+	}
+	if err := auth.CheckAddressFree(a2, a2.Metadata, "orphan@example.com"); err != nil {
+		t.Errorf("CheckAddressFree after reconcile = %v, want nil", err)
+	}
+	if n := strings.Count(buf.String(), removedMsg); n != 1 {
+		t.Errorf("removal log lines = %d, want 1:\n%s", n, buf.String())
+	}
+	if err := a2.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+
+	buf.Reset()
+	a3, err := NewAgent(newCfg(), slog.New(slog.NewTextHandler(&buf, nil)))
+	if err != nil {
+		t.Fatalf("NewAgent third start: %v", err)
+	}
+	defer a3.Shutdown()
+	if strings.Contains(buf.String(), removedMsg) {
+		t.Errorf("removal logged with zero orphans:\n%s", buf.String())
 	}
 }
