@@ -88,4 +88,9 @@ func TestFSMDependencySettersAreRaceFree(t *testing.T) {
 	}()
 
 	wg.Wait()
+
+	// The indexer drains its queue after cancel and writes SQLite while it
+	// does; wait for it, or TempDir cleanup races the last writes.
+	cancel()
+	env.fsm.StopIndexer()
 }
