@@ -99,6 +99,19 @@ func NewWithClock(key []byte, maxAgeDays int, now func() time.Time) *Codec {
 	return &Codec{key: append([]byte(nil), key...), maxAge: maxAgeDays, now: now}
 }
 
+// NoRelayLocal is the reserved local part of the envelope sender used when an
+// unauthenticated message is forwarded: <NoRelayLocal>@<forwarding domain>. The
+// address accepts bounces (null sender only) and discards them, so a forged
+// original sender never receives backscatter. It is deliberately not SRS-shaped
+// (IsSRS is false), so the SRS reversal path can never handle it. It takes
+// precedence over any user, alias or catch-all with the same local part.
+const NoRelayLocal = "bongo-bounce-sink"
+
+// IsNoRelay reports whether a local part is the reserved no-relay sender.
+func IsNoRelay(local string) bool {
+	return strings.EqualFold(local, NoRelayLocal)
+}
+
 // IsSRS reports whether a local part carries an SRS0 or SRS1 prefix.
 func IsSRS(local string) bool {
 	if len(local) < 5 || local[4] != '=' {

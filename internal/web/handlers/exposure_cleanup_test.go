@@ -137,18 +137,18 @@ func TestSendAs_NoOwnershipOracle(t *testing.T) {
 		name    string
 		address string
 		seed    func(t *testing.T, e *verifyTestEnv)
-		stored  bool // whether the caller ends up holding the address
+		stored  bool // whether the caller ends up with a pending claim (never a record)
 	}{
 		{"unowned external (control)", "free@external.example", func(*testing.T, *verifyTestEnv) {}, true},
 		{"owned by another user", "taken@external.example", func(t *testing.T, e *verifyTestEnv) {
 			e.seedAddress(t, "taken@external.example", "user1", "identity", false, false)
-		}, false},
+		}, true},
 		{"hosted domain", "free@hosted.example", func(t *testing.T, e *verifyTestEnv) {
 			e.putKey(t, "/system/domain/hosted.example", "x")
 		}, false},
 		{"alias", "al@example.com", func(t *testing.T, e *verifyTestEnv) {
 			e.putKey(t, "/system/alias/al@example.com", "a@example.com")
-		}, false},
+		}, true},
 	}
 	var wantLoc string
 	var wantCode int
@@ -172,9 +172,12 @@ func TestSendAs_NoOwnershipOracle(t *testing.T) {
 				t.Errorf("Location %q reveals ownership", loc)
 			}
 			rec, ok, _ := env.addresses.Get(tt.address)
-			held := ok && rec.UserId == "user2"
-			if held != tt.stored {
-				t.Errorf("user2 holds %s = %v, want %v", tt.address, held, tt.stored)
+			if ok && rec.UserId == "user2" {
+				t.Errorf("user2 was given a record for %s: %+v", tt.address, rec)
+			}
+			_, claimed, _ := env.verifyStore.Get("user2", tt.address)
+			if claimed != tt.stored {
+				t.Errorf("user2 claims %s = %v, want %v", tt.address, claimed, tt.stored)
 			}
 			if tt.name == "owned by another user" && (!ok || rec.UserId != "user1") {
 				t.Errorf("owner changed: %+v ok=%v", rec, ok)

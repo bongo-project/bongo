@@ -667,6 +667,7 @@
   "admin.dkimRecord": "DKIM",
   "admin.dmarcRecord": "DMARC",
   "settings.sendAsRequested": "Demande reçue. Si l'adresse peut être ajoutée, elle apparaît maintenant dans votre liste.",
+  "settings.sendAsVerificationFailed": "La vérification a échoué. Ajoutez de nouveau l'adresse si vous en avez encore besoin.",
   "admin.tempPasswordLabel": "Mot de passe temporaire",
   "admin.tempPasswordNotice": "Mot de passe réinitialisé. Ce mot de passe temporaire n'est affiché qu'une fois et ne peut pas être récupéré. Transmettez-le à l'utilisateur maintenant.",
   "quota.exceeded": "Votre quota de stockage est plein, l'enregistrement est impossible. Supprimez des éléments ou demandez à votre administrateur d'augmenter la limite.",

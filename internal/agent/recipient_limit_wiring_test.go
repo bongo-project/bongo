@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/mail"
+	pipelinedeliver "github.com/bongo-project/bongo/internal/pipeline/deliver"
+	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/handlers"
 )
 
@@ -137,3 +140,82 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 		t.Error("share limiter allows a 21st request in the hour")
 	}
 }
+
+// A LOCAL forward leaves signed as its author, so the deliver stage must draw
+// on the very limiter web compose and SMTP submission use. Deleting the
+// SetAuthorRecipientLimiter call in buildPipelineStages leaves it nil.
+func TestDeliverStageSharesRecipientLimiter(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ps.Close() })
+
+	cfg := config.Defaults()
+	cfg.SMTP.Limits.OutboundRecipientsPerHour = 7
+	a := &Agent{Config: cfg, logger: testLogger(), Store: ps}
+	_, d := a.buildPipelineStages(nil)
+	compose := handlers.NewComposeHandler(nil, nil, nil, nil, nil, testLogger())
+	a.wireComposeLimits(compose)
+	backend, err := a.newServerSMTPBackend(nil, nil)
+	if err != nil {
+		t.Fatalf("newServerSMTPBackend: %v", err)
+	}
+
+	got := d.AuthorRecipientLimiter()
+	if got == nil {
+		t.Fatal("deliver stage has no author recipient limiter")
+	}
+	if got != fl(a.RecipientLimiter) || got != fl(compose.RecipientLimiter()) || got != fl(backend.RecipientLimiter()) {
+		t.Fatal("deliver stage holds a different limiter instance from compose or SMTP")
+	}
+	if !got.Allow("u1") {
+		t.Fatal("Allow refused")
+	}
+	if rem := compose.RecipientLimiter().Remaining("u1"); rem != 6 {
+		t.Fatalf("compose sees remaining %d, want 6", rem)
+	}
+}
+
+// The forwarding user's domain feeds the no-relay sender, so it must be wired
+// whether or not SRS is configured.
+func TestDeliverStageUserDomainsWithoutSRS(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ps.Close() })
+	a := &Agent{Config: config.Defaults(), logger: testLogger(), Store: ps}
+	_, d := a.buildPipelineStages(nil)
+	if d.SRSEnabled() {
+		t.Fatal("SRS enabled without a codec")
+	}
+	if d.UserDomainLookup() == nil {
+		t.Error("user-domain lookup not wired without SRS; unauthenticated forwards would keep the original sender")
+	}
+}
+
+// The no-relay RCPT rule needs the hosted-domain check even when SRS is off
+// (no session secret). Deleting backend.SetHostedDomain leaves it nil.
+func TestSMTPBackendHostedDomainWithoutSRS(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ps.Close() })
+	a := &Agent{Config: config.Defaults(), logger: testLogger(), Store: ps}
+	if a.SRS != nil {
+		t.Fatal("SRS configured; test needs it off")
+	}
+	backend, err := a.newServerSMTPBackend(nil, nil)
+	if err != nil {
+		t.Fatalf("newServerSMTPBackend: %v", err)
+	}
+	if !backend.HostedDomainConfigured() {
+		t.Error("hosted-domain check not wired without SRS; the no-relay address would reach resolution at RCPT")
+	}
+}
+
+// fl converts a concrete limiter to the interface the deliver stage holds so
+// the instances can be compared.
+func fl(l *mail.RateLimiter) pipelinedeliver.ForwardLimiter { return l }

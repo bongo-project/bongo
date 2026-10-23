@@ -368,10 +368,10 @@ func TestSelfServe_ExpiredCode_DoesNotVerify(t *testing.T) {
 		t.Error("address must not be verified after expired code")
 	}
 
-	// Expired challenge should be cleaned up.
-	_, stillExists, _ := env.verifyStore.Get(userID, claimedAddr)
-	if stillExists {
-		t.Error("expired challenge should be deleted after attempted use")
+	// The expired challenge is reset to a bare claim, not deleted.
+	ch, stillExists, _ := env.verifyStore.Get(userID, claimedAddr)
+	if !stillExists || len(ch.CodeHash) != 0 || ch.ExpiresAt != 0 {
+		t.Errorf("expired challenge = %+v exists=%v, want a bare claim", ch, stillExists)
 	}
 }
 
@@ -469,10 +469,10 @@ func TestSelfServe_MaxAttempts_InvalidatesChallenge(t *testing.T) {
 		env.submitCodeHTTP(t, userID, email, claimedAddr, "wrongcode")
 	}
 
-	// After exceeding maxAttempts, challenge must be deleted.
-	_, stillExists, _ := env.verifyStore.Get(userID, claimedAddr)
-	if stillExists {
-		t.Error("challenge should be invalidated after max attempts exceeded")
+	// After exceeding maxAttempts the challenge is reset to a bare claim.
+	ch, stillExists, _ := env.verifyStore.Get(userID, claimedAddr)
+	if !stillExists || len(ch.CodeHash) != 0 || ch.Attempts != 0 {
+		t.Errorf("challenge = %+v exists=%v, want a bare claim after max attempts", ch, stillExists)
 	}
 
 	// Even if the user somehow gets the real code, they can no longer verify.

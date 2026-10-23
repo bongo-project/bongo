@@ -36,7 +36,10 @@ const adminScopeKey contextKey = "adminScope"
 // this one on admin-group routes. It admits global admins
 // (isAdmin=true from RequireAuth context) and users who administer at least one
 // domain (authorizedFn returns ≥1 domain); regular users and store errors both
-// get 403 (fail-closed). It injects an AdminScope into the request context so
+// get 403 (fail-closed). When RequireAuth could not read the account state
+// (SessionStateUnavailable) every caller, global or domain admin, gets 503
+// before authorizedFn is consulted, so an unreadable profile never downgrades
+// a demoted admin to domain scope or grants a stale one. It injects an AdminScope into the request context so
 // downstream handlers can enforce per-resource access without re-querying the
 // store.
 //
@@ -47,6 +50,10 @@ const adminScopeKey contextKey = "adminScope"
 func RequireAdminOrDomainAdmin(authorizedFn func(userID string, isGlobalAdmin bool) ([]string, error)) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if SessionStateUnavailable(r.Context()) {
+				http.Error(w, "account state unavailable", http.StatusServiceUnavailable)
+				return
+			}
 			isAdmin := AdminFromContext(r.Context())
 			userID, _ := UserFromContext(r.Context())
 

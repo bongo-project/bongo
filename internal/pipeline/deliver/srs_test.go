@@ -80,7 +80,7 @@ func TestForwardGetsSRSSender(t *testing.T) {
 			proc := newSRSProc(t, queuer, &mockApplier{})
 			env := &bongov1.QueueEnvelope{
 				Id: "e1", Sender: "bob@example.org", Recipients: []string{"alice@hosted.example"},
-				ReceivedAt: time.Now().Unix(), BlobHash: "blob1",
+				ReceivedAt: time.Now().Unix(), BlobHash: "blob1", SpfResult: "pass",
 			}
 			if path == "forward address" {
 				proc.SetPreferences(&mockPrefs{prefs: map[string]*bongov1.UserPreferences{"user-alice": {ForwardAddress: "ext@dest.example"}}})
@@ -142,7 +142,7 @@ func TestForwardSRSNotApplied(t *testing.T) {
 			proc.SetPreferences(&mockPrefs{prefs: map[string]*bongov1.UserPreferences{"user-alice": {ForwardAddress: "ext@dest.example"}}})
 			env := &bongov1.QueueEnvelope{
 				Id: "e2", Sender: tt.sender, Recipients: []string{"alice@hosted.example"},
-				ReceivedAt: time.Now().Unix(), BlobHash: "blob2", AuthUserId: tt.authUser,
+				ReceivedAt: time.Now().Unix(), BlobHash: "blob2", AuthUserId: tt.authUser, SpfResult: "pass",
 			}
 			if _, err := proc.Process(context.Background(), env, strings.NewReader(raw)); err != nil {
 				t.Fatalf("Process: %v", err)
@@ -163,7 +163,7 @@ func TestForwardSRSOneMessagePerDomain(t *testing.T) {
 	raw := minimalMessage("bob@example.org", "alice@hosted.example", "Hello", "Hi!\r\n")
 	env := &bongov1.QueueEnvelope{
 		Id: "e3", Sender: "bob@example.org", Recipients: []string{"alice@hosted.example", "carol@other.example"},
-		ReceivedAt: time.Now().Unix(), BlobHash: "blob3",
+		ReceivedAt: time.Now().Unix(), BlobHash: "blob3", SpfResult: "pass",
 		ForwardRequests: []*bongov1.ForwardRequest{
 			{UserId: "user-alice", Target: "one@dest.example"},
 			{UserId: "user-carol", Target: "two@dest.example"},

@@ -69,3 +69,53 @@ func TestAdminCreateUserStoresLowerCaseEmail(t *testing.T) {
 		t.Errorf("profile email = %q", p.Email)
 	}
 }
+
+// TestAdminCreateUserReplacesUnverifiedClaimOnly: the admin form shows the
+// same outcomes as auth.CreateUser. An unverified send-as claim does not block
+// the account (303); a verified identity still does (409).
+func TestAdminCreateUserReplacesUnverifiedClaimOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		verified bool
+		want     int
+	}{
+		{"unverified claim replaced", false, http.StatusSeeOther},
+		{"verified identity refused", true, http.StatusConflict},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, applier, md := newAdminDeleteTestHandler(t)
+			as := store.NewAddressStore(h.store, applier, md.System)
+			if err := as.Put("new@future.example", &bongov1.AddressRecord{
+				UserId: "user-A", Domain: "future.example", Kind: "identity", CanSend: tt.verified, Verified: tt.verified,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			form := url.Values{"email": {"new@future.example"}, "password": {"pass12345"}, "display_name": {"New"}}
+			r := httptest.NewRequest(http.MethodPost, "/admin/users", strings.NewReader(form.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			ctx := middleware.WithUserContext(context.Background(), "admin-id", "admin@example.com")
+			ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+			w := httptest.NewRecorder()
+			h.CreateUser(w, r.WithContext(ctx))
+			if w.Code != tt.want {
+				t.Fatalf("CreateUser = %d (%s), want %d", w.Code, w.Body.String(), tt.want)
+			}
+
+			rec, ok, err := as.Get("new@future.example")
+			if err != nil || !ok {
+				t.Fatalf("record: ok=%v err=%v", ok, err)
+			}
+			if tt.verified != (rec.UserId == "user-A") {
+				t.Errorf("record owner = %q (verified=%v)", rec.UserId, tt.verified)
+			}
+			if !tt.verified && rec.Kind != "primary" {
+				t.Errorf("kind = %q, want primary", rec.Kind)
+			}
+			if list, _ := as.ListByUser("user-A"); !tt.verified && len(list) != 0 {
+				t.Errorf("user-A still lists %v", list)
+			}
+		})
+	}
+}

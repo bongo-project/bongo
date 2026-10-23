@@ -448,6 +448,7 @@ func TestDeliverForwardAddressesEnqueued(t *testing.T) {
 		Recipients:      []string{"alice@example.com"},
 		ReceivedAt:      time.Now().Unix(),
 		BlobHash:        "fwdhash",
+		SpfResult:       "pass", // an unauthenticated original would leave with the null sender
 		ForwardRequests: []*bongov1.ForwardRequest{{UserId: "user-alice", Target: "external@other.com"}},
 	}
 

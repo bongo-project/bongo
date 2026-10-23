@@ -384,3 +384,24 @@ func TestSRS1StamplessRefused(t *testing.T) {
 		t.Fatalf("Reverse(%q) = %q, want error", old, got)
 	}
 }
+
+func TestIsNoRelay(t *testing.T) {
+	tests := []struct {
+		local string
+		want  bool
+	}{
+		{NoRelayLocal, true},
+		{strings.ToUpper(NoRelayLocal), true},
+		{"alice", false},
+		{"", false},
+		{NoRelayLocal + "x", false},
+	}
+	for _, tt := range tests {
+		if got := IsNoRelay(tt.local); got != tt.want {
+			t.Errorf("IsNoRelay(%q) = %v, want %v", tt.local, got, tt.want)
+		}
+	}
+	if IsSRS(NoRelayLocal) {
+		t.Error("the no-relay local part must not be SRS-shaped")
+	}
+}

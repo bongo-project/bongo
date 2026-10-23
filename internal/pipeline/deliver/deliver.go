@@ -115,6 +115,12 @@ type DeliverProcessor struct {
 	srsAddrLimiter   ForwardLimiter
 	srsGlobalLimiter ForwardLimiter
 
+	// authorRL is the author's shared outbound recipient budget (the one web
+	// compose and SMTP submission draw on). A LOCAL forward, which leaves signed
+	// as the author, charges it per external target. Nil means LOCAL forwards
+	// are not charged.
+	authorRL ForwardLimiter
+
 	// blobs and dedupMinSize enable attachment deduplication: when set,
 	// inbound messages with an attachment part whose encoded body is >=
 	// dedupMinSize are stored as a skeleton + separate attachment blobs. nil blobs
@@ -223,8 +229,20 @@ func (p *DeliverProcessor) SRSBounceLimiters() (perAddress, global ForwardLimite
 	return p.srsAddrLimiter, p.srsGlobalLimiter
 }
 
+// SetAuthorRecipientLimiter sets the author's shared outbound recipient budget,
+// keyed by user ID. LOCAL forwards charge it one slot per external target; a
+// target over budget is sent as an ordinary unsigned FORWARD instead.
+func (p *DeliverProcessor) SetAuthorRecipientLimiter(l ForwardLimiter) { p.authorRL = l }
+
+// AuthorRecipientLimiter returns the limiter set by SetAuthorRecipientLimiter,
+// for wiring tests.
+func (p *DeliverProcessor) AuthorRecipientLimiter() ForwardLimiter { return p.authorRL }
+
 // SetUserDomains sets the lookup of the forwarding user's domain for SRS.
 func (p *DeliverProcessor) SetUserDomains(l UserDomainLookup) { p.userDomains = l }
+
+// UserDomainLookup returns the lookup set by SetUserDomains, for wiring tests.
+func (p *DeliverProcessor) UserDomainLookup() UserDomainLookup { return p.userDomains }
 
 // SetForwardLimiter sets the per-user forward rate limiter.
 func (p *DeliverProcessor) SetForwardLimiter(l ForwardLimiter) { p.fwdLimiter = l }
@@ -503,6 +521,13 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			p.relaySRSBounce(env, gate, rcpt, reversed)
 			continue
 		}
+		// The reserved no-relay sender takes bounces for forwards of
+		// unauthenticated mail and discards them. It is never resolved, so no
+		// catch-all owner or user holding the local part receives them.
+		if p.isHostedNoRelay(rcpt) {
+			p.logger.Info("deliver: dropping mail to the no-relay sender address", "id", env.Id)
+			continue
+		}
 		rcptStart := time.Now()
 		userID, err := p.resolver.ResolveRecipient(rcpt)
 		tResolve += mark(rcptStart)
@@ -607,7 +632,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	tRecipients = mark(stepStart)
 
-	p.enqueueForwards(env, raw, gate.approved)
+	p.enqueueForwards(env, raw, gate.approved, dmarcResult)
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
 	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)
@@ -789,13 +814,14 @@ func (p *DeliverProcessor) isHostedAddress(address string) bool {
 // is the only place a forward is queued; callers must have passed each target
 // through forwardGate.permit first.
 //
-// A FORWARD of mail with a sender leaves with an SRS envelope sender on the
-// forwarding user's domain, so the next hop's SPF check passes for that domain
-// instead of failing for the original author's. Targets are grouped by that
-// domain, one queued message per group. The null sender (a bounce) and LOCAL
-// forwards keep the original sender, as do forwards whose user's domain is
-// unknown or not hosted here.
-func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byte, approved []approvedForward) {
+// A LOCAL forward leaves signed as the author, so it is charged to the
+// author's outbound recipient budget like a message the author sent: one slot
+// per distinct external target, in decision order. A target over budget is not
+// dropped but sent as an ordinary unsigned FORWARD (see enqueueGroups). Hosted
+// targets cost nothing, matching compose, which counts external recipients.
+// The budget is in memory and per node, and a slot is not refunded when the
+// enqueue fails.
+func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byte, approved []approvedForward, dmarcResult string) {
 	if len(approved) == 0 || p.queuer == nil {
 		return
 	}
@@ -806,30 +832,124 @@ func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byt
 	// against send-as at submission, and is on a hosted domain for hosted
 	// authors.
 	origin := p.forwardOrigin(env, raw)
-	rewrite := p.srs != nil && origin == bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD &&
-		strings.TrimSpace(env.Sender) != ""
-
-	type group struct {
-		sender  string
-		targets []string
-	}
-	var groups []*group
-	byDomain := make(map[string]*group)
-	domains := make(map[string]string) // userID -> forwarding domain ("" = none)
-	for _, a := range approved {
-		domain := ""
-		if rewrite {
-			d, seen := domains[a.userID]
-			if !seen {
-				d = p.forwardingDomain(env, a.userID)
-				domains[a.userID] = d
-			}
-			domain = d
+	if origin == bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL && p.authorRL != nil {
+		local, refused := p.chargeAuthor(env, approved)
+		p.enqueueGroups(env, local, bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL, dmarcResult)
+		if len(refused) > 0 {
+			p.logger.Warn("deliver: author recipient budget spent, forwarding unsigned",
+				"id", env.Id, "user", env.AuthUserId, "targets", len(refused))
 		}
-		g := byDomain[domain]
+		p.enqueueGroups(env, refused, bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD, dmarcResult)
+		return
+	}
+	p.enqueueGroups(env, approved, origin, dmarcResult)
+}
+
+// chargeAuthor splits approved into the forwards that stay LOCAL and those the
+// author's budget refused. Targets are deduplicated first, so one forwarded by
+// two users is charged once; each distinct external target takes one slot
+// (Allow, not AllowN) so a partly spent budget splits the targets instead of
+// refusing all of them.
+func (p *DeliverProcessor) chargeAuthor(env *bongov1.QueueEnvelope, approved []approvedForward) (local, refused []approvedForward) {
+	all := make([]string, 0, len(approved))
+	for _, a := range approved {
+		all = append(all, a.target)
+	}
+	kept := make(map[string]struct{})
+	for _, t := range p.forwardTargets(all, env.Recipients) {
+		kept[t] = struct{}{}
+	}
+	stays := make(map[string]bool) // target -> stays LOCAL, once decided
+	for _, a := range approved {
+		if _, ok := kept[a.target]; !ok {
+			continue
+		}
+		ok, decided := stays[a.target]
+		if !decided {
+			ok = p.isHostedAddress(a.target) || p.authorRL.Allow(env.AuthUserId)
+			stays[a.target] = ok
+		}
+		if ok {
+			local = append(local, a)
+		} else {
+			refused = append(refused, a)
+		}
+	}
+	return local, refused
+}
+
+// forwardGroup is one queued forward: the targets that share an envelope sender.
+type forwardGroup struct {
+	sender   string
+	senderID string
+	targets  []string
+}
+
+// enqueueGroups queues approved with the given origin, one message per group.
+//
+// A FORWARD of mail with a sender leaves with a rewritten envelope sender on
+// the forwarding user's domain, so the next hop's SPF check passes for that
+// domain instead of failing for the original author's. The null sender (a
+// bounce) and LOCAL forwards keep the original sender, as do authenticated
+// forwards whose user's domain is unknown or not hosted here.
+//
+//   - Authenticated original (see senderAuthenticated): SRS, with targets
+//     grouped by forwarding domain. Needs an SRS codec.
+//   - Unauthenticated original: the sender is the reserved no-relay address on
+//     the forwarding domain, which takes bounces and discards them, so a forged
+//     sender never gets backscatter. Needs no SRS codec. Targets are grouped by
+//     forwarding user so the queue worker's log can name that user. With no
+//     forwarding domain the forward leaves with the null sender instead, so
+//     nothing can bounce back to the forged one.
+//
+// A target forwarded by several users is queued once, by the first of them.
+func (p *DeliverProcessor) enqueueGroups(env *bongov1.QueueEnvelope, approved []approvedForward, origin bongov1.OutboundOrigin, dmarcResult string) {
+	if len(approved) == 0 {
+		return
+	}
+	isForward := origin == bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD
+	hasSender := strings.TrimSpace(env.Sender) != ""
+	authenticated := senderAuthenticated(env, dmarcResult)
+	srsRewrite := p.srs != nil && isForward && hasSender && authenticated
+	noRelay := isForward && hasSender && !authenticated
+
+	var groups []*forwardGroup
+	byKey := make(map[string]*forwardGroup)
+	domains := make(map[string]string) // userID -> forwarding domain ("" = none)
+	domainOf := func(userID string) string {
+		d, seen := domains[userID]
+		if !seen {
+			d = p.forwardingDomain(env, userID)
+			domains[userID] = d
+		}
+		return d
+	}
+	queued := make(map[string]struct{})
+	for _, a := range approved {
+		if _, dup := queued[a.target]; dup {
+			continue
+		}
+		queued[a.target] = struct{}{}
+		key, domain := "", ""
+		switch {
+		case srsRewrite:
+			domain = domainOf(a.userID)
+			key = domain
+		case noRelay:
+			domain = domainOf(a.userID)
+			key = a.userID
+		}
+		g := byKey[key]
 		if g == nil {
-			g = &group{sender: env.Sender}
-			if domain != "" {
+			g = &forwardGroup{sender: env.Sender}
+			switch {
+			case noRelay:
+				g.senderID = a.userID
+				g.sender = ""
+				if domain != "" {
+					g.sender = srs.NoRelayLocal + "@" + domain
+				}
+			case domain != "":
 				sender, err := p.srs.Forward(env.Sender, domain)
 				if err != nil {
 					p.logger.Warn("deliver: cannot rewrite forward sender, keeping original",
@@ -838,7 +958,7 @@ func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byt
 					g.sender = sender
 				}
 			}
-			byDomain[domain] = g
+			byKey[key] = g
 			groups = append(groups, g)
 		}
 		g.targets = append(g.targets, a.target)
@@ -850,11 +970,13 @@ func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byt
 			continue
 		}
 		fwdMsg := &bongov1.OutboundMessage{
-			Id:          uuid.New().String(),
-			SenderEmail: g.sender,
-			Recipients:  targets,
-			BlobHash:    env.BlobHash,
-			Origin:      origin,
+			Id:                  uuid.New().String(),
+			SenderId:            g.senderID,
+			SenderEmail:         g.sender,
+			Recipients:          targets,
+			BlobHash:            env.BlobHash,
+			Origin:              origin,
+			SenderAuthenticated: authenticated,
 		}
 		if err := p.queuer.Enqueue(fwdMsg); err != nil {
 			p.logger.Warn("deliver: failed to enqueue forwarded message",
@@ -868,7 +990,8 @@ func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byt
 			"id", env.Id,
 			"forward_to", targets,
 			"origin", origin.String(),
-			"srs", g.sender != env.Sender,
+			"srs", srsRewrite && g.sender != env.Sender,
+			"no_relay_sender", noRelay && g.sender != env.Sender,
 		)
 	}
 }
@@ -899,6 +1022,20 @@ func (p *DeliverProcessor) isHostedSRS(rcpt string) bool {
 	rcpt = strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(rcpt), "<"), ">")
 	at := strings.LastIndexByte(rcpt, '@')
 	if at <= 0 || !srs.IsSRS(rcpt[:at]) {
+		return false
+	}
+	return p.hostedDomain(strings.ToLower(rcpt[at+1:]))
+}
+
+// isHostedNoRelay reports whether rcpt is the reserved no-relay address on a
+// hosted domain.
+func (p *DeliverProcessor) isHostedNoRelay(rcpt string) bool {
+	if p.hostedDomain == nil {
+		return false
+	}
+	rcpt = strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(rcpt), "<"), ">")
+	at := strings.LastIndexByte(rcpt, '@')
+	if at <= 0 || !srs.IsNoRelay(rcpt[:at]) {
 		return false
 	}
 	return p.hostedDomain(strings.ToLower(rcpt[at+1:]))
@@ -1067,4 +1204,14 @@ func addressDomain(addr string) string {
 		return ""
 	}
 	return strings.ToLower(addr[at+1:])
+}
+
+// senderAuthenticated reports whether the original sender of env is
+// authenticated: SPF passed, DMARC passed, or the message was submitted by an
+// authenticated local user (whose SPF result describes the client's own IP, not
+// the sender's domain, and whose trusted envelope skips DMARC).
+func senderAuthenticated(env *bongov1.QueueEnvelope, dmarcResult string) bool {
+	return strings.EqualFold(env.GetSpfResult(), "pass") ||
+		strings.EqualFold(dmarcResult, "pass") ||
+		env.GetAuthUserId() != ""
 }

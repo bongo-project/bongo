@@ -137,3 +137,26 @@ func TestAddressVerifyStore_AttemptCountPersisted(t *testing.T) {
 		t.Errorf("Attempts = %d, want 3", got.Attempts)
 	}
 }
+
+func TestAddressVerifyStore_ListByUser(t *testing.T) {
+	avs := newVerifyTestEnv(t)
+	claim := &bongov1.AddressVerification{}
+	for _, c := range []struct{ user, addr string }{
+		{"u1", "b@x.example"}, {"u1", "a@x.example"}, {"u10", "other@x.example"}, {"u2", "c@x.example"},
+	} {
+		if err := avs.Put(c.user, c.addr, claim); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := avs.ListByUser("u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "a@x.example" || got[1] != "b@x.example" {
+		t.Errorf("ListByUser(u1) = %v, want [a@x.example b@x.example] (u10 and u2 excluded)", got)
+	}
+	if got, _ := avs.ListByUser("nobody"); len(got) != 0 {
+		t.Errorf("ListByUser(nobody) = %v, want empty", got)
+	}
+}

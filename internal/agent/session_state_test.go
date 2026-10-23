@@ -211,3 +211,25 @@ func TestRequireAuth_AdminPasswordResetRevokesSession(t *testing.T) {
 	ran = false
 	assertRevoked(t, serveSession(h, cookie), ran)
 }
+
+// The production stateFn on an unreadable profile: reading continues, admin
+// routes answer 503.
+func TestUserSessionState_UnreadableProfileDropsAdmin(t *testing.T) {
+	a, ps := newSessionTestAgent(t)
+	if err := ps.Set([]byte("/user/x/profile"), []byte{0xff, 0xff, 0xff}); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	secret := []byte("test-secret-key-32-bytes-long!!")
+	cookie := middleware.CreateSessionCookie(secret, "x", "x@example.com", false, true, false, "")
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	admin := middleware.RequireAuth(secret, a.userSessionState)(middleware.RequireAdmin(secret)(ok))
+	rr := serveSession(admin, cookie)
+	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(rr.Body.String(), "account state unavailable") {
+		t.Fatalf("admin route: code=%d body=%q, want 503 account state unavailable", rr.Code, rr.Body.String())
+	}
+	plain := middleware.RequireAuth(secret, a.userSessionState)(ok)
+	if rr := serveSession(plain, cookie); rr.Code != http.StatusOK {
+		t.Fatalf("plain route: code=%d, want 200", rr.Code)
+	}
+}

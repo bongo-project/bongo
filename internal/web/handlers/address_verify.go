@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -73,10 +74,10 @@ func (h *AddressVerifyHandler) SetAddressStore(as *store.AddressStore) {
 	h.addresses = as
 }
 
-// SetOwnershipStores injects what AddSendAsAddress needs to prove an address
-// is unallocated: Pebble (domain and alias keys), the metadata index (users,
-// addresses and aliases tables) and the applier. Without them adding an
-// address fails closed.
+// SetOwnershipStores injects what the claim flow needs to tell whether an
+// address is hosted or already allocated: Pebble (domain and alias keys), the
+// metadata index (users, addresses and aliases tables) and the applier.
+// Without them claiming and verifying fail closed.
 func (h *AddressVerifyHandler) SetOwnershipStores(ps *store.PebbleStore, md *store.MetadataManager, applier store.RaftApplier) {
 	h.pebble = ps
 	h.metadata = md
@@ -112,13 +113,30 @@ func (h *AddressVerifyHandler) ShowAddresses(w http.ResponseWriter, r *http.Requ
 		if err != nil {
 			h.logger.Warn("address-verify: failed to list addresses", "user_id", userID, "error", err)
 		}
+		// Pending claims are not address records; merge them in. A failed
+		// best-effort claim delete after verification leaves an address in
+		// both lists, so deduplicate.
+		if h.verifyStore != nil {
+			claims, cErr := h.verifyStore.ListByUser(userID)
+			if cErr != nil {
+				h.logger.Warn("address-verify: failed to list claims", "user_id", userID, "error", cErr)
+			}
+			list = append(list, claims...)
+		}
+		slices.Sort(list)
+		list = slices.Compact(list)
 		for _, addr := range list {
 			ai := templates.UserAddressInfo{Address: addr}
-			if rec, ok, recErr := h.addresses.Get(addr); recErr == nil && ok {
+			// Only the caller's own record may colour the row: for a claim the
+			// record may belong to someone else, and showing its state would
+			// reveal who holds the address.
+			if rec, ok, recErr := h.addresses.Get(addr); recErr == nil && ok && rec.UserId == userID {
 				ai.CanSend = rec.CanSend
 				ai.Verified = rec.Verified
 			}
-			// Check for pending challenge.
+			// PendingVerification means a code was sent and has not expired. A
+			// bare claim (no code yet) is not pending, so the row keeps its
+			// Request button.
 			if h.verifyStore != nil {
 				if ch, ok, _ := h.verifyStore.Get(userID, addr); ok && ch != nil {
 					ai.PendingVerification = ch.ExpiresAt > time.Now().Unix()
@@ -131,22 +149,23 @@ func (h *AddressVerifyHandler) ShowAddresses(w http.ResponseWriter, r *http.Requ
 	templ.Handler(templates.AddressVerifyPage(addrs, email, flash, errMsg)).ServeHTTP(w, r)
 }
 
-// AddSendAsAddress adds an address that the user claims to own.
+// AddSendAsAddress records that the user claims to own an address.
 //
 // POST /settings/addresses
 // Form fields: address — the claimed email address.
 //
-// The address is stored with Kind=identity, CanSend=false, Verified=false.
-// The user can subsequently request verification.
-// Ownership: rejects if the address already belongs to a different user, to an
-// account, to an alias, or lies in a domain this server hosts (including
-// catch-all domains): a self-serve send-as for a local address is never
-// legitimate, and extra local addresses are the admin's job. Fails closed when
-// ownership cannot be established.
+// Only a per-user pending claim is written (/user/{id}/addrverify/{address},
+// no code, no expiry). No /system/address/ record exists until the user proves
+// ownership in SubmitCode, so the settings list and every reply are the same
+// whether or not another account already holds the address: the decision here
+// depends on the caller's own state only. A domain this server hosts
+// (including catch-all domains) is refused with the same reply and no claim:
+// hosting is public through DNS, and extra local addresses are the admin's
+// job. Fails closed when the hosting check cannot be made.
 func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
-	if h.addresses == nil {
+	if h.addresses == nil || h.verifyStore == nil {
 		http.Error(w, "address store not available", http.StatusInternalServerError)
 		return
 	}
@@ -168,76 +187,89 @@ func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.R
 	}
 	domain := address[atIdx+1:]
 
-	// Ownership check: if it already exists, it must belong to this user.
-	existing, ok, err := h.addresses.Get(address)
-	if err != nil {
-		h.logger.Error("address-verify: add: failed to look up address", "address", address, "error", err)
+	hosted, hErr := domainHostedLocally(h.pebble, domain)
+	if hErr != nil {
+		h.logger.Error("address-verify: add: domain check failed", "address", address, "error", hErr)
 		http.Error(w, "failed to look up address", http.StatusInternalServerError)
 		return
 	}
-	if ok && existing.UserId != userID {
-		h.logger.Info("address-verify: add refused: address owned by another account", "user_id", userID, "address", address)
+	if hosted {
+		h.logger.Info("address-verify: add refused: domain hosted here", "user_id", userID, "address", address)
 		h.sendAsAddRedirect(w, r)
 		return
 	}
 
-	if !ok {
-		hosted, hErr := domainHostedLocally(h.pebble, domain)
-		if hErr != nil {
-			h.logger.Error("address-verify: add: domain check failed", "address", address, "error", hErr)
-			http.Error(w, "failed to look up address", http.StatusInternalServerError)
-			return
-		}
-		if hosted {
-			h.logger.Info("address-verify: add refused: domain hosted here", "user_id", userID, "address", address)
-			h.sendAsAddRedirect(w, r)
-			return
-		}
-		if aErr := addressAllocationError(h.pebble, h.metadata, h.applier, address, ""); aErr != nil {
-			if errors.Is(aErr, auth.ErrAccountExists) {
-				h.logger.Info("address-verify: add refused: address already allocated", "user_id", userID, "address", address)
-				h.sendAsAddRedirect(w, r)
-				return
-			}
-			h.logger.Error("address-verify: add: ownership check failed", "address", address, "error", aErr)
-			http.Error(w, "failed to look up address", http.StatusInternalServerError)
-			return
-		}
+	own, ownErr := h.ownRecord(userID, address)
+	if ownErr != nil {
+		h.logger.Error("address-verify: add: failed to look up address", "address", address, "error", ownErr)
+		http.Error(w, "failed to look up address", http.StatusInternalServerError)
+		return
+	}
+	if own != nil && own.Verified {
+		h.sendAsAddRedirect(w, r)
+		return
+	}
 
-		// New address — create it (unverified).
-		rec := &bongov1.AddressRecord{
-			UserId:   userID,
-			Domain:   domain,
-			Kind:     "identity",
-			CanSend:  false,
-			Verified: false,
-		}
-		if err := h.addresses.Put(address, rec); err != nil {
-			h.logger.Error("address-verify: add: failed to store address", "user_id", userID, "address", address, "error", err)
+	// Never overwrite an existing claim: it may carry a live challenge.
+	_, hasClaim, err := h.verifyStore.Get(userID, address)
+	if err != nil {
+		h.logger.Error("address-verify: add: failed to look up claim", "user_id", userID, "address", address, "error", err)
+		http.Error(w, "failed to look up address", http.StatusInternalServerError)
+		return
+	}
+	if !hasClaim {
+		if err := h.verifyStore.Put(userID, address, &bongov1.AddressVerification{}); err != nil {
+			h.logger.Error("address-verify: add: failed to store claim", "user_id", userID, "address", address, "error", err)
 			http.Error(w, "failed to add address", http.StatusInternalServerError)
 			return
 		}
-		h.logger.Info("address-verify: address added", "user_id", userID, "address", address)
+		h.logger.Info("address-verify: address claimed", "user_id", userID, "address", address)
 	}
 
 	h.sendAsAddRedirect(w, r)
 }
 
+// ownRecord returns the address record for address when it belongs to userID,
+// and nil otherwise. A record held by anyone else is deliberately
+// indistinguishable from no record: callers decide on the caller's own state.
+func (h *AddressVerifyHandler) ownRecord(userID, address string) (*bongov1.AddressRecord, error) {
+	rec, ok, err := h.addresses.Get(address)
+	if err != nil {
+		return nil, fmt.Errorf("looking up address record: %w", err)
+	}
+	if !ok || rec.UserId != userID {
+		return nil, nil
+	}
+	return rec, nil
+}
+
 // sendAsAddRedirect is the single reply to AddSendAsAddress for every
-// non-error outcome: added, already held, taken by another account, hosted
-// domain, alias. The reply must not depend on who owns the address, or the
-// form becomes an oracle for which addresses exist on any tenant.
+// non-error outcome: claimed, already claimed or held, hosted domain. The reply
+// must not depend on who owns the address, or the form becomes an oracle for
+// which addresses exist on any tenant.
 func (h *AddressVerifyHandler) sendAsAddRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings/addresses?flash="+url.QueryEscape(fwdText(r, "settings.sendAsRequested")), http.StatusSeeOther)
 }
 
-// RequestVerification issues a one-time verification code for an owned address.
+// RequestVerification issues a one-time verification code for a claimed address.
 //
 // POST /settings/addresses/{address}/verify-request
 //
 // Security properties:
-//   - Ownership: rejects if address belongs to a different user.
-//   - Rate limiting: rejects if a valid (non-expired) challenge already exists.
+//   - Claim: requires the caller's own pending claim, or an existing unverified
+//     record of their own (an implicit claim, so addresses added before claims
+//     existed can still be verified). Everything up to the allocation check
+//     depends on the caller's own state only.
+//   - Rate limiting: rejects if a valid (non-expired) challenge already exists,
+//     and counts every request against the per-user limiter.
+//   - Allocation: if an account, alias or other user's record already holds the
+//     address (or its domain is hosted here) the request still stores a
+//     challenge and returns the normal success redirect, but the code is a
+//     random value that is never sent and no mail is queued. A different
+//     reply, or no stored challenge, would let a second request tell a held
+//     address from a free one. The one remaining difference is timing: the
+//     held branch skips the blob write and the enqueue and is measurably
+//     faster; removing it would mean sending the mail, which must not happen.
 //   - Code security: generates via crypto/rand; stores only SHA-256 hash; NEVER logs the code.
 //   - The code is emailed to the claimed address via the outbound queue.
 func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *http.Request) {
@@ -253,22 +285,13 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Ownership check.
-	rec, ok, err := h.addresses.Get(address)
+	own, err := h.ownRecord(userID, address)
 	if err != nil {
 		h.logger.Error("address-verify: request: failed to look up address", "address", address, "error", err)
 		http.Error(w, "failed to look up address", http.StatusInternalServerError)
 		return
 	}
-	if !ok {
-		http.Redirect(w, r, "/settings/addresses?error=Address+not+found", http.StatusSeeOther)
-		return
-	}
-	if rec.UserId != userID {
-		http.Redirect(w, r, "/settings/addresses?error=Address+not+found", http.StatusSeeOther)
-		return
-	}
-	if rec.CanSend && rec.Verified {
+	if own != nil && own.CanSend && own.Verified {
 		http.Redirect(w, r, "/settings/addresses?flash=Address+is+already+verified", http.StatusSeeOther)
 		return
 	}
@@ -280,17 +303,30 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		http.Error(w, "failed to check verification state", http.StatusInternalServerError)
 		return
 	}
+	if !hasChallenge && own == nil {
+		http.Redirect(w, r, "/settings/addresses?error=Address+not+found", http.StatusSeeOther)
+		return
+	}
 	if hasChallenge && existing != nil && existing.ExpiresAt > time.Now().Unix() {
 		http.Redirect(w, r, "/settings/addresses?error=A+verification+code+has+already+been+sent+to+this+address", http.StatusSeeOther)
 		return
 	}
 
-	// Per-user cap on verification mails. Checked after the ownership and
+	// Per-user cap on verification mails. Checked after the claim and
 	// live-challenge checks and before any write, so a refusal strands no
 	// challenge. The response is constant and never names the address.
 	if h.limiter != nil && !h.limiter.Allow(userID) {
 		h.logger.Warn("address-verify: request: per-user limit reached", "user_id", userID)
 		http.Redirect(w, r, "/settings/addresses?error=Too+many+verification+requests,+try+again+later", http.StatusSeeOther)
+		return
+	}
+
+	// Allocation gate, after the limiter so a held address consumes the same
+	// budget as a free one. A failed read fails closed.
+	unavailable, err := h.addressUnavailable(userID, address)
+	if err != nil {
+		h.logger.Error("address-verify: request: ownership check failed", "address", address, "error", err)
+		http.Error(w, "failed to look up address", http.StatusInternalServerError)
 		return
 	}
 
@@ -312,6 +348,14 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 	if err := h.verifyStore.Put(userID, address, challenge); err != nil {
 		h.logger.Error("address-verify: request: failed to store challenge", "user_id", userID, "address", address, "error", err)
 		http.Error(w, "failed to store verification challenge", http.StatusInternalServerError)
+		return
+	}
+
+	if unavailable {
+		// The decoy challenge above has a random hash nobody holds the code
+		// for; the reply is the one a real send gets.
+		h.logger.Info("address-verify: verification not sent: address already allocated", "user_id", userID, "address", address)
+		http.Redirect(w, r, "/settings/addresses?flash=Verification+code+sent", http.StatusSeeOther)
 		return
 	}
 
@@ -358,11 +402,22 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 // POST /settings/addresses/{address}/verify-submit
 // Form fields: code — the one-time code the user received by email.
 //
+// It gates on the caller's own claim (or unverified record), never on who
+// else holds the address. An expired or exhausted challenge is reset to a bare
+// claim, not deleted, so the address stays listed and a new code can be
+// requested. A correct code re-runs the allocation check before anything is
+// written, because the address may have been taken since the request (another
+// user verified first, an account or alias was created); in that case the
+// claim is dropped and the generic "verification failed" reply is returned,
+// leaving the holder's record untouched. The check and the write are separate
+// steps (no Raft primitive makes them atomic), so two submits racing in the
+// same instant can still both pass it and the later write wins.
+//
 // The success path is two non-atomic Raft writes in a deliberate order:
 // AddressStore.Put(Verified=true, CanSend=true) first, then a best-effort delete
-// of the challenge. That order prevents a crash between the writes from locking
+// of the claim. That order prevents a crash between the writes from locking
 // the user out — if the Put succeeds and the Delete fails, the address is
-// verified with a stale challenge and a later submit correctly fails on
+// verified with a stale claim and a later submit correctly fails on
 // mismatch/expiry (idempotent); the reverse, a consumed challenge with an
 // unverified address, cannot happen.
 func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request) {
@@ -386,19 +441,10 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Ownership check.
-	rec, ok, err := h.addresses.Get(address)
+	own, err := h.ownRecord(userID, address)
 	if err != nil {
 		h.logger.Error("address-verify: submit: failed to look up address", "address", address, "error", err)
 		http.Error(w, "failed to look up address", http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		http.Redirect(w, r, "/settings/addresses?error=Address+not+found", http.StatusSeeOther)
-		return
-	}
-	if rec.UserId != userID {
-		http.Redirect(w, r, "/settings/addresses?error=Address+not+found", http.StatusSeeOther)
 		return
 	}
 
@@ -409,17 +455,19 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 		http.Error(w, "failed to load verification challenge", http.StatusInternalServerError)
 		return
 	}
-	if !hasChallenge || challenge == nil {
+	if !hasChallenge && own == nil {
+		http.Redirect(w, r, "/settings/addresses?error=Address+not+found", http.StatusSeeOther)
+		return
+	}
+	// A bare claim has no code to check yet.
+	if !hasChallenge || challenge == nil || len(challenge.CodeHash) == 0 {
 		http.Redirect(w, r, "/settings/addresses?error=No+pending+verification+for+this+address", http.StatusSeeOther)
 		return
 	}
 
 	// Check expiry.
 	if time.Now().Unix() > challenge.ExpiresAt {
-		// Expired: delete the stale challenge and inform the user.
-		if delErr := h.verifyStore.Delete(userID, address); delErr != nil {
-			h.logger.Warn("address-verify: submit: failed to delete expired challenge", "user_id", userID, "address", address, "error", delErr)
-		}
+		h.resetClaim(userID, address, "expired")
 		http.Redirect(w, r, "/settings/addresses?error=Verification+code+has+expired", http.StatusSeeOther)
 		return
 	}
@@ -428,10 +476,7 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 	// code on the first post-limit submit is rejected.
 	challenge.Attempts++
 	if challenge.Attempts > maxVerifyAttempts {
-		// Too many attempts: invalidate the challenge entirely.
-		if delErr := h.verifyStore.Delete(userID, address); delErr != nil {
-			h.logger.Warn("address-verify: submit: failed to delete over-limit challenge", "user_id", userID, "address", address, "error", delErr)
-		}
+		h.resetClaim(userID, address, "over-limit")
 		h.logger.Warn("address-verify: submit: max attempts exceeded", "user_id", userID, "address", address)
 		http.Redirect(w, r, "/settings/addresses?error=Too+many+failed+attempts.+Please+request+a+new+code.", http.StatusSeeOther)
 		return
@@ -449,7 +494,32 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Correct code: set Verified+CanSend on the address (first write, must succeed).
+	// Correct code. The address may have been allocated since the request.
+	unavailable, err := h.addressUnavailable(userID, address)
+	if err != nil {
+		h.logger.Error("address-verify: submit: ownership check failed", "address", address, "error", err)
+		http.Error(w, "failed to look up address", http.StatusInternalServerError)
+		return
+	}
+	if unavailable {
+		h.logger.Info("address-verify: submit refused: address allocated since the request", "user_id", userID, "address", address)
+		if delErr := h.verifyStore.Delete(userID, address); delErr != nil {
+			h.logger.Warn("address-verify: submit: failed to delete refused claim (non-fatal)", "user_id", userID, "address", address, "error", delErr)
+		}
+		http.Redirect(w, r, "/settings/addresses?error="+url.QueryEscape(fwdText(r, "settings.sendAsVerificationFailed")), http.StatusSeeOther)
+		return
+	}
+
+	// Set Verified+CanSend on the address (first write, must succeed). An
+	// existing record of the caller's own keeps its kind.
+	rec := own
+	if rec == nil {
+		rec = &bongov1.AddressRecord{
+			UserId: userID,
+			Domain: address[strings.LastIndex(address, "@")+1:],
+			Kind:   "identity",
+		}
+	}
 	rec.CanSend = true
 	rec.Verified = true
 	if err := h.addresses.Put(address, rec); err != nil {
@@ -458,14 +528,44 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Delete the challenge (second write, best-effort — see partial-failure
+	// Delete the claim (second write, best-effort — see partial-failure
 	// semantics in the type-level comment on AddressVerifyStore).
 	if delErr := h.verifyStore.Delete(userID, address); delErr != nil {
-		h.logger.Warn("address-verify: submit: failed to delete consumed challenge (non-fatal)", "user_id", userID, "address", address, "error", delErr)
+		h.logger.Warn("address-verify: submit: failed to delete consumed claim (non-fatal)", "user_id", userID, "address", address, "error", delErr)
 	}
 
 	h.logger.Info("address-verify: address verified", "user_id", userID, "address", address)
 	http.Redirect(w, r, "/settings/addresses?flash=Address+verified", http.StatusSeeOther)
+}
+
+// resetClaim clears a spent challenge back to a bare claim, keeping the
+// address listed for its user. A failed reset is logged; the stale challenge
+// then fails the same check on the next submit.
+func (h *AddressVerifyHandler) resetClaim(userID, address, reason string) {
+	if err := h.verifyStore.Put(userID, address, &bongov1.AddressVerification{}); err != nil {
+		h.logger.Warn("address-verify: submit: failed to reset claim", "user_id", userID, "address", address, "reason", reason, "error", err)
+	}
+}
+
+// addressUnavailable reports whether address can no longer be allocated to
+// userID: its domain is hosted here, or an account, alias or another user's
+// record holds it. The caller's own records do not count. Any other error is a
+// failed read and callers must fail closed.
+func (h *AddressVerifyHandler) addressUnavailable(userID, address string) (bool, error) {
+	hosted, err := domainHostedLocally(h.pebble, address[strings.LastIndex(address, "@")+1:])
+	if err != nil {
+		return false, err
+	}
+	if hosted {
+		return true, nil
+	}
+	if err := addressAllocationError(h.pebble, h.metadata, h.applier, address, userID); err != nil {
+		if errors.Is(err, auth.ErrAccountExists) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
 }
 
 // generateVerificationCode generates a cryptographically random code using

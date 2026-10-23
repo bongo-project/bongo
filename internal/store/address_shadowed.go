@@ -20,6 +20,12 @@ type ShadowedIdentity struct {
 	Conflict string
 	// ConflictOwner is the account ID or catch-all owner, when known.
 	ConflictOwner string
+	// Revoke is set when the conflict is one the resolver resolves ahead of a
+	// verified identity (account, alias-table or alias), the owner is a
+	// different user, and Pebble backs it (a profile, or a /system/alias/ key).
+	// Catch-all and hosted-domain conflicts never set it: a verified identity
+	// is resolved before both, so the identity is not shadowed by them.
+	Revoke bool
 }
 
 // FindShadowedIdentities lists identity records worth an operator's attention
@@ -56,7 +62,7 @@ func FindShadowedIdentities(ps *PebbleStore, system *SystemIndex) ([]ShadowedIde
 		if proto.Unmarshal(val, &rec) != nil || rec.Kind != "identity" {
 			continue
 		}
-		conflict, owner := identityConflict(ps, system, address, rec.UserId)
+		conflict, owner, revoke := identityConflict(ps, system, address, rec.UserId)
 		if rec.Verified && conflict == "" {
 			continue
 		}
@@ -66,35 +72,52 @@ func FindShadowedIdentities(ps *PebbleStore, system *SystemIndex) ([]ShadowedIde
 			Verified:      rec.Verified,
 			Conflict:      conflict,
 			ConflictOwner: owner,
+			Revoke:        revoke,
 		})
 	}
 	return out, nil
 }
 
-// identityConflict reports the first other way address resolves.
-func identityConflict(ps *PebbleStore, system *SystemIndex, address, ownerID string) (kind, owner string) {
+// identityConflict reports the first other way address resolves. revoke is
+// true only for a conflict held by a different user that Pebble, the source of
+// truth, confirms: SQLite rows are derived and can be stale.
+func identityConflict(ps *PebbleStore, system *SystemIndex, address, ownerID string) (kind, owner string, revoke bool) {
 	if system != nil {
 		var id string
 		if err := system.DB().QueryRow(
 			`SELECT id FROM users WHERE lower(username) = ? LIMIT 1`, address).Scan(&id); err == nil && id != ownerID {
-			return "account", id
+			return "account", id, userProfileExists(ps, id)
 		}
 		if err := system.DB().QueryRow(
 			`SELECT target_user_id FROM aliases WHERE lower(address) = ? LIMIT 1`, address).Scan(&id); err == nil && id != ownerID {
-			return "alias-table", id
+			_, aErr := ps.Get([]byte("/system/alias/" + address))
+			return "alias-table", id, aErr == nil
 		}
 	}
 	if v, err := ps.Get([]byte("/system/alias/" + address)); err == nil && len(v) > 0 {
-		return "alias", strings.TrimSpace(string(v))
+		target := strings.TrimSpace(string(v))
+		// The value is a username. An alias to the identity's own owner is no
+		// conflict; an unresolvable target is reported but never revoked.
+		var targetID string
+		resolved := false
+		if system != nil {
+			if err := system.DB().QueryRow(
+				`SELECT id FROM users WHERE lower(username) = lower(?) LIMIT 1`, target).Scan(&targetID); err == nil {
+				resolved = true
+			}
+		}
+		if !resolved || targetID != ownerID {
+			return "alias", target, resolved && userProfileExists(ps, targetID)
+		}
 	}
 	if at := strings.LastIndex(address, "@"); at >= 0 {
 		domain := address[at+1:]
 		if v, err := ps.Get(CatchAllKey(domain)); err == nil && len(v) > 0 {
-			return "catch-all", strings.TrimSpace(string(v))
+			return "catch-all", strings.TrimSpace(string(v)), false
 		}
 		if _, err := ps.Get([]byte("/system/domain/" + domain)); err == nil {
-			return "hosted-domain", ""
+			return "hosted-domain", "", false
 		}
 	}
-	return "", ""
+	return "", "", false
 }

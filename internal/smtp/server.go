@@ -106,6 +106,10 @@ func (b *Backend) SetRecipientLimiter(rl *mail.RateLimiter) {
 // RecipientLimiter returns the per-user external-recipient budget, or nil.
 func (b *Backend) RecipientLimiter() *mail.RateLimiter { return b.recipientRL }
 
+// HostedDomainConfigured reports whether the hosted-domain check is wired.
+// The no-relay RCPT rule depends on it independently of SRS.
+func (b *Backend) HostedDomainConfigured() bool { return b.hostedDomain != nil }
+
 // SetSPFChecker sets the SPF checker for inbound SPF verification.
 func (b *Backend) SetSPFChecker(checker *mail.SPFChecker) {
 	b.spfChecker = checker
@@ -131,6 +135,12 @@ type SRSVerifier interface {
 // resolver path.
 func (b *Backend) SetSRS(v SRSVerifier, hosted func(domain string) bool) {
 	b.srs = v
+	b.hostedDomain = hosted
+}
+
+// SetHostedDomain tells the backend which domains this server hosts, which the
+// reserved no-relay sender address needs. SetSRS sets the same function.
+func (b *Backend) SetHostedDomain(hosted func(domain string) bool) {
 	b.hostedDomain = hosted
 }
 
@@ -510,6 +520,11 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	if handled, err := s.rcptSRS(to); handled {
 		return err
 	}
+	// The no-relay sender used for forwards of unauthenticated mail is checked
+	// at the same point, for the same reasons.
+	if handled, err := s.rcptNoRelay(to); handled {
+		return err
+	}
 
 	userID, resolveErr := s.backend.resolver.ResolveRecipient(to)
 	if resolveErr == nil {
@@ -585,6 +600,30 @@ func (s *Session) rcptSRS(to string) (handled bool, err error) {
 		}
 	}
 	s.logger.Warn("smtp: RCPT rejected: SRS address not accepted", "null_sender", s.from == "")
+	return true, &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: "Mailbox unavailable"}
+}
+
+// rcptNoRelay handles the reserved no-relay address on a hosted domain, the
+// envelope sender of forwards of unauthenticated mail. Remote bounces come back
+// to it with a null MAIL FROM and are accepted so the sending MTA is satisfied;
+// the deliver stage then discards them. Anything else is the same 550 as an
+// unavailable mailbox. It reports handled=false for any other address.
+func (s *Session) rcptNoRelay(to string) (handled bool, err error) {
+	b := s.backend
+	if b.hostedDomain == nil {
+		return false, nil
+	}
+	addr := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(to), "<"), ">")
+	at := strings.LastIndexByte(addr, '@')
+	if at <= 0 || !srs.IsNoRelay(addr[:at]) || !b.hostedDomain(strings.ToLower(addr[at+1:])) {
+		return false, nil
+	}
+	if s.from == "" {
+		s.localRcpts = append(s.localRcpts, to)
+		s.logger.Debug("smtp: RCPT TO (no-relay bounce sink)")
+		return true, nil
+	}
+	s.logger.Warn("smtp: RCPT rejected: no-relay address takes bounces only")
 	return true, &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: "Mailbox unavailable"}
 }
 

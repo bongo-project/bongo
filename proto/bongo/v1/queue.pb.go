@@ -149,11 +149,17 @@ type OutboundMessage struct {
 	// message skeleton and the queue worker reconstructs the full RFC822 message
 	// from the skeleton + attachments before relaying. Empty layout means blob_hash
 	// is the whole raw message (the default / self-check fallback).
-	Layout        []*MessageSegment `protobuf:"bytes,13,rep,name=layout,proto3" json:"layout,omitempty"`
-	Attachments   []*BlobRef        `protobuf:"bytes,14,rep,name=attachments,proto3" json:"attachments,omitempty"`
-	Origin        OutboundOrigin    `protobuf:"varint,15,opt,name=origin,proto3,enum=bongo.v1.OutboundOrigin" json:"origin,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Layout      []*MessageSegment `protobuf:"bytes,13,rep,name=layout,proto3" json:"layout,omitempty"`
+	Attachments []*BlobRef        `protobuf:"bytes,14,rep,name=attachments,proto3" json:"attachments,omitempty"`
+	Origin      OutboundOrigin    `protobuf:"varint,15,opt,name=origin,proto3,enum=bongo.v1.OutboundOrigin" json:"origin,omitempty"`
+	// sender_authenticated is set on a FORWARD whose original sender passed SPF
+	// or DMARC (or was an authenticated local author). The queue worker sends a
+	// DSN for a failed FORWARD only when it is true, so a forged sender never
+	// receives backscatter. Records queued before this field existed read as
+	// false and therefore default to no DSN. Ignored for other origins.
+	SenderAuthenticated bool `protobuf:"varint,16,opt,name=sender_authenticated,json=senderAuthenticated,proto3" json:"sender_authenticated,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *OutboundMessage) Reset() {
@@ -291,6 +297,13 @@ func (x *OutboundMessage) GetOrigin() OutboundOrigin {
 	return OutboundOrigin_OUTBOUND_ORIGIN_UNSPECIFIED
 }
 
+func (x *OutboundMessage) GetSenderAuthenticated() bool {
+	if x != nil {
+		return x.SenderAuthenticated
+	}
+	return false
+}
+
 type QueueStats struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	PendingCount         int32                  `protobuf:"varint,1,opt,name=pending_count,json=pendingCount,proto3" json:"pending_count,omitempty"`
@@ -355,7 +368,7 @@ var File_proto_bongo_v1_queue_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\n" +
-	"\x1aproto/bongo/v1/queue.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\x1a\x19proto/bongo/v1/mail.proto\"\xc5\x04\n" +
+	"\x1aproto/bongo/v1/queue.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\x1a\x19proto/bongo/v1/mail.proto\"\xf8\x04\n" +
 	"\x0fOutboundMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tsender_id\x18\x02 \x01(\tR\bsenderId\x12!\n" +
@@ -375,7 +388,8 @@ const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\fmessage_guid\x18\f \x01(\tR\vmessageGuid\x120\n" +
 	"\x06layout\x18\r \x03(\v2\x18.bongo.v1.MessageSegmentR\x06layout\x123\n" +
 	"\vattachments\x18\x0e \x03(\v2\x11.bongo.v1.BlobRefR\vattachments\x120\n" +
-	"\x06origin\x18\x0f \x01(\x0e2\x18.bongo.v1.OutboundOriginR\x06origin\"\x8a\x01\n" +
+	"\x06origin\x18\x0f \x01(\x0e2\x18.bongo.v1.OutboundOriginR\x06origin\x121\n" +
+	"\x14sender_authenticated\x18\x10 \x01(\bR\x13senderAuthenticated\"\x8a\x01\n" +
 	"\n" +
 	"QueueStats\x12#\n" +
 	"\rpending_count\x18\x01 \x01(\x05R\fpendingCount\x12!\n" +
