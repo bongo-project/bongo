@@ -26,7 +26,7 @@ import (
 // RCPT uses (smtp.QuotaChecker), so both protocols decide "over quota" with
 // one implementation.
 type quotaChecker interface {
-	RecipientOverQuota(userID string) (bool, error)
+	RecipientWouldExceedQuota(userID string, addBytes int64) (bool, error)
 }
 
 // session implements imapserver.Session and imapserver.SessionMove.
@@ -615,14 +615,14 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	}
 
 	// Storage quota, checked before any blob or metadata is written so a
-	// refused APPEND leaves nothing behind. Same checker as SMTP RCPT, so it has
-	// the same limits: usage is recomputed every few minutes and the check does
-	// not weigh this message's size, so a user just under quota can still land
-	// one APPEND (up to maxAppendBytes) before the next recompute. A checker
-	// error fails open, as SMTP does. Nothing here blocks EXPUNGE, COPY or MOVE,
+	// refused APPEND leaves nothing behind. Same checker as SMTP RCPT. The literal
+	// size is weighed against the headroom: it is the size PutReader returns and
+	// stores as MailMeta.RawMessage.Size, which is what the usage recompute counts.
+	// Usage is recomputed every few minutes, so concurrent writers can still
+	// overshoot. A checker error fails open, as SMTP does. Nothing here blocks EXPUNGE, COPY or MOVE,
 	// so a user over quota can still free space.
 	if s.quota != nil {
-		over, qErr := s.quota.RecipientOverQuota(s.userID)
+		over, qErr := s.quota.RecipientWouldExceedQuota(s.userID, r.Size())
 		if qErr != nil {
 			s.logger.Warn("imap: quota check error (fail open)", "mailbox", mailbox, "user", s.userID, "error", qErr)
 		} else if over {

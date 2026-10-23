@@ -40,17 +40,18 @@ type RecipientResolver interface {
 // storage quota. It is called after a successful ResolveRecipient so that the
 // userID is already known (no duplicate resolution).
 //
-// RecipientOverQuota loads the owning user's profile to derive the primary
-// domain, compares the domain's last-recomputed usage against its
-// max_storage_bytes limit, and returns:
+// RecipientWouldExceedQuota loads the owning user's profile to derive the
+// primary domain, compares the domain's last-recomputed usage plus addBytes
+// against its max_storage_bytes limit, and returns:
 //   - (false, nil) when the domain has no quota configured (0 = unlimited) or
 //     usage has not yet been recomputed (first job run pending);
-//   - (true, nil) when usage >= max_storage_bytes (over or at limit); the
+//   - (true, nil) when usage >= max_storage_bytes (over or at limit) or usage
+//     plus addBytes would exceed it (addBytes == 0 is the plain at-or-over test); the
 //     inbound message MUST be rejected at RCPT with a permanent 5xx error;
 //   - (false, err) on an unexpected store error; callers should accept the
 //     message (fail open) so transient errors do not block legitimate mail.
 type QuotaChecker interface {
-	RecipientOverQuota(userID string) (bool, error)
+	RecipientWouldExceedQuota(userID string, addBytes int64) (bool, error)
 }
 
 // DeliveryPipeline accepts inbound messages from the SMTP backend, stores the

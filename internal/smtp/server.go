@@ -261,7 +261,8 @@ type Session struct {
 	submission    bool
 	remoteIP      net.IP
 	spfResult     string
-	authFailures  int // failed AUTH attempts on this connection
+	authFailures  int   // failed AUTH attempts on this connection
+	declaredSize  int64 // MAIL FROM SIZE parameter (RFC 1870); 0 when absent
 }
 
 // profileAuthenticator is what AUTH needs: credentials checked and the profile
@@ -435,6 +436,10 @@ func (l *loginServer) Next(response []byte) (challenge []byte, done bool, err er
 
 // Mail is called with the MAIL FROM command.
 func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
+	s.declaredSize = 0
+	if opts != nil && opts.Size > 0 {
+		s.declaredSize = opts.Size
+	}
 	// Submission requires authentication before mail can be sent.
 	if s.submission && !s.authed {
 		s.logger.Warn("smtp: unauthenticated MAIL on submission port rejected", "from", from, "ip", s.remoteIP)
@@ -512,8 +517,14 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		// domain is at or over its max_storage_bytes limit. The QuotaChecker
 		// derives the primary domain from the already-resolved userID so we
 		// do not re-scan. Nil checker (dev/agent/edge) = unlimited.
+		//
+		// The declared SIZE (RFC 1870) is weighed against the domain's
+		// headroom. Without SIZE the weight is 0, so only a domain already at
+		// or over quota is refused; that gap remains. A declared SIZE is
+		// trusted and not re-checked in DATA, the stored message is a Received
+		// header larger, and each RCPT is weighed alone.
 		if s.backend.quotaChecker != nil {
-			over, qErr := s.backend.quotaChecker.RecipientOverQuota(userID)
+			over, qErr := s.backend.quotaChecker.RecipientWouldExceedQuota(userID, s.declaredSize)
 			if qErr != nil {
 				// Transient store error: fail open to avoid blocking legitimate mail.
 				s.logger.Warn("smtp: quota check error (fail open)", "to", to, "user", userID, "error", qErr)
@@ -856,6 +867,7 @@ func malformedFrom(msg string) error {
 // Reset is called between messages on the same connection.
 func (s *Session) Reset() {
 	s.from = ""
+	s.declaredSize = 0
 	s.localRcpts = nil
 	s.externalRcpts = nil
 	s.spfResult = ""

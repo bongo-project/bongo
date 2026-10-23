@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"errors"
 	"testing"
 
 	gosmtp "github.com/emersion/go-smtp"
@@ -12,7 +13,7 @@ type fakeQuotaChecker struct {
 	overQuota map[string]bool
 }
 
-func (f *fakeQuotaChecker) RecipientOverQuota(userID string) (bool, error) {
+func (f *fakeQuotaChecker) RecipientWouldExceedQuota(userID string, _ int64) (bool, error) {
 	return f.overQuota[userID], nil
 }
 
@@ -140,5 +141,92 @@ func TestRcpt_QuotaEnforcement_UnlimitedQuota(t *testing.T) {
 	}
 	if len(sess.localRcpts) != 1 {
 		t.Errorf("Rcpt unlimited quota: localRcpts = %v, want 1", sess.localRcpts)
+	}
+}
+
+// headroomChecker mirrors DomainQuotaStore: refuse when addBytes exceeds the
+// remaining headroom, or when the domain is already full (headroom <= 0).
+type headroomChecker struct {
+	headroom int64
+	err      error
+}
+
+func (h *headroomChecker) RecipientWouldExceedQuota(_ string, addBytes int64) (bool, error) {
+	if h.err != nil {
+		return false, h.err
+	}
+	return h.headroom <= 0 || addBytes > h.headroom, nil
+}
+
+func TestRcptWeighsDeclaredSize(t *testing.T) {
+	tests := []struct {
+		name     string
+		headroom int64
+		size     int64
+		hasSize  bool
+		err      error
+		wantCode int // 0 = accepted
+	}{
+		{"declared size over headroom", 50_000, 100_000, true, nil, 552},
+		{"declared size within headroom", 50_000, 10_000, true, nil, 0},
+		{"no SIZE with headroom", 50_000, 0, false, nil, 0},
+		{"no SIZE domain full", 0, 0, false, nil, 552},
+		{"checker error fails open", 50_000, 100_000, true, errors.New("pebble unavailable"), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &Backend{
+				auth:         &fakeAuth{userID: "uid-1"},
+				resolver:     &fakeResolver{local: map[string]bool{"user@hosted.example": true}},
+				quotaChecker: &headroomChecker{headroom: tt.headroom, err: tt.err},
+				deliverer:    &fakeSplitDeliverer{},
+				relayQueue:   &fakeRelayQueue{},
+				logger:       testLogger(),
+			}
+			sess := &Session{backend: b, logger: testLogger()}
+			var opts *gosmtp.MailOptions
+			if tt.hasSize {
+				opts = &gosmtp.MailOptions{Size: tt.size}
+			} else {
+				opts = &gosmtp.MailOptions{}
+			}
+			if err := sess.Mail("s@remote.example", opts); err != nil {
+				t.Fatalf("Mail: %v", err)
+			}
+			err := sess.Rcpt("user@hosted.example", &gosmtp.RcptOptions{})
+			if tt.wantCode == 0 {
+				if err != nil {
+					t.Fatalf("Rcpt: want accepted, got %v", err)
+				}
+				return
+			}
+			var se *gosmtp.SMTPError
+			if !errors.As(err, &se) || se.Code != tt.wantCode || se.EnhancedCode != (gosmtp.EnhancedCode{5, 2, 2}) {
+				t.Fatalf("Rcpt: want %d 5.2.2, got %v", tt.wantCode, err)
+			}
+			if len(sess.localRcpts) != 0 {
+				t.Errorf("localRcpts = %v, want empty", sess.localRcpts)
+			}
+		})
+	}
+}
+
+// The declared size must not leak into the next transaction on the connection.
+func TestResetClearsDeclaredSize(t *testing.T) {
+	b := &Backend{
+		auth:         &fakeAuth{userID: "uid-1"},
+		resolver:     &fakeResolver{local: map[string]bool{"user@hosted.example": true}},
+		quotaChecker: &headroomChecker{headroom: 50_000},
+		deliverer:    &fakeSplitDeliverer{},
+		relayQueue:   &fakeRelayQueue{},
+		logger:       testLogger(),
+	}
+	sess := &Session{backend: b, logger: testLogger()}
+	if err := sess.Mail("s@remote.example", &gosmtp.MailOptions{Size: 100_000}); err != nil {
+		t.Fatalf("Mail: %v", err)
+	}
+	sess.Reset()
+	if err := sess.Rcpt("user@hosted.example", &gosmtp.RcptOptions{}); err != nil {
+		t.Fatalf("Rcpt after Reset: want accepted (declared size cleared), got %v", err)
 	}
 }

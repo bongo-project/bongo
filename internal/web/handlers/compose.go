@@ -310,17 +310,13 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// sender's own Sent copy must fit, and so must every local recipient's
 	// INBOX copy (SMTP RCPT rejects an over-quota local recipient with a
 	// permanent 552; the web form has no per-recipient partial accept, so the
-	// whole send is refused and nothing is delivered). The sender check runs
-	// before any blob, queue or mailbox write; the per-recipient check runs after
-	// the message blob is stored (an orphan the GC collects, as for the rate-limit
-	// refusals) but before the rate limiters spend budget and before any delivery.
-	// Like SMTP RCPT, both checks are yes/no: a sender with any headroom may store
-	// a Sent copy or draft of any size up to the compose cap. The usage figure is
-	// recomputed periodically, so this is best effort.
-	if quotaExceeded(h.quota, h.logger, userID, 0) {
-		refuseQuota(w, r)
-		return
-	}
+	// whole send is refused and nothing is delivered). Both checks weigh the
+	// message size (msgSize, below) against the domain headroom, and both run
+	// once the message is built but before any blob, queue or mailbox write and
+	// before the rate limiters spend budget. Each local recipient and the sender
+	// are checked one at a time, so copies landing in one domain are not added
+	// together. The usage figure is recomputed periodically, so this is best
+	// effort.
 
 	// Resolve the effective From address.
 	//
@@ -447,6 +443,50 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		searchBody = body
 	}
 
+	msgSize := int64(len(rawMsg))
+
+	// Split recipients into local and external before any user-visible writes
+	// so pre-delivery rejection does not leave a partial Sent copy behind.
+	allRecipients := append(splitRecipients(to), splitRecipients(cc)...)
+	var localRecipients, externalRecipients []string
+	for _, rcpt := range allRecipients {
+		// Reduce to the bare local@domain address: the To/Cc fields may carry a
+		// display name or angle brackets ("Alice <a@b.com>"), which must not
+		// leak into the SMTP envelope or the MX-lookup domain ("b.com>").
+		rcpt = normalizeRecipient(rcpt)
+		if rcpt == "" {
+			continue
+		}
+		if h.resolveLocalUser(rcpt) != "" {
+			localRecipients = append(localRecipients, rcpt)
+		} else {
+			externalRecipients = append(externalRecipients, rcpt)
+		}
+	}
+
+	maxRcpts := h.maxRecipients
+	if maxRcpts <= 0 {
+		maxRcpts = defaultMaxRecipients
+	}
+	if len(localRecipients)+len(externalRecipients) > maxRcpts {
+		http.Error(w, "Too many recipients", http.StatusBadRequest)
+		return
+	}
+
+	// The size the usage recompute counts for a stored message
+	// (MailMeta.RawMessage.Size), computed once. Every copy of this send, the
+	// sender's and each local recipient's, is the same size.
+	if quotaExceeded(h.quota, h.logger, userID, msgSize) {
+		refuseQuota(w, r)
+		return
+	}
+	for _, rcpt := range localRecipients {
+		if rid := h.resolveLocalUser(rcpt); rid != "" && quotaExceeded(h.quota, h.logger, rid, msgSize) {
+			http.Error(w, quotaRecipientText(r, rcpt), http.StatusInsufficientStorage)
+			return
+		}
+	}
+
 	// Store the message: a skeleton + deduplicated attachment blobs when it
 	// carries a large attachment, else the whole raw. StoreSplit self-checks
 	// byte-exact reconstruction; on any split error we fall back to whole-raw so
@@ -490,47 +530,12 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: rawHash,
-			Size: int64(len(rawMsg)),
+			Size: msgSize,
 		},
 		Attachments: metaAttachments,
 		Layout:      layout,
 		InReplyTo:   inReplyTo,
 		References:  references,
-	}
-
-	// Split recipients into local and external before any user-visible writes
-	// so pre-delivery rejection does not leave a partial Sent copy behind.
-	allRecipients := append(splitRecipients(to), splitRecipients(cc)...)
-	var localRecipients, externalRecipients []string
-	for _, rcpt := range allRecipients {
-		// Reduce to the bare local@domain address: the To/Cc fields may carry a
-		// display name or angle brackets ("Alice <a@b.com>"), which must not
-		// leak into the SMTP envelope or the MX-lookup domain ("b.com>").
-		rcpt = normalizeRecipient(rcpt)
-		if rcpt == "" {
-			continue
-		}
-		if h.resolveLocalUser(rcpt) != "" {
-			localRecipients = append(localRecipients, rcpt)
-		} else {
-			externalRecipients = append(externalRecipients, rcpt)
-		}
-	}
-
-	maxRcpts := h.maxRecipients
-	if maxRcpts <= 0 {
-		maxRcpts = defaultMaxRecipients
-	}
-	if len(localRecipients)+len(externalRecipients) > maxRcpts {
-		http.Error(w, "Too many recipients", http.StatusBadRequest)
-		return
-	}
-
-	for _, rcpt := range localRecipients {
-		if rid := h.resolveLocalUser(rcpt); rid != "" && quotaExceeded(h.quota, h.logger, rid, 0) {
-			http.Error(w, quotaRecipientText(r, rcpt), http.StatusInsufficientStorage)
-			return
-		}
 	}
 
 	// Check rate limits for external recipients before persisting sender-visible
@@ -650,13 +655,6 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	body := r.FormValue("body")
 	bodyMode := r.FormValue("body_mode")
 
-	// A draft is always a new message, so it is a create: refuse it at quota
-	// before any blob is written (best effort; see Send).
-	if quotaExceeded(h.quota, h.logger, userID, 0) {
-		refuseQuota(w, r)
-		return
-	}
-
 	// Process file attachments for draft. As with Send, payloads are assembled
 	// into the message rather than stored as standalone decoded blobs; the split
 	// (or whole-raw) store below handles persistence.
@@ -715,6 +713,15 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		rawMsg = buildRFC5322WithAttachments(email, to, cc, subject, body, draftMessageID, "", "", attachmentFiles)
 	}
 
+	// A draft is always a new message, so it is a create: refuse it if it does
+	// not fit, before any blob is written. The size is what the usage recompute
+	// counts (MailMeta.RawMessage.Size); best effort, see Send.
+	msgSize := int64(len(rawMsg))
+	if quotaExceeded(h.quota, h.logger, userID, msgSize) {
+		refuseQuota(w, r)
+		return
+	}
+
 	rawHash := ""
 	metaAttachments := attachmentMeta
 	var layout []*bongov1.MessageSegment
@@ -751,7 +758,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: rawHash,
-			Size: int64(len(rawMsg)),
+			Size: msgSize,
 		},
 		Attachments: metaAttachments,
 		Layout:      layout,

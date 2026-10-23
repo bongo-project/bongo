@@ -172,7 +172,8 @@ func (s *DomainQuotaStore) wouldExceedStorageQuota(domain string, addBytes int64
 	return addBytes > q.MaxStorageBytes-usage, nil
 }
 
-// RecipientOverQuota implements smtp.QuotaChecker.
+// RecipientOverQuota is RecipientWouldExceedQuota with addBytes == 0. Production
+// callers weigh the message size and use RecipientWouldExceedQuota directly.
 //
 // It loads the user's profile to derive their primary domain (via
 // DomainFromEmail), then calls IsOverStorageQuota. This is called after
