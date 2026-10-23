@@ -445,6 +445,12 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 			logger.Info("users.enabled reconciled from profiles", "changed", n)
 		}
 
+		if n, recErr := cluster.ReconcileOrphanUsers(pebbleStore, metaMgr, searchMgr, logger); recErr != nil {
+			logger.Warn("orphan users reconcile failed", "error", recErr)
+		} else if n > 0 {
+			logger.Info("orphan users rows removed at startup", "removed", n)
+		}
+
 		raftNode, err := cluster.NewRaftNode(cfg, pebbleStore, blobStore, metaMgr, logger)
 		if err != nil {
 			closeErr := errors.Join(searchMgr.Close(), metaMgr.Close(), pebbleStore.Close())
@@ -1532,6 +1538,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			return fmt.Errorf("creating spool store: %w", err)
 		}
 		a.Spool = spool
+		// Compose hands local recipients to the same spool as SMTP submission.
+		// The handler was built earlier; Serve has not started, so this is
+		// race-free.
+		if a.composeHandler != nil {
+			a.composeHandler.SetSpool(spool)
+		}
 
 		// Build pipeline processors from PipelineConfig stage list.
 		var stages []pipeline.Processor
@@ -4097,7 +4109,7 @@ func (a *Agent) trustedProxies() *netx.TrustedProxies {
 // proxy trust set. Run and startSMTPAgent both use it so neither can build a
 // PROXY-protocol listener without the operator's trusted_proxies.
 func (a *Agent) newSMTPServer(backend *bongosmtp.Backend, isDev bool) *bongosmtp.Server {
-	srv := bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
+	srv := bongosmtp.NewServer(&a.Config.SMTP, a.Config.Server.BindAddr, backend, isDev, a.logger)
 	srv.SetTrustedProxies(a.proxyTrust)
 	return srv
 }

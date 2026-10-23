@@ -117,7 +117,7 @@ func (a *Agent) Reload(ctx context.Context) error {
 func (a *Agent) reloadLocked(r *Reloader) error {
 	// (a) Load once: the file value and the merged value come from the same
 	// read, so there is no window between them.
-	fileCfg, err := config.LoadFromFile(r.file)
+	fileCfg, stamp, err := config.LoadFile(r.file)
 	if err != nil {
 		return err
 	}
@@ -205,13 +205,13 @@ func (a *Agent) reloadLocked(r *Reloader) error {
 	}
 
 	// (i) Summary.
-	a.logger.Info("config reload complete",
+	a.logger.Info("config reload complete", append([]any{
 		"file", r.file,
 		"applied", keyNames(hot),
 		"needs_restart", keyNames(restart),
 		"no_effect", keyNames(noop),
 		"shadowed", shadowed,
-	)
+	}, stamp.LogAttrs()...)...)
 
 	// (j) Baseline: only applied hot leaves move. Restart and no-op keys keep
 	// their running values so a later reload still sees them as changed.

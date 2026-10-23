@@ -671,5 +671,6 @@
   "admin.tempPasswordLabel": "Mot de passe temporaire",
   "admin.tempPasswordNotice": "Mot de passe réinitialisé. Ce mot de passe temporaire n'est affiché qu'une fois et ne peut pas être récupéré. Transmettez-le à l'utilisateur maintenant.",
   "quota.exceeded": "Votre quota de stockage est plein, l'enregistrement est impossible. Supprimez des éléments ou demandez à votre administrateur d'augmenter la limite.",
-  "quota.recipientExceeded": "La boîte de %s est pleine, le message n'a donc été envoyé à personne. Retirez ce destinataire ou réessayez plus tard."
+  "quota.recipientExceeded": "La boîte de %s est pleine, le message n'a donc été envoyé à personne. Retirez ce destinataire ou réessayez plus tard.",
+  "quota.title": "Stockage plein"
 }

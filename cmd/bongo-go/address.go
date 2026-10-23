@@ -80,6 +80,7 @@ type orphanedAddressesResponse struct {
 		Address string `json:"Address"`
 		UserID  string `json:"UserID"`
 		Kind    string `json:"Kind"`
+		Target  string `json:"Target"`
 	} `json:"orphans"`
 }
 
@@ -108,11 +109,24 @@ func runAddressOrphans(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	fmt.Printf("%d orphaned address record(s):\n", out.Count)
+	reportOnly := false
 	for _, o := range out.Orphans {
-		fmt.Printf("  %s -> %s (kind=%s, account no longer exists)\n", o.Address, o.UserID, o.Kind)
+		switch o.Kind {
+		case "legacy-alias":
+			reportOnly = true
+			fmt.Printf("  %s -> %s (kind=%s, target has no account)\n", o.Address, o.Target, o.Kind)
+		case "catchall":
+			reportOnly = true
+			fmt.Printf("  %s -> %s (kind=%s, account no longer exists)\n", o.Address, o.UserID, o.Kind)
+		default:
+			fmt.Printf("  %s -> %s (kind=%s, account no longer exists)\n", o.Address, o.UserID, o.Kind)
+		}
 	}
-	fmt.Println("\nMail to these addresses resolves to a deleted account and is delivered")
+	fmt.Println("\nMail to address records resolves to a deleted account and is delivered")
 	fmt.Println("into an unreachable mailbox. Run 'bongo-go address repair' to remove them.")
+	if reportOnly {
+		fmt.Println("Legacy-alias and catchall entries are report-only: remove those keys by hand.")
+	}
 	return nil
 }
 

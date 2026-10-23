@@ -6,8 +6,11 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/a-h/templ"
+
 	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/web/middleware"
+	"github.com/bongo-project/bongo/internal/web/templates"
 )
 
 // QuotaChecker is the domain-quota dependency shared by the web write paths.
@@ -58,7 +61,19 @@ func quotaRecipientText(r *http.Request, address string) string {
 
 // refuseQuota answers a quota refusal with 507 Insufficient Storage.
 func refuseQuota(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, quotaText(r), http.StatusInsufficientStorage)
+	refuseQuotaText(w, r, quotaText(r))
+}
+
+// refuseQuotaText answers a quota refusal with msg. An htmx request gets the
+// short text its swap target shows; a full-page post gets the message inside
+// the app layout.
+func refuseQuotaText(w http.ResponseWriter, r *http.Request, msg string) {
+	if r.Header.Get("HX-Request") == "true" {
+		http.Error(w, msg, http.StatusInsufficientStorage)
+		return
+	}
+	email, _ := middleware.UserFromContext(r.Context())
+	templ.Handler(templates.QuotaRefusedPage(msg, email), templ.WithStatus(http.StatusInsufficientStorage)).ServeHTTP(w, r)
 }
 
 // refuseQuotaFlash answers a quota refusal on a flash-redirect route. to is a

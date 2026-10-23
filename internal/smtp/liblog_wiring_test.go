@@ -15,7 +15,7 @@ func TestNewServerRoutesLibraryLogsToSlog(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	cfg := &config.SMTPConfig{Port: 2525, SubmissionPort: 2587}
-	srv := NewServer(cfg, NewBackend(nil, nil, logger), true, logger)
+	srv := NewServer(cfg, "", NewBackend(nil, nil, logger), true, logger)
 
 	for name, s := range map[string]interface {
 		Printf(string, ...any)

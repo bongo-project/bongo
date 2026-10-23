@@ -20,6 +20,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/icalevent"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -676,7 +677,7 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 
 	dec := ical.NewDecoder(file)
 	imported := 0
-	errCount := 0
+	failed := 0
 
 	for {
 		cal, err := dec.Decode()
@@ -684,39 +685,26 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 			break
 		}
 
-		for _, vevent := range cal.Events() {
-			event := &bongov1.Event{
-				CalendarId: calID,
+		for _, group := range groupEventsByUID(cal) {
+			raw, err := encodeEventGroup(cal, group)
+			if err != nil {
+				failed++
+				continue
 			}
-
-			if summary, err := vevent.Props.Text(ical.PropSummary); err == nil {
-				event.Title = summary
+			rawCal, err := ical.NewDecoder(bytes.NewReader(raw)).Decode()
+			if err != nil {
+				failed++
+				continue
 			}
-			if desc, err := vevent.Props.Text(ical.PropDescription); err == nil {
-				event.Description = desc
+			event, fallback := icalevent.ToEvent(rawCal)
+			if fallback {
+				slog.Default().Debug("calendar import: no master VEVENT, using earliest override", "user", userID)
 			}
-			if loc, err := vevent.Props.Text(ical.PropLocation); err == nil {
-				event.Location = loc
-			}
-
-			if dtstart, err := vevent.DateTimeStart(time.UTC); err == nil {
-				event.StartTime = dtstart.Unix()
-			}
-			if dtend, err := vevent.DateTimeEnd(time.UTC); err == nil {
-				event.EndTime = dtend.Unix()
-			}
-
-			// Store raw iCal for round-trip.
-			rawCal := ical.NewCalendar()
-			rawCal.Props.SetText(ical.PropVersion, "2.0")
-			rawCal.Children = append(rawCal.Children, vevent.Component)
-			var rawBuf bytes.Buffer
-			if err := ical.NewEncoder(&rawBuf).Encode(rawCal); err == nil {
-				event.IcalRaw = rawBuf.Bytes()
-			}
+			event.CalendarId = calID
+			event.IcalRaw = raw
 
 			if _, err := h.events.Create(userID, event); err != nil {
-				errCount++
+				failed++
 				continue
 			}
 			imported++
@@ -724,11 +712,80 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	}
 
 	flash := fmt.Sprintf("Imported+%d+events", imported)
-	if errCount > 0 {
-		flash = fmt.Sprintf("Imported+%d+events,+%d+errors", imported, errCount)
+	if failed > 0 {
+		flash = fmt.Sprintf("Imported+%d+events,+%d+failed", imported, failed)
 	}
 
 	http.Redirect(w, r, "/calendar?flash="+strings.ReplaceAll(flash, " ", "+"), http.StatusSeeOther)
+}
+
+// groupEventsByUID groups the VEVENTs of cal by UID in first-seen order, so a
+// master and its overrides become one event. A VEVENT without a UID is a group
+// of its own (it fails encoding later and is counted as failed).
+func groupEventsByUID(cal *ical.Calendar) [][]*ical.Component {
+	var groups [][]*ical.Component
+	index := map[string]int{}
+	for _, c := range cal.Children {
+		if c.Name != ical.CompEvent {
+			continue
+		}
+		uid := ""
+		if p := c.Props.Get(ical.PropUID); p != nil {
+			uid = p.Value
+		}
+		if uid == "" {
+			groups = append(groups, []*ical.Component{c})
+			continue
+		}
+		i, ok := index[uid]
+		if !ok {
+			i = len(groups)
+			index[uid] = i
+			groups = append(groups, nil)
+		}
+		groups[i] = append(groups[i], c)
+	}
+	return groups
+}
+
+// encodeEventGroup builds a standalone calendar from one UID group plus the
+// VTIMEZONEs its TZID parameters reference, and encodes it. The error from the
+// encoder is returned: an event whose data cannot be encoded is not stored.
+func encodeEventGroup(src *ical.Calendar, group []*ical.Component) ([]byte, error) {
+	zones := map[string]*ical.Component{}
+	for _, c := range src.Children {
+		if c.Name != ical.CompTimezone {
+			continue
+		}
+		if p := c.Props.Get(ical.PropTimezoneID); p != nil {
+			zones[p.Value] = c
+		}
+	}
+
+	out := ical.NewCalendar()
+	out.Props.SetText(ical.PropVersion, "2.0")
+	out.Props.SetText(ical.PropProductID, "-//Bongo-Go//Calendar//EN")
+
+	added := map[string]bool{}
+	for _, vevent := range group {
+		for _, props := range vevent.Props {
+			for _, p := range props {
+				for _, tzid := range p.Params["TZID"] {
+					if z, ok := zones[tzid]; ok && !added[tzid] {
+						added[tzid] = true
+						out.Children = append(out.Children, z)
+					}
+				}
+			}
+		}
+	}
+	out.Children = append(out.Children, group...)
+
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(out); err != nil {
+		return nil, fmt.Errorf("encoding imported event: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 // MiniCalendar returns the mini calendar sidebar as an HTMX partial.
@@ -899,21 +956,7 @@ func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time
 		return nil, fmt.Errorf("%w: %w", errICalDecode, err)
 	}
 
-	var master, first *ical.Component
-	for _, c := range cal.Children {
-		if c.Name != ical.CompEvent {
-			continue
-		}
-		if first == nil {
-			first = c
-		}
-		if master == nil && c.Props.Get(ical.PropRecurrenceID) == nil {
-			master = c
-		}
-	}
-	if master == nil {
-		master = first
-	}
+	master, _ := icalevent.Master(cal)
 	if master == nil {
 		return nil, fmt.Errorf("%w: no VEVENT", errICalDecode)
 	}

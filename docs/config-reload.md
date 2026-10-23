@@ -151,7 +151,7 @@ Legend for "Class":
 | `server.role` | `agent.go:251,259,316,379,583,1143` (`NewAgent`, `Run`) and many others; `cluster/raft.go:58,76,173` | ctor, branches the whole startup path | RESTART |
 | `server.name` | `cluster/raft.go:43` (raft LocalID), `cluster/gossip.go:34`, `agent.go:2569,2579,2585,2659,2805` | ctor; also per-call in peer-join code | RESTART (it is the raft node identity) |
 | `server.datacenter` | none | none | NO-OP |
-| `server.bind_addr` | `agent.go:942,1342,1343,1385,1386,1452,1453,2636,2796`; `cluster/raft.go:87`; `cluster/gossip.go:35` | ctor, listener addresses | RESTART |
+| `server.bind_addr` | `smtp/server.go` (listenAddr); `agent.go:942,1342,1343,1385,1386,1452,1453,2636,2796`; `cluster/raft.go:87`; `cluster/gossip.go:35` | ctor, listener addresses | RESTART |
 | `server.advertise_addr` | `cluster/raft.go:89`, `cluster/gossip.go:58` | ctor | RESTART |
 | `server.agents` | `agent.go:2624,2643,2698` (`runAgent`) | ctor; agent role only | RESTART |
 
@@ -573,7 +573,8 @@ Steps. A failure in steps 1-3 aborts and leaves the running state untouched.
    `key`, and `old`/`new` (non-secret keys only).
 7. **Summary** at INFO, msg `config reload complete`, attributes `applied`
    (list of key names), `needs_restart` (list of key names), `shadowed` (list),
-   and `file`. A reload with no changes logs the same message with empty lists.
+   `file`, and `file_mtime` (RFC 3339, UTC) and `file_size` (bytes) of the
+   file as read. A reload with no changes logs the same message with empty lists.
 8. Replace the baseline snapshot with the new config ONLY after step 5
    succeeded. Restart-required keys stay "changed" relative to what the process
    is actually running, so the baseline for those keys must remain the

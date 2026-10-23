@@ -61,6 +61,7 @@ func newComposeRichTestEnv(t *testing.T) *composeRichTestEnv {
 	h := NewComposeHandler(ps, blobs, mailboxes, nil, applier, discardLogger())
 	h.SetPreferences(prefStore)
 	h.SetLocalResolver(resolver)
+	h.SetSpool(&fakeSpool{})
 
 	return &composeRichTestEnv{
 		ps:        ps,

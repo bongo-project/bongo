@@ -103,7 +103,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Validate before the logger, storage or any listener exists, so a bad
 	// config refuses to start. The error reaches stderr via cobra, not the
 	// JSON log, because the logger is not built yet.
-	cfg, configFile, err := loadServeConfig(v)
+	cfg, configFile, configStamp, err := loadServeConfig(v)
 	if err != nil {
 		return err
 	}
@@ -152,12 +152,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	logger, logLevelVar := newServeLogger(cfg.Telemetry.Log.Format, logLevel, logOut, logSink)
 
 	if configFile != "" {
-		logger.Info("config loaded",
-			"file", configFile,
-			"role", cfg.Server.Role,
-			"log_level", cfg.Telemetry.Log.Level,
-			"log_format", cfg.Telemetry.Log.Format,
-		)
+		logConfigLoaded(logger, configFile, configStamp, cfg)
 	} else {
 		logger.Info("no config file found, using defaults",
 			"role", cfg.Server.Role,
@@ -257,13 +252,24 @@ func newServeLogger(format string, level slog.Level, out io.Writer, sink *handle
 // loadServeConfig loads the merged configuration and validates it. Serve is
 // the only entrypoint that validates: LoadWithDiscovery stays a pure merge so
 // tools needing only part of the config are not subject to server-only gates.
-func loadServeConfig(v *viper.Viper) (*config.Config, string, error) {
-	cfg, configFile, err := config.LoadWithDiscovery(v)
+func loadServeConfig(v *viper.Viper) (*config.Config, string, config.FileStamp, error) {
+	cfg, configFile, stamp, err := config.LoadWithDiscovery(v)
 	if err != nil {
-		return nil, "", fmt.Errorf("loading config: %w", err)
+		return nil, "", config.FileStamp{}, fmt.Errorf("loading config: %w", err)
 	}
 	if err := cfg.Validate(); err != nil {
-		return nil, "", fmt.Errorf("invalid config: %w", err)
+		return nil, "", config.FileStamp{}, fmt.Errorf("invalid config: %w", err)
 	}
-	return cfg, configFile, nil
+	return cfg, configFile, stamp, nil
+}
+
+// logConfigLoaded reports which config file was read, with its mtime and size
+// so an operator can tell which revision the process started from.
+func logConfigLoaded(logger *slog.Logger, file string, stamp config.FileStamp, cfg *config.Config) {
+	logger.Info("config loaded", append([]any{
+		"file", file,
+		"role", cfg.Server.Role,
+		"log_level", cfg.Telemetry.Log.Level,
+		"log_format", cfg.Telemetry.Log.Format,
+	}, stamp.LogAttrs()...)...)
 }

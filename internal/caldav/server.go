@@ -15,6 +15,7 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/icalevent"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -296,7 +297,10 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	}
 
 	// Extract VEVENT fields.
-	event := icalToEvent(calendar, guid, calID)
+	event, fallback := icalToEvent(calendar, guid, calID)
+	if fallback {
+		b.logger.Debug("caldav: no master VEVENT, using earliest override", "user", userID, "guid", guid)
+	}
 	event.IcalRaw = rawBuf.Bytes()
 
 	// Check if event exists (update vs create).
@@ -359,60 +363,13 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 	return nil
 }
 
-// icalToEvent extracts fields from an iCal calendar into an Event proto.
-func icalToEvent(cal *ical.Calendar, guid, calendarID string) *bongov1.Event {
-	event := &bongov1.Event{
-		Guid:       guid,
-		CalendarId: calendarID,
-	}
-
-	events := cal.Events()
-	if len(events) == 0 {
-		return event
-	}
-
-	vevent := events[0]
-
-	if summary, err := vevent.Props.Text(ical.PropSummary); err == nil {
-		event.Title = summary
-	}
-	if desc, err := vevent.Props.Text(ical.PropDescription); err == nil {
-		event.Description = desc
-	}
-	if loc, err := vevent.Props.Text(ical.PropLocation); err == nil {
-		event.Location = loc
-	}
-
-	if dtstart, err := vevent.DateTimeStart(time.UTC); err == nil {
-		event.StartTime = dtstart.Unix()
-
-		// Check if all-day (DATE value type, no time component).
-		if prop := vevent.Props.Get(ical.PropDateTimeStart); prop != nil {
-			for _, param := range prop.Params["VALUE"] {
-				if param == "DATE" {
-					event.AllDay = true
-				}
-			}
-		}
-	}
-
-	if dtend, err := vevent.DateTimeEnd(time.UTC); err == nil {
-		event.EndTime = dtend.Unix()
-	}
-
-	// Timezone from DTSTART TZID parameter.
-	if prop := vevent.Props.Get(ical.PropDateTimeStart); prop != nil {
-		if tzids := prop.Params["TZID"]; len(tzids) > 0 {
-			event.Timezone = tzids[0]
-		}
-	}
-
-	// RRULE for round-trip.
-	if rruleProp := vevent.Props.Get(ical.PropRecurrenceRule); rruleProp != nil {
-		event.Rrule = rruleProp.Value
-	}
-
-	return event
+// icalToEvent extracts the summary fields of the series master into an Event
+// proto. fallback reports that the calendar held only overrides.
+func icalToEvent(cal *ical.Calendar, guid, calendarID string) (event *bongov1.Event, fallback bool) {
+	event, fallback = icalevent.ToEvent(cal)
+	event.Guid = guid
+	event.CalendarId = calendarID
+	return event, fallback
 }
 
 // eventToCalendarObject converts an Event proto to a CalDAV CalendarObject.

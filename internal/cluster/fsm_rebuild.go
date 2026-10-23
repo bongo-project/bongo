@@ -1,6 +1,8 @@
 package cluster
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -185,4 +187,45 @@ func rebuildMail(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.
 	}
 
 	return count, nil
+}
+
+// ReconcileOrphanUsers deletes users rows (and their aliases rows and GAL
+// entries) whose /user/{id}/profile is absent from Pebble. Such a row blocks
+// CheckAddressFree for an address no account owns. Only a definite not-found
+// counts as absent: any other read error skips the row, because deleting on an
+// I/O error would drop live accounts. Call it before the Raft node starts, on
+// every node: replay or a snapshot restore re-creates any row whose profile
+// has simply not been applied yet. Returns the number of users rows removed.
+func ReconcileOrphanUsers(ps *store.PebbleStore, metadata *store.MetadataManager, search SearchIndexer, logger *slog.Logger) (int, error) {
+	if metadata == nil || metadata.System == nil {
+		return 0, nil
+	}
+	ids, err := metadata.System.ListUserIDs()
+	if err != nil {
+		return 0, fmt.Errorf("listing users: %w", err)
+	}
+	db := metadata.System.DB()
+	removed := 0
+	for _, id := range ids {
+		if _, err := ps.Get([]byte("/user/" + id + "/profile")); err == nil {
+			continue
+		} else if !errors.Is(err, store.ErrNotFound) {
+			logger.Warn("orphan users reconcile: profile check failed", "user", id, "error", err)
+			continue
+		}
+		if _, err := db.Exec("DELETE FROM users WHERE id = ?", id); err != nil {
+			logger.Warn("orphan users reconcile: deleting users row failed", "user", id, "error", err)
+			continue
+		}
+		removed++
+		if _, err := db.Exec("DELETE FROM aliases WHERE target_user_id = ?", id); err != nil {
+			logger.Warn("orphan users reconcile: deleting aliases failed", "user", id, "error", err)
+		}
+		if search != nil {
+			if err := search.DeleteProfile(id); err != nil {
+				logger.Warn("orphan users reconcile: deleting GAL entry failed", "user", id, "error", err)
+			}
+		}
+	}
+	return removed, nil
 }
