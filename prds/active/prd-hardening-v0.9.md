@@ -1193,6 +1193,12 @@ B15 to B18 and B20 to B27 can be closed or replaced by the imported stories.
    domain that accepts bounces but never relays them. No SRS codec change.
 5. **US-031:** `0.0.0.0` and an empty `bind_addr` keep binding every address
    (IPv4 and IPv6); only a specific address is honoured literally.
+6. **US-033 reversed after release (2026-10-23):** Dependabot is removed. Its
+   first run opened twelve PRs at once. Vulnerable dependencies are caught by
+   `govulncheck` in CI and in the release gate, and go through the normal PRD
+   flow (section 8.2, then a release scope). Pinned actions and images are
+   bumped by hand when a release scope includes it. The rest of US-033 stays:
+   the certs hook test reads the dumper image from the compose file.
 
 **Not confirmed during scoping:**
 
@@ -1283,8 +1289,15 @@ From the Phase 20 reviews (2026-10-23):
   flow-style `{image: x}` slips past it. Running it over
   `docker compose config --format json` would close that, and a fixture
   self-test in CI would pin its exemption and empty-file guards. (20.1)
-- certs-dumper is pinned as `:latest@sha256:...`, so Dependabot can only send
-  digest refreshes, not version bumps; a real vN tag would fix that. (20.2)
+- certs-dumper is pinned as `:latest@sha256:...`; a real vN tag would say
+  which release runs. (20.2)
+- With Dependabot removed (8.1 item 6), nothing reports stale pinned actions,
+  base images or Go modules that have no advisory; a release scope has to
+  include the bumps. Raised by its one run: actions/checkout 4 to 7,
+  setup-go 5 to 7, docker build actions, golangci-lint action 8 to 9, Go 1.27
+  base image, the deploy template's own image (0.6.20), and
+  `hashicorp/raft`, whose newer release needs a `memberlist` and
+  `go-metrics` upgrade together. (20.2)
 - The infra repo's production compose probably needs the same nginx digest
   (operator, via the infra repo). (20.1)
 - The certs hook CI job pulls from Docker Hub and can fail on its rate
