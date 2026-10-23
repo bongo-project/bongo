@@ -24,7 +24,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/miekg/dns v1.1.68
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
-	github.com/pires/go-proxyproto v0.14.0
+	github.com/pires/go-proxyproto v0.16.0
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/cobra v1.10.2
