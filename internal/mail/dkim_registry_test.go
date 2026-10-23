@@ -420,3 +420,31 @@ func TestDKIMRegistry_Remove(t *testing.T) {
 		t.Error("signer re-added over a seed survived Remove")
 	}
 }
+
+func TestStrictFromAddress(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+		err  bool
+	}{
+		{"plain keeps case", "From: A@Example.COM\r\n\r\n", "A@Example.COM", false},
+		{"display name", "From: A <a@example.org>\r\n\r\n", "a@example.org", false},
+		{"comment smuggling", "From: alice@example.com (x@tenantb.example)\r\n\r\n", "alice@example.com", false},
+		{"list", "From: a@one.example, b@two.example\r\n\r\n", "", true},
+		{"repeated header", "From: a@one.example\r\nFrom: b@two.example\r\n\r\n", "", true},
+		{"missing", "Subject: x\r\n\r\n", "", true},
+		{"malformed", "From: nope\r\n\r\n", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := StrictFromAddress([]byte(tc.raw))
+			if (err != nil) != tc.err {
+				t.Fatalf("err = %v, wantErr %v", err, tc.err)
+			}
+			if got != tc.want {
+				t.Errorf("addr = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -201,6 +201,17 @@ type SMTPConfig struct {
 	SubmissionPort int    `hcl:"submission_port,optional" mapstructure:"submission_port"`
 	Hostname       string `hcl:"hostname,optional" mapstructure:"hostname"`
 	ProxyProtocol  bool   `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
+	// SRSMaxAgeDays is how many days a rewritten forward sender (SRS address)
+	// stays reversible, so a bounce arriving later than this is refused.
+	// Default 21; valid range 1-365, and 0 means the default.
+	SRSMaxAgeDays int `hcl:"srs_max_age_days,optional" mapstructure:"srs_max_age_days"`
+	// SRSBouncesPerAddressPerHour caps bounces relayed through SRS to one
+	// original sender address per hour, counted in memory per node. Over the
+	// cap the bounce is dropped. Default 5; 0 disables.
+	SRSBouncesPerAddressPerHour int `hcl:"srs_bounces_per_address_per_hour,optional" mapstructure:"srs_bounces_per_address_per_hour"`
+	// SRSBouncesPerHour caps all bounces relayed through SRS per node per hour.
+	// Default 200; 0 disables.
+	SRSBouncesPerHour int `hcl:"srs_bounces_per_hour,optional" mapstructure:"srs_bounces_per_hour"`
 	// TrustedNetworks lists CIDR blocks whose connecting source IP is treated
 	// as an operator-trusted internal submitter (same as an authenticated
 	// submission session) without requiring SMTP AUTH. Empty by default: no
@@ -819,6 +830,16 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if c.SMTP.SRSMaxAgeDays < 0 || c.SMTP.SRSMaxAgeDays > 365 {
+		return fmt.Errorf("smtp.srs_max_age_days: %d is out of range (valid: 1-365; 0 means the default, 21)", c.SMTP.SRSMaxAgeDays)
+	}
+	if c.SMTP.SRSBouncesPerAddressPerHour < 0 {
+		return fmt.Errorf("smtp.srs_bounces_per_address_per_hour: %d must not be negative (0 disables)", c.SMTP.SRSBouncesPerAddressPerHour)
+	}
+	if c.SMTP.SRSBouncesPerHour < 0 {
+		return fmt.Errorf("smtp.srs_bounces_per_hour: %d must not be negative (0 disables)", c.SMTP.SRSBouncesPerHour)
+	}
+
 	proxies, err := c.Server.ParseTrustedProxies()
 	if err != nil {
 		return err
@@ -1133,9 +1154,12 @@ func Defaults() *Config {
 			AttachmentDedupMinSize: "32KB",
 		},
 		SMTP: SMTPConfig{
-			Enabled:        true,
-			Port:           25,
-			SubmissionPort: 587,
+			Enabled:                     true,
+			Port:                        25,
+			SubmissionPort:              587,
+			SRSMaxAgeDays:               21,
+			SRSBouncesPerAddressPerHour: 5,
+			SRSBouncesPerHour:           200,
 			Limits: SMTPLimits{
 				MaxMessageSize:            "25MB",
 				MaxRecipients:             100,

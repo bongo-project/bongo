@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/bongo-project/bongo/internal/srs"
 )
 
 // ErrRecipientUnavailable is returned (wrapped) by ResolveRecipient when an
@@ -37,7 +39,8 @@ var ErrRecipientUnavailable = errors.New("recipient unavailable")
 //  3. Per-domain catch-all: reads /system/catchall/{domain} from Pebble and
 //     returns the owner's user ID when configured. Only domains with an explicit
 //     catch-all entry accept unmatched mail; others are still rejected.
-//     Skipped when pebble is nil (same nil-guard as tier 2a).
+//     Skipped when pebble is nil (same nil-guard as tier 2a). SRS0/SRS1 local
+//     parts are never matched by the catch-all.
 //
 //     Every tier checks that the target's profile exists and is not disabled.
 //     The first tier that matches decides; a dead or disabled target returns
@@ -170,9 +173,14 @@ func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
 	// Reads /system/catchall/{domain} directly from Pebble — correct on all nodes.
 	// Open-relay guard: no key == no acceptance; domains without an explicit
 	// catch-all entry continue to reject below. pebble nil-guard mirrors tier 2a.
+	//
+	// SRS addresses never reach the catch-all: a bounce to one is reversed by
+	// the SMTP and deliver stages before any resolution, and one that was not
+	// (a failed verification) must not be handed to the catch-all owner, nor
+	// have that owner's rules, forwards and antispam preferences run on it.
 	if r.pebble != nil && !strict {
 		parts := strings.SplitN(email, "@", 2)
-		if len(parts) == 2 && parts[1] != "" {
+		if len(parts) == 2 && parts[1] != "" && !srs.IsSRS(parts[0]) {
 			domain := parts[1] // already lowercased by normalisation above
 			catchAllData, catchAllErr := r.pebble.Get(CatchAllKey(domain))
 			if catchAllErr == nil && len(catchAllData) > 0 {
