@@ -17,6 +17,7 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	bongomail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
@@ -60,6 +61,12 @@ type ForwardLimiter interface {
 	Allow(key string) bool
 }
 
+// SenderAuthorizer reports whether a user may send as an address. It is
+// satisfied by store.SendAsPolicy.
+type SenderAuthorizer interface {
+	CanSendAs(userID, addr string) (bool, error)
+}
+
 // DeliverProcessor is the final pipeline stage. It receives a fully-scored
 // QueueEnvelope (with blob already written to the blob store), parses the raw
 // message from the io.Reader, constructs a MailMeta protobuf for each
@@ -78,6 +85,9 @@ type DeliverProcessor struct {
 	// hostedDomain exempts targets on locally hosted domains from
 	// verification; nil means no target is exempt.
 	hostedDomain HostedDomainChecker
+	// authorizer decides whether a forward of locally authored mail may be
+	// DKIM-signed. Nil means every forward stays unsigned (fail closed).
+	authorizer SenderAuthorizer
 
 	// blobs and dedupMinSize enable attachment deduplication: when set,
 	// inbound messages with an attachment part whose encoded body is >=
@@ -153,6 +163,14 @@ func (p *DeliverProcessor) SetPreferences(pp PreferenceProvider) { p.prefs = pp 
 
 // SetForwardTargets sets the verified-target check applied to every forward.
 func (p *DeliverProcessor) SetForwardTargets(c ForwardTargetChecker) { p.fwdTargets = c }
+
+// SetSenderAuthorizer sets the send-as check used to decide whether a forward
+// of locally authored mail is signed. Nil keeps every forward unsigned.
+func (p *DeliverProcessor) SetSenderAuthorizer(a SenderAuthorizer) { p.authorizer = a }
+
+// SenderAuthorizer returns the authorizer set by SetSenderAuthorizer, or nil.
+// Tests use it to prove agent wiring.
+func (p *DeliverProcessor) SenderAuthorizer() SenderAuthorizer { return p.authorizer }
 
 // SetHostedDomains sets the check for locally hosted domains; forward targets
 // on them need no verification.
@@ -531,7 +549,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	tRecipients = mark(stepStart)
 
-	p.enqueueForwards(env, gate.approved)
+	p.enqueueForwards(env, raw, gate.approved)
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
 	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)
@@ -699,7 +717,7 @@ func (p *DeliverProcessor) isHostedAddress(address string) bool {
 // enqueueForwards relays one copy of the message to every approved target. It
 // is the only place a forward is queued; callers must have passed each target
 // through forwardGate.permit first.
-func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, approved []string) {
+func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byte, approved []string) {
 	if len(approved) == 0 || p.queuer == nil {
 		return
 	}
@@ -707,18 +725,18 @@ func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, approved 
 	if len(targets) == 0 {
 		return
 	}
-	// Envelope sender: the original MAIL FROM is kept (there is no SRS), so
-	// SPF will fail at the next hop. DMARC survives only through the
-	// original author's DKIM-Signature, which stays valid because the
-	// queue relays FORWARD messages unmodified and never re-signs them.
-	// Mail that was authored locally and is forwarded externally therefore
-	// leaves unsigned.
+	// The original MAIL FROM is kept. A FORWARD copy is relayed byte for
+	// byte and never re-signed, so DMARC survives only through the original
+	// author's DKIM-Signature. A LOCAL copy (see forwardOrigin) is signed with
+	// the From domain's key; its MAIL FROM was already checked against
+	// send-as at submission, and is on a hosted domain for hosted authors.
+	origin := p.forwardOrigin(env, raw)
 	fwdMsg := &bongov1.OutboundMessage{
 		Id:          uuid.New().String(),
 		SenderEmail: env.Sender,
 		Recipients:  targets,
 		BlobHash:    env.BlobHash,
-		Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD,
+		Origin:      origin,
 	}
 	if err := p.queuer.Enqueue(fwdMsg); err != nil {
 		p.logger.Warn("deliver: failed to enqueue forwarded message",
@@ -731,7 +749,36 @@ func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, approved 
 	p.logger.Info("deliver: forwarded message enqueued",
 		"id", env.Id,
 		"forward_to", targets,
+		"origin", origin.String(),
 	)
+}
+
+// forwardOrigin returns LOCAL (the queue worker DKIM-signs it) only for mail
+// authored by an authenticated local user who may send as the single header
+// From address. Anything else, including a missing authorizer, an ambiguous
+// From, a lookup error or a refusal, is FORWARD and stays unsigned. The From
+// is parsed with the signer's own strict rules, from the unstamped bytes the
+// forward relays, so the check and the signing identity cannot disagree.
+func (p *DeliverProcessor) forwardOrigin(env *bongov1.QueueEnvelope, raw []byte) bongov1.OutboundOrigin {
+	const forward = bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD
+	userID := env.GetAuthUserId()
+	if userID == "" || p.authorizer == nil {
+		return forward
+	}
+	addr, err := bongomail.StrictFromAddress(raw)
+	if err != nil {
+		return forward
+	}
+	ok, err := p.authorizer.CanSendAs(userID, strings.ToLower(addr))
+	if err != nil {
+		p.logger.Warn("deliver: send-as lookup failed, forwarding unsigned",
+			"id", env.Id, "user", userID, "error", err)
+		return forward
+	}
+	if !ok {
+		return forward
+	}
+	return bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL
 }
 
 // maxForwardHops caps how many Received headers a message may carry before the

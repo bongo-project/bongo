@@ -106,14 +106,10 @@ func FromRawMessageDomain(rawMsg []byte) (string, error) {
 // not hold exactly one parseable address.
 var ErrAmbiguousFrom = errors.New("the From header does not hold exactly one address")
 
-// StrictFromDomain returns the lowercased domain of the From header of rawMsg,
-// but only when the header is a single, well-formed address. Unlike
-// FromRawMessageDomain (which falls back to "whatever follows the last @"), it
-// refuses comments that smuggle in a second address
-// ("alice@example.com (x@tenantb.example)"), address lists, and repeated From
-// headers. It is for choosing a DKIM signing identity, where a wrong domain
-// means signing as a tenant that did not send the message.
-func StrictFromDomain(rawMsg []byte) (string, error) {
+// StrictFromAddress returns the single address of the From header of rawMsg,
+// or ErrAmbiguousFrom (or a header parse error) when the header is repeated,
+// holds a list, or does not parse. The address is not case-folded.
+func StrictFromAddress(rawMsg []byte) (string, error) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(rawMsg))
 	if err != nil {
 		return "", fmt.Errorf("parsing message headers: %w", err)
@@ -126,7 +122,21 @@ func StrictFromDomain(rawMsg []byte) (string, error) {
 	if err != nil || len(list) != 1 {
 		return "", ErrAmbiguousFrom
 	}
-	addr := list[0].Address
+	return list[0].Address, nil
+}
+
+// StrictFromDomain returns the lowercased domain of the From header of rawMsg,
+// but only when the header is a single, well-formed address. Unlike
+// FromRawMessageDomain (which falls back to "whatever follows the last @"), it
+// refuses comments that smuggle in a second address
+// ("alice@example.com (x@tenantb.example)"), address lists, and repeated From
+// headers. It is for choosing a DKIM signing identity, where a wrong domain
+// means signing as a tenant that did not send the message.
+func StrictFromDomain(rawMsg []byte) (string, error) {
+	addr, err := StrictFromAddress(rawMsg)
+	if err != nil {
+		return "", err
+	}
 	at := strings.LastIndexByte(addr, '@')
 	if at < 0 {
 		return "", ErrAmbiguousFrom

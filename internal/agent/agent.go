@@ -541,6 +541,15 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 	}
 	deliverProc.SetForwardLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardMaxPerHour))
 	deliverProc.SetHostedDomains(a.domainHosted)
+	// Forwards of mail authored by a local user are DKIM-signed only when
+	// send-as allows the header From. Agent-role deposits carry no
+	// auth_user_id (the deposit listener is unauthenticated), so they stay
+	// unsigned by design.
+	if a.AddressStore != nil && a.Store != nil {
+		deliverProc.SetSenderAuthorizer(&store.SendAsPolicy{Addresses: a.AddressStore, Pebble: a.Store})
+	} else {
+		a.logger.Warn("deliver: no address store; forwards of locally authored mail stay unsigned")
+	}
 	// Attachment deduplication: store large attachments as separate
 	// content-addressed blobs + a message skeleton, reconstructed byte-exact
 	// on read. The self-check inside the deliver stage falls back to whole-raw
