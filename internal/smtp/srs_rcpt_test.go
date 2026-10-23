@@ -34,6 +34,17 @@ func TestRcptSRS(t *testing.T) {
 		return a
 	}
 	valid := issue(now, "hosted.example")
+	issue1 := func(at time.Time, domain string) string {
+		first, err := codecAt(at).Forward("bob@example.org", "first.example")
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err := codecAt(at).Forward(first, domain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
 
 	b := &Backend{
 		resolver: catchAllStub{},
@@ -52,6 +63,9 @@ func TestRcptSRS(t *testing.T) {
 		{"valid bounce lowercased accepted", "", strings.ToLower(valid), false, 0},
 		{"age 17 accepted", "", issue(now.AddDate(0, 0, -17), "hosted.example"), false, 0},
 		{"age 18 refused", "", issue(now.AddDate(0, 0, -18), "hosted.example"), false, 550},
+		{"SRS1 fresh accepted", "", issue1(now, "hosted.example"), false, 0},
+		{"SRS1 age 17 accepted", "", issue1(now.AddDate(0, 0, -17), "hosted.example"), false, 0},
+		{"SRS1 age 23 refused", "", issue1(now.AddDate(0, 0, -23), "hosted.example"), false, 550},
 		{"tampered hash refused", "", flipHash(valid), false, 550},
 		{"wrong domain refused", "", strings.Replace(valid, "@hosted.example", "@other.example", 1), false, 550},
 		{"non-null MAIL FROM refused", "mallory@evil.example", valid, false, 550},
