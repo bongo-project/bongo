@@ -116,28 +116,36 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Load profile to check admin and disabled status.
 	var isAdmin bool
 	var totpEnabled bool
+	var epoch string
 	// canonical is the stored login, never the typed string: Authenticate
 	// accepts differently-cased and whitespace-wrapped logins.
 	canonical := store.NormaliseAddress(email)
 	if h.profiles != nil {
 		profile, err := h.loadProfile(userID)
-		if err == nil {
-			if profile.Email != "" {
-				canonical = profile.Email
-			}
-			if profile.Disabled {
-				if h.limiter != nil {
-					h.limiter.RecordFailure(ip, email)
-				}
-				// Use the same generic message as a bad password so a valid
-				// (but disabled) account is not confirmed to an attacker who
-				// already has the password.
-				templ.Handler(templates.LoginPage("Invalid email or password.")).ServeHTTP(w, r)
-				return
-			}
-			isAdmin = profile.IsAdmin
-			totpEnabled = profile.TotpEnabled
+		if err != nil {
+			// Fail closed: without the profile we cannot tell whether 2FA is
+			// enabled or what the session epoch is. Not counted against the
+			// user, and no cookie is issued.
+			slog.Warn("login: profile load failed", "user_id", userID, "error", err)
+			templ.Handler(templates.LoginPage("Sign-in is temporarily unavailable. Please try again.")).ServeHTTP(w, r)
+			return
 		}
+		if profile.Email != "" {
+			canonical = profile.Email
+		}
+		if profile.Disabled {
+			if h.limiter != nil {
+				h.limiter.RecordFailure(ip, email)
+			}
+			// Use the same generic message as a bad password so a valid
+			// (but disabled) account is not confirmed to an attacker who
+			// already has the password.
+			templ.Handler(templates.LoginPage("Invalid email or password.")).ServeHTTP(w, r)
+			return
+		}
+		isAdmin = profile.IsAdmin
+		totpEnabled = profile.TotpEnabled
+		epoch = security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration)
 	}
 
 	// If TOTP is enabled, issue a short-lived pending cookie and redirect to 2FA page.
@@ -152,23 +160,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		h.limiter.Succeed(ip, email)
 	}
 
-	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, canonical, remember, isAdmin, h.tlsEnabled, h.sessionEpoch(userID))
+	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, canonical, remember, isAdmin, h.tlsEnabled, epoch)
 	http.SetCookie(w, cookie)
 	http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
-}
-
-// sessionEpoch computes the credential fingerprint embedded in a new session
-// cookie so RequireAuth can revoke the session after a password or 2FA change.
-// Returns "" (no epoch check) if the profile cannot be read.
-func (h *AuthHandler) sessionEpoch(userID string) string {
-	if h.profiles == nil {
-		return ""
-	}
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		return ""
-	}
-	return security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration)
 }
 
 // TwoFactorPage renders the 2FA verification form.
@@ -226,8 +220,12 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Computed from the profile just verified and saved, so a second read
+	// cannot fail and leave an epoch-less (unrevocable) session.
+	epoch := security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration)
+
 	if !usedRecovery {
-		h.completeLogin(w, r, pending)
+		h.completeLogin(w, r, pending, epoch)
 		return
 	}
 
@@ -236,7 +234,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 	if h.limiter != nil {
 		h.limiter.Succeed(ip, pending.Email)
 	}
-	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, h.sessionEpoch(pending.UserID))
+	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, epoch)
 	http.SetCookie(w, cookie)
 	http.Redirect(w, r, "/mail/INBOX?warning="+urlEncode(recoveryWarning), http.StatusSeeOther)
 }
@@ -269,13 +267,13 @@ func (h *AuthHandler) saveProfile(userID string, profile *bongov1.UserProfile) e
 }
 
 // completeLogin clears the pending cookie, sets the session cookie, and redirects to inbox.
-func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, pending *middleware.PendingData) {
+func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, pending *middleware.PendingData, epoch string) {
 	ip := middleware.ClientIP(r)
 	http.SetCookie(w, middleware.ClearPendingCookie())
 	if h.limiter != nil {
 		h.limiter.Succeed(ip, pending.Email)
 	}
-	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, h.sessionEpoch(pending.UserID))
+	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, epoch)
 	http.SetCookie(w, cookie)
 
 	// Self-heal default mailboxes (idempotent, cheap) so older accounts missing

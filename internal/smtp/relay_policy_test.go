@@ -44,6 +44,7 @@ type fakeSplitDeliverer struct {
 	// Injected failures for the spool-failure tests. A message that cannot be
 	// stored or enqueued must never be answered with 250.
 	storeErr   error
+	stored     int
 	enqueueErr error
 }
 
@@ -55,6 +56,7 @@ func (d *fakeSplitDeliverer) StoreBlob(r io.Reader) (string, error) {
 	if d.storeErr != nil {
 		return "", d.storeErr
 	}
+	d.stored++
 	return "blobhash", nil
 }
 func (d *fakeSplitDeliverer) EnqueueLocal(from string, recipients []string, blobHash string, meta *InboundMeta) error {

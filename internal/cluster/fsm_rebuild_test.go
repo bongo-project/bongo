@@ -285,3 +285,63 @@ func TestRebuildProfilesMatchesProfileKeyExactly(t *testing.T) {
 		t.Fatalf("indexed %d profiles %v, want only u1/user1@example.com", n, search.profiles)
 	}
 }
+
+func TestReconcileUserEnabled(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir() + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	defer ps.Close()
+	mm, err := store.NewMetadataManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewMetadataManager: %v", err)
+	}
+	defer mm.Close()
+
+	disabled, _ := proto.Marshal(&bongov1.UserProfile{Email: "off@example.com", Disabled: true})
+	enabled, _ := proto.Marshal(&bongov1.UserProfile{Email: "on@example.com"})
+	decoy, _ := proto.Marshal(&bongov1.UserProfile{Email: "decoy@example.com", Disabled: true})
+	for key, val := range map[string][]byte{
+		"/user/off/profile":       disabled,
+		"/user/on/profile":        enabled,
+		"/user/same/profile":      enabled,
+		"/user/decoy/tag/profile": decoy,
+	} {
+		if err := ps.Set([]byte(key), val); err != nil {
+			t.Fatalf("Set %s: %v", key, err)
+		}
+	}
+	for _, r := range []struct {
+		id      string
+		enabled int
+	}{{"off", 1}, {"on", 0}, {"same", 1}, {"decoy", 1}, {"orphan", 1}} {
+		if _, err := mm.System.DB().Exec(
+			"INSERT INTO users (id, username, display_name, enabled, created_at) VALUES (?, ?, ?, ?, 0)",
+			r.id, r.id+"@example.com", r.id, r.enabled); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err := ReconcileUserEnabled(ps, mm, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("ReconcileUserEnabled: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("changed = %d, want 2", n)
+	}
+	want := map[string]int{"off": 0, "on": 1, "same": 1, "decoy": 1, "orphan": 1}
+	for id, w := range want {
+		var got int
+		if err := mm.System.DB().QueryRow("SELECT enabled FROM users WHERE id = ?", id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != w {
+			t.Errorf("user %s enabled = %d, want %d", id, got, w)
+		}
+	}
+	var count int
+	_ = mm.System.DB().QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	if count != 5 {
+		t.Errorf("rows = %d, want 5 (reconcile must not insert)", count)
+	}
+}

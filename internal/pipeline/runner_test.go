@@ -675,3 +675,192 @@ func TestRunnerLogCapsRecipients(t *testing.T) {
 		t.Error("envelope recipients mutated")
 	}
 }
+
+// firstCallBlockingProcessor blocks only its first Process call; later calls
+// return at once so an unfixed runner fails the test instead of hanging it.
+type firstCallBlockingProcessor struct {
+	name    string
+	started chan struct{}
+	release chan struct{}
+	calls   sync.Mutex
+	n       int
+}
+
+func (p *firstCallBlockingProcessor) Name() string { return p.name }
+
+func (p *firstCallBlockingProcessor) Process(_ context.Context, _ *bongov1.QueueEnvelope, _ io.Reader) (*bongov1.StageResult, error) {
+	p.calls.Lock()
+	p.n++
+	first := p.n == 1
+	p.calls.Unlock()
+	if first {
+		close(p.started)
+		<-p.release
+	}
+	return &bongov1.StageResult{Stage: p.name, Action: "pass"}, nil
+}
+
+// TestRunnerShutdownReturnsUnstartedEnvelopes cancels with one envelope in
+// flight, one buffered in the work channel and one held by the poll loop. The
+// in-flight one completes; the other two must go back to incoming/ rather than
+// run through the stages against the shutdown grace.
+func TestRunnerShutdownReturnsUnstartedEnvelopes(t *testing.T) {
+	spool := newTestSpool(t)
+	ids := []string{"msg-a", "msg-b", "msg-c"}
+	for _, id := range ids {
+		if err := spool.Enqueue(identityEnv(id)); err != nil {
+			t.Fatalf("Enqueue: %v", err)
+		}
+	}
+	stage := &firstCallBlockingProcessor{name: "antispam", started: make(chan struct{}), release: make(chan struct{})}
+	runner := NewRunner(spool, &mockBlobReader{}, []Processor{stage}, newTestLogger(),
+		WithWorkers(1), WithPollInterval(10*time.Millisecond))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = runner.Run(ctx) }()
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(stage.release) }) }
+	t.Cleanup(func() {
+		cancel()
+		release()
+		<-done
+	})
+
+	select {
+	case <-stage.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker never started")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		all := true
+		for _, id := range ids {
+			all = all && fileExistsIn(t, spool, "processing", id)
+		}
+		if all {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("envelopes never all reached processing/")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	cancel()
+	release()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return")
+	}
+
+	var delivered, incoming int
+	for _, id := range ids {
+		var where []string
+		for _, dir := range []string{"incoming", "processing", "deliver", "error", "quarantine"} {
+			if fileExistsIn(t, spool, dir, id) {
+				where = append(where, dir)
+			}
+		}
+		if len(where) != 1 {
+			t.Fatalf("%s is in %v, want exactly one directory", id, where)
+		}
+		switch where[0] {
+		case "deliver":
+			delivered++
+		case "incoming":
+			incoming++
+		default:
+			t.Fatalf("%s ended in %s", id, where[0])
+		}
+	}
+	if delivered != 1 || incoming != 2 {
+		t.Fatalf("delivered=%d incoming=%d, want 1 and 2", delivered, incoming)
+	}
+}
+
+// TestRunnerShutdownDrainsAllBufferedEnvelopes pins that a worker keeps
+// draining the work channel after cancellation. Three workers block in
+// Process while three more envelopes sit in the channel buffer; once Run
+// returns, none may be left in processing/ (a worker that stopped at the
+// first cancelled envelope would strand the rest until RecoverCrashed).
+func TestRunnerShutdownDrainsAllBufferedEnvelopes(t *testing.T) {
+	spool := newTestSpool(t)
+	var ids []string
+	for i := range 8 {
+		id := fmt.Sprintf("msg-%d", i)
+		ids = append(ids, id)
+		if err := spool.Enqueue(identityEnv(id)); err != nil {
+			t.Fatalf("Enqueue: %v", err)
+		}
+	}
+	stage := &blockingProcessor{name: "antispam", started: make(chan struct{}), release: make(chan struct{})}
+	runner := NewRunner(spool, &mockBlobReader{}, []Processor{stage}, newTestLogger(),
+		WithWorkers(1), WithPollInterval(10*time.Millisecond))
+	// With the default depth (the worker count) every worker moves one
+	// buffered envelope before it could return, so the drain loop is only
+	// observable with a deeper buffer.
+	runner.queueDepth = 4
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = runner.Run(ctx) }()
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(stage.release) }) }
+	t.Cleanup(func() {
+		cancel()
+		release()
+		<-done
+	})
+
+	// One in flight plus four buffered means at least five are in processing/.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		n := 0
+		for _, id := range ids {
+			if fileExistsIn(t, spool, "processing", id) {
+				n++
+			}
+		}
+		if n >= 5 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d envelopes reached processing/, want at least 5", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	cancel()
+	release()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return")
+	}
+
+	var delivered, incoming int
+	for _, id := range ids {
+		var where []string
+		for _, dir := range []string{"incoming", "processing", "deliver", "error", "quarantine"} {
+			if fileExistsIn(t, spool, dir, id) {
+				where = append(where, dir)
+			}
+		}
+		if len(where) != 1 {
+			t.Fatalf("%s is in %v, want exactly one directory", id, where)
+		}
+		switch where[0] {
+		case "deliver":
+			delivered++
+		case "incoming":
+			incoming++
+		default:
+			t.Fatalf("%s ended in %s, want deliver or incoming", id, where[0])
+		}
+	}
+	if delivered > 1 || delivered+incoming != len(ids) {
+		t.Fatalf("delivered=%d incoming=%d, want at most 1 delivered and the rest back in incoming/", delivered, incoming)
+	}
+}

@@ -1331,3 +1331,9 @@ Workflow wf_acffa308-bb7 in worktrees from 8b76a88. First reviews rejected all s
 
 PATTERN: [norman] Parallel worktrees that run dev-agent tests clash on gossip 8301 and IMAP 1143; agents report "address already in use" and pass on a rerun. Treat a bind error as noise only after a clean rerun.
 PATTERN: [testing] A wiring helper extracted for testability is not tested until something checks that Run calls it; delete the call as a mutation.
+
+## 2026-10-23 — Phase 18 batch 6 (18.36, 18.37, 18.38) DONE
+
+Workflow wf_6f407ef5-676 in worktrees from b779e0b (tree-identical to 65e41d5). The advisor corrected 18.36's premises: only the domain quota is enforced (UserProfile.QuotaBytes is not), and the helper was yes/no, so it gained RecipientWouldExceedQuota. First reviews rejected all three; after the fix round 18.36 and 18.38 passed, 18.37 was rejected for two surviving mutations (grace timeout marking shutdown done; runner `continue` vs `return`, indistinguishable while the buffer equals the worker count). A targeted fix added a test-only queue depth and both now go red. Orchestrator mutations: import size check, Require2FA policy read, DATA revocation re-check; all red. One conflict (agent.go wiring and the CalendarHandler struct between 18.36 and 18.38), two additions at the same spot, kept both. Follow-ups in 18.41.
+
+PATTERN: [testing] A drain-on-shutdown test cannot tell "drain the rest" from "stop now" if the buffer never holds more than the worker count; give the test a deeper buffer.

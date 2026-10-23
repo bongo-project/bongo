@@ -38,6 +38,7 @@ type Server struct {
 	tlsListener   net.Listener
 	wg            sync.WaitGroup
 	closeCh       chan struct{}
+	closeOnce     sync.Once
 
 	// connLimit is shared by the plain and TLS loops; maxConn applies per
 	// listener (netutil.LimitListener), matching SMTP and IMAP.
@@ -156,7 +157,7 @@ func (s *Server) PlainAddr() string {
 
 // Close stops the POP3 server and waits for active connections to finish.
 func (s *Server) Close() error {
-	close(s.closeCh)
+	s.closeOnce.Do(func() { close(s.closeCh) })
 	var errs []error
 	if s.plainListener != nil {
 		if err := s.plainListener.Close(); err != nil {

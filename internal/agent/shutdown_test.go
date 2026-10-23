@@ -15,6 +15,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/pipeline"
+	bongopop3 "github.com/bongo-project/bongo/internal/pop3"
 )
 
 type nopBlobReader struct{}
@@ -161,6 +162,9 @@ func TestShutdownWaitsForInFlightPipelineMessage(t *testing.T) {
 func TestShutdownGraceExceededLeavesEnvelopeAndStoresOpen(t *testing.T) {
 	a, stage, _, spoolDir := newShutdownAgent(t)
 	a.shutdownGrace = 200 * time.Millisecond
+	// A non-nil POP3 server makes the retry after the grace timeout reach the
+	// listener-close guard: closing it twice would panic on closeCh.
+	a.POP3 = bongopop3.NewServer(nil, nil, nil, nil, nil, false, slog.New(slog.DiscardHandler))
 	startAndWaitEntered(t, a, stage)
 	t.Cleanup(func() {
 		close(stage.release)
@@ -316,5 +320,91 @@ func TestShutdownStopsRealWorkersWithoutCtxCancel(t *testing.T) {
 	}
 	if d := time.Since(start); d > 4*time.Second {
 		t.Fatalf("Shutdown took %v, workers were not cancelled", d)
+	}
+}
+
+// TestShutdownIsIdempotent runs a dev agent with POP3 live and calls Shutdown
+// twice, as Run's own deferred teardown and an integration helper both do. The
+// second call used to close the POP3 server's channel again and panic.
+func TestShutdownIsIdempotent(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	a.shutdownGrace = 5 * time.Second
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- a.Run(context.Background()) }()
+	for i := 0; i < 200 && !a.Ready(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !a.Ready() {
+		_ = a.Shutdown()
+		t.Fatal("agent not ready")
+	}
+	if a.POP3 == nil {
+		_ = a.Shutdown()
+		t.Fatal("POP3 server not running; the test would not exercise the double close")
+	}
+
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("first Shutdown: %v", err)
+	}
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("second Shutdown: %v", err)
+	}
+	select {
+	case <-runDone:
+	case <-time.After(15 * time.Second):
+		t.Fatal("Run did not return")
+	}
+}
+
+// TestShutdownGraceTimeoutIsNotTerminal pins the retry semantics: a grace
+// timeout must not mark shutdown complete, so a later call still waits for the
+// workers (and reports the same error) until they finish, and only then
+// tears the stores down.
+func TestShutdownGraceTimeoutIsNotTerminal(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	a.shutdownGrace = 100 * time.Millisecond
+	release := make(chan struct{})
+	a.goWorker("stuck-worker", func() { <-release })
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+		a.bgWG.Wait()
+		_ = a.Shutdown()
+	})
+
+	for i := range 2 {
+		err := a.Shutdown()
+		if err == nil {
+			t.Fatalf("Shutdown call %d returned nil while a worker was still running", i+1)
+		}
+		if !strings.Contains(err.Error(), "stuck-worker") {
+			t.Errorf("Shutdown call %d error does not name the worker: %v", i+1, err)
+		}
+		if a.shutdownDone {
+			t.Fatalf("shutdownDone set after grace timeout on call %d", i+1)
+		}
+	}
+
+	close(release)
+	a.bgWG.Wait()
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("Shutdown after the worker finished: %v", err)
+	}
+	if !a.shutdownDone {
+		t.Error("shutdownDone not set after a completed teardown")
 	}
 }

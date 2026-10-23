@@ -219,6 +219,12 @@ type Agent struct {
 	// and bgWG workers. Unexported so tests can shrink it.
 	shutdownGrace time.Duration
 
+	// shutdownMu serialises Shutdown. listenersClosed records that the servers
+	// were closed and the workers cancelled; shutdownDone that teardown finished.
+	shutdownMu      sync.Mutex
+	listenersClosed bool
+	shutdownDone    bool
+
 	// dataDir is the resolved data directory (tmp dir in dev mode).
 	dataDir string
 	// tmpDir is set in dev mode so we can clean up on shutdown.
@@ -420,6 +426,16 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 
 	// Start Raft for server and dev roles (edge nodes don't participate in consensus).
 	if cfg.Server.Role == "server" || cfg.Server.Role == "dev" {
+		// Reconcile users.enabled from the Pebble profiles before Raft starts:
+		// replay skips entries up to the persisted applied index, so a stale
+		// row would otherwise survive. Doing it before NewRaftNode means no
+		// FSM apply can race it. The index is derived, so a failure is non-fatal.
+		if n, recErr := cluster.ReconcileUserEnabled(pebbleStore, metaMgr, logger); recErr != nil {
+			logger.Warn("users.enabled reconcile failed", "error", recErr)
+		} else if n > 0 {
+			logger.Info("users.enabled reconciled from profiles", "changed", n)
+		}
+
 		raftNode, err := cluster.NewRaftNode(cfg, pebbleStore, blobStore, metaMgr, logger)
 		if err != nil {
 			closeErr := errors.Join(searchMgr.Close(), metaMgr.Close(), pebbleStore.Close())
@@ -1007,6 +1023,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Every cookie-authenticated group is RequireAuth then Require2FA, so
 		// the require_2fa policy covers the admin console too.
 		r.Use(middleware.Require2FA(a))
+		r.Use(middleware.InjectLocale(a))
 		r.Use(middleware.RequireAdminOrDomainAdmin(func(userID string, isGlobalAdmin bool) ([]string, error) {
 			if domainAdminStoreForAdmin == nil {
 				return nil, nil
@@ -1141,6 +1158,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Mailboxes != nil {
 			mailH := handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes, a.logger)
 			mailH.SetApplier(a)
+			if a.DomainQuota != nil {
+				mailH.SetQuotaChecker(a.DomainQuota)
+			}
 			if a.Threads != nil {
 				mailH.SetThreadStore(a.Threads)
 			}
@@ -1194,6 +1214,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			// + deduplicated attachment blobs; the queue reconstructs byte-exact
 			// before relaying.
 			composeH.SetAttachmentDedup(int(a.Config.Storage.AttachmentDedupMinBytes()))
+			if a.DomainQuota != nil {
+				composeH.SetQuotaChecker(a.DomainQuota)
+			}
 			if a.QueueStore != nil {
 				composeH.SetQueueStore(a.QueueStore)
 			}
@@ -1234,6 +1257,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Contacts != nil {
 			contactsH := handlers.NewContactsHandler(a.Contacts, a.Search)
+			if a.DomainQuota != nil {
+				contactsH.SetQuotaChecker(a.DomainQuota)
+			}
 			r.Get("/contacts", contactsH.ListContacts)
 			r.Post("/contacts", contactsH.CreateContact)
 			r.Get("/contacts/export", contactsH.ExportContacts)
@@ -1247,6 +1273,10 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Events != nil && a.Calendars != nil {
 			calendarH := handlers.NewCalendarHandler(a.Events, a.Calendars, a.Search)
+			if a.DomainQuota != nil {
+				calendarH.SetQuotaChecker(a.DomainQuota)
+			}
+			calendarH.SetShareResolver(sharedResolver)
 			r.Get("/calendar", calendarH.CalendarIndex)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/{year}/{month}", calendarH.MonthView)
@@ -1472,6 +1502,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
 			r.Use(middleware.Require2FA(a))
+			r.Use(middleware.InjectLocale(a))
 			r.Use(middleware.RequireAdmin(sessionSecret))
 			r.Use(middleware.RequireSameOrigin())
 			// Double-submit CSRF token, defence-in-depth on top of same-origin.
@@ -3525,21 +3556,10 @@ func (a *Agent) waitForWorkers() error {
 	}
 }
 
-// Shutdown closes all resources held by the agent.
-//
-// It cancels the pipeline runner and the store-touching background workers
-// (queue worker, reminder checker, blob syncer, orphan GC, usage recompute)
-// and waits for them, bounded by shutdownGrace (30s), before touching Raft or
-// any store. If the grace expires, Shutdown returns an error and deliberately
-// leaves Raft and the stores open: the running message is not pushed into
-// error/ by a shutdown-induced failure, its envelope stays in
-// spool/processing/, and RecoverCrashed requeues it on the next start. If the
-// process then exits mid-delivery, the retry may deliver again to recipients
-// already served (duplicates, never loss), the same as a crash today.
-func (a *Agent) Shutdown() error {
+// closeListenersAndStopWorkers closes the HTTP and protocol servers and
+// cancels the pipeline runner and background workers. Shutdown calls it once.
+func (a *Agent) closeListenersAndStopWorkers() []error {
 	var errs []error
-
-	a.ready.Store(false)
 
 	// 1. HTTP server (graceful drain).
 	if a.httpServer != nil {
@@ -3608,12 +3628,48 @@ func (a *Agent) Shutdown() error {
 	if a.usageCancel != nil {
 		a.usageCancel()
 	}
+	return errs
+}
+
+// Shutdown closes all resources held by the agent.
+//
+// It cancels the pipeline runner and the store-touching background workers
+// (queue worker, reminder checker, blob syncer, orphan GC, usage recompute)
+// and waits for them, bounded by shutdownGrace (30s), before touching Raft or
+// any store. If the grace expires, Shutdown returns an error and deliberately
+// leaves Raft and the stores open: the running message is not pushed into
+// error/ by a shutdown-induced failure, its envelope stays in
+// spool/processing/, and RecoverCrashed requeues it on the next start. If the
+// process then exits mid-delivery, the retry may deliver again to recipients
+// already served (duplicates, never loss), the same as a crash today.
+func (a *Agent) Shutdown() error {
+	// Run's own teardown and integration helpers can both call Shutdown, so
+	// serialise the calls. The listeners are closed once; the worker wait and
+	// the store close are retried after a grace timeout; a finished shutdown
+	// makes further calls no-ops.
+	a.shutdownMu.Lock()
+	defer a.shutdownMu.Unlock()
+	if a.shutdownDone {
+		return nil
+	}
+
+	var errs []error
+
+	a.ready.Store(false)
+
+	if !a.listenersClosed {
+		a.listenersClosed = true
+		errs = a.closeListenersAndStopWorkers()
+	}
+
 	if err := a.waitForWorkers(); err != nil {
 		// Leave Raft and every store open so the straggler can finish or be
 		// killed cleanly; the envelope stays in spool/processing/ and
 		// RecoverCrashed requeues it on the next start.
 		a.logger.Error("shutdown: workers still running after grace; leaving stores open", "error", err)
 		errs = append(errs, err)
+		// shutdownDone stays false on purpose: a later call re-waits for the
+		// workers and, once they have finished, closes Raft and the stores.
 		return fmt.Errorf("shutdown errors: %v", errs)
 	}
 
@@ -3683,6 +3739,9 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
+	// Teardown is complete even if a close reported an error; closing again
+	// would only double-close.
+	a.shutdownDone = true
 	if len(errs) > 0 {
 		return fmt.Errorf("shutdown errors: %v", errs)
 	}

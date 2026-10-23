@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bongo-project/bongo/internal/auth"
 )
 
 func TestWeekDayViews(t *testing.T) {
@@ -215,9 +217,13 @@ func TestSharedCalendar(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// Share the default calendar with a target user.
+	// Share the default calendar with an existing local user. A made-up
+	// address is refused, so the target must be a real account.
+	if _, err := auth.CreateUser(a, a.Metadata, "user-b@localhost", "User B", "userbpass123", false); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
 	resp, err = client.PostForm(baseURL+"/calendar/default/share", url.Values{
-		"share_with": {"user-b"},
+		"share_with": {"user-b@localhost"},
 	})
 	if err != nil {
 		t.Fatalf("POST /calendar/default/share: %v", err)

@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"net"
 	"strings"
 
 	"github.com/bongo-project/bongo/internal/config"
@@ -17,9 +18,17 @@ import (
 // used unchanged; that keeps the bootstrap seed of a multi-node cluster, which
 // has an empty cluster.join, reachable.
 //
+// In the dev role a wildcard (or empty) bind_addr with no advertise address and
+// no cluster.join binds loopback: a single ephemeral node has no peers, so
+// gossip has no reason to listen on every interface. An explicit routable
+// bind_addr or advertise_addr, or a join list, is honoured.
+//
 // Any 127/8 advertise address makes raft and gossip bind that address, which
 // must exist on the host (127.0.0.2 is not configured by default on macOS).
 func clusterBindHost(cfg *config.Config) string {
+	if cfg.Server.Role == "dev" && cfg.Server.AdvertiseAddr == "" && len(cfg.Cluster.Join) == 0 && isUnspecified(cfg.Server.BindAddr) {
+		return "127.0.0.1"
+	}
 	host := cfg.Server.AdvertiseAddr
 	if host == "" {
 		host = cfg.Server.BindAddr
@@ -31,4 +40,13 @@ func clusterBindHost(cfg *config.Config) string {
 		return "127.0.0.1"
 	}
 	return host
+}
+
+// isUnspecified reports whether addr is empty or a wildcard address.
+func isUnspecified(addr string) bool {
+	if addr == "" {
+		return true
+	}
+	ip := net.ParseIP(addr)
+	return ip != nil && ip.IsUnspecified()
 }

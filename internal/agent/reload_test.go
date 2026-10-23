@@ -418,8 +418,18 @@ func TestReload_RestartKeyWarnsOnceChangesNothing(t *testing.T) {
 	if warns[0]["key"] != "smtp.port" || warns[0]["level"] != "WARN" {
 		t.Errorf("unexpected warning: %v", warns[0])
 	}
-	if strings.Contains(f.logs.String(), "2525") {
-		t.Error("restart warning leaked a value")
+	// Check values, not the raw text: timestamps and temp paths can contain
+	// the digits by chance.
+	for _, r := range f.logs.records(t) {
+		for k, v := range r {
+			s := fmt.Sprint(v)
+			if k == "time" || strings.HasPrefix(s, "/") {
+				continue
+			}
+			if strings.Contains(s, "2525") {
+				t.Errorf("restart warning leaked a value: %s=%v", k, v)
+			}
+		}
 	}
 	if f.debugOn() || f.backend.IsTrustedSource("10.1.2.3") || f.action() != "quarantine" ||
 		f.a.spamThresholds.Thresholds() != (pipeline.SpamThresholds{Tag: 0.5, High: 0.9}) {

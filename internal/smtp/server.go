@@ -260,20 +260,20 @@ func (s *Session) accountReader() accountStateReader {
 // submission connection held open cannot keep relaying. A missing profile fails
 // closed; a store read error fails open so an outage does not stop submission
 // (AUTH itself fails closed on any error).
-func (s *Session) checkAccountLive() error {
+func (s *Session) checkAccountLive(cmd string) error {
 	reader := s.accountReader()
 	if reader == nil {
 		return nil
 	}
 	st, err := reader.AccountState(s.userID)
 	if err != nil {
-		s.logger.Warn("smtp: account state check failed, allowing command", "user", s.userID, "error", err)
+		s.logger.Warn("smtp: account state check failed, allowing command", "command", cmd, "user", s.userID, "error", err)
 		return nil
 	}
 	if st.Live(s.epoch) {
 		return nil
 	}
-	s.logger.Info("smtp: rejecting MAIL, account no longer valid", "user", s.userID,
+	s.logger.Info("smtp: rejecting command, account no longer valid", "command", cmd, "user", s.userID,
 		"missing", st.Missing, "disabled", st.Disabled)
 	return &gosmtp.SMTPError{Code: 535, EnhancedCode: gosmtp.EnhancedCode{5, 7, 8}, Message: "Account no longer available"}
 }
@@ -416,7 +416,7 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 	}
 
 	if s.submission && s.authed {
-		if err := s.checkAccountLive(); err != nil {
+		if err := s.checkAccountLive("MAIL"); err != nil {
 			return err
 		}
 	}
@@ -456,6 +456,14 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 // external recipients is only allowed for authenticated sessions (submission).
 // This is the explicit open-relay guard.
 func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
+	// Re-check revocation: a transaction started before a disable must not
+	// keep adding recipients. Cheap: one Pebble read, no bcrypt.
+	if s.submission && s.authed {
+		if err := s.checkAccountLive("RCPT"); err != nil {
+			return err
+		}
+	}
+
 	// Without a resolver (dev/agent role) fall back to accepting locally; the
 	// server-role deployment always wires a resolver.
 	if s.backend.resolver == nil {
@@ -545,6 +553,18 @@ func (s *Session) Data(r io.Reader) error {
 	if len(s.localRcpts)+len(s.externalRcpts) == 0 {
 		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 		return &gosmtp.SMTPError{Code: 554, EnhancedCode: gosmtp.EnhancedCode{5, 5, 1}, Message: "No valid recipients"}
+	}
+
+	// A transaction opened before the account was disabled, deleted or had its
+	// password reset must not complete. Checked before the rate limiters and the
+	// header read so a refused message spends no budget and stores no blob. A
+	// disable that lands while the body is still being transferred is not
+	// caught: the window is narrow and the check is deliberately not repeated.
+	if s.submission && s.authed {
+		if err := s.checkAccountLive("DATA"); err != nil {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+			return err
+		}
 	}
 
 	// Per-IP inbound message-rate check. Applied to MX (inbound) connections only;

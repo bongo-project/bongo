@@ -63,6 +63,7 @@ type MailHandler struct {
 	trainLimiter *internalmail.RateLimiter
 	sanitizer    *bluemonday.Policy
 	logger       *slog.Logger
+	quota        QuotaChecker // nil = unlimited
 	metadata     *store.MetadataManager
 	search       *store.SearchManager
 	tags         *store.TagStore
@@ -929,6 +930,9 @@ func (h *MailHandler) ImportPage(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.ImportPage(names)).ServeHTTP(w, r)
 }
 
+// SetQuotaChecker enables the domain storage-quota check on mbox import.
+func (h *MailHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
+
 // ImportMbox processes an uploaded mbox file and imports messages.
 func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
@@ -947,14 +951,6 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 		targetMailbox = "INBOX"
 	}
 
-	// Ensure target mailbox exists.
-	if _, err := h.mailboxes.GetMailbox(userID, targetMailbox); err != nil {
-		if err := h.mailboxes.CreateMailbox(userID, targetMailbox); err != nil {
-			http.Error(w, "Failed to create target mailbox", http.StatusInternalServerError)
-			return
-		}
-	}
-
 	file, _, err := r.FormFile("mbox")
 	if err != nil {
 		http.Error(w, "No file uploaded", http.StatusBadRequest)
@@ -966,6 +962,23 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Failed to read file", http.StatusInternalServerError)
 		return
+	}
+
+	// Quota: all or nothing. Refuse up front when the whole upload would not
+	// fit, before the target mailbox, any blob or any MailMeta is written. The
+	// usage figure is the periodic recompute (up to ~10 minutes stale), so this
+	// is best effort: two imports running at once can both pass.
+	if quotaExceeded(h.quota, h.logger, userID, int64(len(data))) {
+		refuseQuota(w, r)
+		return
+	}
+
+	// Ensure target mailbox exists.
+	if _, err := h.mailboxes.GetMailbox(userID, targetMailbox); err != nil {
+		if err := h.mailboxes.CreateMailbox(userID, targetMailbox); err != nil {
+			http.Error(w, "Failed to create target mailbox", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Parse mbox: split on "\nFrom " lines.
