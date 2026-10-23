@@ -674,3 +674,122 @@ func TestFSMBayesTrainMalformedReturnsError(t *testing.T) {
 		})
 	}
 }
+
+// gateHandler blocks the goroutine that logs one specific Debug message until
+// released. It lets a test freeze FSM.Apply at a known point between "the
+// Pebble write is visible" and "the derived-index work is queued".
+type gateHandler struct {
+	msg     string
+	reached chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *gateHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *gateHandler) WithAttrs([]slog.Attr) slog.Handler       { return h }
+func (h *gateHandler) WithGroup(string) slog.Handler            { return h }
+func (h *gateHandler) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == h.msg {
+		h.once.Do(func() { close(h.reached) })
+		<-h.release
+	}
+	return nil
+}
+
+// TestFSMWaitIdleCoversInFlightApply reproduces the flake in
+// TestSMTPFullMailFlow: a Pebble write is visible to readers before
+// updateDerivedIndexes increments indexInflight, so WaitIdle used to report
+// idle while the entry was mid-apply and its SQLite row did not exist yet.
+//
+// The freeze point relies on the exact Debug messages logged between the write
+// and the enqueue. If one is renamed, the reached wait fails loudly rather than
+// hanging.
+func TestFSMWaitIdleCoversInFlightApply(t *testing.T) {
+	const userID = "user-w"
+
+	tests := []struct {
+		name string
+		msg  string
+		log  func(t *testing.T) *raft.Log
+	}{
+		{
+			name: "plain put",
+			msg:  "fsm: applied",
+			log:  func(t *testing.T) *raft.Log { return mailPutLog(t, 1, userID, "guid-w") },
+		},
+		{
+			name: "mailbox synthetic command",
+			msg:  "fsm: mailbox synthetic command applied",
+			log: func(t *testing.T) *raft.Log {
+				cmd, err := store.BuildDeliverMailCommand(userID, "INBOX", &bongov1.MailMeta{
+					Guid: "guid-w", Subject: "s", ReceivedAt: 1,
+				}, 0)
+				if err != nil {
+					t.Fatalf("BuildDeliverMailCommand: %v", err)
+				}
+				return makeProtoLog(1, cmd)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newFSMTestEnv(t)
+			gate := &gateHandler{msg: tt.msg, reached: make(chan struct{}), release: make(chan struct{})}
+			released := false
+			release := func() {
+				if !released {
+					released = true
+					close(gate.release)
+				}
+			}
+			defer release()
+
+			fsm := NewFSM(env.pebble, env.blobs, env.metadata, slog.New(gate))
+			ctx, cancel := context.WithCancel(context.Background())
+			defer func() { cancel(); fsm.StopIndexer() }()
+			fsm.StartIndexer(ctx)
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				fsm.Apply(tt.log(t))
+			}()
+
+			select {
+			case <-gate.reached:
+			case <-time.After(10 * time.Second):
+				t.Fatalf("apply never logged %q; the freeze point has moved", tt.msg)
+			}
+
+			// The write is visible while the apply is still in progress.
+			iter, err := env.pebble.PrefixScan([]byte("/user/" + userID + "/mail/"))
+			if err != nil {
+				t.Fatalf("PrefixScan: %v", err)
+			}
+			visible := iter.Next()
+			iter.Close()
+			if !visible {
+				t.Fatal("mail key not yet in Pebble at the freeze point; the test is not exercising the gap")
+			}
+
+			if fsm.WaitIdle(200 * time.Millisecond) {
+				t.Fatal("WaitIdle reported idle while an apply was in progress and its index work not yet queued")
+			}
+
+			release()
+			<-done
+
+			if !fsm.WaitIdle(10 * time.Second) {
+				t.Fatal("derived index backlog did not drain")
+			}
+			objs, err := env.metadata.QueryByType(userID, store.DocTypeMail)
+			if err != nil {
+				t.Fatalf("QueryByType: %v", err)
+			}
+			if len(objs) != 1 {
+				t.Fatalf("SQLite has %d mail rows after WaitIdle, want 1", len(objs))
+			}
+		})
+	}
+}

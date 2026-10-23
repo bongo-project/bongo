@@ -1276,3 +1276,25 @@ From the Phase 19 batch 2 reviews (2026-10-23):
   authenticated; trusted-network mail without SPF pass is now unauthenticated;
   the worker DSN to the sink is discarded anyway, but the proto field is kept
   so pre-upgrade FORWARDs default to suppress. (19.9, 19.10)
+
+From the Phase 20 reviews (2026-10-23):
+
+- `scripts/check-image-pins.sh` is line-based: a quoted `"image":` key or a
+  flow-style `{image: x}` slips past it. Running it over
+  `docker compose config --format json` would close that, and a fixture
+  self-test in CI would pin its exemption and empty-file guards. (20.1)
+- certs-dumper is pinned as `:latest@sha256:...`, so Dependabot can only send
+  digest refreshes, not version bumps; a real vN tag would fix that. (20.2)
+- The infra repo's production compose probably needs the same nginx digest
+  (operator, via the infra repo). (20.1)
+- The certs hook CI job pulls from Docker Hub and can fail on its rate
+  limit. (20.3)
+- `internal/agent/agent.go` HTTPS redirect server still uses ListenAndServe
+  in a goroutine, so a bind failure is only logged; and a Serve error after
+  ready returns without Shutdown, leaving ready true. (20.4)
+- `test/integration/smtp_test.go:38` still sleeps 500 ms after CreateUser;
+  `updateDerivedIndexes` called outside Apply (tests only) has no in-flight
+  hold. (20.5)
+- `test/integration/srs_bounce_test.go`: one run with relaySRSBounce
+  short-circuited reported a race, probably teardown after the 60 s failure;
+  not reproduced. (20.7)

@@ -67,14 +67,14 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 20.1 | US-032: Pin the nginx image by digest | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
-| 20.2 | US-033: Dependabot keeps actions and base images current | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
-| 20.3 | US-034: Run the certs hook test in CI | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
-| 20.4 | US-035: Ready means the web listener is bound | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.40 (new flake: `TestUserManagement`). |
-| 20.5 | US-036: Make TestSMTPFullMailFlow deterministic | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.40. |
-| 20.6 | US-037: SIGHUP tests fail instead of hanging | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B24. |
-| 20.7 | US-038: End-to-end test of a bounce through SRS | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.42(e), 18.43(f). Needs 19.10. |
-| 20.8 | US-039: Middleware-level test for ReissueSessionCookie | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
+| 20.1 | US-032: Pin the nginx image by digest | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 18.39(d). nginx pinned to the 1.29-alpine index digest; scripts/check-image-pins.sh (make target, ci.yml lint job) fails on any unpinned third-party image line; Bongo's own image exempt. |
+| 20.2 | US-033: Dependabot keeps actions and base images current | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 18.39(d). .github/dependabot.yml: github-actions, gomod (/), docker and docker-compose (/deploy), weekly; schema-checked. The certs hook test reads the dumper image from compose; certs-dumper is now :latest@<same digest>. |
+| 20.3 | US-034: Run the certs hook test in CI | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 18.39(d). .github/workflows/deploy.yml runs the certs hook test on deploy/** PRs and pushes to main: new exits 0, old exits exactly 1 with the leak line. |
+| 20.4 | US-035: Ready means the web listener is bound | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 18.40 (new flake: `TestUserManagement`). Run and runAgent net.Listen before ready and Serve on that listener; a taken port returns 'web listen: ... address already in use' with Ready never true. TestUserManagement -count=20 passed 20/20. |
+| 20.5 | US-036: Make TestSMTPFullMailFlow deterministic | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 18.40. Cause: the Pebble write was visible before updateDerivedIndexes counted the item, so WaitIdle could report idle mid-apply. FSM.Apply now holds indexInflight for the whole apply; red-first unit test; the 1s sleep is a 10s poll. 1/16 failed before (smtp_test.go:146), 30/30 after. |
+| 20.6 | US-037: SIGHUP tests fail instead of hanging | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: B24. All serve_signal tests stop through stopWithin (2s bound); a stop that blocks turns each red in 2s. |
+| 20.7 | US-038: End-to-end test of a bounce through SRS | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 18.42(e), 18.43(f). Needs 19.10. TestSRSBounceEndToEnd: a fake relay 550s the forward, the real DSN to the SRS address is relayed once to bob@example.org with a null sender, B gets nothing. Deliver-level SRS1 rows, tampered hash refused. |
+| 20.8 | US-039: Middleware-level test for ReissueSessionCookie | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 2026-10-23 review finding (progress.md, 18.43 entry). ReissueSessionCookie tested against RequireAuth: matching epoch passes, other epoch and a flipped signature byte are refused, MaxAge and cookie attributes checked. |
 
 ## Phase 21: Hardening v0.10.0, Phase C: data correctness
 

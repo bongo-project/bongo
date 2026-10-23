@@ -432,3 +432,100 @@ func TestSessionStateUnavailable_AdminGates(t *testing.T) {
 		})
 	}
 }
+
+// reissuedCookie builds a session issued under epochA and reissues it under
+// epochB with a non-round remaining lifetime, as ChangePassword does.
+func reissuedCookie(t *testing.T, secure bool) (*http.Cookie, SessionData) {
+	t.Helper()
+	base := CreateSessionCookie(testSecret, "user123", "e@x.com", false, false, false, "epochA")
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(base)
+	data, err := ParseSessionCookie(testSecret, req)
+	if err != nil || data == nil {
+		t.Fatalf("ParseSessionCookie: %v", err)
+	}
+	if data.Epoch != "epochA" {
+		t.Fatalf("base epoch = %q, want epochA", data.Epoch)
+	}
+	data.Exp = time.Now().Add(7*time.Hour + 13*time.Minute + 17*time.Second).Unix()
+	return ReissueSessionCookie(testSecret, *data, secure, "epochB"), *data
+}
+
+func serveWithCookie(cookie *http.Cookie, epoch string) (called bool, rr *httptest.ResponseRecorder) {
+	stateFn := func(string) LiveSessionState { return LiveSessionState{Found: true, Epoch: epoch} }
+	handler := RequireAuth(testSecret, stateFn)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/mail/INBOX", nil)
+	req.AddCookie(cookie)
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	return called, rr
+}
+
+func TestReissueSessionCookie_RequireAuth(t *testing.T) {
+	cookie, _ := reissuedCookie(t, false)
+
+	t.Run("matching epoch passes", func(t *testing.T) {
+		called, rr := serveWithCookie(cookie, "epochB")
+		if !called || rr.Code != http.StatusOK {
+			t.Fatalf("called=%v status=%d, want handler reached with 200", called, rr.Code)
+		}
+	})
+
+	t.Run("other epoch refused and cookie cleared", func(t *testing.T) {
+		called, rr := serveWithCookie(cookie, "epochC")
+		if called {
+			t.Fatal("handler ran despite epoch mismatch")
+		}
+		if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/login" {
+			t.Fatalf("status=%d location=%q, want 303 /login", rr.Code, rr.Header().Get("Location"))
+		}
+		cleared := false
+		for _, c := range rr.Result().Cookies() {
+			if c.Name == cookieName && c.MaxAge < 0 {
+				cleared = true
+			}
+		}
+		if !cleared {
+			t.Error("session cookie not cleared")
+		}
+	})
+
+	t.Run("one signature byte changed is refused", func(t *testing.T) {
+		i := strings.LastIndexByte(cookie.Value, '.')
+		sig, err := base64.RawURLEncoding.DecodeString(cookie.Value[i+1:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		sig[0] ^= 0x01
+		tampered := *cookie
+		tampered.Value = cookie.Value[:i+1] + base64.RawURLEncoding.EncodeToString(sig)
+		called, rr := serveWithCookie(&tampered, "epochB")
+		if called || rr.Code != http.StatusSeeOther {
+			t.Fatalf("called=%v status=%d, want refused with 303", called, rr.Code)
+		}
+	})
+}
+
+func TestReissueSessionCookie_Attributes(t *testing.T) {
+	for _, secure := range []bool{true, false} {
+		t.Run(map[bool]string{true: "secure", false: "insecure"}[secure], func(t *testing.T) {
+			cookie, data := reissuedCookie(t, secure)
+			want := int(data.Exp - time.Now().Unix())
+			if d := cookie.MaxAge - want; d < -1 || d > 1 {
+				t.Errorf("MaxAge = %d, want within 1s of %d", cookie.MaxAge, want)
+			}
+			if !cookie.HttpOnly {
+				t.Error("HttpOnly not set")
+			}
+			if cookie.SameSite != http.SameSiteLaxMode {
+				t.Errorf("SameSite = %v, want Lax", cookie.SameSite)
+			}
+			if cookie.Secure != secure {
+				t.Errorf("Secure = %v, want %v", cookie.Secure, secure)
+			}
+		})
+	}
+}

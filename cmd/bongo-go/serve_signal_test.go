@@ -15,6 +15,23 @@ import (
 
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
+// stopWithin calls stop and fails the test if it has not returned within 2
+// seconds, so a teardown bug fails fast instead of hanging until the go test
+// timeout. Call it from the test goroutine only.
+func stopWithin(t *testing.T, stop func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stop did not return within 2s: signal goroutines still running")
+	}
+}
+
 func sendSelf(t *testing.T, sig syscall.Signal) {
 	t.Helper()
 	if err := syscall.Kill(os.Getpid(), sig); err != nil {
@@ -30,7 +47,7 @@ func TestWatchSignals_HUPReloadsWithoutCancel(t *testing.T) {
 		reloads <- struct{}{}
 		return nil
 	}, quietLogger())
-	defer stop()
+	defer stopWithin(t, stop)
 
 	sendSelf(t, syscall.SIGHUP)
 	select {
@@ -55,7 +72,7 @@ func TestWatchSignals_TermSignalsCancel(t *testing.T) {
 				reloaded <- struct{}{}
 				return nil
 			}, quietLogger())
-			defer stop()
+			defer stopWithin(t, stop)
 
 			sendSelf(t, sig)
 			select {
@@ -77,30 +94,12 @@ func TestWatchSignals_StopExitsGoroutines(t *testing.T) {
 	stop := watchSignals(ctx, cancel, func(context.Context) error { return nil }, quietLogger())
 
 	cancel()
-	done := make(chan struct{})
-	go func() {
-		stop()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("stop did not return: signal goroutines still running")
-	}
+	stopWithin(t, stop)
 }
 
 func TestWatchSignals_StopWithoutCancelDoesNotHang(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stop := watchSignals(ctx, cancel, func(context.Context) error { return nil }, quietLogger())
-	done := make(chan struct{})
-	go func() {
-		stop()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("stop hung with ctx still live")
-	}
+	stopWithin(t, stop)
 }

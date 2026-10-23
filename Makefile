@@ -1,4 +1,4 @@
-.PHONY: all build dist generate test test-race test-integration test-all fmt fmt-check lint sec clean run dev ui-test ui-test-headed ui-test-setup validate seed
+.PHONY: all build dist generate test test-race test-integration test-all fmt fmt-check lint check-image-pins sec clean run dev ui-test ui-test-headed ui-test-setup validate seed
 
 BINARY     := bongo-go
 IMPORT_BIN := bongo-import
@@ -71,6 +71,9 @@ fmt-check:
 
 lint:
 	golangci-lint run
+
+check-image-pins:
+	sh scripts/check-image-pins.sh
 
 sec:
 	GOCACHE=$(SEC_GOCACHE) govulncheck ./...
