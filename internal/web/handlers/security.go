@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/auth"
+	"github.com/bongo-project/bongo/internal/security"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -220,7 +221,16 @@ func (h *SecurityHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings/security?flash=Two-factor+authentication+disabled", http.StatusSeeOther)
 }
 
-// ChangePassword handles password changes.
+// hashPassword is a seam so tests can count calls to the expensive hash.
+var hashPassword = bcrypt.GenerateFromPassword
+
+// ChangePassword handles password changes. Outcomes: SessionGeneration is
+// bumped and the hash replaced, so every other web session ends on its next
+// request (the epoch is per user) and IMAP/POP3/SMTP sessions end because the
+// account state hashes the password. The calling device stays signed in: its
+// cookie is re-issued with the new epoch and its original expiry. If the
+// current cookie cannot be parsed no cookie is issued and the device is signed
+// out like the others.
 func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 
@@ -249,25 +259,40 @@ func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Throttled clients must not reach the hash: it is the expensive step and
+	// runs before the lock is taken.
+	if ip := middleware.ClientIP(r); h.limiter != nil && h.limiter.IsLimited(ip) {
+		w.Header().Set("Retry-After", strconv.Itoa(int(h.limiter.Window().Seconds())))
+		http.Error(w, "Too many attempts. Please try again later.", http.StatusTooManyRequests)
+		return
+	}
+
+	// Hash outside the per-user lock; the profile is re-read inside it.
+	hash, err := hashPassword([]byte(newPassword), auth.PasswordHashCost)
+	if err != nil {
+		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		return
+	}
+
 	defer lockUser(userID)()
 	profile, ok := h.reauthenticate(w, r, userID, email, currentPassword)
 	if !ok {
 		return
 	}
 
-	// Hash new password.
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), auth.PasswordHashCost)
-	if err != nil {
-		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
-		return
-	}
 	profile.PasswordHash = hash
+	profile.SessionGeneration++
 
 	if err := h.saveProfile(userID, profile); err != nil {
 		http.Error(w, "Failed to save profile", http.StatusInternalServerError)
 		return
 	}
 	h.succeed(r, email)
+
+	if data, err := middleware.ParseSessionCookie(h.sessionSecret, r); err == nil && data.UserID == userID {
+		epoch := security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration)
+		http.SetCookie(w, middleware.ReissueSessionCookie(h.sessionSecret, *data, h.tlsEnabled, epoch))
+	}
 
 	http.Redirect(w, r, "/settings/security?flash=Password+changed+successfully", http.StatusSeeOther)
 }

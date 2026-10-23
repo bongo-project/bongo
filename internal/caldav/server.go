@@ -13,6 +13,7 @@ import (
 	"github.com/emersion/go-ical"
 	webdav "github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -36,32 +37,39 @@ type Backend struct {
 	quota QuotaChecker
 }
 
-// QuotaChecker is satisfied by *store.DomainQuotaStore, the checker SMTP RCPT
-// and IMAP APPEND use, so every protocol shares one definition of "over quota".
+// QuotaChecker is satisfied by *store.DomainQuotaStore. PUT asks whether the
+// stored record (create) or its growth (update) would push the owner's domain
+// over quota, the same question the web handlers ask.
 type QuotaChecker interface {
-	RecipientOverQuota(userID string) (bool, error)
+	RecipientWouldExceedQuota(userID string, addBytes int64) (bool, error)
 }
 
 // ErrStorageQuotaExceeded is wrapped into the 507 Insufficient Storage that a
-// PUT returns when the owner's domain is at or over its storage quota.
+// PUT returns when the object would not fit in the owner's domain quota.
 var ErrStorageQuotaExceeded = errors.New("storage quota exceeded")
 
 // SetQuotaChecker installs the storage-quota checker. Call before serving.
 func (b *Backend) SetQuotaChecker(qc QuotaChecker) { b.quota = qc }
 
-// checkQuota refuses a write when the user's domain is over quota. A checker
-// error fails open, matching SMTP RCPT: a transient store error must not turn
-// into data loss for a user's calendar or contacts.
-func (b *Backend) checkQuota(userID string) error {
-	if b.quota == nil {
+// checkQuota refuses a write that would not fit. addBytes is the stored record
+// size for a create or the growth of the record for an update; a PUT that does
+// not grow the record (addBytes <= 0) is always allowed, even at quota, because
+// clients re-PUT the whole object on every edit and a user at quota must be
+// able to shrink or fix it. This matches the web handlers. DELETE is never
+// gated. The check is best effort: the usage figure is recomputed periodically
+// (about ten minutes stale) and concurrent PUTs can overshoot, so it is not a
+// hard limit. A checker error fails open, as on the web paths: a transient
+// store error must not turn into data loss for a user's calendar or contacts.
+func (b *Backend) checkQuota(userID string, addBytes int64) error {
+	if b.quota == nil || addBytes <= 0 {
 		return nil
 	}
-	over, err := b.quota.RecipientOverQuota(userID)
+	exceeds, err := b.quota.RecipientWouldExceedQuota(userID, addBytes)
 	if err != nil {
 		b.logger.Warn("quota check error (fail open)", "user", userID, "error", err)
 		return nil
 	}
-	if over {
+	if exceeds {
 		return webdav.NewHTTPError(http.StatusInsufficientStorage, ErrStorageQuotaExceeded)
 	}
 	return nil
@@ -271,10 +279,6 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		calID = "default"
 	}
 
-	if err := b.checkQuota(userID); err != nil {
-		return nil, err
-	}
-
 	// Ensure the calendar exists.
 	if _, err := b.calendars.EnsureDefault(userID); err != nil {
 		return nil, fmt.Errorf("ensuring default calendar: %w", err)
@@ -306,8 +310,21 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		return nil, err
 	}
 
+	// Size the write with the quantity the usage recompute counts: the stored
+	// record. A create is the whole record; an update is its growth.
+	var addBytes int64
 	if existing != nil {
 		event.CreatedAt = existing.CreatedAt
+		event.UpdatedAt = time.Now().Unix()
+		addBytes = int64(proto.Size(event) - proto.Size(existing))
+	} else {
+		addBytes = store.EventRecordSize(event)
+	}
+	if err := b.checkQuota(userID, addBytes); err != nil {
+		return nil, err
+	}
+
+	if existing != nil {
 		if err := b.events.Update(userID, guid, event); err != nil {
 			return nil, fmt.Errorf("updating event: %w", err)
 		}

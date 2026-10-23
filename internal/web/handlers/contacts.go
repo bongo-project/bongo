@@ -136,8 +136,8 @@ func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) 
 	buildVCardFromForm(existing, r)
 
 	// At or over quota an update is allowed only if the stored record does not grow.
-	// This deliberately differs from CardDAV PUT, which refuses every update at
-	// quota: a full user can still edit or shrink what they have.
+	// This is the same rule CardDAV PUT applies: a full user can still edit or
+	// shrink what they have.
 	if growth := int64(proto.Size(existing) - oldSize); growth > 0 && quotaExceeded(h.quota, nil, userID, growth) {
 		refuseQuota(w, r)
 		return

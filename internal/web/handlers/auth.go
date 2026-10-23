@@ -96,6 +96,14 @@ func (h *AuthHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.LoginPage("")).ServeHTTP(w, r)
 }
 
+// profileAuthenticator is implemented by authenticators that return the
+// profile snapshot the password was verified against.
+type profileAuthenticator interface {
+	AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error)
+}
+
+var _ profileAuthenticator = (*auth.LocalAuth)(nil)
+
 // Login processes the login form.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
@@ -104,7 +112,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	ip := middleware.ClientIP(r)
 
-	userID, err := h.auth.Authenticate(email, password)
+	// The epoch must come from the profile the password was verified against.
+	// Re-reading it after Authenticate would let an old-password login that
+	// races a password reset be issued the post-reset epoch and survive it.
+	var userID string
+	var verified *bongov1.UserProfile
+	var err error
+	if pa, ok := h.auth.(profileAuthenticator); ok {
+		userID, verified, err = pa.AuthenticateProfile(email, password)
+	} else {
+		// Fallback for test fakes that implement Authenticate alone.
+		userID, err = h.auth.Authenticate(email, password)
+	}
 	if err != nil {
 		if h.limiter != nil {
 			h.limiter.RecordFailure(ip, email)
@@ -120,15 +139,19 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// canonical is the stored login, never the typed string: Authenticate
 	// accepts differently-cased and whitespace-wrapped logins.
 	canonical := store.NormaliseAddress(email)
-	if h.profiles != nil {
-		profile, err := h.loadProfile(userID)
-		if err != nil {
-			// Fail closed: without the profile we cannot tell whether 2FA is
-			// enabled or what the session epoch is. Not counted against the
-			// user, and no cookie is issued.
-			slog.Warn("login: profile load failed", "user_id", userID, "error", err)
-			templ.Handler(templates.LoginPage("Sign-in is temporarily unavailable. Please try again.")).ServeHTTP(w, r)
-			return
+	if verified != nil || h.profiles != nil {
+		profile := verified
+		if profile == nil {
+			var err error
+			profile, err = h.loadProfile(userID)
+			if err != nil {
+				// Fail closed: without the profile we cannot tell whether 2FA is
+				// enabled or what the session epoch is. Not counted against the
+				// user, and no cookie is issued.
+				slog.Warn("login: profile load failed", "user_id", userID, "error", err)
+				templ.Handler(templates.LoginPage("Sign-in is temporarily unavailable. Please try again.")).ServeHTTP(w, r)
+				return
+			}
 		}
 		if profile.Email != "" {
 			canonical = profile.Email

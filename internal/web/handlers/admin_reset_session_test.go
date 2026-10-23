@@ -176,3 +176,65 @@ func TestTwoFactorVerifyRefusesPendingCookieAcrossReset(t *testing.T) {
 		}
 	})
 }
+
+// A SessionGeneration-only change (hash and TOTP secret untouched) must also
+// refuse the pending cookie, from a zero and from a non-zero starting
+// generation. Each generation has a no-change control so a verifier that
+// compares against a fixed generation fails one of them.
+func TestTwoFactorVerifyRefusesPendingCookieOnGenerationOnlyChange(t *testing.T) {
+	for _, startGen := range []uint64{0, 3} {
+		for _, bump := range []bool{false, true} {
+			name := "unchanged"
+			if bump {
+				name = "generation bumped"
+			}
+			t.Run(name+"/gen"+string(rune('0'+startGen)), func(t *testing.T) {
+				env := newReauthEnv(t, true, 50)
+				p := env.store.profile(t)
+				p.SessionGeneration = startGen
+				env.store.put(t, p)
+
+				mux := http.NewServeMux()
+				mux.HandleFunc("POST /login", env.authH.Login)
+				mux.HandleFunc("POST /login/2fa", env.authH.TwoFactorVerify)
+				var pending *http.Cookie
+				for _, c := range postForm(mux, "/login", loginForm(reauthEmail, "right")).Result().Cookies() {
+					if c.Name == "bongo_2fa_pending" && c.Value != "" {
+						pending = c
+					}
+				}
+				if pending == nil {
+					t.Fatal("no pending cookie")
+				}
+
+				p = env.store.profile(t)
+				if bump {
+					p.SessionGeneration++
+					env.store.put(t, p)
+				}
+				stepBefore := p.TotpLastStep
+
+				rr := postForm(mux, "/login/2fa", url.Values{"code": {totpNow(t)}}, pending)
+				minted := false
+				for _, c := range rr.Result().Cookies() {
+					if c.Name == "bongo_session" && c.Value != "" && c.MaxAge >= 0 {
+						minted = true
+					}
+				}
+				if bump {
+					if minted {
+						t.Fatal("pending cookie survived a generation-only change")
+					}
+					if loc := rr.Header().Get("Location"); loc != "/login" {
+						t.Errorf("redirect %q, want /login", loc)
+					}
+					if got := env.store.profile(t).TotpLastStep; got != stepBefore {
+						t.Errorf("TOTP step consumed: %d -> %d", stepBefore, got)
+					}
+				} else if !minted {
+					t.Fatalf("control failed: %d %q", rr.Code, rr.Header().Get("Location"))
+				}
+			})
+		}
+	}
+}
