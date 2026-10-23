@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,6 +23,7 @@ import (
 
 type shareEnv struct {
 	h         *CalendarHandler
+	ps        *store.PebbleStore
 	calendars *store.CalendarStore
 	calID     string
 	fullID    string // calendar already holding 50 shares
@@ -86,7 +89,7 @@ func newShareEnv(t *testing.T, withResolver bool) *shareEnv {
 	if withResolver {
 		h.SetShareResolver(store.NewRecipientResolver(addrs, ps, nil))
 	}
-	e := &shareEnv{h: h, calendars: calendars, calID: calID, fullID: fullID, bobCalID: bobCalID,
+	e := &shareEnv{h: h, ps: ps, calendars: calendars, calID: calID, fullID: fullID, bobCalID: bobCalID,
 		now: time.Date(2026, 10, 23, 9, 0, 0, 0, time.UTC)}
 	limiter := mail.NewRateLimiter(20)
 	limiter.SetClock(func() time.Time { return e.now })
@@ -308,4 +311,100 @@ func TestShareCalendarNilLimiterUnlimited(t *testing.T) {
 	e := newShareEnv(t, true)
 	e.h.SetShareLimiter(nil)
 	e.spend(t, "alice", 25)
+}
+
+func (e *shareEnv) unshare(caller, calID, entry string) *httptest.ResponseRecorder {
+	form := url.Values{"share_with": {entry}}
+	req := httptest.NewRequest(http.MethodPost, "/calendar/"+calID+"/unshare", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("calendarID", calID)
+	ctx := middleware.WithUserContext(req.Context(), caller, caller+"@d.test")
+	req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+	e.h.UnshareCalendar(rr, req)
+	return rr
+}
+
+func TestUnshareCalendar(t *testing.T) {
+	tests := []struct {
+		name   string
+		seed   []string
+		entry  string
+		want   []string
+		status int
+		write  bool
+	}{
+		{"user id", []string{"bob", "dave"}, "bob", []string{"dave"}, http.StatusOK, true},
+		{"legacy string", []string{"bob", "bob@d.test"}, "bob@d.test", []string{"bob"}, http.StatusOK, true},
+		{"exact match keeps whitespace", []string{" legacy "}, " legacy ", nil, http.StatusOK, true},
+		{"whitespace variant keeps the real share", []string{"bob", " bob "}, " bob ", []string{"bob"}, http.StatusOK, true},
+		{"duplicates all removed", []string{"x", "bob", "x"}, "x", []string{"bob"}, http.StatusOK, true},
+		{"absent entry", []string{"bob"}, "dave", []string{"bob"}, http.StatusOK, false},
+		{"substring is not a match", []string{"bob@d.test"}, "bob", []string{"bob@d.test"}, http.StatusOK, false},
+		{"empty entry", []string{"bob"}, "", []string{"bob"}, http.StatusBadRequest, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newShareEnv(t, true)
+			if err := e.calendars.Update("alice", e.calID, &bongov1.Calendar{Name: "Work", SharedWith: tt.seed}); err != nil {
+				t.Fatal(err)
+			}
+			before, err := e.calendars.Get("alice", e.calID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(1100 * time.Millisecond) // UpdatedAt has one-second resolution
+			rr := e.unshare("alice", e.calID, tt.entry)
+			if rr.Code != tt.status {
+				t.Fatalf("status = %d, want %d (%s)", rr.Code, tt.status, rr.Body.String())
+			}
+			wantTrigger := ""
+			if tt.write {
+				wantTrigger = "calendarRefresh"
+			}
+			if got := rr.Header().Get("HX-Trigger"); got != wantTrigger {
+				t.Errorf("HX-Trigger = %q, want %q", got, wantTrigger)
+			}
+			after, err := e.calendars.Get("alice", e.calID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(after.SharedWith, tt.want) {
+				t.Errorf("SharedWith = %q, want %q", after.SharedWith, tt.want)
+			}
+			if wrote := after.UpdatedAt != before.UpdatedAt; wrote != tt.write {
+				t.Errorf("wrote = %v, want %v", wrote, tt.write)
+			}
+		})
+	}
+}
+
+func TestUnshareCalendarForeignCalendar(t *testing.T) {
+	e := newShareEnv(t, true)
+	before := e.shared(t, e.fullID)
+	// bob targets alice's calendar ID: the key is scoped to the caller.
+	if rr := e.unshare("bob", e.fullID, before[0]); rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rr.Code)
+	}
+	if got := e.shared(t, e.fullID); !slices.Equal(got, before) {
+		t.Errorf("owner's list changed: %q", got)
+	}
+}
+
+func TestUnshareCalendarWriteFailure(t *testing.T) {
+	e := newShareEnv(t, true)
+	if rr := e.share("alice", e.calID, "bob@d.test"); rr.Code != http.StatusOK {
+		t.Fatalf("share = %d", rr.Code)
+	}
+	e.h.calendars = store.NewCalendarStore(e.ps, failingApplier{})
+	if rr := e.unshare("alice", e.calID, "bob"); rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+}
+
+type failingApplier struct{}
+
+func (failingApplier) ApplyCommand(*bongov1.RaftCommand, time.Duration) error {
+	return errors.New("raft down")
 }

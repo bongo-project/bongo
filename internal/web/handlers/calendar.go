@@ -370,6 +370,43 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 }
 
+// UnshareCalendar removes one exact entry from a calendar's SharedWith list.
+// The entry is a user ID or a legacy raw string that never matched
+// IsSharedWith; it is compared as sent, without trimming, so an entry with
+// stray whitespace can still be removed. Removing an absent entry is a 200
+// with no write. No rate limit: removal reveals nothing about which accounts
+// exist.
+func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	calID := chi.URLParam(r, "calendarID")
+
+	cal, err := h.calendars.Get(userID, calID)
+	if err != nil {
+		http.Error(w, "calendar not found", http.StatusNotFound)
+		return
+	}
+
+	entry := r.FormValue("share_with")
+	if entry == "" {
+		http.Error(w, "share_with is required", http.StatusBadRequest)
+		return
+	}
+	if !slices.Contains(cal.SharedWith, entry) {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// DeleteFunc also drops duplicate copies of a legacy entry.
+	cal.SharedWith = slices.DeleteFunc(cal.SharedWith, func(s string) bool { return s == entry })
+	if err := h.calendars.Update(userID, calID, cal); err != nil {
+		http.Error(w, "failed to update calendar", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("HX-Trigger", "calendarRefresh")
+	w.WriteHeader(http.StatusOK)
+}
+
 // FreeBusy returns busy time blocks for a user in a date range.
 func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	callerID, _ := middleware.UserFromContext(r.Context())
@@ -467,7 +504,7 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t := time.Unix(event.StartTime, 0)
+	t := eventMonthTime(event)
 	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+created", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
@@ -547,7 +584,7 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t := time.Unix(updated.StartTime, 0)
+	t := eventMonthTime(updated)
 	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+updated", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
@@ -570,7 +607,7 @@ func (h *CalendarHandler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if event != nil {
-		t := time.Unix(event.StartTime, 0)
+		t := eventMonthTime(event)
 		http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+deleted", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 		return
 	}
@@ -614,22 +651,19 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 			vevent.Props.SetText(ical.PropLocation, e.Location)
 		}
 
-		loc := time.UTC
-		if e.Timezone != "" {
-			if l, err := time.LoadLocation(e.Timezone); err == nil {
-				loc = l
-			}
-		}
-
-		startTime := time.Unix(e.StartTime, 0).In(loc)
-		endTime := time.Unix(e.EndTime, 0).In(loc)
-
 		if e.AllDay {
-			vevent.Props.SetDate(ical.PropDateTimeStart, startTime)
-			vevent.Props.SetDate(ical.PropDateTimeEnd, endTime)
+			// A date, not an instant: the zone plays no part.
+			vevent.Props.SetDate(ical.PropDateTimeStart, icalevent.AllDayDate(e.StartTime))
+			vevent.Props.SetDate(ical.PropDateTimeEnd, icalevent.AllDayDate(e.EndTime))
 		} else {
-			vevent.Props.SetDateTime(ical.PropDateTimeStart, startTime)
-			vevent.Props.SetDateTime(ical.PropDateTimeEnd, endTime)
+			loc := time.UTC
+			if e.Timezone != "" {
+				if l, err := time.LoadLocation(e.Timezone); err == nil {
+					loc = l
+				}
+			}
+			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).In(loc))
+			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).In(loc))
 		}
 		vevent.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
 
@@ -849,6 +883,15 @@ func normaliseNewlines(s string) string {
 	return strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s)
 }
 
+// eventMonthTime is the time whose year and month the redirect after saving
+// should show: an all-day event's UTC date, otherwise its start in local time.
+func eventMonthTime(e *bongov1.Event) time.Time {
+	if e.AllDay {
+		return icalevent.AllDayDate(e.StartTime)
+	}
+	return time.Unix(e.StartTime, 0)
+}
+
 // parseEventForm extracts event data from form values.
 func parseEventForm(r *http.Request) (*bongov1.Event, error) {
 	event := &bongov1.Event{
@@ -879,9 +922,11 @@ func parseEventForm(r *http.Request) (*bongov1.Event, error) {
 		return nil, fmt.Errorf("start date is required")
 	}
 
+	// Timed events are read in the server's zone. All-day events are dates:
+	// CalDAV stores them at UTC midnight, so they are read in UTC.
 	loc := time.Now().Location()
 	if event.AllDay {
-		t, err := time.ParseInLocation("2006-01-02", startDate, loc)
+		t, err := time.ParseInLocation("2006-01-02", startDate, time.UTC)
 		if err != nil {
 			return nil, fmt.Errorf("invalid start date: %w", err)
 		}
@@ -905,7 +950,7 @@ func parseEventForm(r *http.Request) (*bongov1.Event, error) {
 	}
 
 	if event.AllDay {
-		t, err := time.ParseInLocation("2006-01-02", endDate, loc)
+		t, err := time.ParseInLocation("2006-01-02", endDate, time.UTC)
 		if err != nil {
 			return nil, fmt.Errorf("invalid end date: %w", err)
 		}
@@ -1018,9 +1063,9 @@ func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time
 }
 
 // eventTimesChanged reports whether the edit moves the event. All-day events
-// are compared by calendar date against the stored DTSTART/DTEND, because the
-// proto holds local midnight for web-created events but UTC midnight for
-// CalDAV ones.
+// are compared by calendar date against the stored DTSTART/DTEND: the UTC date
+// of the proto time, which also reads older web-created events stored at local
+// midnight.
 func eventTimesChanged(props ical.Props, existing, updated *bongov1.Event) bool {
 	if existing.AllDay != updated.AllDay {
 		return true
@@ -1039,8 +1084,8 @@ func eventTimesChanged(props ical.Props, existing, updated *bongov1.Event) bool 
 		}
 	}
 	const day = "2006-01-02"
-	return start.Format(day) != time.Unix(updated.StartTime, 0).Format(day) ||
-		end.Format(day) != time.Unix(updated.EndTime, 0).Format(day)
+	return start.Format(day) != icalevent.AllDayDate(updated.StartTime).Format(day) ||
+		end.Format(day) != icalevent.AllDayDate(updated.EndTime).Format(day)
 }
 
 // setEventTimes writes DTSTART and DTEND. A timed event keeps the TZID of its
@@ -1057,8 +1102,8 @@ func setEventTimes(props ical.Props, updated *bongov1.Event) {
 	}
 	props.Del(ical.PropDuration)
 	if updated.AllDay {
-		props.SetDate(ical.PropDateTimeStart, time.Unix(updated.StartTime, 0))
-		props.SetDate(ical.PropDateTimeEnd, time.Unix(updated.EndTime, 0))
+		props.SetDate(ical.PropDateTimeStart, icalevent.AllDayDate(updated.StartTime))
+		props.SetDate(ical.PropDateTimeEnd, icalevent.AllDayDate(updated.EndTime))
 		return
 	}
 	for name, ts := range map[string]int64{ical.PropDateTimeStart: updated.StartTime, ical.PropDateTimeEnd: updated.EndTime} {
@@ -1067,6 +1112,15 @@ func setEventTimes(props ical.Props, updated *bongov1.Event) {
 		p.Params.Del(ical.ParamValue)
 		props.Set(p)
 	}
+}
+
+// eventDateKey is the YYYY-MM-DD day an event belongs to: the UTC date for an
+// all-day event, otherwise the start in loc.
+func eventDateKey(e *bongov1.Event, loc *time.Location) string {
+	if e.AllDay {
+		return icalevent.AllDayDate(e.StartTime).Format("2006-01-02")
+	}
+	return time.Unix(e.StartTime, 0).In(loc).Format("2006-01-02")
 }
 
 // buildMonthGrid builds a 6-week grid of day cells for the given month.
@@ -1087,8 +1141,7 @@ func buildMonthGrid(year int, month time.Month, events []*bongov1.Event, loc *ti
 	// Build event map by date string.
 	eventsByDate := make(map[string][]*bongov1.Event)
 	for _, e := range events {
-		t := time.Unix(e.StartTime, 0).In(loc)
-		key := t.Format("2006-01-02")
+		key := eventDateKey(e, loc)
 		eventsByDate[key] = append(eventsByDate[key], e)
 	}
 
@@ -1149,8 +1202,7 @@ func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap 
 	// Group events by date.
 	eventsByDate := make(map[string][]*bongov1.Event)
 	for _, e := range events {
-		t := time.Unix(e.StartTime, 0).In(loc)
-		key := t.Format("2006-01-02")
+		key := eventDateKey(e, loc)
 		eventsByDate[key] = append(eventsByDate[key], e)
 	}
 
@@ -1216,10 +1268,15 @@ func buildDayColumn(date time.Time, events []*bongov1.Event, calColorMap map[str
 	loc := date.Location()
 	today := time.Now().In(loc)
 
+	// The range query overlaps neighbouring days, so an all-day event stored
+	// at UTC midnight can arrive for the day before or after its date.
+	dateKey := date.Format("2006-01-02")
 	var allDay, timed []*bongov1.Event
 	for _, e := range events {
 		if e.AllDay {
-			allDay = append(allDay, e)
+			if eventDateKey(e, loc) == dateKey {
+				allDay = append(allDay, e)
+			}
 		} else {
 			timed = append(timed, e)
 		}

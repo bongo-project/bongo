@@ -95,3 +95,16 @@ func ToEvent(cal *ical.Calendar) (event *bongov1.Event, fallback bool) {
 
 	return event, fallback
 }
+
+// AllDayDate returns the calendar date (as UTC midnight) of an all-day
+// event's stored time. CalDAV stores all-day events at UTC midnight, so the
+// date is the UTC date, whatever zone the server runs in.
+//
+// It rounds to the nearest UTC midnight rather than truncating, so older
+// web-created events stored at local midnight keep their date without a
+// migration: local midnight in any zone from UTC-11 to UTC+11 is within twelve
+// hours of the intended date's UTC midnight. Zones beyond that range can
+// still be a day out for such records until they are saved again.
+func AllDayDate(unix int64) time.Time {
+	return time.Unix(unix, 0).UTC().Add(12 * time.Hour).Truncate(24 * time.Hour)
+}

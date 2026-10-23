@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bongo-project/bongo/internal/icalevent"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -656,7 +657,7 @@ templ CalendarSearchResults(events []*bongov1.Event, query string, email string)
 										{ e.Title }
 									</a>
 								</td>
-								<td>{ formatEventDate(e.StartTime) }</td>
+								<td>{ formatEventListDate(e) }</td>
 								<td>{ e.Location }</td>
 							</tr>
 						}
@@ -707,6 +708,15 @@ func formatEventDate(unix int64) string {
 	return time.Unix(unix, 0).Format("Jan 2, 2006")
 }
 
+// formatEventListDate formats an event's start date for lists. An all-day
+// event is a UTC calendar date, so the server zone must not shift it.
+func formatEventListDate(e *bongov1.Event) string {
+	if e.AllDay {
+		return icalevent.AllDayDate(e.StartTime).Format("Jan 2, 2006")
+	}
+	return formatEventDate(e.StartTime)
+}
+
 func truncateTitle(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
@@ -737,6 +747,9 @@ func eventLocation(e *bongov1.Event) string {
 
 func eventStartDate(e *bongov1.Event, date string) string {
 	if e != nil && e.StartTime > 0 {
+		if e.AllDay {
+			return icalevent.AllDayDate(e.StartTime).Format("2006-01-02")
+		}
 		return time.Unix(e.StartTime, 0).Format("2006-01-02")
 	}
 	if date != "" {
@@ -756,7 +769,7 @@ func eventEndDate(e *bongov1.Event, date string) string {
 	if e != nil && e.EndTime > 0 {
 		t := time.Unix(e.EndTime, 0)
 		if e.AllDay {
-			t = t.AddDate(0, 0, -1)
+			t = icalevent.AllDayDate(e.EndTime).AddDate(0, 0, -1)
 		}
 		return t.Format("2006-01-02")
 	}
