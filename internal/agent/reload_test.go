@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 
@@ -919,5 +920,59 @@ func TestBuildPipelineStages_InjectsSenderAuthorizer(t *testing.T) {
 	}
 	if build(false).HasSenderAuthorizer() {
 		t.Error("authorizer present without stores")
+	}
+}
+
+func TestReloadCompleteLogsFileStamp(t *testing.T) {
+	f := newReloadFixture(t, defaultConf(), nil)
+	stampOf := func(n int) (string, float64) {
+		t.Helper()
+		recs := f.logs.byMsg(t, "config reload complete")
+		if len(recs) != n {
+			t.Fatalf("got %d completion records, want %d", len(recs), n)
+		}
+		mt, _ := recs[n-1]["file_mtime"].(string)
+		sz, _ := recs[n-1]["file_size"].(float64)
+		return mt, sz
+	}
+
+	c := defaultConf()
+	c.Threshold = "0.6"
+	f.write(c)
+	if err := f.reload(); err != nil {
+		t.Fatal(err)
+	}
+	mt1, sz1 := stampOf(1)
+	if _, err := time.Parse(time.RFC3339, mt1); err != nil {
+		t.Fatalf("file_mtime %q is not RFC 3339: %v", mt1, err)
+	}
+	st, err := os.Stat(f.file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if int64(sz1) != st.Size() {
+		t.Errorf("file_size = %v, want %d", sz1, st.Size())
+	}
+
+	// Different length and an mtime at least a second away: RFC 3339 has
+	// one-second resolution.
+	c.Threshold = "0.55555"
+	f.write(c)
+	later := st.ModTime().Add(time.Hour)
+	if err := os.Chtimes(f.file, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.reload(); err != nil {
+		t.Fatal(err)
+	}
+	mt2, sz2 := stampOf(2)
+	if mt2 == mt1 {
+		t.Errorf("file_mtime unchanged after the file changed: %s", mt2)
+	}
+	if sz2 == sz1 {
+		t.Errorf("file_size unchanged after the file changed: %v", sz2)
+	}
+	if want := later.UTC().Format(time.RFC3339); mt2 != want {
+		t.Errorf("file_mtime = %q, want %q", mt2, want)
 	}
 }

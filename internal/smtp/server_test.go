@@ -33,13 +33,40 @@ func TestNewServerMaxMessageSizeWiring(t *testing.T) {
 				},
 			}
 			backend := NewBackend(nil, nil, testLogger())
-			srv := NewServer(cfg, backend, true, testLogger())
+			srv := NewServer(cfg, "", backend, true, testLogger())
 
 			if srv.mx.MaxMessageBytes != tt.wantBytes {
 				t.Errorf("mx.MaxMessageBytes = %d, want %d", srv.mx.MaxMessageBytes, tt.wantBytes)
 			}
 			if srv.submission.MaxMessageBytes != tt.wantBytes {
 				t.Errorf("submission.MaxMessageBytes = %d, want %d", srv.submission.MaxMessageBytes, tt.wantBytes)
+			}
+		})
+	}
+}
+
+func TestNewServerHonoursBindAddr(t *testing.T) {
+	tests := []struct {
+		bind    string
+		wantMX  string
+		wantSub string
+	}{
+		{"127.0.0.1", "127.0.0.1:2525", "127.0.0.1:2587"},
+		{"::1", "[::1]:2525", "[::1]:2587"},
+		{"", ":2525", ":2587"},
+		{"0.0.0.0", ":2525", ":2587"},
+		{"::", ":2525", ":2587"},
+		{"localhost", "localhost:2525", "localhost:2587"},
+	}
+	for _, tt := range tests {
+		t.Run("bind="+tt.bind, func(t *testing.T) {
+			cfg := &config.SMTPConfig{Port: 25, SubmissionPort: 587}
+			srv := NewServer(cfg, tt.bind, NewBackend(nil, nil, testLogger()), true, testLogger())
+			if srv.mx.Addr != tt.wantMX {
+				t.Errorf("mx.Addr = %q, want %q", srv.mx.Addr, tt.wantMX)
+			}
+			if srv.submission.Addr != tt.wantSub {
+				t.Errorf("submission.Addr = %q, want %q", srv.submission.Addr, tt.wantSub)
 			}
 		})
 	}

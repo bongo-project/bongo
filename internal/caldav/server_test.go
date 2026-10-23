@@ -457,3 +457,89 @@ func TestCalDAVServesStoredRawICal(t *testing.T) {
 			"property the proto has no field for", marker)
 	}
 }
+
+// vevent builds a VEVENT with the properties the encoder requires.
+func testVEvent(uid, summary string, start time.Time, recurrenceID *time.Time, rrule string) *ical.Component {
+	ev := ical.NewEvent()
+	ev.Props.SetText(ical.PropUID, uid)
+	ev.Props.SetText(ical.PropSummary, summary)
+	ev.Props.SetDateTime(ical.PropDateTimeStart, start)
+	ev.Props.SetDateTime(ical.PropDateTimeStamp, time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC))
+	if recurrenceID != nil {
+		ev.Props.SetDateTime(ical.PropRecurrenceID, *recurrenceID)
+	}
+	if rrule != "" {
+		ev.Props.SetText(ical.PropRecurrenceRule, rrule)
+		ev.Props.Get(ical.PropRecurrenceRule).Value = rrule
+	}
+	return ev.Component
+}
+
+func TestPutOverrideFirstUsesMaster(t *testing.T) {
+	backend, userID := newTestBackend(t)
+	ctx := WithUserID(context.Background(), userID)
+
+	rid := time.Date(2030, 3, 11, 9, 0, 0, 0, time.UTC)
+	cal := ical.NewCalendar()
+	cal.Props.SetText(ical.PropVersion, "2.0")
+	cal.Props.SetText(ical.PropProductID, "-//Test//Test//EN")
+	cal.Children = append(cal.Children,
+		testVEvent("series-1", "Moved", time.Date(2030, 3, 11, 11, 0, 0, 0, time.UTC), &rid, ""),
+		testVEvent("series-1", "Weekly", time.Date(2030, 3, 4, 9, 0, 0, 0, time.UTC), nil, "FREQ=WEEKLY"),
+	)
+
+	if _, err := backend.PutCalendarObject(ctx, "/caldav/"+userID+"/calendars/default/series-1.ics", cal, nil); err != nil {
+		t.Fatalf("PutCalendarObject: %v", err)
+	}
+	got, err := backend.events.Get(userID, "series-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Title != "Weekly" {
+		t.Errorf("Title = %q, want Weekly", got.Title)
+	}
+	if want := time.Date(2030, 3, 4, 9, 0, 0, 0, time.UTC).Unix(); got.StartTime != want {
+		t.Errorf("StartTime = %d, want %d", got.StartTime, want)
+	}
+	if got.Rrule != "FREQ=WEEKLY" {
+		t.Errorf("Rrule = %q, want FREQ=WEEKLY", got.Rrule)
+	}
+	dec, err := ical.NewDecoder(strings.NewReader(string(got.IcalRaw))).Decode()
+	if err != nil {
+		t.Fatalf("decode ical_raw: %v", err)
+	}
+	if n := len(dec.Events()); n != 2 {
+		t.Errorf("ical_raw holds %d VEVENTs, want 2", n)
+	}
+}
+
+func TestPutOverridesOnlyUsesEarliest(t *testing.T) {
+	var logs strings.Builder
+	backend, userID := newTestBackend(t)
+	backend.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	ctx := WithUserID(context.Background(), userID)
+
+	early := time.Date(2030, 3, 11, 9, 0, 0, 0, time.UTC)
+	late := time.Date(2030, 3, 18, 9, 0, 0, 0, time.UTC)
+	cal := ical.NewCalendar()
+	cal.Props.SetText(ical.PropVersion, "2.0")
+	cal.Props.SetText(ical.PropProductID, "-//Test//Test//EN")
+	cal.Children = append(cal.Children,
+		testVEvent("series-2", "Later", time.Date(2030, 3, 18, 10, 0, 0, 0, time.UTC), &late, ""),
+		testVEvent("series-2", "Earlier", time.Date(2030, 3, 11, 10, 0, 0, 0, time.UTC), &early, ""),
+	)
+
+	if _, err := backend.PutCalendarObject(ctx, "/caldav/"+userID+"/calendars/default/series-2.ics", cal, nil); err != nil {
+		t.Fatalf("PutCalendarObject: %v", err)
+	}
+	got, err := backend.events.Get(userID, "series-2")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Title != "Earlier" {
+		t.Errorf("Title = %q, want Earlier", got.Title)
+	}
+	if !strings.Contains(logs.String(), "level=DEBUG") || !strings.Contains(logs.String(), "no master VEVENT") {
+		t.Errorf("expected a Debug line about the missing master, got:\n%s", logs.String())
+	}
+}

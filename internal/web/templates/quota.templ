@@ -1,0 +1,17 @@
+package templates
+
+// QuotaRefusedPage is the full-page answer to a form post refused for quota.
+// htmx requests get a short text response instead (see refuseQuotaText).
+templ QuotaRefusedPage(message, email string) {
+	@LayoutWithContent(t(ctx, "quota.title"), email) {
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "quota.title") }</h2>
+					@FlashMessage(message, "error")
+					<p><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></p>
+				</div>
+			</div>
+		</main>
+	}
+}

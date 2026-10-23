@@ -12,6 +12,7 @@ import (
 	"net"
 	netmail "net/mail"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -628,9 +629,11 @@ func (s *Session) rcptNoRelay(to string) (handled bool, err error) {
 }
 
 // inboundMeta builds the InboundMeta for the message currently being
-// received. Trusted has exactly two sources, both ORed together here — this is
-// the ONLY place in the codebase permitted to set it, and any future trust
-// source must extend the expression below rather than add another call site:
+// received. Trusted has exactly two sources here, ORed together, and a third
+// outside this file: the web composer (ComposeHandler.Send) sets Trusted on the
+// envelopes it spools for local recipients, because the author holds an
+// authenticated web session and AuthUserId always comes from that session. Any
+// further trust source must be added deliberately and named here:
 //  1. s.authed — the session's own authentication state. s.authed can only be
 //     true on the submission port (see AuthMechanisms, which returns nil
 //     unless s.submission), so an unauthenticated MX-port session can never
@@ -986,8 +989,22 @@ const (
 	devSubmissionPort     = 2587
 )
 
-// NewServer creates an SMTP server from config.
-func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slog.Logger) *Server {
+// listenAddr joins the configured bind address and port. An empty or
+// unspecified address (0.0.0.0, ::) yields ":port" so the listener keeps
+// serving every interface, IPv6 included.
+func listenAddr(bind string, port int) string {
+	p := strconv.Itoa(port)
+	if bind == "" {
+		return ":" + p
+	}
+	if ip := net.ParseIP(bind); ip != nil && ip.IsUnspecified() {
+		return ":" + p
+	}
+	return net.JoinHostPort(bind, p)
+}
+
+// NewServer creates an SMTP server from config. bindAddr is server.bind_addr.
+func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev bool, logger *slog.Logger) *Server {
 	mxPort := cfg.Port
 	subPort := cfg.SubmissionPort
 
@@ -1016,7 +1033,7 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	}
 
 	mx := gosmtp.NewServer(backend)
-	mx.Addr = fmt.Sprintf(":%d", mxPort)
+	mx.Addr = listenAddr(bindAddr, mxPort)
 	mx.Domain = banner
 	mx.ReadTimeout = 60 * time.Second
 	mx.WriteTimeout = 60 * time.Second
@@ -1029,7 +1046,7 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	mx.ErrorLog = observability.SMTPLibraryLogger(logger)
 
 	submission := gosmtp.NewServer(backend)
-	submission.Addr = fmt.Sprintf(":%d", subPort)
+	submission.Addr = listenAddr(bindAddr, subPort)
 	submission.Domain = banner
 	submission.ReadTimeout = 60 * time.Second
 	submission.WriteTimeout = 60 * time.Second

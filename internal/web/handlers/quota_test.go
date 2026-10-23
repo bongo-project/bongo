@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"html"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -14,8 +16,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -650,8 +654,12 @@ func TestComposeSendQuota(t *testing.T) {
 			if got := count(env, uid, "Sent"); got != tc.wantSent {
 				t.Errorf("Sent=%d want %d", got, tc.wantSent)
 			}
-			if got := count(env, "u-bob", "INBOX"); got != tc.wantBob {
-				t.Errorf("recipient INBOX=%d want %d", got, tc.wantBob)
+			// Local recipients are spooled for the pipeline, not delivered inline.
+			if got := len(env.spool.envelopes()); got != tc.wantBob {
+				t.Errorf("recipient envelopes=%d want %d", got, tc.wantBob)
+			}
+			if got := count(env, "u-bob", "INBOX"); got != 0 {
+				t.Errorf("recipient INBOX=%d, compose must not deliver directly", got)
 			}
 			if got := pending(t, env); got != tc.wantQ {
 				t.Errorf("queue=%d want %d", got, tc.wantQ)
@@ -872,4 +880,141 @@ func TestComposeQuotaWeighsSize(t *testing.T) {
 			}
 		}
 	})
+}
+
+// quotaRefusalCases drives every refuseQuota caller, and the compose
+// recipient refusal, into a refusal. Each returns the recorder and the
+// translated text the response must carry for the locale.
+var quotaRefusalCases = []struct {
+	name string
+	run  func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string)
+}{
+	{"compose sender", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
+		env, uid, email := newQuotaCompose(t, &fakeQuota{headroom: map[string]int64{quotaUser: 0}})
+		form := url.Values{"to": {"bob@example.com"}, "subject": {"s"}, "body": {"b"}}
+		req := quotaReqFor(withUserContext(formReq(http.MethodPost, "/compose/send", form), uid, email), locale, hx)
+		w := httptest.NewRecorder()
+		env.handler.Send(w, req)
+		return w, i18n.T(locale, "quota.exceeded")
+	}},
+	{"compose recipient", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
+		env, uid, email := newQuotaCompose(t, &fakeQuota{headroom: map[string]int64{"u-bob": 0}})
+		form := url.Values{"to": {"bob@example.com"}, "subject": {"s"}, "body": {"b"}}
+		req := quotaReqFor(withUserContext(formReq(http.MethodPost, "/compose/send", form), uid, email), locale, hx)
+		w := httptest.NewRecorder()
+		env.handler.Send(w, req)
+		return w, fmt.Sprintf(i18n.T(locale, "quota.recipientExceeded"), "bob@example.com")
+	}},
+	{"compose draft", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
+		env, uid, email := newQuotaCompose(t, &fakeQuota{headroom: map[string]int64{quotaUser: 0}})
+		form := url.Values{"to": {"bob@example.com"}, "subject": {"d"}, "body": {"wip"}}
+		req := quotaReqFor(withUserContext(formReq(http.MethodPost, "/compose/draft", form), uid, email), locale, hx)
+		w := httptest.NewRecorder()
+		env.handler.SaveDraft(w, req)
+		return w, i18n.T(locale, "quota.exceeded")
+	}},
+	{"calendar create", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
+		env := newQuotaEnv(t)
+		h := NewCalendarHandler(env.events, env.calendars, nil)
+		h.SetQuotaChecker(&fakeQuota{headroom: map[string]int64{quotaUser: 0}})
+		w := httptest.NewRecorder()
+		h.CreateEvent(w, quotaReqFor(formReq(http.MethodPost, "/calendar/event", eventForm("Lunch")), locale, hx))
+		return w, i18n.T(locale, "quota.exceeded")
+	}},
+	{"calendar update", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
+		env := newQuotaEnv(t)
+		h := NewCalendarHandler(env.events, env.calendars, nil)
+		h.SetQuotaChecker(&fakeQuota{headroom: map[string]int64{quotaUser: 0}})
+		seed, _ := parseEventForm(formReq(http.MethodPut, "/", eventForm("Standup")))
+		guid, err := env.events.Create(quotaUser, seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		grown := eventForm("Standup")
+		grown.Set("description", strings.Repeat("g", 613))
+		w := httptest.NewRecorder()
+		h.UpdateEvent(w, withGUID(quotaReqFor(formReq(http.MethodPut, "/calendar/event/"+guid, grown), locale, hx), guid))
+		return w, i18n.T(locale, "quota.exceeded")
+	}},
+	{"contact create", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
+		env := newQuotaEnv(t)
+		h := NewContactsHandler(env.contacts, nil)
+		h.SetQuotaChecker(&fakeQuota{headroom: map[string]int64{quotaUser: 0}})
+		w := httptest.NewRecorder()
+		h.CreateContact(w, quotaReqFor(formReq(http.MethodPost, "/contacts", url.Values{"display_name": {"Ada"}}), locale, hx))
+		return w, i18n.T(locale, "quota.exceeded")
+	}},
+	{"contact update", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
+		env := newQuotaEnv(t)
+		h := NewContactsHandler(env.contacts, nil)
+		h.SetQuotaChecker(&fakeQuota{headroom: map[string]int64{quotaUser: 0}})
+		seed := &bongov1.Contact{}
+		buildVCardFromForm(seed, formReq(http.MethodPut, "/", url.Values{"display_name": {"Ada"}}))
+		guid, err := env.contacts.Create(quotaUser, seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		grown := url.Values{"display_name": {"Ada"}, "notes": {strings.Repeat("n", 700)}}
+		w := httptest.NewRecorder()
+		h.UpdateContact(w, withGUID(quotaReqFor(formReq(http.MethodPut, "/contacts/"+guid, grown), locale, hx), guid))
+		return w, i18n.T(locale, "quota.exceeded")
+	}},
+	{"mbox import", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
+		env := newQuotaEnv(t)
+		h := NewMailHandler(env.ps, env.blobs, env.mailboxes, discardLogger())
+		h.SetQuotaChecker(&fakeQuota{headroom: map[string]int64{quotaUser: 0}})
+		req := quotaReqFor(uploadReq(t, "/import", "mbox", []byte(mboxMsgA+mboxMsgB), map[string]string{"new_mailbox": "Imported"}), locale, hx)
+		w := httptest.NewRecorder()
+		h.ImportMbox(w, req)
+		return w, i18n.T(locale, "quota.exceeded")
+	}},
+}
+
+// quotaReqFor sets the request locale and, for hx, the htmx request header.
+func quotaReqFor(req *http.Request, locale string, hx bool) *http.Request {
+	if hx {
+		req.Header.Set("HX-Request", "true")
+	}
+	return req.WithContext(middleware.WithLocale(req.Context(), locale))
+}
+
+// TestQuotaRefusalPageVersusText: a full-page post is refused with the app
+// layout and the translated text; an htmx request keeps the short text.
+func TestQuotaRefusalPageVersusText(t *testing.T) {
+	for _, tc := range quotaRefusalCases {
+		for _, locale := range []string{"en", "de", "fr", "es"} {
+			t.Run(tc.name+"/"+locale+"/page", func(t *testing.T) {
+				w, want := tc.run(t, locale, false)
+				if w.Code != http.StatusInsufficientStorage {
+					t.Fatalf("status=%d want 507: %s", w.Code, w.Body.String())
+				}
+				if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+					t.Errorf("Content-Type=%q want text/html", ct)
+				}
+				body := w.Body.String()
+				// id="main-content" comes from quota.templ; the other
+				// markers are emitted only by LayoutWithContent.
+				for _, marker := range []string{`id="main-content"`, `id="i18n-data"`, `class="topbar"`, `<!doctype html>`} {
+					if !strings.Contains(body, marker) {
+						t.Errorf("no app layout marker %s in body: %q", marker, body)
+					}
+				}
+				if !strings.Contains(body, html.EscapeString(want)) {
+					t.Errorf("body lacks escaped %q", want)
+				}
+			})
+			t.Run(tc.name+"/"+locale+"/htmx", func(t *testing.T) {
+				w, want := tc.run(t, locale, true)
+				if w.Code != http.StatusInsufficientStorage {
+					t.Fatalf("status=%d want 507", w.Code)
+				}
+				if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+					t.Errorf("Content-Type=%q want text/plain", ct)
+				}
+				if got := strings.TrimSpace(w.Body.String()); got != want {
+					t.Errorf("body=%q want exactly %q", got, want)
+				}
+			})
+		}
+	}
 }

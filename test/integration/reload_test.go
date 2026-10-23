@@ -154,7 +154,7 @@ func TestConfigReload_SpamThresholdAppliesRestartKeyDoesNot(t *testing.T) {
 
 	load := func() *config.Config {
 		t.Helper()
-		c, _, err := config.LoadWithDiscovery(v)
+		c, _, _, err := config.LoadWithDiscovery(v)
 		if err != nil {
 			t.Fatalf("LoadWithDiscovery: %v", err)
 		}

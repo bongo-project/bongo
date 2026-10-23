@@ -13,10 +13,18 @@ import (
 // OrphanedAddress is an entry in the global address index whose owning user no
 // longer exists.
 type OrphanedAddress struct {
-	Address string // the address as stored, e.g. "admin@example.com"
+	Address string // the address as stored, e.g. "admin@example.com"; the domain for KindCatchAll
 	UserID  string // the owner recorded on the record; has no profile
-	Kind    string // "primary" or "identity"
+	Kind    string // "primary", "alias", "identity", KindLegacyAlias or KindCatchAll
+	Target  string `json:",omitempty"` // KindLegacyAlias only: the target email that has no account
 }
+
+// Report-only kinds. They describe keys outside the address index, so repair
+// never deletes them; an operator removes them by hand.
+const (
+	KindLegacyAlias = "legacy-alias" // /system/alias/{addr} whose target email has no account
+	KindCatchAll    = "catchall"     // /system/catchall/{domain} whose user ID has no profile
+)
 
 // FindOrphanedAddresses returns every /system/address/ record whose UserId has
 // no corresponding /user/{id}/profile key.
@@ -34,6 +42,10 @@ type OrphanedAddress struct {
 // /user/{id}/* and the users row but historically left the address index
 // untouched, so an alias later created for the same address was silently
 // shadowed by the dead record.
+//
+// It also lists leftover legacy /system/alias/ keys whose target email has no
+// account (KindLegacyAlias) and /system/catchall/ keys whose user ID has no
+// profile (KindCatchAll). Those are report-only; repair never removes them.
 //
 // Read-only. PopulateAddressIndex cannot repair these because it is create-only
 // and never revisits a record that already exists.
@@ -85,6 +97,140 @@ func FindOrphanedAddresses(ps *PebbleStore) ([]OrphanedAddress, error) {
 		})
 	}
 
+	aliasOrphans, err := findOrphanedLegacyAliases(ps)
+	if err != nil {
+		return nil, err
+	}
+	orphans = append(orphans, aliasOrphans...)
+
+	catchAllOrphans, err := findOrphanedCatchAlls(ps)
+	if err != nil {
+		return nil, err
+	}
+	return append(orphans, catchAllOrphans...), nil
+}
+
+// findOrphanedLegacyAliases reports /system/alias/{addr} keys whose value (the
+// target's email) names no account. The target is live when its address record
+// is a primary or alias whose owner has a profile, or, failing that, when some
+// profile carries that email: a crash between the profile and address writes in
+// CreateUser leaves a live account with no record. A disabled account is live.
+// A failed record read aborts rather than producing a false orphan.
+func findOrphanedLegacyAliases(ps *PebbleStore) ([]OrphanedAddress, error) {
+	iter, err := ps.PrefixScan([]byte("/system/alias/"))
+	if err != nil {
+		return nil, fmt.Errorf("scanning legacy aliases: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var (
+		orphans       []OrphanedAddress
+		profileEmails map[string]bool // built lazily, only when a record check misses
+	)
+	for iter.Next() {
+		aliasAddr := strings.TrimPrefix(string(iter.Key()), "/system/alias/")
+		val, vErr := iter.Value()
+		if aliasAddr == "" || vErr != nil {
+			continue
+		}
+		target := strings.ToLower(strings.TrimSpace(string(val)))
+		if target == "" {
+			continue
+		}
+
+		live, err := aliasTargetHasLiveRecord(ps, target)
+		if err != nil {
+			return nil, err
+		}
+		if !live {
+			if profileEmails == nil {
+				if profileEmails, err = profileEmailSet(ps); err != nil {
+					return nil, err
+				}
+			}
+			live = profileEmails[target]
+		}
+		if live {
+			continue
+		}
+		orphans = append(orphans, OrphanedAddress{Address: aliasAddr, Target: target, Kind: KindLegacyAlias})
+	}
+	return orphans, nil
+}
+
+// aliasTargetHasLiveRecord reports whether /system/address/{target} is a
+// primary or alias record owned by an account with a profile. A record that
+// does not decode counts as live, as the index pass skips it: the report must
+// not list a false orphan, and one corrupt record must not block repair.
+func aliasTargetHasLiveRecord(ps *PebbleStore, target string) (bool, error) {
+	data, err := ps.Get(addressKey(target))
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reading address record %q: %w", target, err)
+	}
+	var rec bongov1.AddressRecord
+	if err := proto.Unmarshal(data, &rec); err != nil {
+		return true, nil
+	}
+	if rec.Kind != "primary" && rec.Kind != "alias" {
+		return false, nil
+	}
+	return userProfileExists(ps, rec.UserId), nil
+}
+
+// profileEmailSet returns the lower-cased email of every stored profile.
+func profileEmailSet(ps *PebbleStore) (map[string]bool, error) {
+	iter, err := ps.PrefixScan([]byte("/user/"))
+	if err != nil {
+		return nil, fmt.Errorf("scanning profiles: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	emails := make(map[string]bool)
+	for iter.Next() {
+		parts := strings.Split(string(iter.Key()), "/")
+		if len(parts) != 4 || parts[3] != "profile" {
+			continue
+		}
+		val, vErr := iter.Value()
+		if vErr != nil {
+			continue
+		}
+		var p bongov1.UserProfile
+		if err := proto.Unmarshal(val, &p); err != nil {
+			continue
+		}
+		if e := strings.ToLower(strings.TrimSpace(p.Email)); e != "" {
+			emails[e] = true
+		}
+	}
+	return emails, nil
+}
+
+// findOrphanedCatchAlls reports /system/catchall/{domain} keys whose user ID
+// has no profile.
+func findOrphanedCatchAlls(ps *PebbleStore) ([]OrphanedAddress, error) {
+	iter, err := ps.PrefixScan([]byte("/system/catchall/"))
+	if err != nil {
+		return nil, fmt.Errorf("scanning catch-alls: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var orphans []OrphanedAddress
+	for iter.Next() {
+		domain := strings.TrimPrefix(string(iter.Key()), "/system/catchall/")
+		val, vErr := iter.Value()
+		if domain == "" || vErr != nil {
+			continue
+		}
+		id := strings.TrimSpace(string(val))
+		if id == "" || userProfileExists(ps, id) {
+			continue
+		}
+		orphans = append(orphans, OrphanedAddress{Address: domain, UserID: id, Kind: KindCatchAll})
+	}
 	return orphans, nil
 }
 
@@ -102,6 +248,9 @@ func DeleteOrphanedAddresses(ps *PebbleStore, as *AddressStore, orphans []Orphan
 
 	var deleted []string
 	for _, o := range orphans {
+		if o.Kind == KindLegacyAlias || o.Kind == KindCatchAll {
+			continue // report-only: the key is not an address-index record
+		}
 		if ps != nil && userProfileExists(ps, o.UserID) {
 			continue // owner exists again; not an orphan
 		}

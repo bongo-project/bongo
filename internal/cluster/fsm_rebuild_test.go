@@ -345,3 +345,73 @@ func TestReconcileUserEnabled(t *testing.T) {
 		t.Errorf("rows = %d, want 5 (reconcile must not insert)", count)
 	}
 }
+
+func TestReconcileOrphanUsers(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir() + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	defer ps.Close()
+	mm, err := store.NewMetadataManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewMetadataManager: %v", err)
+	}
+	defer mm.Close()
+
+	live, _ := proto.Marshal(&bongov1.UserProfile{Email: "live@example.com"})
+	if err := ps.Set([]byte("/user/live/profile"), live); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"live", "orphan"} {
+		if _, err := mm.System.DB().Exec(
+			"INSERT INTO users (id, username, display_name, enabled, created_at) VALUES (?, ?, ?, 1, 0)",
+			id, id+"@example.com", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := mm.System.DB().Exec(
+		"INSERT INTO aliases (address, target_user_id) VALUES ('o-alias', 'orphan')"); err != nil {
+		t.Fatal(err)
+	}
+
+	search := &mockSearchIndexer{}
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	n, err := ReconcileOrphanUsers(ps, mm, search, logger)
+	if err != nil {
+		t.Fatalf("ReconcileOrphanUsers: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("removed = %d, want 1", n)
+	}
+	if len(search.deletedProfiles) != 1 || search.deletedProfiles[0] != "orphan" {
+		t.Errorf("GAL deletions = %v, want [orphan]", search.deletedProfiles)
+	}
+	count := func(q string) int {
+		var c int
+		if err := mm.System.DB().QueryRow(q).Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	if c := count("SELECT COUNT(*) FROM users WHERE id='orphan'"); c != 0 {
+		t.Errorf("orphan row survived")
+	}
+	if c := count("SELECT COUNT(*) FROM aliases WHERE target_user_id='orphan'"); c != 0 {
+		t.Errorf("orphan alias row survived")
+	}
+	if c := count("SELECT COUNT(*) FROM users WHERE id='live'"); c != 1 {
+		t.Errorf("live row removed")
+	}
+
+	n, err = ReconcileOrphanUsers(ps, mm, search, logger)
+	if err != nil || n != 0 {
+		t.Fatalf("second run = %d, %v; want 0, nil", n, err)
+	}
+	if len(search.deletedProfiles) != 1 {
+		t.Errorf("second run touched GAL: %v", search.deletedProfiles)
+	}
+	if logBuf.Len() != 0 {
+		t.Errorf("reconcile logged: %s", logBuf.String())
+	}
+}

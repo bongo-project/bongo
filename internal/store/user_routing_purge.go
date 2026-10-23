@@ -26,7 +26,7 @@ import (
 // the first error per failed key joined together, and never aborts early. A
 // leftover catch-all is harmless (the resolver rejects a dead owner with
 // ErrRecipientUnavailable). A leftover legacy alias is the one residual risk if
-// the address is later reused; an operator must remove it by hand (the address orphan report does not yet list legacy aliases).
+// the address is later reused; an operator must remove it by hand (the address orphan report lists leftover legacy aliases and catch-alls, but repair does not delete them).
 func PurgeUserRouting(ps *PebbleStore, applier RaftApplier, userID, email string) (aliases, catchAlls []string, err error) {
 	if ps == nil || applier == nil || userID == "" {
 		return nil, nil, nil
