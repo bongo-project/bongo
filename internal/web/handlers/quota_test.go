@@ -706,3 +706,170 @@ func TestComposeSaveDraftQuota(t *testing.T) {
 		})
 	}
 }
+
+// recordingQuota captures every addBytes it is asked to weigh.
+type recordingQuota struct{ sizes []int64 }
+
+func (r *recordingQuota) RecipientWouldExceedQuota(_ string, addBytes int64) (bool, error) {
+	r.sizes = append(r.sizes, addBytes)
+	return false, nil
+}
+
+// newSizedQuotaCompose wires a real DomainQuotaStore: the sender is in
+// example.com and bob in hosted.example, each domain with a 10,000,000 byte
+// quota and the given recorded usage.
+func newSizedQuotaCompose(t *testing.T, senderUsage, bobUsage int64) (*composeSendAsEnv, *store.DomainQuotaStore) {
+	t.Helper()
+	env := newComposeSendAsEnv(t)
+	env.seedUser(t, quotaUser, quotaEmail)
+	env.seedAddress(t, quotaEmail, quotaUser, "example.com", true, true)
+	env.seedUser(t, "u-bob", "bob@hosted.example")
+	env.seedAddress(t, "bob@hosted.example", "u-bob", "hosted.example", true, true)
+	for id, addr := range map[string]string{quotaUser: quotaEmail, "u-bob": "bob@hosted.example"} {
+		prof, err := proto.Marshal(&bongov1.UserProfile{Email: addr})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := env.applier.ApplyCommand(&bongov1.RaftCommand{
+			Op: bongov1.Op_OP_PUT, Key: []byte("/user/" + id + "/profile"), Value: prof,
+		}, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dq := store.NewDomainQuotaStore(env.ps, env.applier)
+	for domain, usage := range map[string]int64{"example.com": senderUsage, "hosted.example": bobUsage} {
+		if err := dq.SetQuota(domain, &bongov1.DomainQuota{MaxStorageBytes: 10_000_000}); err != nil {
+			t.Fatal(err)
+		}
+		if err := dq.SetUsage(domain, usage); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env.handler.SetQuotaChecker(dq)
+	return env, dq
+}
+
+func sendSized(t *testing.T, env *composeSendAsEnv, to []string, bodyBytes int) *httptest.ResponseRecorder {
+	t.Helper()
+	form := url.Values{
+		"to":      {strings.Join(to, ", ")},
+		"subject": {"sized"},
+		"body":    {strings.Repeat("abcdefghi\n", bodyBytes/10)},
+	}
+	req := withUserContext(formReq(http.MethodPost, "/compose/send", form), quotaUser, quotaEmail)
+	w := httptest.NewRecorder()
+	env.handler.Send(w, req)
+	return w
+}
+
+func TestComposeQuotaWeighsSize(t *testing.T) {
+	pending := func(env *composeSendAsEnv) int {
+		p, err := env.qs.ListPending(50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(p)
+	}
+	count := func(env *composeSendAsEnv, user, mb string) int {
+		msgs, _ := env.mailboxes.ListMessages(user, mb)
+		return len(msgs)
+	}
+	blobCount := func(env *composeSendAsEnv) int {
+		l, err := env.blobs.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(l)
+	}
+
+	t.Run("sender headroom", func(t *testing.T) {
+		env, _ := newSizedQuotaCompose(t, 9_990_000, 0)
+		before := blobCount(env)
+		to := []string{"bob@hosted.example", "ext@external.example"}
+		w := sendSized(t, env, to, 50_000)
+		if w.Code != http.StatusInsufficientStorage {
+			t.Fatalf("50 KB send: status=%d want 507: %s", w.Code, w.Body.String())
+		}
+		if count(env, quotaUser, "Sent") != 0 || count(env, "u-bob", "INBOX") != 0 || pending(env) != 0 {
+			t.Errorf("refused send left state: sent=%d bob=%d queue=%d", count(env, quotaUser, "Sent"), count(env, "u-bob", "INBOX"), pending(env))
+		}
+		if got := blobCount(env); got != before {
+			t.Errorf("blobs %d -> %d, refused send must write none", before, got)
+		}
+		if w := sendSized(t, env, to, 5_000); w.Code != http.StatusSeeOther {
+			t.Fatalf("5 KB send: status=%d want 303: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("recipient headroom", func(t *testing.T) {
+		env, _ := newSizedQuotaCompose(t, 0, 9_990_000)
+		w := sendSized(t, env, []string{"bob@hosted.example", "ext@external.example"}, 50_000)
+		if w.Code != http.StatusInsufficientStorage {
+			t.Fatalf("status=%d want 507: %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "bob@hosted.example") {
+			t.Errorf("want recipient-full text naming bob, got %q", w.Body.String())
+		}
+		if count(env, quotaUser, "Sent") != 0 || count(env, "u-bob", "INBOX") != 0 || pending(env) != 0 {
+			t.Error("refused send delivered or queued something")
+		}
+	})
+
+	t.Run("draft", func(t *testing.T) {
+		env, _ := newSizedQuotaCompose(t, 9_990_000, 0)
+		save := func(n int) *httptest.ResponseRecorder {
+			form := url.Values{"to": {"bob@hosted.example"}, "subject": {"d"}, "body": {strings.Repeat("abcdefghi\n", n/10)}}
+			w := httptest.NewRecorder()
+			env.handler.SaveDraft(w, withUserContext(formReq(http.MethodPost, "/compose/draft", form), quotaUser, quotaEmail))
+			return w
+		}
+		if w := save(50_000); w.Code != http.StatusInsufficientStorage {
+			t.Fatalf("50 KB draft: status=%d want 507", w.Code)
+		}
+		if count(env, quotaUser, "Drafts") != 0 {
+			t.Error("refused draft was stored")
+		}
+		if w := save(5_000); w.Code != http.StatusSeeOther {
+			t.Fatalf("small draft: status=%d want 303", w.Code)
+		}
+	})
+
+	t.Run("size equals stored size, computed once", func(t *testing.T) {
+		env, uid, email := newQuotaCompose(t, &fakeQuota{})
+		rq := &recordingQuota{}
+		env.handler.SetQuotaChecker(rq)
+		if w := sendCompose(t, env, uid, email, []string{"bob@example.com"}, nil); w.Code != http.StatusSeeOther {
+			t.Fatalf("status=%d: %s", w.Code, w.Body.String())
+		}
+		msgs, err := env.mailboxes.ListMessages(uid, "Sent")
+		if err != nil || len(msgs) != 1 {
+			t.Fatalf("Sent: %v %d", err, len(msgs))
+		}
+		raw, err := env.ps.Get([]byte("/user/" + uid + "/mail/" + msgs[0].MailGuid))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var meta bongov1.MailMeta
+		if err := proto.Unmarshal(raw, &meta); err != nil {
+			t.Fatal(err)
+		}
+		want := meta.GetRawMessage().GetSize()
+		// Tie the recorded size to the bytes actually stored, not to the
+		// variable both values are copied from.
+		stored, err := store.RawMessageBytes(env.blobs, &meta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want != int64(len(stored)) {
+			t.Errorf("RawMessage.Size = %d, stored message is %d bytes", want, len(stored))
+		}
+		if want == 0 || len(rq.sizes) != 2 {
+			t.Fatalf("stored size %d, checker sizes %v; want 2 calls", want, rq.sizes)
+		}
+		for _, got := range rq.sizes {
+			if got != want {
+				t.Errorf("addBytes = %d, stored RawMessage.Size = %d", got, want)
+			}
+		}
+	})
+}

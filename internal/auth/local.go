@@ -154,8 +154,15 @@ func (a *LocalAuth) AccountState(userID string) (AccountState, error) {
 	}
 	return AccountState{
 		Disabled: profile.Disabled,
-		// Generation is deliberately 0: a web logout bumps it, and that
-		// must not end IMAP, POP3 or SMTP sessions.
-		Epoch: security.SessionEpoch(profile.PasswordHash, nil, false, 0),
+		Epoch:    ProtocolEpoch(&profile),
 	}, nil
+}
+
+// ProtocolEpoch is the session epoch for IMAP, POP3 and SMTP: it fingerprints
+// the password hash only. TOTP state and the web session generation are
+// deliberately excluded, so a web logout or a 2FA toggle does not end mail
+// client sessions. Login paths take it from the profile their password was
+// verified against; AccountState computes the same value for later checks.
+func ProtocolEpoch(p *bongov1.UserProfile) string {
+	return security.SessionEpoch(p.PasswordHash, nil, false, 0)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/png"
 	"net/http"
@@ -38,7 +39,7 @@ type totpPendingPayload struct {
 type SecurityHandler struct {
 	profiles      ProfileLoader
 	applier       store.RaftApplier
-	authenticator auth.Authenticator
+	authenticator auth.Authenticator // not used for re-auth, which checks the locked profile
 	sessionSecret []byte
 	tlsEnabled    bool
 	limiter       ReauthLimiter
@@ -321,15 +322,19 @@ func (h *SecurityHandler) reauthenticate(w http.ResponseWriter, r *http.Request,
 		return nil, false
 	}
 
-	if _, err := h.authenticator.Authenticate(email, password); err != nil {
-		h.fail(ip, email)
-		http.Redirect(w, r, "/settings/security?flash=Invalid+password", http.StatusSeeOther)
+	// The password is compared with the profile loaded here, under the
+	// caller's per-user lock, which is also the profile the caller writes
+	// back. A separate Authenticate read could see a different profile from
+	// the one then updated if an admin reset landed in between.
+	profile, err := h.loadProfile(userID)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		http.Error(w, "Failed to load profile", http.StatusInternalServerError)
 		return nil, false
 	}
-
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "Failed to load profile", http.StatusInternalServerError)
+	if err != nil || profile.Disabled ||
+		bcrypt.CompareHashAndPassword(profile.PasswordHash, []byte(password)) != nil {
+		h.fail(ip, email)
+		http.Redirect(w, r, "/settings/security?flash=Invalid+password", http.StatusSeeOther)
 		return nil, false
 	}
 

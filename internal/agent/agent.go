@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -161,6 +162,7 @@ type Agent struct {
 	// so tests can confirm the limiters were wired in the real startup path.
 	composeHandler    *handlers.ComposeHandler
 	addrVerifyHandler *handlers.AddressVerifyHandler
+	calendarHandler   *handlers.CalendarHandler
 	// ForwardTargets holds verified external forwarding targets per user; the
 	// deliver stage forwards only to targets recorded here (or hosted ones).
 	ForwardTargets *store.ForwardTargetStore
@@ -695,6 +697,16 @@ func (a *Agent) recipientLimiter() *mail.RateLimiter {
 func (a *Agent) wireComposeLimits(h *handlers.ComposeHandler) {
 	h.SetRecipientLimiter(a.recipientLimiter())
 	h.SetMaxRecipients(a.Config.SMTP.Limits.MaxRecipients)
+}
+
+// calendarSharesPerHour is the per-user, rolling-hour cap on calendar share
+// requests. It is fixed rather than configurable: it exists to stop
+// the share endpoint doubling as an account-existence oracle.
+const calendarSharesPerHour = 20
+
+// wireCalendarShareLimiter caps calendar share requests per user per hour.
+func (a *Agent) wireCalendarShareLimiter(h *handlers.CalendarHandler) {
+	h.SetShareLimiter(mail.NewRateLimiter(calendarSharesPerHour))
 }
 
 // wireAddressVerifyLimiter caps send-as verification mails per user per hour.
@@ -1317,6 +1329,8 @@ func (a *Agent) Run(ctx context.Context) error {
 				calendarH.SetQuotaChecker(a.DomainQuota)
 			}
 			calendarH.SetShareResolver(sharedResolver)
+			a.wireCalendarShareLimiter(calendarH)
+			a.calendarHandler = calendarH
 			r.Get("/calendar", calendarH.CalendarIndex)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/{year}/{month}", calendarH.MonthView)
@@ -3804,6 +3818,13 @@ const (
 	davMaxAuthFailures = 5
 	// davAuthFailWindow is the lockout/forget window for DAV auth failures.
 	davAuthFailWindow = 15 * time.Minute
+	// davMaxBodyBytes caps a DAV request body. The body is buffered by
+	// davLimitBody rather than just wrapped in http.MaxBytesReader because
+	// go-webdav turns body read errors into 400 (it formats them with %v, so
+	// the *http.MaxBytesError is lost) and its iCal/vCard decoders stop at
+	// END:, never reading trailing bytes. Concurrent authenticated clients can
+	// each pin up to this much memory.
+	davMaxBodyBytes = 10 << 20
 )
 
 // davBasicAuth authenticates a DAV request via HTTP Basic Auth with per-source-IP
@@ -3841,6 +3862,30 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 	return userID, true
 }
 
+// davLimitBody buffers the request body, refusing anything over davMaxBodyBytes
+// with 413. Call it only after authentication, so an unauthenticated client
+// never has its body read. On success r.Body is replaced by an in-memory copy
+// and true is returned; otherwise the response has been written.
+func davLimitBody(w http.ResponseWriter, r *http.Request) bool {
+	if r.ContentLength > davMaxBodyBytes {
+		http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+		return false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, davMaxBodyBytes)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return false
+		}
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return true
+}
+
 // carddavHTTPHandler wraps a CardDAV backend with throttled HTTP basic auth.
 type carddavHTTPHandler struct {
 	auth    *auth.LocalAuth
@@ -3852,6 +3897,10 @@ type carddavHTTPHandler struct {
 func (h *carddavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID, ok := davBasicAuth(w, r, h.auth, h.limiter, "Bongo CardDAV", h.logger)
 	if !ok {
+		return
+	}
+
+	if !davLimitBody(w, r) {
 		return
 	}
 
@@ -3876,6 +3925,10 @@ type caldavHTTPHandler struct {
 func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID, ok := davBasicAuth(w, r, h.auth, h.limiter, "Bongo CalDAV", h.logger)
 	if !ok {
+		return
+	}
+
+	if !davLimitBody(w, r) {
 		return
 	}
 

@@ -99,3 +99,53 @@ func TestShareCalendarThroughRouter(t *testing.T) {
 		t.Errorf("SharedWith = %v, want [%s]", cal.SharedWith, bobID)
 	}
 }
+
+// TestShareCalendarRateLimitThroughRouter checks the per-user share limiter is
+// installed on the real route: the 21st request is refused with 429 even for a
+// valid live account, and nothing is stored.
+func TestShareCalendarRateLimitThroughRouter(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Server.BindAddr = "127.0.0.1"
+	sharedAssignFreePorts(t, cfg)
+	a, cancel, _ := sharedStartAgent(t, cfg)
+	defer cancel()
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port)
+
+	if _, err := auth.CreateUser(a, a.Metadata, "bob@localhost", "Bob", "bobpass123", false); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	adminID := resolveAdminUserID(t, a)
+	calID, err := a.Calendars.EnsureDefault(adminID)
+	if err != nil {
+		t.Fatalf("EnsureDefault: %v", err)
+	}
+	client := loginAs(t, baseURL, "admin@localhost", "admin")
+	post := func(target string) *http.Response {
+		resp, err := client.PostForm(baseURL+"/calendar/"+calID+"/share", url.Values{"share_with": {target}})
+		if err != nil {
+			t.Fatalf("POST share: %v", err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	for i := range 20 {
+		if c := post("nobody@localhost").StatusCode; c != http.StatusBadRequest {
+			t.Fatalf("request %d: status %d, want 400", i+1, c)
+		}
+	}
+	resp := post("bob@localhost")
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("21st request: status %d, want 429", resp.StatusCode)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Error("missing Retry-After header")
+	}
+	cal, err := a.Calendars.Get(adminID, calID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cal.SharedWith) != 0 {
+		t.Errorf("SharedWith = %v, want empty", cal.SharedWith)
+	}
+}

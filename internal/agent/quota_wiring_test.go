@@ -120,10 +120,11 @@ func TestStorageQuotaWiredIntoProtocols(t *testing.T) {
 	if err := a.DomainQuota.SetUsage("localhost", limit-1); err != nil {
 		t.Fatalf("SetUsage: %v", err)
 	}
-	if err := imapAppend(); err != nil {
-		t.Errorf("IMAP APPEND under quota: %v", err)
+	// APPEND and DAV PUT are size-aware: one byte of headroom cannot hold a
+	// whole message or record.
+	if err := imapAppend(); err == nil || !strings.Contains(err.Error(), "OVERQUOTA") {
+		t.Errorf("IMAP APPEND with 1 byte headroom: err = %v, want OVERQUOTA", err)
 	}
-	// DAV PUT is size-aware: one byte of headroom cannot hold a whole record.
 	if got := dav(calPath, "text/calendar", ics); got != http.StatusInsufficientStorage {
 		t.Errorf("CalDAV PUT with 1 byte headroom: status %d, want 507", got)
 	}
@@ -132,6 +133,9 @@ func TestStorageQuotaWiredIntoProtocols(t *testing.T) {
 	}
 	if err := a.DomainQuota.SetUsage("localhost", limit-4096); err != nil {
 		t.Fatalf("SetUsage: %v", err)
+	}
+	if err := imapAppend(); err != nil {
+		t.Errorf("IMAP APPEND under quota: %v", err)
 	}
 	if got := dav(calPath, "text/calendar", ics); got != http.StatusCreated && got != http.StatusNoContent {
 		t.Errorf("CalDAV PUT under quota: status %d, want 201/204", got)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 	gosmtp "github.com/emersion/go-smtp"
 )
 
@@ -136,4 +137,12 @@ func TestAuthThrottleNilIP(t *testing.T) {
 	if _, ok := err.(*gosmtp.SMTPError); !ok {
 		t.Fatalf("session with nil IP should still be throttled, got %v", err)
 	}
+}
+
+func (p *perUserAuth) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+	id, err := p.Authenticate(username, password)
+	if err != nil {
+		return "", nil, err
+	}
+	return id, &bongov1.UserProfile{}, nil
 }

@@ -120,4 +120,20 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	if vl.Allow("u1") {
 		t.Error("verify limiter does not enforce SendAsVerifyMaxPerHour=2")
 	}
+
+	if a.calendarHandler == nil {
+		t.Fatal("Run did not mount the calendar handler")
+	}
+	sl := a.calendarHandler.ShareLimiter()
+	if sl == nil {
+		t.Fatal("calendar handler has no share limiter after Run")
+	}
+	for i := range 20 {
+		if !sl.Allow("u1") {
+			t.Fatalf("share request %d refused under limit 20", i+1)
+		}
+	}
+	if sl.Allow("u1") {
+		t.Error("share limiter allows a 21st request in the hour")
+	}
 }
