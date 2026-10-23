@@ -1388,3 +1388,9 @@ Workflow wf_75087717-98e in worktrees from bff481e, four workflow tasks, all acc
 
 PATTERN: [flakes] For a flake, the deterministic guard is a unit test that freezes the racing step (here via a log hook between write and enqueue); a repeat-count integration run is evidence of a fix, not a regression test.
 PATTERN: [ci] A path-filtered workflow should never hold a check every PR needs; put such checks in the unfiltered CI workflow.
+
+## 2026-10-23 — v0.9.0 tagged; Dependabot removed
+
+v0.9.0 tagged at 0d9b5b2 (CI, Deploy and Publish image green). Dependabot's first run after #47 opened twelve PRs (#48-#59) and its Go modules job failed on a hashicorp/raft bump that needs memberlist and go-metrics upgraded together. At the operator's request Dependabot is removed and the PRs closed; vulnerable dependencies come through govulncheck in CI and the release gate, and go through the PRD flow like any other finding. The version bumps it raised are listed in PRD 8.2.
+
+PATTERN: [process] Automated per-dependency PRs bypass the release-scope flow; dependency work goes through govulncheck findings and a release scope instead.
