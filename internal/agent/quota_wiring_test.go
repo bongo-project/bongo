@@ -123,6 +123,16 @@ func TestStorageQuotaWiredIntoProtocols(t *testing.T) {
 	if err := imapAppend(); err != nil {
 		t.Errorf("IMAP APPEND under quota: %v", err)
 	}
+	// DAV PUT is size-aware: one byte of headroom cannot hold a whole record.
+	if got := dav(calPath, "text/calendar", ics); got != http.StatusInsufficientStorage {
+		t.Errorf("CalDAV PUT with 1 byte headroom: status %d, want 507", got)
+	}
+	if got := dav(cardPath, "text/vcard", vcf); got != http.StatusInsufficientStorage {
+		t.Errorf("CardDAV PUT with 1 byte headroom: status %d, want 507", got)
+	}
+	if err := a.DomainQuota.SetUsage("localhost", limit-4096); err != nil {
+		t.Fatalf("SetUsage: %v", err)
+	}
 	if got := dav(calPath, "text/calendar", ics); got != http.StatusCreated && got != http.StatusNoContent {
 		t.Errorf("CalDAV PUT under quota: status %d, want 201/204", got)
 	}

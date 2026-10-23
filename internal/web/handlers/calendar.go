@@ -503,10 +503,9 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// At or over quota an update is allowed only if the stored record does not
-	// grow. This deliberately differs from CalDAV PUT, which refuses every
-	// update at quota: letting a full user edit or shrink what they have lets
-	// them make room. Growth is measured on the whole record, including the
-	// rewritten ical_raw.
+	// grow, the same rule CalDAV PUT applies: letting a full user edit or shrink
+	// what they have lets them make room. Growth is measured on the whole
+	// record, including the rewritten ical_raw.
 	// The store stamps these identity fields on write; copy them first so the
 	// comparison is like for like.
 	updated.CreatedAt = existing.CreatedAt
