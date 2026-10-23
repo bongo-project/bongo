@@ -377,8 +377,8 @@ func TestRescheduleEventRewritesIcalRaw(t *testing.T) {
 
 func TestApplyEventEditToICALAllDay(t *testing.T) {
 	raw := []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:ad@x\r\nDTSTAMP:20300101T000000Z\r\nDTSTART;VALUE=DATE:20300506\r\nDTEND;VALUE=DATE:20300507\r\nSUMMARY:Holiday\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
-	// The form reads dates in the server's local zone.
-	day := func(d int) int64 { return time.Date(2030, 5, d, 0, 0, 0, 0, time.Local).Unix() }
+	// The form reads all-day dates in UTC, whatever the server's zone.
+	day := func(d int) int64 { return time.Date(2030, 5, d, 0, 0, 0, 0, time.UTC).Unix() }
 	now := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 	existing := &bongov1.Event{Title: "Holiday", AllDay: true, StartTime: utcUnix(2030, 5, 6, 0, 0), EndTime: utcUnix(2030, 5, 7, 0, 0)}
 

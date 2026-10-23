@@ -1347,3 +1347,25 @@ From the Phase 21 batch 1 reviews (2026-10-23):
 - Release note and operator check: a specific `server.bind_addr` now limits
   SMTP to that address; check the live config in the infra repo before
   deploying. (21.10)
+
+From the Phase 21 batch 2 reviews and CI (2026-10-24):
+
+- Reminders for all-day events fire relative to 00:00 UTC
+  (`internal/agent/reminders.go:94`); in America/New_York that is the
+  previous evening. Web-created events used local midnight before. (21.4)
+- `MonthView` queries with local month bounds, so a UTC-midnight all-day event
+  on the first or last day of a neighbouring month can be missing from the
+  grid's leading or trailing cells in some zones. (21.4)
+- Legacy web all-day records in zones at UTC+12 to +14 or UTC-12 can still be
+  a day out until re-saved; there is no migration. (21.4)
+- Drag-and-drop reschedule (`bongo.js`) sends local instants; if all-day chips
+  become draggable, `RescheduleEvent` must read them by UTC date. (21.4)
+- There is no UI listing a calendar's shares, so unshare is reachable only by
+  a direct POST. (21.2)
+- CSRF on the calendar share and unshare routes is only structural (route
+  group); a route-table test asserting every mutating calendar route sits
+  behind RequireCSRF would catch a route moving out. (21.2)
+- `TestReadyImpliesWebBound` picks a free port, releases it and binds it
+  again; on a busy CI runner another test can take it in between ("address
+  already in use", PR #61, passed on rerun). (20.4)
+
