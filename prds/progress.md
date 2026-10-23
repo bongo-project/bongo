@@ -1351,3 +1351,12 @@ v0.8.0 tagged at c810f19 (CI green, image published). Workflow wf_6564b28b-2fe i
 
 PATTERN: [security] A short-lived intermediate auth cookie (2FA pending) must carry the credential epoch, or a reset between the two steps mints a fresh session.
 PATTERN: [quota] Size a pre-check with exactly the quantity the recompute counts; the estimate helper is tested against len(stored value).
+
+## 2026-10-23 — 18.43 (a)-(e) DONE; v0.8.1 tagged; Phase 18 closes with v0.8.2
+
+v0.8.1 tagged at 95f1504. Workflow wf_923d7b19-14a in worktrees from 95f1504. The 18.43a advisor corrected the premise twice: imported events have no ical_raw (the import encoder fails on a missing PRODID and the error is swallowed), and applying the lossy form blindly onto the raw would itself delete custom RRULEs, client VALARMs and TZIDs, so the rewrite changes only properties whose form value differs. All three tasks were rejected once and passed after the fix round. The 18.43a review could not finish its mutations; the orchestrator ran all 20, three survived (undecodable raw on update and reschedule, re-encode failure), and it added TestEventEditRawFailurePaths, after which all 20 go red. Orchestrator mutations for 18.43b (create size halved) and 18.43c (ChangePassword generation bump removed) went red. One comment conflict in handlers/calendar.go between 18.43a and 18.43b, merged by hand.
+
+Process change, at the user's request: Phase 18 ends here. Review findings no longer become new TASKS rows. They are candidates for a hardening PRD under prds/research/, and each release gets a written scope before work starts. Candidates from this batch: DAV PUT has no request-body cap (memory before the 507); IMAP APPEND and SMTP RCPT quota checks are size-blind; all-day web edits shift a day when the server zone is behind UTC; icalToEvent reads the first VEVENT, which can be an override; calendar import loses ical_raw and splits overrides; ChangePassword re-authenticates against a separate profile read across nodes; ReissueSessionCookie has no middleware-level test; IMAP/POP3/SMTP authenticate-then-AccountState race.
+
+PATTERN: [norman] When a review cannot finish its mutation run, the orchestrator runs the reviewer's list before merge; surviving mutants on error branches are the usual gap.
+PATTERN: [process] A review finding outside the task goes into the next PRD's candidate list, not straight into TASKS.md.

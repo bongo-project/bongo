@@ -3,7 +3,9 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"slices"
@@ -225,8 +227,27 @@ func (h *CalendarHandler) RescheduleEvent(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	original := proto.Clone(event).(*bongov1.Event)
 	event.StartTime = newStart
 	event.EndTime = newEnd
+
+	// A CalDAV-created event is served from ical_raw, so a move that only
+	// touched the proto fields would leave clients on the old time under an
+	// unchanged ETag.
+	if len(event.IcalRaw) > 0 {
+		raw, err := applyEventEditToICal(event.IcalRaw, original, event, time.Now())
+		switch {
+		case errors.Is(err, errICalDecode):
+			slog.Warn("calendar: stored ical_raw does not decode, rescheduling structured fields only", "user", userID, "guid", guid, "error", err)
+			event.IcalRaw = nil
+		case err != nil:
+			slog.Error("calendar: rewriting ical_raw failed", "user", userID, "guid", guid, "error", err)
+			http.Error(w, "failed to reschedule event", http.StatusInternalServerError)
+			return
+		default:
+			event.IcalRaw = raw
+		}
+	}
 
 	if err := h.events.Update(userID, guid, event); err != nil {
 		http.Error(w, "failed to reschedule event", http.StatusInternalServerError)
@@ -455,12 +476,36 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !allowedRrule(updated.Rrule, existing.Rrule) {
+		http.Error(w, "invalid form data: unsupported repeat rule", http.StatusBadRequest)
+		return
+	}
+
+	// The form models neither of these, so carry them over rather than wipe
+	// them. ReminderMinutes stays a structured-only field that drives server
+	// reminders: it is never mapped onto VALARMs, because CalDAV events do not
+	// populate it and the form would otherwise delete the client's alarms.
+	updated.Timezone = existing.Timezone
+	updated.Exdates = existing.Exdates
+	updated.IcalRaw = nil
+	if len(existing.IcalRaw) > 0 {
+		raw, err := applyEventEditToICal(existing.IcalRaw, existing, updated, time.Now())
+		switch {
+		case errors.Is(err, errICalDecode):
+			slog.Warn("calendar: stored ical_raw does not decode, saving structured fields only", "user", userID, "guid", guid, "error", err)
+		case err != nil:
+			slog.Error("calendar: rewriting ical_raw failed", "user", userID, "guid", guid, "error", err)
+			http.Error(w, "failed to update event", http.StatusInternalServerError)
+			return
+		default:
+			updated.IcalRaw = raw
+		}
+	}
 
 	// At or over quota an update is allowed only if the stored record does not
-	// grow. This deliberately differs from CalDAV PUT, which refuses every
-	// update at quota: letting a full user edit or shrink what they have lets
-	// them make room. Growth is measured on the whole record because the form
-	// path drops ical_raw.
+	// grow, the same rule CalDAV PUT applies: letting a full user edit or shrink
+	// what they have lets them make room. Growth is measured on the whole
+	// record, including the rewritten ical_raw.
 	// The store stamps these identity fields on write; copy them first so the
 	// comparison is like for like.
 	updated.CreatedAt = existing.CreatedAt
@@ -713,12 +758,20 @@ func (h *CalendarHandler) SearchEvents(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.CalendarSearchResults(events, query, email)).ServeHTTP(w, r)
 }
 
+// normaliseNewlines turns the CRLF that browsers submit for textarea newlines
+// (and any lone CR) into LF. go-ical escapes LF in text values but refuses a
+// raw CR, and a stored description holds LF, so without this a multi-line
+// description would differ from the stored one on every save and fail to encode.
+func normaliseNewlines(s string) string {
+	return strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s)
+}
+
 // parseEventForm extracts event data from form values.
 func parseEventForm(r *http.Request) (*bongov1.Event, error) {
 	event := &bongov1.Event{
-		Title:       r.FormValue("title"),
-		Description: r.FormValue("description"),
-		Location:    r.FormValue("location"),
+		Title:       normaliseNewlines(r.FormValue("title")),
+		Description: normaliseNewlines(r.FormValue("description")),
+		Location:    normaliseNewlines(r.FormValue("location")),
 		CalendarId:  r.FormValue("calendar_id"),
 		Timezone:    r.FormValue("timezone"),
 		AllDay:      r.FormValue("all_day") == "on",
@@ -787,6 +840,164 @@ func parseEventForm(r *http.Request) (*bongov1.Event, error) {
 	}
 
 	return event, nil
+}
+
+// eventRrulePresets are the repeat rules the edit form offers.
+var eventRrulePresets = []string{"FREQ=DAILY", "FREQ=WEEKLY", "FREQ=MONTHLY", "FREQ=YEARLY"}
+
+// allowedRrule reports whether a submitted repeat rule may be stored: none, a
+// preset, or exactly the rule the event already has (the form round-trips a
+// custom rule from a CalDAV client). Anything else is refused, which also keeps
+// CR/LF out of the RRULE value that is written unescaped into the raw iCal.
+func allowedRrule(submitted, existing string) bool {
+	return submitted == "" || submitted == existing || slices.Contains(eventRrulePresets, submitted)
+}
+
+// errICalDecode marks a stored ical_raw that cannot be parsed, as opposed to a
+// failure to encode the edited calendar.
+var errICalDecode = errors.New("decoding stored ical")
+
+// applyEventEditToICal applies the web edit onto the stored iCalendar and
+// returns the re-serialised bytes. It follows the buildVCardFromForm approach:
+// the form is lossy, so a property is changed only when the submitted value
+// differs from the existing structured value, and everything the form does not
+// model (VALARM, ATTENDEE, ORGANIZER, X- properties, UID, EXDATE, VTIMEZONE and
+// RECURRENCE-ID override components) is left untouched.
+//
+// Limitation: when the start of a recurring event moves, EXDATE and
+// RECURRENCE-ID values are kept verbatim rather than shifted, so they may no
+// longer match an occurrence of the moved series.
+func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time.Time) ([]byte, error) {
+	cal, err := ical.NewDecoder(bytes.NewReader(raw)).Decode()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errICalDecode, err)
+	}
+
+	var master, first *ical.Component
+	for _, c := range cal.Children {
+		if c.Name != ical.CompEvent {
+			continue
+		}
+		if first == nil {
+			first = c
+		}
+		if master == nil && c.Props.Get(ical.PropRecurrenceID) == nil {
+			master = c
+		}
+	}
+	if master == nil {
+		master = first
+	}
+	if master == nil {
+		return nil, fmt.Errorf("%w: no VEVENT", errICalDecode)
+	}
+	props := master.Props
+
+	if updated.Title != existing.Title {
+		props.SetText(ical.PropSummary, updated.Title)
+	}
+	for _, f := range []struct{ name, old, new string }{
+		{ical.PropDescription, existing.Description, updated.Description},
+		{ical.PropLocation, existing.Location, updated.Location},
+	} {
+		if f.new == f.old {
+			continue
+		}
+		if f.new == "" {
+			props.Del(f.name)
+		} else {
+			props.SetText(f.name, f.new)
+		}
+	}
+
+	if eventTimesChanged(props, existing, updated) {
+		setEventTimes(props, updated)
+	}
+
+	if updated.Rrule != existing.Rrule {
+		if updated.Rrule == "" {
+			props.Del(ical.PropRecurrenceRule)
+		} else {
+			rp := ical.NewProp(ical.PropRecurrenceRule)
+			rp.Value = updated.Rrule
+			props.Set(rp)
+		}
+	}
+
+	seq := 0
+	if p := props.Get(ical.PropSequence); p != nil {
+		seq, _ = strconv.Atoi(p.Value)
+	}
+	sp := ical.NewProp(ical.PropSequence)
+	sp.Value = strconv.Itoa(max(seq, 0) + 1)
+	props.Set(sp)
+	props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
+	props.SetDateTime(ical.PropLastModified, now.UTC())
+
+	if cal.Props.Get(ical.PropVersion) == nil {
+		cal.Props.SetText(ical.PropVersion, "2.0")
+	}
+	if cal.Props.Get(ical.PropProductID) == nil {
+		cal.Props.SetText(ical.PropProductID, "-//Bongo-Go//Calendar//EN")
+	}
+
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
+		return nil, fmt.Errorf("encoding ical: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// eventTimesChanged reports whether the edit moves the event. All-day events
+// are compared by calendar date against the stored DTSTART/DTEND, because the
+// proto holds local midnight for web-created events but UTC midnight for
+// CalDAV ones.
+func eventTimesChanged(props ical.Props, existing, updated *bongov1.Event) bool {
+	if existing.AllDay != updated.AllDay {
+		return true
+	}
+	if !updated.AllDay {
+		return existing.StartTime != updated.StartTime || existing.EndTime != updated.EndTime
+	}
+	start, err := props.DateTime(ical.PropDateTimeStart, time.UTC)
+	if err != nil {
+		return true
+	}
+	end := start.AddDate(0, 0, 1)
+	if p := props.Get(ical.PropDateTimeEnd); p != nil {
+		if t, err := p.DateTime(time.UTC); err == nil {
+			end = t
+		}
+	}
+	const day = "2006-01-02"
+	return start.Format(day) != time.Unix(updated.StartTime, 0).Format(day) ||
+		end.Format(day) != time.Unix(updated.EndTime, 0).Format(day)
+}
+
+// setEventTimes writes DTSTART and DTEND. A timed event keeps the TZID of its
+// DTSTART when the zone is known, otherwise it is written in UTC. DURATION is
+// removed because it is mutually exclusive with DTEND.
+func setEventTimes(props ical.Props, updated *bongov1.Event) {
+	loc := time.UTC
+	if p := props.Get(ical.PropDateTimeStart); p != nil {
+		if tzid := p.Params.Get(ical.PropTimezoneID); tzid != "" {
+			if l, err := time.LoadLocation(tzid); err == nil {
+				loc = l
+			}
+		}
+	}
+	props.Del(ical.PropDuration)
+	if updated.AllDay {
+		props.SetDate(ical.PropDateTimeStart, time.Unix(updated.StartTime, 0))
+		props.SetDate(ical.PropDateTimeEnd, time.Unix(updated.EndTime, 0))
+		return
+	}
+	for name, ts := range map[string]int64{ical.PropDateTimeStart: updated.StartTime, ical.PropDateTimeEnd: updated.EndTime} {
+		p := ical.NewProp(name)
+		p.SetDateTime(time.Unix(ts, 0).In(loc))
+		p.Params.Del(ical.ParamValue)
+		props.Set(p)
+	}
 }
 
 // buildMonthGrid builds a 6-week grid of day cells for the given month.

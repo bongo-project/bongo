@@ -48,12 +48,21 @@ func NewLocalAuth(s KeyGetter, metadata *store.MetadataManager) *LocalAuth {
 // Authenticate checks the username/password against the stored profile.
 // Username is an email address; the user ID is looked up from system.db.
 func (a *LocalAuth) Authenticate(username, password string) (string, error) {
+	userID, _, err := a.AuthenticateProfile(username, password)
+	return userID, err
+}
+
+// AuthenticateProfile is Authenticate that also returns the profile snapshot
+// the password was verified against, so a caller can derive the session epoch
+// from exactly the credentials that were checked instead of re-reading a
+// profile a concurrent password reset may have replaced.
+func (a *LocalAuth) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
 	// Look up user ID from system.db by username (email).
 	userID, err := a.lookupUserID(username)
 	if err != nil {
 		// Equalize timing with the valid-user path (see dummyBcryptHash).
 		_ = bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(password))
-		return "", ErrBadCredentials
+		return "", nil, ErrBadCredentials
 	}
 
 	// Read the profile protobuf from Pebble.
@@ -61,17 +70,17 @@ func (a *LocalAuth) Authenticate(username, password string) (string, error) {
 	data, err := a.store.Get(key)
 	if err != nil {
 		_ = bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(password))
-		return "", ErrBadCredentials
+		return "", nil, ErrBadCredentials
 	}
 
 	var profile bongov1.UserProfile
 	if err := proto.Unmarshal(data, &profile); err != nil {
-		return "", fmt.Errorf("parsing profile: %w", err)
+		return "", nil, fmt.Errorf("parsing profile: %w", err)
 	}
 
 	// bcrypt compare.
 	if err := bcrypt.CompareHashAndPassword(profile.PasswordHash, []byte(password)); err != nil {
-		return "", ErrBadCredentials
+		return "", nil, ErrBadCredentials
 	}
 
 	// The Pebble profile is the source of truth for the disabled flag; the
@@ -79,10 +88,10 @@ func (a *LocalAuth) Authenticate(username, password string) (string, error) {
 	// (follower nodes, index rebuild). Checked after bcrypt so timing and the
 	// error are identical to a wrong password.
 	if profile.Disabled {
-		return "", ErrBadCredentials
+		return "", nil, ErrBadCredentials
 	}
 
-	return userID, nil
+	return userID, &profile, nil
 }
 
 func (a *LocalAuth) lookupUserID(username string) (string, error) {
