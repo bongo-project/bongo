@@ -72,28 +72,32 @@ func TestSMTPFullMailFlow(t *testing.T) {
 	}
 	t.Log("email sent successfully")
 
-	// Wait for delivery to propagate through Raft.
-	time.Sleep(1 * time.Second)
-
-	// Verify Pebble has a /user/{id}/mail/{guid} key.
+	// Poll for delivery to propagate through Raft rather than sleeping.
 	mailPrefix := fmt.Sprintf("/user/%s/mail/", userID)
-	iter, err := a.Store.PrefixScan([]byte(mailPrefix))
-	if err != nil {
-		t.Fatalf("PrefixScan: %v", err)
-	}
-
 	var mailKey string
 	var mailValue []byte
 	count := 0
-	for iter.Next() {
-		mailKey = string(iter.Key())
-		mailValue, _ = iter.Value()
-		count++
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		iter, err := a.Store.PrefixScan([]byte(mailPrefix))
+		if err != nil {
+			t.Fatalf("PrefixScan: %v", err)
+		}
+		count = 0
+		for iter.Next() {
+			mailKey = string(iter.Key())
+			mailValue, _ = iter.Value()
+			count++
+		}
+		iter.Close()
+		if count > 0 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	iter.Close()
 
 	if count == 0 {
-		t.Fatal("no mail keys found in Pebble")
+		t.Fatal("no mail keys found in Pebble after 10s")
 	}
 	t.Logf("found %d mail key(s): %s", count, mailKey)
 

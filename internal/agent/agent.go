@@ -1872,6 +1872,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.goWorker("usage-recompute", func() { a.runUsageRecompute(usageCtx, usageRecomputeInterval) })
 	}
 
+	// Bind the web port before reporting ready, so Ready() implies a dial to
+	// the web address succeeds and a bind failure fails Run instead of being
+	// reported after readiness.
+	webLn, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("web listen: %w", err)
+	}
+
 	a.ready.Store(true)
 
 	a.logger.Info("bongo-go started",
@@ -1911,7 +1919,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.logger.Info("web: started (HTTPS)", "addr", addr)
 		}
 		go func() {
-			if err := a.httpServer.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := a.httpServer.ServeTLS(webLn, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				httpErrCh <- err
 			}
 			close(httpErrCh)
@@ -1919,7 +1927,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	} else {
 		a.logger.Info("web: started (HTTP)", "addr", addr)
 		go func() {
-			if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := a.httpServer.Serve(webLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				httpErrCh <- err
 			}
 			close(httpErrCh)
@@ -3380,6 +3388,12 @@ func (a *Agent) runAgent(ctx context.Context) error {
 		}
 	}
 
+	// Bind before reporting ready; see Run.
+	webLn, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("web listen: %w", err)
+	}
+
 	a.ready.Store(true)
 
 	a.logger.Info("bongo-go agent started",
@@ -3392,7 +3406,7 @@ func (a *Agent) runAgent(ctx context.Context) error {
 	// Start HTTP server in background.
 	httpErrCh := make(chan error, 1)
 	go func() {
-		if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := a.httpServer.Serve(webLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			httpErrCh <- err
 		}
 		close(httpErrCh)

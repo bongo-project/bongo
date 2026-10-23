@@ -1,9 +1,11 @@
 #!/bin/sh
 # Proves deploy/certs-hook.sh against the pinned traefik-certs-dumper image
 # with a synthetic two-domain Traefik v2 acme.json. Needs docker, jq and openssl.
-# The dumper flags, post-hook line, image and mounts are read from
+# The dumper image, flags, post-hook line and mounts are all read from
 # deploy/docker-compose.yml (rendered with docker compose config), so the test
-# guards the compose wiring as well as the script.
+# guards the compose wiring as well as the script, and an automated bump of the
+# image digest cannot leave the test on a stale copy. The script aborts unless
+# the compose image is pinned by digest.
 #
 #   sh deploy/test-certs-hook.sh old    # reproduces the leak (exits 1 on leak)
 #   sh deploy/test-certs-hook.sh new    # the fixed flow (exits 0 when clean)
@@ -12,13 +14,24 @@
 set -eu
 
 mode="${1:-new}"
-img=ldez/traefik-certs-dumper@sha256:a34b27edf8e5e96a215035a6bfba00d769d2638f8444a5dd6dc27299d75f43c5
 here=$(cd "$(dirname "$0")" && pwd)
 host=mail.example.com
-tmp=$(mktemp -d)
 compose=$here/docker-compose.yml
+
+# --- Derive the dumper and hook wiring from the compose file. --env-file
+# /dev/null keeps a real deploy/.env out of it; the values are dummies.
+cfg=$(BONGO_WEB_SESSION_SECRET=x WEB_HOST=$host TRAEFIK_NETWORK=x TRAEFIK_CERTRESOLVER=x \
+    docker compose --env-file /dev/null -f "$compose" config --format json)
+q() { printf '%s' "$cfg" | jq -r "$1"; }
+img=$(q '.services["certs-dumper"].image')
+if ! printf '%s' "$img" | grep -Eq '^[^@]+@sha256:[0-9a-f]{64}$'; then
+    echo "certs-dumper image in $compose is not pinned by digest (got '$img')" >&2
+    exit 1
+fi
+
+tmp=$(mktemp -d)
 vol=certs-hook-test-$$
-trap 'docker volume rm -f "$vol" >/dev/null 2>&1; docker run --rm -v "$tmp:/t" --entrypoint sh "$img" -c "rm -rf /t/*" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
+trap 'docker volume rm -f "$vol" >/dev/null 2>&1; docker run --rm -v "$tmp:/t" --entrypoint sh "${img:-}" -c "rm -rf /t/*" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
 
 b64() { base64 < "$1" | tr -d '\n'; }
 mkcert() { # name -> $tmp/name.{crt,key}
@@ -29,17 +42,11 @@ mkcert "$host"; mkcert other.example.org
 openssl genrsa -out "$tmp/acct.pem" 2048 2>/dev/null
 openssl rsa -in "$tmp/acct.pem" -outform DER -out "$tmp/acct.der" 2>/dev/null
 
-# --- Derive the dumper and hook wiring from the compose file. --env-file
-# /dev/null keeps a real deploy/.env out of it; the values are dummies.
-cfg=$(BONGO_WEB_SESSION_SECRET=x WEB_HOST=$host TRAEFIK_NETWORK=x TRAEFIK_CERTRESOLVER=x \
-    docker compose --env-file /dev/null -f "$compose" config --format json)
-q() { printf '%s' "$cfg" | jq -r "$1"; }
 cd_dest=$(q '.services["certs-dumper"].command[] | select(startswith("--dest="))')
 cd_hook=$(q '.services["certs-dumper"].command[] | select(startswith("--post-hook="))')
 cd_hook=${cd_hook#--post-hook=}
 # Everything except --watch, --dest and --post-hook (run once, destination varies by mode).
 cd_args=$(q '.services["certs-dumper"].command | map(select((startswith("--post-hook=") or startswith("--dest=") or . == "--watch") | not)) | join(" ")')
-cd_img=$(q '.services["certs-dumper"].image')
 hook_target=$(q '.services["certs-dumper"].volumes[] | select(.source | endswith("/certs-hook.sh")) | .target')
 dump_target=$(q '.services["certs-dumper"].volumes[] | select(.source == "certs-dump") | .target')
 dump_mounts=$(q '[.services | to_entries[] | select((.value.volumes // []) | map(.source == "certs-dump") | any) | .key] | join(",")')
@@ -85,8 +92,8 @@ expect() { # description, condition result
 }
 
 # Compose wiring: this is the L14 fix. Checked before any container runs.
-[ "$cd_img" = "$img" ] && r=ok || r=bad
-expect "compose pins the same certs-dumper image as this test (got $cd_img)" $r
+case "$img" in *@sha256:*) r=ok ;; *) r=bad ;; esac
+expect "compose pins certs-dumper by digest (got $img)" $r
 [ "$cd_dest" = "--dest=/dump" ] && r=ok || r=bad
 expect "compose dumps to /dump, not the bongo-visible /certs (got $cd_dest)" $r
 [ "$dump_target" = /dump ] && r=ok || r=bad

@@ -1,0 +1,38 @@
+name: Deploy
+
+# Runs the certs hook test (deploy/test-certs-hook.sh) when deploy/ changes and
+# on every push to main. It is path-filtered, so do NOT make it a required
+# status check: a pull request that does not touch deploy/ would wait for it
+# forever. The image pin check lives in ci.yml for the same reason.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - '.github/workflows/deploy.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  certs-hook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Fixed flow exits 0
+        run: sh deploy/test-certs-hook.sh new
+      # The old flow must exit exactly 1 AND report the leak: a compose wiring
+      # failure also exits 1, which would otherwise pass for the wrong reason.
+      - name: Old flow reproduces the leak
+        run: |
+          set +e
+          out=$(sh deploy/test-certs-hook.sh old 2>&1)
+          rc=$?
+          echo "$out"
+          test "$rc" -eq 1 || { echo "old flow exited $rc, expected 1"; exit 1; }
+          printf '%s' "$out" | grep -q "FAIL: other domain's key is not written to /certs"
