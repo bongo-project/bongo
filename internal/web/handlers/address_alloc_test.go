@@ -64,8 +64,9 @@ func TestDeleteAlias_KeepsNonAliasRecords(t *testing.T) {
 			if err := h.addresses.Put("who@example.com", tt.rec); err != nil {
 				t.Fatal(err)
 			}
-			if w := deleteAliasRequest(t, h, "who@example.com", "admin"); w.Code >= 400 {
-				t.Fatalf("DeleteAlias = %d: %s", w.Code, w.Body.String())
+			// No /system/alias/ key, so this is not an alias: 404.
+			if w := deleteAliasRequest(t, h, "who@example.com", "admin"); w.Code != http.StatusNotFound {
+				t.Fatalf("DeleteAlias = %d, want 404: %s", w.Code, w.Body.String())
 			}
 			got, ok, err := h.addresses.Get("who@example.com")
 			if err != nil || !ok || got.Kind != tt.rec.Kind {

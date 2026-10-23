@@ -11,7 +11,15 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// AddressVerifyStore manages one-time verification challenges for address ownership.
+// AddressVerifyStore manages per-user send-as claims and the one-time
+// verification challenges that prove them.
+//
+// A claim is an AddressVerification with an empty code_hash and expires_at 0:
+// the user has said they own the address but no code has been requested. It is
+// written instead of a /system/address/ record, so claiming an address says
+// nothing about whether another account holds it. Requesting a code fills in
+// the hash and expiry; an expired or exhausted challenge is reset to a bare
+// claim rather than deleted. Only a successful verification removes the claim.
 //
 // Challenges are stored at /user/{user_id}/addrverify/{lowercased-address} via Raft
 // (Pebble source of truth). The plaintext code is NEVER stored — only its SHA-256
@@ -78,6 +86,23 @@ func (avs *AddressVerifyStore) Get(userID, address string) (*bongov1.AddressVeri
 		return nil, false, fmt.Errorf("address verify store get (%s, %s): unmarshal: %w", userID, address, err)
 	}
 	return &ch, true, nil
+}
+
+// ListByUser returns the addresses userID has a claim or challenge for, in key
+// order. Reads Pebble (the source of truth), not the SQLite index.
+func (avs *AddressVerifyStore) ListByUser(userID string) ([]string, error) {
+	prefix := "/user/" + userID + "/addrverify/"
+	it, err := avs.pebble.PrefixScan([]byte(prefix))
+	if err != nil {
+		return nil, fmt.Errorf("address verify store list (%s): %w", userID, err)
+	}
+	defer func() { _ = it.Close() }()
+
+	var addrs []string
+	for it.Next() {
+		addrs = append(addrs, strings.TrimPrefix(string(it.Key()), prefix))
+	}
+	return addrs, nil
 }
 
 // Delete removes a verification challenge via Raft.

@@ -1990,6 +1990,28 @@ func (h *AdminHandler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
 	if lowered := strings.ToLower(address); lowered != address {
 		keys = append(keys, lowered)
 	}
+	// Only a real alias is deletable here. An admin-added extra address is
+	// stored with Kind=alias but has no /system/alias/ key, and deleting it
+	// would remove its owner's routing; that goes through RemoveAddress.
+	// Checked after the scope check so out-of-scope admins learn nothing.
+	if h.store == nil {
+		http.Error(w, "failed to delete alias", http.StatusInternalServerError)
+		return
+	}
+	exists := false
+	for _, k := range keys {
+		if _, err := h.store.Get([]byte("/system/alias/" + k)); err == nil {
+			exists = true
+		} else if !errors.Is(err, store.ErrNotFound) {
+			h.logger.Error("admin: alias lookup failed", "alias", k, "error", err)
+			http.Error(w, "failed to delete alias", http.StatusInternalServerError)
+			return
+		}
+	}
+	if !exists {
+		http.Error(w, "alias not found", http.StatusNotFound)
+		return
+	}
 	for _, k := range keys {
 		cmd := &bongov1.RaftCommand{
 			Op:  bongov1.Op_OP_DELETE,

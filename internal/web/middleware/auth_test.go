@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 var testSecret = []byte("test-secret-key-32-bytes-long!!")
@@ -356,17 +359,76 @@ func TestRequireAuth_MissingAdminCannotReachAdmin(t *testing.T) {
 	}
 }
 
-func TestRequireAuth_StoreErrorFailsOpen(t *testing.T) {
-	var sawAdmin bool
+// A store error keeps the session readable but drops admin rights, whatever
+// the cookie snapshot says.
+func TestRequireAuth_StoreErrorDropsAdmin(t *testing.T) {
+	var sawAdmin, sawUnavailable bool
 	h := RequireAuth(testSecret, func(string) LiveSessionState { return LiveSessionState{} })(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sawAdmin = AdminFromContext(r.Context())
+			sawUnavailable = SessionStateUnavailable(r.Context())
 		}))
 	req := httptest.NewRequest("GET", "/", nil)
 	req.AddCookie(CreateSessionCookie(testSecret, "u", "e@x.com", false, true, false, ""))
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK || !sawAdmin {
-		t.Fatalf("code=%d admin=%v, want 200 admin=true", rr.Code, sawAdmin)
+	if rr.Code != http.StatusOK || sawAdmin || !sawUnavailable {
+		t.Fatalf("code=%d admin=%v unavailable=%v, want 200 admin=false unavailable=true", rr.Code, sawAdmin, sawUnavailable)
+	}
+}
+
+func TestSessionStateUnavailable_AdminGates(t *testing.T) {
+	tests := []struct {
+		name      string
+		state     LiveSessionState
+		path      string
+		wantCode  int
+		wantBody  string
+		wantRan   bool
+		wantAuthz bool
+	}{
+		{"store error, RequireAdmin", LiveSessionState{}, "/quarantine", 503, "account state unavailable", false, false},
+		{"store error, domain gate", LiveSessionState{}, "/admin", 503, "account state unavailable", false, false},
+		{"store error, plain route", LiveSessionState{}, "/mail", 200, "", true, false},
+		{"found admin, RequireAdmin", LiveSessionState{Found: true, IsAdmin: true}, "/quarantine", 200, "", true, false},
+		{"found admin, domain gate", LiveSessionState{Found: true, IsAdmin: true}, "/admin", 200, "", true, false},
+		{"found non-admin, RequireAdmin", LiveSessionState{Found: true}, "/quarantine", 403, "", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ran, authzCalled bool
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { ran = true })
+			authz := func(string, bool) ([]string, error) {
+				authzCalled = true
+				return []string{"example.com"}, nil
+			}
+			r := chi.NewRouter()
+			r.Use(RequireAuth(testSecret, func(string) LiveSessionState { return tt.state }))
+			r.Get("/mail", handler)
+			r.Group(func(r chi.Router) {
+				r.Use(RequireAdmin(testSecret))
+				r.Get("/quarantine", handler)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(RequireAdminOrDomainAdmin(authz))
+				r.Get("/admin", handler)
+			})
+			req := httptest.NewRequest("GET", tt.path, nil)
+			req.AddCookie(CreateSessionCookie(testSecret, "u", "e@x.com", false, true, false, ""))
+			rr := httptest.NewRecorder()
+			r.ServeHTTP(rr, req)
+			if rr.Code != tt.wantCode {
+				t.Fatalf("code=%d, want %d", rr.Code, tt.wantCode)
+			}
+			if tt.wantBody != "" && !strings.Contains(rr.Body.String(), tt.wantBody) {
+				t.Fatalf("body=%q, want it to contain %q", rr.Body.String(), tt.wantBody)
+			}
+			if ran != tt.wantRan {
+				t.Fatalf("handler ran=%v, want %v", ran, tt.wantRan)
+			}
+			if tt.wantCode == 503 && authzCalled {
+				t.Fatal("authorizedFn called in unavailable state")
+			}
+		})
 	}
 }

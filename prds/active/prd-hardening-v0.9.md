@@ -1236,3 +1236,43 @@ From the Phase 19 batch 1 reviews (2026-10-23):
   web-serving nodes. (19.1)
 - `internal/agent` tests bind fixed ports 8301 and 1143 and collide when two
   runs overlap. (19.1, 19.11 reviews)
+
+From the Phase 19 batch 2 reviews (2026-10-23):
+
+- `internal/web/handlers/address_verify.go` RequestVerification: the taken
+  branch skips the blob write and the enqueue, so it answers measurably
+  faster than the free branch (timing oracle). (19.2)
+- Admin AddAddress (`admin.go`, early 409 on another user's record) and alias
+  creation (`CheckAddressFreeFor`) are still blocked by another user's legacy
+  unverified identity, the same class as US-003. Self-serve also treats such
+  a record as taken, so B's correct code is a decoy for good. (19.2, 19.3)
+- AddSendAsAddress has no per-user cap on pending claims; a cap on the
+  caller's own count would leak nothing. (19.2)
+- `/user/{id}/addrverify/` keys are deleted only by SubmitCode and CreateUser,
+  so a claim can outlive an admin removal, domain cascade or orphan cleanup
+  and still show on the settings page. (19.2)
+- SubmitCode's allocation check and record write are not atomic: two
+  simultaneous correct submits can both pass and the later write wins. (19.2)
+- Behaviour change for the release notes: self-serve claims no longer appear
+  on the admin user page, and GrantSend answers "address not found" for an
+  address a user has only claimed; the admin path is AddAddress then
+  GrantSend. (19.2)
+- `internal/store/address_shadowed.go` alias-table branch checks only that the
+  Pebble alias key exists, not that its target differs from the identity's
+  owner. The US-004 "extra address" conflict cannot be detected: the identity
+  overwrote the only record at that key. (19.4)
+- `admin.go` DeleteAlias: a /system/alias/ read error other than not-found is
+  meant to answer 500; no test, because the handler holds a concrete
+  PebbleStore and has no seam to inject the error. (19.5)
+- `internal/imap` session revocation has the same fail-open-on-store-error
+  shape US-008 removed from the web; it grants no admin rights. (19.8)
+- `senderAuthenticated` accepts DMARC pass, but DMARC aligns the header From
+  and bounces go to the envelope sender: SPF fail plus an aligned DKIM From
+  still gets an SRS sender, so bounces reach a forged MAIL FROM. SPF pass (or
+  AuthUserId) alone would close it. US-010 defines authenticated this way. (19.10)
+- SRS addresses issued before the upgrade for unauthenticated forwards keep
+  relaying bounces until SRSMaxAgeDays expires. (19.10)
+- Differences from the US-009/010 text as written: AuthUserId counts as
+  authenticated; trusted-network mail without SPF pass is now unauthenticated;
+  the worker DSN to the sink is discarded anyway, but the proto field is kept
+  so pre-upgrade FORWARDs default to suppress. (19.9, 19.10)

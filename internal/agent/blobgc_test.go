@@ -788,6 +788,14 @@ func blobGCLeaderTestAgent(t *testing.T) *Agent {
 // mutating a.logger on an already-running Agent.
 func blobGCLeaderTestAgentWithLogger(t *testing.T, logger *slog.Logger) *Agent {
 	t.Helper()
+	return blobGCLeaderTestAgentSeeded(t, logger, nil)
+}
+
+// blobGCLeaderTestAgentSeeded is blobGCLeaderTestAgentWithLogger with a seed
+// hook that runs after NewAgent (storage is open) and before Run, so startup
+// passes see the seeded state.
+func blobGCLeaderTestAgentSeeded(t *testing.T, logger *slog.Logger, seed func(a *Agent)) *Agent {
+	t.Helper()
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
@@ -797,6 +805,9 @@ func blobGCLeaderTestAgentWithLogger(t *testing.T, logger *slog.Logger) *Agent {
 	a, err := NewAgent(cfg, logger)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
+	}
+	if seed != nil {
+		seed(a)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

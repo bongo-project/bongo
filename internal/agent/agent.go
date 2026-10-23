@@ -254,9 +254,11 @@ func (a *Agent) IsLeader() bool {
 // revokes it too.
 //
 // A profile that is not found revokes the session (Missing). Any other read or
-// parse problem fails open (zero value) so a transient store problem cannot
-// log everyone out; during a real store outage deleted or demoted accounts
-// therefore keep their cookie's rights. Profiles are read from local Pebble, so
+// parse problem returns the zero value, which RequireAuth treats as "state
+// unavailable": the session keeps working for ordinary routes so a transient
+// store problem cannot log everyone out, but admin rights are dropped and admin
+// routes answer 503 rather than trusting the cookie's snapshot. A nil Store
+// gives the same result; every admin handler needs the store anyway. Profiles are read from local Pebble, so
 // a follower that has not yet applied a freshly created profile would revoke
 // rather than fail open; the window is narrow because accounts exist before
 // they log in.
@@ -278,16 +280,16 @@ func sessionStateFromProfile(get func([]byte) ([]byte, error), logger *slog.Logg
 			logger.Debug("session: profile not found, revoking", "user_id", userID)
 			return middleware.LiveSessionState{Missing: true}
 		}
-		logger.Warn("session: profile read failed, failing open", "user_id", userID, "error", err)
+		logger.Warn("session: profile read failed, keeping session without admin", "user_id", userID, "error", err)
 		return middleware.LiveSessionState{}
 	}
 	if len(data) == 0 {
-		logger.Warn("session: profile empty, failing open", "user_id", userID)
+		logger.Warn("session: profile empty, keeping session without admin", "user_id", userID)
 		return middleware.LiveSessionState{}
 	}
 	var profile bongov1.UserProfile
 	if err := proto.Unmarshal(data, &profile); err != nil {
-		logger.Warn("session: profile unreadable, failing open", "user_id", userID, "error", err)
+		logger.Warn("session: profile unreadable, keeping session without admin", "user_id", userID, "error", err)
 		return middleware.LiveSessionState{}
 	}
 	return middleware.LiveSessionState{
@@ -548,12 +550,19 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 	}
 	deliverProc.SetForwardLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardMaxPerHour))
 	deliverProc.SetHostedDomains(a.domainHosted)
+	// A LOCAL forward leaves signed as its author, so it draws on the same
+	// outbound recipient budget as web compose and SMTP submission.
+	deliverProc.SetAuthorRecipientLimiter(a.recipientLimiter())
 	// SRS: forwards of external mail leave with a sender on the forwarding
 	// user's domain, and bounces to an SRS address are reversed here before any
 	// recipient resolution. Without a codec forwards keep their original sender.
+	// The forwarding user's domain is needed with or without SRS: forwards of
+	// unauthenticated mail use a no-relay sender on that domain.
+	if a.Store != nil {
+		deliverProc.SetUserDomains(&store.UserDomains{Pebble: a.Store})
+	}
 	if a.SRS != nil && a.Store != nil {
 		deliverProc.SetSRS(a.SRS)
-		deliverProc.SetUserDomains(&store.UserDomains{Pebble: a.Store})
 		deliverProc.SetSRSBounceLimiters(
 			mail.NewRateLimiter(a.Config.SMTP.SRSBouncesPerAddressPerHour),
 			mail.NewRateLimiter(a.Config.SMTP.SRSBouncesPerHour))
@@ -740,6 +749,7 @@ func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *st
 	// Uses the same shared resolver as the pipeline so RCPT accept and
 	// deliver-stage resolution are always consistent.
 	backend.SetResolver(resolver)
+	backend.SetHostedDomain(a.domainHosted)
 	if a.SRS != nil {
 		backend.SetSRS(a.SRS, a.domainHosted)
 	}
@@ -1828,9 +1838,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	// decides whether to recreate them.
 	a.reportMixedCaseAddresses()
 
-	// Report identity address records that no longer route mail (unverified)
-	// or that collide with an account, alias or hosted domain. Report only.
-	a.reportShadowedIdentities()
+	// Revoke verified identity records that collide with another account's
+	// address or alias, and report the rest. Must run before
+	// migrateAddressIndex so its create-only pass rebuilds the owner's
+	// record that the identity overwrote.
+	a.reconcileShadowedIdentities()
 
 	// Populate the global address index from existing user profiles and aliases.
 	// Leader-only, idempotent, additive — never deletes or modifies existing
@@ -2976,12 +2988,22 @@ func (a *Agent) reportMixedCaseAddresses() {
 	a.logger.Warn("startup: mixed-case address report", "count", len(found))
 }
 
-// reportShadowedIdentities logs identity (send-as) records that are unverified
-// or collide with another owner of the address. The resolver only routes
+// reconcileShadowedIdentities revokes, then reports, identity (send-as)
+// records that are unverified or collide with another owner of the address.
+//
+// Leader-only revocation: a record that store.FindShadowedIdentities marks
+// Revoke (another live account, or an alias held by another user, owns the
+// address) is deleted through Raft, so its owner loses send-as on it. The
+// pass runs once at startup on the node that is leader then; a node that
+// gains leadership later does not run it until its next restart, the same
+// limitation as migrateAddressIndex. Deleting is idempotent: a second run
+// finds nothing to revoke.
+//
+// Every node reports the records that remain. The resolver only routes
 // verified identities, after accounts and aliases, so admin-added addresses
 // that were never granted send stopped receiving mail with the H1 fix; the
-// operator repairs one with GrantSend or by re-adding it. Read-only.
-func (a *Agent) reportShadowedIdentities() {
+// operator repairs one with GrantSend or by re-adding it.
+func (a *Agent) reconcileShadowedIdentities() {
 	if a.Store == nil {
 		return
 	}
@@ -2993,6 +3015,43 @@ func (a *Agent) reportShadowedIdentities() {
 	if err != nil {
 		a.logger.Warn("startup: shadowed identity report failed", "error", err)
 		return
+	}
+	if a.IsLeader() && a.AddressStore != nil {
+		revoked := 0
+		for _, f := range found {
+			if !f.Revoke {
+				continue
+			}
+			// Best-effort: a failed delete is logged and retried on the next
+			// startup; it must not block boot.
+			deleted, dErr := a.revokeIfUnchanged(f)
+			if dErr != nil {
+				a.logger.Warn("startup: revoking shadowed identity failed",
+					"address", f.Address, "user_id", f.UserID, "error", dErr)
+				continue
+			}
+			if !deleted {
+				continue
+			}
+			revoked++
+			a.logger.Warn("startup: revoked identity address record held on another owner's address",
+				"address", f.Address,
+				"user_id", f.UserID,
+				"conflict", f.Conflict,
+				"conflict_owner", f.ConflictOwner,
+			)
+		}
+		if revoked > 0 {
+			a.logger.Warn("startup: shadowed identities revoked", "count", revoked)
+		}
+		// Report only what remains.
+		kept := found[:0:0]
+		for _, f := range found {
+			if !f.Revoke {
+				kept = append(kept, f)
+			}
+		}
+		found = kept
 	}
 	for _, f := range found {
 		a.logger.Warn("startup: identity address record does not route mail as the resolver now requires",
@@ -3007,6 +3066,23 @@ func (a *Agent) reportShadowedIdentities() {
 	if len(found) > 0 {
 		a.logger.Warn("startup: shadowed identity report", "count", len(found))
 	}
+}
+
+// revokeIfUnchanged deletes the identity record f was scanned from, but only if
+// it is still an identity owned by the same user: a record rewritten since the
+// scan (for example re-added by an admin as a primary) is left alone.
+func (a *Agent) revokeIfUnchanged(f store.ShadowedIdentity) (bool, error) {
+	rec, ok, err := a.AddressStore.Get(f.Address)
+	if err != nil {
+		return false, fmt.Errorf("re-reading %q: %w", f.Address, err)
+	}
+	if !ok || rec.Kind != "identity" || rec.UserId != f.UserID {
+		return false, nil
+	}
+	if err := a.AddressStore.Delete(f.Address); err != nil {
+		return false, fmt.Errorf("deleting %q: %w", f.Address, err)
+	}
+	return true, nil
 }
 
 // forwardTargetStore returns the forward-target store, creating it on first

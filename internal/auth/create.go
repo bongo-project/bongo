@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -30,6 +31,17 @@ var ErrAccountExists = errors.New("address already in use")
 // timeout; nothing else changes it.
 var PasswordHashCost = bcrypt.DefaultCost
 
+// logger receives the auth package's operational warnings. Nil means
+// slog.Default() at the time of the call; tests swap it to capture output.
+var logger *slog.Logger
+
+func authLogger() *slog.Logger {
+	if logger != nil {
+		return logger
+	}
+	return slog.Default()
+}
+
 // keyReader is satisfied by appliers that can read Pebble (*agent.Agent does).
 // Without a GetKey the Pebble address and alias checks are skipped; the
 // SQLite checks still run.
@@ -53,24 +65,49 @@ func checkAddressFree(applier RaftApplier, metadata *store.MetadataManager, emai
 // An account with that ID, or a /system/alias key (whose value is a username,
 // not an ID), is always counted as taking the address.
 func checkAddressFreeFor(applier RaftApplier, metadata *store.MetadataManager, email, ownerID string) error {
+	_, err := checkAddressFreeReplacing(applier, metadata, email, ownerID, false)
+	return err
+}
+
+// checkAddressFreeReplacing is checkAddressFreeFor with an option used only by
+// CreateUser: when replaceUnverified is set, an identity record that is not
+// verified does not count as taking the address (an unverified send-as claim
+// must never block a real account). It returns the user ID of the unverified
+// record that will be replaced, or "" when there is none. Verified identities
+// and records of any other kind still count.
+func checkAddressFreeReplacing(applier RaftApplier, metadata *store.MetadataManager, email, ownerID string, replaceUnverified bool) (string, error) {
 	taken := fmt.Errorf("%w: %s is used by an existing account, alias or identity", ErrAccountExists, email)
 
+	addressSQL := `SELECT user_id FROM addresses WHERE address = ? AND user_id != ? LIMIT 1`
+	if replaceUnverified {
+		addressSQL = `SELECT user_id FROM addresses WHERE address = ? AND user_id != ? AND NOT (kind = 'identity' AND verified = 0) LIMIT 1`
+	}
+
+	var replaced string
 	if metadata != nil && metadata.System != nil {
 		for _, q := range []struct {
 			sql  string
 			args []any
 		}{
 			{`SELECT id FROM users WHERE lower(username) = ? LIMIT 1`, []any{email}},
-			{`SELECT user_id FROM addresses WHERE address = ? AND user_id != ? LIMIT 1`, []any{email, ownerID}},
+			{addressSQL, []any{email, ownerID}},
 			{`SELECT target_user_id FROM aliases WHERE lower(address) = ? AND target_user_id != ? LIMIT 1`, []any{email, ownerID}},
 		} {
 			var v string
 			err := metadata.System.DB().QueryRow(q.sql, q.args...).Scan(&v)
 			if err == nil {
-				return taken
+				return "", taken
 			}
 			if !errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("checking address %s: %w", email, err)
+				return "", fmt.Errorf("checking address %s: %w", email, err)
+			}
+		}
+		if replaceUnverified {
+			err := metadata.System.DB().QueryRow(
+				`SELECT user_id FROM addresses WHERE address = ? AND kind = 'identity' AND verified = 0 LIMIT 1`, email,
+			).Scan(&replaced)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return "", fmt.Errorf("checking address %s: %w", email, err)
 			}
 		}
 	}
@@ -79,20 +116,26 @@ func checkAddressFreeFor(applier RaftApplier, metadata *store.MetadataManager, e
 		for _, prefix := range []string{"/system/address/", "/system/alias/"} {
 			raw, err := kr.GetKey([]byte(prefix + email))
 			if err == nil {
-				if ownerID != "" && prefix == "/system/address/" {
+				if prefix == "/system/address/" && (ownerID != "" || replaceUnverified) {
 					var rec bongov1.AddressRecord
-					if proto.Unmarshal(raw, &rec) == nil && rec.UserId == ownerID {
-						continue
+					if proto.Unmarshal(raw, &rec) == nil {
+						if ownerID != "" && rec.UserId == ownerID {
+							continue
+						}
+						if replaceUnverified && rec.Kind == "identity" && !rec.Verified {
+							replaced = rec.UserId
+							continue
+						}
 					}
 				}
-				return taken
+				return "", taken
 			}
 			if !errors.Is(err, store.ErrNotFound) {
-				return fmt.Errorf("checking %s%s: %w", prefix, email, err)
+				return "", fmt.Errorf("checking %s%s: %w", prefix, email, err)
 			}
 		}
 	}
-	return nil
+	return replaced, nil
 }
 
 // CheckAddressFree is the exported form of checkAddressFree for handlers that
@@ -136,14 +179,28 @@ func CheckAddressFreeFor(applier RaftApplier, metadata *store.MetadataManager, e
 // address write is a separate Raft command, so a crash between the steps can
 // leave a profile without an address record; routing still works through the
 // users table and the boot migration backfills the record.
+//
+// An unverified identity record for the address (a send-as claim made before
+// the account existed) does not block creation; the primary record overwrites
+// it and the replacement is logged. If the address write then fails, the
+// compensation deletes that key too, so the replaced claim is gone as well; it
+// never routed mail or permitted sending, so nothing is lost.
 func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, displayName, password string, isAdmin bool) (string, error) {
 	email = store.NormaliseAddress(email)
 	if email == "" {
 		return "", fmt.Errorf("email is required")
 	}
 
-	if err := checkAddressFree(applier, metadata, email); err != nil {
+	// An unverified send-as claim does not block account creation; the new
+	// primary record below replaces it. Verified records, aliases, primaries
+	// and accounts still refuse.
+	replacedOwner, err := checkAddressFreeReplacing(applier, metadata, email, "", true)
+	if err != nil {
 		return "", err
+	}
+	if replacedOwner != "" {
+		authLogger().Warn("auth: replacing another user's unverified address claim with a new account",
+			"address", email, "previous_user_id", replacedOwner)
 	}
 
 	userID := uuid.New().String()
@@ -204,6 +261,21 @@ func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, dis
 	}
 	if err := store.NewAddressStore(nil, applier, system).Put(email, rec); err != nil {
 		return "", compensateAddressWrite(applier, metadata, userID, email, err)
+	}
+
+	// The replaced owner may hold a verification challenge or pending claim
+	// for the address; the settings page lists those, so leaving it would keep
+	// showing an address they no longer have. Best-effort: the claim cannot be
+	// used to verify anything now the primary record holds the address.
+	if replacedOwner != "" {
+		key := "/user/" + replacedOwner + "/addrverify/" + strings.ToLower(email)
+		if err := applier.ApplyCommand(&bongov1.RaftCommand{
+			Op:  bongov1.Op_OP_DELETE,
+			Key: []byte(key),
+		}, 5*time.Second); err != nil {
+			authLogger().Warn("auth: removing replaced owner's pending claim failed",
+				"address", email, "previous_user_id", replacedOwner, "error", err)
+		}
 	}
 
 	return userID, nil
