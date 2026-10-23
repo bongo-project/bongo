@@ -356,6 +356,14 @@ func (w *Worker) generateBounce(msg *bongov1.OutboundMessage, recipients []strin
 		w.logger.Info("queue: DSN suppressed for null sender (RFC 3464 s6)", "id", msg.Id, "failed_recipients", recipients)
 		return
 	}
+	// A forward of mail whose sender was not authenticated may carry a forged
+	// sender; a DSN to it would be backscatter. Records queued before the field
+	// existed read as unauthenticated, so they default to no DSN. Only FORWARD
+	// is affected: every other origin never sets the field.
+	if msg.GetOrigin() == bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD && !msg.GetSenderAuthenticated() {
+		w.logger.Info("queue: DSN suppressed for unauthenticated forwarded sender", "id", msg.Id, "user", msg.SenderId)
+		return
+	}
 	if err := w.bouncer.GenerateAndDeliver(msg, recipients, reason); err != nil {
 		w.logger.Error("queue: bounce generation failed", "error", err)
 	}

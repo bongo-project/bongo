@@ -104,6 +104,13 @@ func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
 		return "", fmt.Errorf("resolve recipient: empty address")
 	}
 
+	// The reserved no-relay sender is never a mailbox: not a user, alias or
+	// identity, and not the catch-all owner's. Refusing it up front stops the
+	// rules and antispam stages running that owner's forwards on a bounce.
+	if at := strings.LastIndex(email, "@"); at > 0 && srs.IsNoRelay(email[:at]) {
+		return "", fmt.Errorf("resolve recipient: %s: reserved address", email)
+	}
+
 	// Tier 1: AddressStore.Get reads Pebble (source of truth, all nodes).
 	// Covers primary addresses and aliases in the global address index.
 	var identityOwner string

@@ -15,9 +15,10 @@ import (
 type contextKey string
 
 const (
-	userIDKey contextKey = "userID"
-	emailKey  contextKey = "email"
-	adminKey  contextKey = "isAdmin"
+	userIDKey           contextKey = "userID"
+	emailKey            contextKey = "email"
+	adminKey            contextKey = "isAdmin"
+	stateUnavailableKey contextKey = "sessionStateUnavailable"
 
 	cookieName        = "bongo_session"
 	pendingCookieName = "bongo_2fa_pending"
@@ -68,11 +69,11 @@ type SessionData struct {
 // next login or expiry.
 type LiveSessionState struct {
 	// Found is false when the profile could not be read; with Missing also
-	// false that means a store error and callers fail open, leaving the
-	// cookie's snapshot in force.
+	// false that means a store error. The session stays usable but carries no
+	// admin rights (RequireAuth ignores the cookie's admin snapshot).
 	Found bool
 	// Missing means the account no longer exists (profile not found): revoke.
-	// A separate field so the zero value still means fail-open.
+	// A separate field so the zero value means "store error", not "deleted".
 	Missing  bool
 	Disabled bool
 	IsAdmin  bool
@@ -153,8 +154,10 @@ func ClearSessionCookie() *http.Cookie {
 // user, changing their password, toggling 2FA, or changing their admin status
 // takes effect immediately despite the self-contained cookie. It is the only
 // place live account state is re-checked. Missing=true (account deleted)
-// revokes the session; Found=false && !Missing (store error) fails open,
-// leaving the cookie's snapshot in force.
+// revokes the session. Found=false && !Missing (store error) keeps the session
+// readable but drops admin rights: isAdmin is false whatever the cookie says,
+// and admin gates answer 503 (see SessionStateUnavailable). A nil stateFn
+// (tests only) trusts the cookie snapshot.
 func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,10 +178,11 @@ func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) fu
 				return
 			}
 
-			// Re-evaluate live account state. isAdmin defaults to the cookie
-			// snapshot but is overridden by the live value so a demotion (or
-			// promotion) takes effect at once.
+			// Re-evaluate live account state. With no stateFn the cookie
+			// snapshot stands; otherwise the live value always wins, and a
+			// store error means no admin rights.
 			isAdmin := data.IsAdmin
+			stateUnavailable := false
 			if stateFn != nil {
 				st := stateFn(data.UserID)
 				if st.Missing {
@@ -195,12 +199,18 @@ func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) fu
 						return
 					}
 					isAdmin = st.IsAdmin
+				} else {
+					isAdmin = false
+					stateUnavailable = true
 				}
 			}
 
 			ctx := context.WithValue(r.Context(), userIDKey, data.UserID)
 			ctx = context.WithValue(ctx, emailKey, data.Email)
 			ctx = context.WithValue(ctx, adminKey, isAdmin)
+			if stateUnavailable {
+				ctx = context.WithValue(ctx, stateUnavailableKey, true)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -219,10 +229,15 @@ func redirectToLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // RequireAdmin is middleware that checks the admin flag in the session.
-// Must be used after RequireAuth. Returns 403 for non-admin users.
+// Must be used after RequireAuth. Returns 503 when the live account state could
+// not be read (SessionStateUnavailable), otherwise 403 for non-admin users.
 func RequireAdmin(secret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if SessionStateUnavailable(r.Context()) {
+				http.Error(w, "account state unavailable", http.StatusServiceUnavailable)
+				return
+			}
 			if !AdminFromContext(r.Context()) {
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
@@ -230,6 +245,13 @@ func RequireAdmin(secret []byte) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// SessionStateUnavailable reports whether RequireAuth could not read the live
+// account state for this request (a store error).
+func SessionStateUnavailable(ctx context.Context) bool {
+	v, _ := ctx.Value(stateUnavailableKey).(bool)
+	return v
 }
 
 // AdminFromContext returns whether the current user is an admin.
