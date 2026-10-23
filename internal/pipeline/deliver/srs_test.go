@@ -205,6 +205,7 @@ func TestInboundSRSBounce(t *testing.T) {
 		return a
 	}
 	valid := issue(srsNow, "bob@example.org", "hosted.example")
+	srs1 := issue(srsNow, "SRS0=abcd1234=ab=example.org=bob@first.example", "hosted.example")
 	tests := []struct {
 		name    string
 		sender  string
@@ -220,6 +221,9 @@ func TestInboundSRSBounce(t *testing.T) {
 		{"future refused", "", issue(srsNow.AddDate(0, 0, 3), "bob@example.org", "hosted.example"), "", "", ""},
 		{"non-null sender refused", "mallory@evil.example", valid, "", "", ""},
 		{"tampered hash refused", "", flipHash(valid), "", "", ""},
+		{"valid SRS1 bounce", "", srs1, "", "", "SRS0=abcd1234=ab=example.org=bob@first.example"},
+		{"valid SRS1, lowercased by a hop", "", strings.ToLower(srs1), "", "", "SRS0=abcd1234=ab=example.org=bob@first.example"},
+		{"tampered SRS1 hash refused", "", flipHash(srs1), "", "", ""},
 		{"moved to another hosted domain refused", "", strings.Replace(valid, "@hosted.example", "@other.example", 1), "", "", ""},
 		{"moved to an unhosted domain refused", "", strings.Replace(valid, "@hosted.example", "@elsewhere.example", 1), "", "", ""},
 		{"spam-tagged bounce not relayed", "", valid, "Junk", "", ""},

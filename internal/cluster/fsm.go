@@ -80,8 +80,8 @@ type FSM struct {
 	// embedder that wants synchronous indexes) keeps the original behaviour.
 	indexQueue chan *bongov1.RaftCommand
 	indexWG    sync.WaitGroup
-	// indexInflight counts items queued but not yet processed, so WaitIdle
-	// can tell "drained" from "still working".
+	// indexInflight counts applies in progress plus items queued but not yet
+	// processed, so WaitIdle can tell "drained" from "still working".
 	indexInflight atomic.Int64
 }
 
@@ -162,9 +162,9 @@ func (f *FSM) StopIndexer() {
 	f.indexWG.Wait()
 }
 
-// WaitIdle blocks until the derived-index backlog is empty or timeout expires,
-// and reports whether it drained. Intended for tests and shutdown, not for the
-// delivery path.
+// WaitIdle blocks until no apply is in progress and the derived-index backlog
+// is empty, or timeout expires, and reports whether it drained. Intended for
+// tests and shutdown, not for the delivery path.
 func (f *FSM) WaitIdle(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -284,6 +284,13 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	if log.Index != 0 && log.Index <= f.appliedIndex() {
 		return nil
 	}
+	// Count the whole apply as in-flight. The Pebble write becomes visible to
+	// readers before updateDerivedIndexes queues its own +1, so without this
+	// WaitIdle could report idle with the key written and no SQLite row yet.
+	// The queued item's +1 is taken before this deferred -1, so the counter
+	// never touches zero between the write and the enqueue.
+	f.indexInflight.Add(1)
+	defer f.indexInflight.Add(-1)
 	// applyEntryFn is indirected so a test can simulate a crash inside apply and
 	// observe that the watermark has NOT advanced. The ordering below is the
 	// whole guarantee: persist the entry first, record it as applied second.

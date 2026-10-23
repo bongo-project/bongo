@@ -168,7 +168,7 @@ services:
   # certs-dump volume, which bongo does not mount, and the post-hook copies only
   # the mail host's certificate and key into ./certs (deploy/certs-hook.sh).
   certs-dumper:
-    image: ldez/traefik-certs-dumper@sha256:a34b27edf8e5e96a215035a6bfba00d769d2638f8444a5dd6dc27299d75f43c5
+    image: ldez/traefik-certs-dumper:latest@sha256:a34b27edf8e5e96a215035a6bfba00d769d2638f8444a5dd6dc27299d75f43c5
     container_name: bongo-certs-dumper
     restart: unless-stopped
     mem_limit: 64m
@@ -207,7 +207,7 @@ services:
   # Static landing page for the apex example.com so it serves a real page with a
   # valid Let's Encrypt cert instead of Traefik's default self-signed cert.
   website:
-    image: nginx:1.29-alpine
+    image: nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
     container_name: bongo-website
     restart: unless-stopped
     mem_limit: 64m
