@@ -98,6 +98,47 @@ func TestShareCalendarThroughRouter(t *testing.T) {
 	if len(cal.SharedWith) != 1 || cal.SharedWith[0] != bobID {
 		t.Errorf("SharedWith = %v, want [%s]", cal.SharedWith, bobID)
 	}
+
+	// Unshare goes through the same router: mutating route, 200 with the
+	// refresh trigger, entry gone; a second call is a no-op 200.
+	unshare := func(target string) *http.Response {
+		resp, err := client.PostForm(baseURL+"/calendar/"+calID+"/unshare", url.Values{"share_with": {target}})
+		if err != nil {
+			t.Fatalf("POST unshare: %v", err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	resp := unshare(bobID)
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("HX-Trigger") != "calendarRefresh" {
+		t.Errorf("unshare: status %d, HX-Trigger %q; want 200 and calendarRefresh", resp.StatusCode, resp.Header.Get("HX-Trigger"))
+	}
+	cal, err = a.Calendars.Get(adminID, calID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cal.SharedWith) != 0 {
+		t.Errorf("SharedWith after unshare = %v, want empty", cal.SharedWith)
+	}
+	if resp := unshare(bobID); resp.StatusCode != http.StatusOK {
+		t.Errorf("repeat unshare: status %d, want 200", resp.StatusCode)
+	}
+	// A client with no session cannot unshare: re-share, try, entry stays.
+	if c := share("bob@localhost"); c != http.StatusOK {
+		t.Fatalf("re-share: status %d, want 200", c)
+	}
+	bare := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	r, err := bare.PostForm(baseURL+"/calendar/"+calID+"/unshare", url.Values{"share_with": {bobID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode == http.StatusOK {
+		t.Errorf("sessionless unshare: status 200, want a refusal")
+	}
+	if cal, err = a.Calendars.Get(adminID, calID); err != nil || len(cal.SharedWith) != 1 {
+		t.Errorf("SharedWith after sessionless unshare = %v, %v; want bob kept", cal.SharedWith, err)
+	}
 }
 
 // TestShareCalendarRateLimitThroughRouter checks the per-user share limiter is

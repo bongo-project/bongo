@@ -1360,6 +1360,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/calendar/event/{guid}/reschedule", calendarH.RescheduleEvent)
 			r.Put("/calendar/{calendarID}", calendarH.UpdateCalendar)
 			r.Post("/calendar/{calendarID}/share", calendarH.ShareCalendar)
+			r.Post("/calendar/{calendarID}/unshare", calendarH.UnshareCalendar)
 			r.Get("/calendar/freebusy", calendarH.FreeBusy)
 			r.Get("/calendar/export", calendarH.ExportCalendar)
 			r.Post("/calendar/import", calendarH.ImportCalendar)
@@ -1860,6 +1861,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Leader-only, idempotent, additive — never deletes or modifies existing
 	// users, aliases, profiles, or mailboxes.
 	a.migrateAddressIndex()
+
+	// Drop calendar share entries that are not user IDs. Leader-only, and it
+	// must stay before the listeners open: it rewrites whole calendar records.
+	a.pruneLegacyCalendarShares()
 
 	// Forwards that predate verification are grandfathered so they keep
 	// working, then listed so the operator can decide. Runs after the address
@@ -3227,6 +3232,30 @@ func (a *Agent) migrateAddressIndex() {
 		return
 	}
 	a.logger.Info("startup: address index migration complete")
+}
+
+// pruneLegacyCalendarShares removes calendar SharedWith entries that are not
+// the ID of an existing profile (US-023), through Raft, logging the calendar
+// and the number removed. Leader-only: a follower applies nothing.
+//
+// It rewrites whole calendar records, so it runs during startup before this
+// node's web and DAV listeners accept requests. Other nodes of a cluster may
+// already be serving, so a share or rename made there in that window can be
+// overwritten (the same read-modify-write class as CalendarStore.Update). Leadership gained after boot does not re-run it,
+// the same known limitation as migrateAddressIndex. It is idempotent, so no
+// marker key is kept. Failures are logged and never block boot.
+func (a *Agent) pruneLegacyCalendarShares() {
+	if a.Store == nil || !a.IsLeader() {
+		return
+	}
+	pruned, err := store.PruneCalendarShares(a.Store, a)
+	for _, p := range pruned {
+		a.logger.Info("startup: removed legacy calendar share entries",
+			"user", p.UserID, "calendar", p.CalendarID, "removed", p.Removed)
+	}
+	if err != nil {
+		a.logger.Warn("startup: calendar share cleanup incomplete", "error", err)
+	}
 }
 
 // The three methods below implement store.MailboxNotifier, which the Raft FSM

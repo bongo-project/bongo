@@ -403,22 +403,19 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 			vevent.Props.SetText(ical.PropLocation, e.Location)
 		}
 
-		loc := time.UTC
-		if e.Timezone != "" {
-			if l, err := time.LoadLocation(e.Timezone); err == nil {
-				loc = l
-			}
-		}
-
-		startTime := time.Unix(e.StartTime, 0).In(loc)
-		endTime := time.Unix(e.EndTime, 0).In(loc)
-
 		if e.AllDay {
-			vevent.Props.SetDate(ical.PropDateTimeStart, startTime)
-			vevent.Props.SetDate(ical.PropDateTimeEnd, endTime)
+			// A date, not an instant: the zone plays no part.
+			vevent.Props.SetDate(ical.PropDateTimeStart, icalevent.AllDayDate(e.StartTime))
+			vevent.Props.SetDate(ical.PropDateTimeEnd, icalevent.AllDayDate(e.EndTime))
 		} else {
-			vevent.Props.SetDateTime(ical.PropDateTimeStart, startTime)
-			vevent.Props.SetDateTime(ical.PropDateTimeEnd, endTime)
+			loc := time.UTC
+			if e.Timezone != "" {
+				if l, err := time.LoadLocation(e.Timezone); err == nil {
+					loc = l
+				}
+			}
+			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).In(loc))
+			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).In(loc))
 		}
 
 		vevent.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())

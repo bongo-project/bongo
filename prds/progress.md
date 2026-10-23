@@ -1402,3 +1402,9 @@ Workflow wf_cd549871-54d in worktrees from ce66b8c, four workflow tasks. 21.5+21
 PATTERN: [rules] The rules stage decides per envelope, not per recipient; any path that queues several local recipients needs one envelope each.
 PATTERN: [reporting] A report pass that aborts on one corrupt record blocks repair of everything else; skip what cannot be read, as the existing pass does, unless skipping produces a false positive.
 
+## 2026-10-24 — Phase 21 batch 2 (21.2, 21.4) DONE; Phase 21 complete
+
+Batch 1 merged as #61 (0721edb) after one CI rerun for the TestReadyImpliesWebBound port race. Production's server.bind_addr is 0.0.0.0 (infra session, bongo.prod.hcl line 19), so US-031 does not change production SMTP; 0.0.0.0 and :: stay a dual-stack wildcard. Batch 2 ran as one workflow task (wf_54393ea3-0ab) in a worktree from 0721edb, since both stories touch the calendar handler. It was rejected once (search results and the non-htmx delete redirect still formatted all-day dates in the local zone; nothing proved the unshare route was registered; the prune guards against "/" in an entry were unpinned) and passed after the fix round. The advisor found what the task text missed: eventTimesChanged and setEventTimes formatted all-day dates in the local zone, so a title-only edit would still have rewritten DTSTART. The one surviving mutant (unshare matching a whitespace variant would also revoke the real share) is now pinned by a table row and went red. Review findings went to section 8.2 of the PRD.
+
+PATTERN: [calendar] An all-day date is a UTC date; every reader (form, change detection, writer, views, export, CalDAV) must use one helper, and rounding to the nearest UTC midnight keeps legacy local-midnight records on their date.
+
