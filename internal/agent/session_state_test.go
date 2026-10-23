@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,10 +10,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/security"
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/handlers"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -152,4 +158,56 @@ func TestSessionStateEpochFollowsGeneration(t *testing.T) {
 	if epochFor(0) == epochFor(1) {
 		t.Fatal("bumping the session generation did not change the live epoch")
 	}
+}
+
+// putApplier applies Raft PUTs straight to Pebble.
+type putApplier struct{ ps *store.PebbleStore }
+
+func (a putApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	return a.ps.Set(cmd.Key, cmd.Value)
+}
+
+// A session cookie minted at login must stop working once an admin resets the
+// password. This relies on the password-hash component of the epoch (the
+// SessionGeneration bump is guarded separately in the handlers package).
+func TestRequireAuth_AdminPasswordResetRevokesSession(t *testing.T) {
+	a, ps := newSessionTestAgent(t)
+	hash, err := bcrypt.GenerateFromPassword([]byte("old-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const userID = "resetme"
+	data, err := proto.Marshal(&bongov1.UserProfile{Email: "reset@example.com", PasswordHash: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.Set([]byte("/user/"+userID+"/profile"), data); err != nil {
+		t.Fatal(err)
+	}
+
+	var ran bool
+	h := middleware.RequireAuth(sessionTestSecret, a.userSessionState)(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { ran = true }))
+
+	epoch := security.SessionEpoch(hash, nil, false, 0)
+	cookie := middleware.CreateSessionCookie(sessionTestSecret, userID, "reset@example.com", false, false, false, epoch)
+	if rr := serveSession(h, cookie); rr.Code != http.StatusOK || !ran {
+		t.Fatalf("before reset: got %d ran=%v, want 200", rr.Code, ran)
+	}
+
+	admin := handlers.NewAdminHandler(ps, nil, nil, putApplier{ps}, testLogger())
+	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+userID+"/reset-password", nil)
+	ctx := middleware.WithUserContext(req.Context(), "admin-id", "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("userID", userID)
+	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	rec := httptest.NewRecorder()
+	admin.ResetPassword(rec, req.WithContext(ctx))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reset: status %d", rec.Code)
+	}
+
+	ran = false
+	assertRevoked(t, serveSession(h, cookie), ran)
 }

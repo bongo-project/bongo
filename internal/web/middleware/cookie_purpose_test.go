@@ -26,7 +26,7 @@ func serveWithCookieValue(value string, live LiveSessionState) (called bool, rr 
 // A 2FA-pending cookie is issued before the TOTP step. It must never be
 // accepted as a session, whether or not the account has a live epoch.
 func TestRequireAuth_RejectsPendingCookieAsSession(t *testing.T) {
-	pending := CreatePendingCookie(testSecret, "u1", "a@x", true, true, false).Value
+	pending := CreatePendingCookie(testSecret, "u1", "a@x", true, true, false, "").Value
 	session := CreateSessionCookie(testSecret, "u1", "a@x", false, false, false, "e1").Value
 
 	tests := []struct {
@@ -55,7 +55,7 @@ func TestRequireAuth_RejectsPendingCookieAsSession(t *testing.T) {
 // Each cookie type must be accepted only by its own verifier.
 func TestCookieVerifiers_RejectOtherTypes(t *testing.T) {
 	session := CreateSessionCookie(testSecret, "u1", "a@x", false, false, false, "e1").Value
-	pending := CreatePendingCookie(testSecret, "u1", "a@x", false, false, false).Value
+	pending := CreatePendingCookie(testSecret, "u1", "a@x", false, false, false, "").Value
 	setupPayload, _ := json.Marshal(map[string]any{"secret": "S", "exp": time.Now().Add(time.Minute).Unix()})
 	setup := SignValue(testSecret, TOTPSetupCookiePurpose, setupPayload)
 

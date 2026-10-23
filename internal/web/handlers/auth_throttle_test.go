@@ -133,8 +133,8 @@ func TestTwoFactorThrottleOtherAccountSuccessDoesNotClear(t *testing.T) {
 	// A successful TOTP login now records the consumed step through Raft.
 	ah.SetRaftApplier(discardApplier{})
 
-	attacker := middleware.CreatePendingCookie(throttleSessionSecret, "u-attacker", "attacker@example.com", false, false, false)
-	victim := middleware.CreatePendingCookie(throttleSessionSecret, "u-victim", "victim@example.com", false, false, false)
+	attacker := middleware.CreatePendingCookie(throttleSessionSecret, "u-attacker", "attacker@example.com", false, false, false, "")
+	victim := middleware.CreatePendingCookie(throttleSessionSecret, "u-victim", "victim@example.com", false, false, false, "")
 	code, err := totp.GenerateCode(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(secrets["u-attacker"]), time.Now())
 	if err != nil {
 		t.Fatalf("GenerateCode: %v", err)

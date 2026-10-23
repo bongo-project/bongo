@@ -491,16 +491,13 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	scope := middleware.AdminScopeFromContext(r.Context())
 
-	// Same per-user lock as login and logout: this read-modify-write must not
-	// overwrite TotpLastStep or SessionGeneration with an older value.
-	defer lockUser(userID)()
-
-	profile, ok := h.requireUserAccess(w, scope, userID)
-	if !ok {
+	// Fail fast for a missing or out-of-scope user before spending bcrypt time.
+	if _, ok := h.requireUserAccess(w, scope, userID); !ok {
 		return
 	}
 
-	// Generate random password.
+	// Generate the password and hash it with no lock held: bcrypt is slow and
+	// must not stall this user's login and logout.
 	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
 		h.logger.Error("admin: password reset: random source failed", "user_id", userID, "error", err)
@@ -515,8 +512,24 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Same per-user lock as login and logout, held only around the profile
+	// read-modify-write. The profile is re-read (and scope re-checked) inside
+	// the lock so a concurrent TotpLastStep or SessionGeneration update made
+	// since the first read is not overwritten.
+	unlock := lockUser(userID)
+	profile, ok := h.requireUserAccess(w, scope, userID)
+	if !ok {
+		unlock()
+		return
+	}
 	profile.PasswordHash = hash
-	if err := h.saveProfile(userID, profile); err != nil {
+	// Explicit bump so web sessions end even if the epoch derivation stops
+	// hashing the password. IMAP, POP3 and SMTP pin an epoch computed with
+	// generation 0; they are revoked by the hash change, not by this bump.
+	profile.SessionGeneration++
+	err = h.saveProfile(userID, profile)
+	unlock()
+	if err != nil {
 		http.Error(w, "failed to update password", http.StatusInternalServerError)
 		return
 	}

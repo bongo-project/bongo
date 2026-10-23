@@ -10,7 +10,7 @@
 // Format, per the SRS specification with two deliberate departures:
 //
 //	SRS0=HHHHHHHH=TT=orig-domain=orig-local@forwarding-domain
-//	SRS1=HHHHHHHH=first-hop-domain==HHH=TT=orig-domain=orig-local@forwarding-domain
+//	SRS1=HHHHHHHHTT=first-hop-domain==HHH=TT=orig-domain=orig-local@forwarding-domain
 //
 // TT is two base32 characters holding days since the epoch modulo 1024.
 //
@@ -28,10 +28,12 @@
 // its first hop. Reversing an SRS1 address yields the SRS0 address at the first
 // hop, which is where the bounce must go next.
 //
-// An SRS1 address carries no timestamp of its own, as the specification
-// defines it: the first hop checks the timestamp of its own SRS0 address. An
-// SRS1 address issued here is therefore reversible without an age limit, and
-// the bound on it is the first hop's window.
+// SRS1 addresses issued here carry this host's own day stamp, appended to the
+// hash token so standard parsers that treat the hash as opaque still find the
+// first hop. The stamp is covered by the MAC and subject to srs_max_age_days.
+// This bounds how long a forwarding user can use a minted SRS1 address to
+// reflect null-sender bounces to an arbitrary first hop. The stamp-less SRS1
+// form is not accepted.
 //
 // The local part is not length-limited. A long original address can push it
 // past the 64 octets RFC 5321 allows, which some next hops refuse; it is not
@@ -141,8 +143,8 @@ func (c *Codec) macSRS0(tt, domain, local, fwd string) string {
 	return c.mac("srs0", tt, domain, local, fwd)
 }
 
-func (c *Codec) macSRS1(firstHop, rest, fwd string) string {
-	return c.mac("srs1", firstHop, rest, fwd)
+func (c *Codec) macSRS1(tt, firstHop, rest, fwd string) string {
+	return c.mac("srs1", tt, firstHop, rest, fwd)
 }
 
 func validDomain(d string) bool {
@@ -223,7 +225,8 @@ func (c *Codec) wrap(local, domain, fwd string) (string, error) {
 		}
 		firstHop = strings.ToLower(firstHop)
 	}
-	return "SRS1=" + c.macSRS1(firstHop, rest, fwd) + "=" + firstHop + "==" + rest + "@" + fwd, nil
+	tt := stamp(c.today())
+	return "SRS1=" + c.macSRS1(tt, firstHop, rest, fwd) + tt + "=" + firstHop + "==" + rest + "@" + fwd, nil
 }
 
 // Reverse verifies an SRS address issued by this host and returns the address a
@@ -252,30 +255,36 @@ func (c *Codec) reverse0(body, fwd string) (string, error) {
 	if !hmac.Equal([]byte(hash), []byte(want)) {
 		return "", ErrInvalid
 	}
-	issued, ok := unstamp(tt)
-	if !ok {
-		return "", ErrInvalid
-	}
-	// A timestamp ahead of today wraps to roughly 1023 days and is refused.
-	age := ((c.today()%wrapDays - issued) + wrapDays) % wrapDays
-	if age > c.maxAge {
+	if !c.fresh(tt) {
 		return "", ErrInvalid
 	}
 	return local + "@" + domain, nil
 }
 
+// fresh reports whether the stamp tt is valid and no older than the window.
+// A timestamp ahead of today wraps to roughly 1023 days and is refused.
+func (c *Codec) fresh(tt string) bool {
+	issued, ok := unstamp(tt)
+	if !ok {
+		return false
+	}
+	age := ((c.today()%wrapDays - issued) + wrapDays) % wrapDays
+	return age <= c.maxAge
+}
+
 func (c *Codec) reverse1(body, fwd string) (string, error) {
 	hash, tail, ok := strings.Cut(body, "=")
-	if !ok || len(hash) != hashLen {
+	if !ok || len(hash) != hashLen+stampLen {
 		return "", ErrInvalid
 	}
+	hash, tt := strings.ToLower(hash[:hashLen]), strings.ToLower(hash[hashLen:])
 	firstHop, rest, ok := strings.Cut(tail, "==")
 	if !ok || !validDomain(firstHop) || strings.Count(rest, "=") < 3 {
 		return "", ErrInvalid
 	}
 	firstHop = strings.ToLower(firstHop)
-	want := c.macSRS1(firstHop, rest, fwd)
-	if !hmac.Equal([]byte(strings.ToLower(hash)), []byte(want)) {
+	want := c.macSRS1(tt, firstHop, rest, fwd)
+	if !hmac.Equal([]byte(hash), []byte(want)) || !c.fresh(tt) {
 		return "", ErrInvalid
 	}
 	return "SRS0=" + rest + "@" + firstHop, nil

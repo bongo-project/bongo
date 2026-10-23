@@ -14,6 +14,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/emersion/go-vcard"
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -75,8 +76,9 @@ func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) 
 	// Build the full vCard from the edit form (also sets the derived quick fields).
 	buildVCardFromForm(contact, r)
 
-	// Best-effort domain quota (usage is a periodic recompute).
-	if quotaExceeded(h.quota, nil, userID, 0) {
+	// Best-effort domain quota (usage is a periodic recompute). The estimate is
+	// the stored record size, the same quantity the recompute counts.
+	if quotaExceeded(h.quota, nil, userID, store.ContactRecordSize(contact)) {
 		refuseQuota(w, r)
 		return
 	}
@@ -130,13 +132,13 @@ func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) 
 
 	// Rebuild the stored vCard from the full edit form (all fields), preserving
 	// any properties the form does not cover, and refresh the derived quick fields.
-	oldSize := len(existing.VcardRaw)
+	oldSize := proto.Size(existing)
 	buildVCardFromForm(existing, r)
 
-	// At or over quota an update is allowed only if the vCard does not grow.
+	// At or over quota an update is allowed only if the stored record does not grow.
 	// This deliberately differs from CardDAV PUT, which refuses every update at
 	// quota: a full user can still edit or shrink what they have.
-	if len(existing.VcardRaw) > oldSize && quotaExceeded(h.quota, nil, userID, 0) {
+	if growth := int64(proto.Size(existing) - oldSize); growth > 0 && quotaExceeded(h.quota, nil, userID, growth) {
 		refuseQuota(w, r)
 		return
 	}
@@ -192,16 +194,15 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if quotaExceeded(h.quota, nil, userID, 0) {
-		refuseQuotaFlash(w, r, returnTo)
-		return
-	}
-
 	contact := &bongov1.Contact{
 		DisplayName: fromName,
 		Email:       fromEmail,
 	}
 	syncQuickFieldsToVCard(contact)
+	if quotaExceeded(h.quota, nil, userID, store.ContactRecordSize(contact)) {
+		refuseQuotaFlash(w, r, returnTo)
+		return
+	}
 	if _, err := h.contacts.Create(userID, contact); err != nil {
 		http.Error(w, "failed to add contact", http.StatusInternalServerError)
 		return
@@ -293,7 +294,9 @@ func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request)
 	}
 
 	// All or nothing, best effort: refuse the whole upload up front when it
-	// would not fit, rather than importing part of it.
+	// would not fit, rather than importing part of it. The upload size is an
+	// approximation: the stored size is roughly the raw bytes plus the copied
+	// quick fields.
 	if quotaExceeded(h.quota, nil, userID, int64(len(raw))) {
 		refuseQuotaFlash(w, r, "/contacts")
 		return

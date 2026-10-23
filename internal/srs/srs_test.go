@@ -303,3 +303,84 @@ func TestTamperedTimestampRefused(t *testing.T) {
 		t.Fatal("original expired address accepted")
 	}
 }
+
+// issueSRS1 returns an SRS1 address issued by second.test at the codec's day.
+func issueSRS1(t *testing.T, c *Codec) string {
+	t.Helper()
+	first, err := c.Forward("bob@example.com", "first.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := c.Forward(first, "second.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return second
+}
+
+// TestSRS1Expiry uses a 17 day window and a non-round overshoot (23): an SRS1
+// address must stop reversing on the same schedule as an SRS0 one.
+func TestSRS1Expiry(t *testing.T) {
+	second := issueSRS1(t, newCodec(17, day(20000)))
+	tests := []struct {
+		name    string
+		daysOld int
+		ok      bool
+	}{
+		{"same day", 0, true},
+		{"age 16", 16, true},
+		{"age 17", 17, true},
+		{"age 18", 18, false},
+		{"age 19", 19, false},
+		{"age 23", 23, false},
+		{"age 500", 500, false},
+		{"future timestamp", -1, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := newCodec(17, day(20000+tt.daysOld)).Reverse(second)
+			if tt.ok && err != nil {
+				t.Fatalf("age %d: %v", tt.daysOld, err)
+			}
+			if !tt.ok && err == nil {
+				t.Fatalf("age %d: Reverse = %q, want refusal", tt.daysOld, got)
+			}
+		})
+	}
+}
+
+// TestSRS1TamperedStamp re-stamps an expired SRS1 address to a later day. The
+// stamp is under the MAC, so the re-stamped address must be refused even though
+// its stamp would be fresh.
+func TestSRS1TamperedStamp(t *testing.T) {
+	second := issueSRS1(t, newCodec(17, day(20000)))
+	local, dom, _ := strings.Cut(second, "@")
+	tok, tail, _ := strings.Cut(strings.TrimPrefix(local, "SRS1="), "=")
+	restamped := "SRS1=" + tok[:len(tok)-stampLen] + stamp(20030) + "=" + tail + "@" + dom
+	if restamped == second {
+		t.Fatal("test did not alter the stamp")
+	}
+	later := newCodec(17, day(20030))
+	if got, err := later.Reverse(restamped); err == nil {
+		t.Fatalf("Reverse(%q) = %q, want error", restamped, got)
+	}
+	if _, err := later.Reverse(second); err == nil {
+		t.Fatal("original expired address accepted")
+	}
+}
+
+// TestSRS1StamplessRefused feeds the old stamp-less format with a genuinely
+// valid MAC; it must be refused because it has no stamp, not because it is junk.
+func TestSRS1StamplessRefused(t *testing.T) {
+	c := newCodec(17, day(20000))
+	first, err := c.Forward("bob@example.com", "first.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, _, _ := strings.Cut(first, "@")
+	rest := strings.TrimPrefix(local, "SRS0=")
+	old := "SRS1=" + c.mac("srs1", "first.test", rest, "second.test") + "=first.test==" + rest + "@second.test"
+	if got, err := c.Reverse(old); err == nil {
+		t.Fatalf("Reverse(%q) = %q, want error", old, got)
+	}
+}

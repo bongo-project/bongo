@@ -1344,3 +1344,10 @@ PATTERN: [testing] A drain-on-shutdown test cannot tell "drain the rest" from "s
 
 PATTERN: [norman] Defer a review finding to a follow-up only when it is pre-existing. A gap the change itself opens (here an unthrottled relay) is fixed before merge.
 PATTERN: [norman] A fix agent that reports damaging files with its own mutation tooling needs its diff re-read by the orchestrator, not just its test results.
+
+## 2026-10-23 — Follow-ups 18.39(b), 18.41(a), 18.42(c) DONE; v0.8.0 tagged
+
+v0.8.0 tagged at c810f19 (CI green, image published). Workflow wf_6564b28b-2fe in worktrees from c810f19. The advisor disproved the 18.39(b) premise: web cookies, IMAP, POP3 and SMTP sessions already ended on an admin reset through the password-hash epoch, and DAV re-runs bcrypt per request. The one credential that did survive was the 2FA-pending cookie, which carried no epoch; it now does. 18.39(b) and 18.41(a) were rejected once for surviving mutations (a pending cookie built by hand rather than by Login; contact update growth and the record-size placeholder untested) and passed after the fix round; 18.42(c) passed first time. Orchestrator mutations: pending-epoch check disabled, recompute halving record size, SRS window doubled; all red. Follow-ups in 18.43.
+
+PATTERN: [security] A short-lived intermediate auth cookie (2FA pending) must carry the credential epoch, or a reset between the two steps mints a fresh session.
+PATTERN: [quota] Size a pre-check with exactly the quantity the recompute counts; the estimate helper is tested against len(stored value).
