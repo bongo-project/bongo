@@ -144,6 +144,17 @@ func (s *DomainQuotaStore) SetUsage(domain string, bytes int64) error {
 // Returns (false, nil) when either the quota or usage is unset/zero (unlimited).
 // Eventual consistency: usage is updated only when the recompute job runs.
 func (s *DomainQuotaStore) IsOverStorageQuota(domain string) (bool, error) {
+	return s.wouldExceedStorageQuota(domain, 0)
+}
+
+// wouldExceedStorageQuota is the single quota computation. It reports whether
+// the domain is at or over its limit, or whether adding addBytes would push it
+// past the limit (usage+addBytes > max; an exact fit is allowed). A negative
+// addBytes counts as zero. The addition is overflow-safe.
+func (s *DomainQuotaStore) wouldExceedStorageQuota(domain string, addBytes int64) (bool, error) {
+	if addBytes < 0 {
+		addBytes = 0
+	}
 	q, err := s.GetQuota(domain)
 	if err != nil {
 		return false, fmt.Errorf("domain quota: check storage quota %q: %w", domain, err)
@@ -155,7 +166,10 @@ func (s *DomainQuotaStore) IsOverStorageQuota(domain string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("domain quota: get usage %q: %w", domain, err)
 	}
-	return usage >= q.MaxStorageBytes, nil
+	if usage >= q.MaxStorageBytes {
+		return true, nil
+	}
+	return addBytes > q.MaxStorageBytes-usage, nil
 }
 
 // RecipientOverQuota implements smtp.QuotaChecker.
@@ -169,6 +183,15 @@ func (s *DomainQuotaStore) IsOverStorageQuota(domain string) (bool, error) {
 // no usage has been recorded. Returns (true, nil) when over quota (permanent
 // reject). Returns (false, err) on transient Pebble error (caller fails open).
 func (s *DomainQuotaStore) RecipientOverQuota(userID string) (bool, error) {
+	return s.RecipientWouldExceedQuota(userID, 0)
+}
+
+// RecipientWouldExceedQuota is the size-aware form of RecipientOverQuota: it
+// reports true when the user's domain is already at or over quota, or when
+// storing addBytes more would exceed it. With addBytes == 0 it is exactly
+// RecipientOverQuota. Usage is the last recompute (about ten minutes stale), so
+// this is a best-effort guard and concurrent writers can still overshoot.
+func (s *DomainQuotaStore) RecipientWouldExceedQuota(userID string, addBytes int64) (bool, error) {
 	data, err := s.pebble.Get([]byte("/user/" + userID + "/profile"))
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -181,7 +204,7 @@ func (s *DomainQuotaStore) RecipientOverQuota(userID string) (bool, error) {
 		return false, fmt.Errorf("domain quota recipient check: unmarshal profile %q: %w", userID, err)
 	}
 	domain := strings.ToLower(DomainFromEmail(profile.Email))
-	return s.IsOverStorageQuota(domain)
+	return s.wouldExceedStorageQuota(domain, addBytes)
 }
 
 // CountUsersForDomain counts the number of users whose primary domain equals

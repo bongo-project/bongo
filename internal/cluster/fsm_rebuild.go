@@ -30,14 +30,15 @@ func rebuildDerivedIndexes(ps *store.PebbleStore, blobs *store.BlobStore, metada
 	return nil
 }
 
-func rebuildProfiles(ps *store.PebbleStore, metadata *store.MetadataManager, search SearchIndexer, logger *slog.Logger) (int, error) {
+// forEachProfile calls fn for every parseable /user/{id}/profile record.
+// Unreadable or unparseable records are logged and skipped.
+func forEachProfile(ps *store.PebbleStore, logger *slog.Logger, fn func(userID string, profile *bongov1.UserProfile)) error {
 	iter, err := ps.PrefixScan([]byte("/user/"))
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer iter.Close()
 
-	count := 0
 	for iter.Next() {
 		key := string(iter.Key())
 		// Exactly /user/{id}/profile, as in runDerivedIndexes. A suffix match
@@ -61,14 +62,24 @@ func rebuildProfiles(ps *store.PebbleStore, metadata *store.MetadataManager, sea
 			logger.Warn("fsm rebuild: failed to parse UserProfile", "user", userID, "error", err)
 			continue
 		}
+		fn(userID, &profile)
+	}
+	return nil
+}
 
-		// Insert into system.db.
-		// The Pebble profile is the source of truth; users.enabled is derived
-		// from it on every node so a stale row can never re-enable an account.
-		enabled := 1
-		if profile.Disabled {
-			enabled = 0
-		}
+// profileEnabled is the users.enabled value derived from a Pebble profile. The
+// profile is the source of truth, so a stale row can never re-enable an account.
+func profileEnabled(profile *bongov1.UserProfile) int {
+	if profile.Disabled {
+		return 0
+	}
+	return 1
+}
+
+func rebuildProfiles(ps *store.PebbleStore, metadata *store.MetadataManager, search SearchIndexer, logger *slog.Logger) (int, error) {
+	count := 0
+	err := forEachProfile(ps, logger, func(userID string, profile *bongov1.UserProfile) {
+		enabled := profileEnabled(profile)
 		if metadata != nil && metadata.System != nil {
 			_, err := metadata.System.DB().Exec(`
 				INSERT INTO users (id, username, display_name, enabled, created_at, modified_at)
@@ -91,9 +102,35 @@ func rebuildProfiles(ps *store.PebbleStore, metadata *store.MetadataManager, sea
 		}
 
 		count++
-	}
+	})
+	return count, err
+}
 
-	return count, nil
+// ReconcileUserEnabled makes users.enabled in system.db agree with the Pebble
+// profiles. FSM replay skips entries up to the persisted applied index, so a
+// node that restarts without a snapshot would otherwise keep a stale
+// enabled=1 row for an account disabled while the index was behind. It only
+// UPDATEs existing rows (no inserts, no search work) and returns how many it
+// changed. Call it before the Raft node starts so it cannot race FSM applies.
+func ReconcileUserEnabled(ps *store.PebbleStore, metadata *store.MetadataManager, logger *slog.Logger) (int, error) {
+	if metadata == nil || metadata.System == nil {
+		return 0, nil
+	}
+	changed := 0
+	err := forEachProfile(ps, logger, func(userID string, profile *bongov1.UserProfile) {
+		enabled := profileEnabled(profile)
+		res, err := metadata.System.DB().Exec(
+			`UPDATE users SET enabled = ?, modified_at = unixepoch() WHERE id = ? AND enabled <> ?`,
+			enabled, userID, enabled)
+		if err != nil {
+			logger.Warn("fsm reconcile: failed to update users.enabled", "user", userID, "error", err)
+			return
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			changed += int(n)
+		}
+	})
+	return changed, err
 }
 
 func rebuildMail(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.MetadataManager, search SearchIndexer, logger *slog.Logger) (int, error) {

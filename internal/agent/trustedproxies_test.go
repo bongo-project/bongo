@@ -191,7 +191,20 @@ func TestRunWiresProxyTrustIntoEveryListener(t *testing.T) {
 		// Subtests close their connections on exit: the cap is per real peer
 		// across all SMTP listeners, so a held slot would starve the next one.
 		t.Run(l.name, func(t *testing.T) {
-			if got := greeting(dial(t, l.addr, "192.0.2.10"), l.ehlo); !strings.HasPrefix(got, l.ok) {
+			// The server frees a closed connection's slot asynchronously, so
+			// the previous subtest's may still be held: retry while refused
+			// for that reason only.
+			var got string
+			for deadline := time.Now().Add(3 * time.Second); ; {
+				c := dial(t, l.addr, "192.0.2.10")
+				got = greeting(c, l.ehlo)
+				if !strings.Contains(got, "Too many connections") || time.Now().After(deadline) {
+					break
+				}
+				_ = c.Close()
+				time.Sleep(20 * time.Millisecond)
+			}
+			if !strings.HasPrefix(got, l.ok) {
 				t.Fatalf("first greeting = %q, want prefix %q", got, l.ok)
 			}
 			if got := greeting(dial(t, l.addr, "192.0.2.11"), l.ehlo); strings.HasPrefix(got, l.ok) {

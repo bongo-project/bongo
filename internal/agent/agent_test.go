@@ -613,3 +613,46 @@ func TestSweepOrphanedMailLogsReclaimedGUID(t *testing.T) {
 		t.Fatalf("lines after second pass = %v", lines)
 	}
 }
+
+// TestNewAgentReconcilesStaleUserEnabled restarts a server-role agent over a
+// data directory whose Pebble profile is disabled but whose users row still
+// says enabled=1, as left by a node that missed the disable.
+func TestNewAgentReconcilesStaleUserEnabled(t *testing.T) {
+	dir := t.TempDir()
+	newCfg := func() *config.Config {
+		cfg := config.Defaults()
+		cfg.Server.Role = "server"
+		cfg.Server.BindAddr = "127.0.0.1"
+		cfg.Storage.DataDir = dir
+		return cfg
+	}
+
+	a, err := NewAgent(newCfg(), testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	prof, _ := proto.Marshal(&bongov1.UserProfile{Email: "stale@example.com", Disabled: true})
+	if err := a.Store.Set([]byte("/user/stale1/profile"), prof); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Metadata.System.DB().Exec(
+		"INSERT INTO users (id, username, display_name, enabled, created_at) VALUES ('stale1', 'stale@example.com', 'S', 1, 0)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	a2, err := NewAgent(newCfg(), testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent restart: %v", err)
+	}
+	defer a2.Shutdown()
+	var enabled int
+	if err := a2.Metadata.System.DB().QueryRow("SELECT enabled FROM users WHERE id = 'stale1'").Scan(&enabled); err != nil {
+		t.Fatal(err)
+	}
+	if enabled != 0 {
+		t.Fatalf("users.enabled = %d after restart, want 0", enabled)
+	}
+}

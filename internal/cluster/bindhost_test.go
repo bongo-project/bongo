@@ -15,22 +15,31 @@ import (
 func TestClusterBindHost(t *testing.T) {
 	tests := []struct {
 		name      string
+		role      string
 		bind, adv string
 		join      []string
 		want      string
 	}{
-		{"loopback advertise narrows wildcard bind", "0.0.0.0", "127.0.0.1", nil, "127.0.0.1"},
-		{"ipv6 loopback advertise", "0.0.0.0", "::1", nil, "::1"},
-		{"localhost advertise", "0.0.0.0", "localhost", nil, "127.0.0.1"},
-		{"loopback bind with no advertise", "127.0.0.1", "", nil, "127.0.0.1"},
-		{"routable advertise keeps bind (seed node)", "0.0.0.0", "10.0.0.5", nil, "0.0.0.0"},
-		{"routable bind, no advertise", "10.0.0.5", "", nil, "10.0.0.5"},
-		{"join with routable advertise keeps bind", "0.0.0.0", "10.0.0.5", []string{"10.0.0.2:8301"}, "0.0.0.0"},
-		{"hostname advertise is not resolved", "0.0.0.0", "bongo-1", nil, "0.0.0.0"},
+		{"loopback advertise narrows wildcard bind", "server", "0.0.0.0", "127.0.0.1", nil, "127.0.0.1"},
+		{"ipv6 loopback advertise", "server", "0.0.0.0", "::1", nil, "::1"},
+		{"localhost advertise", "server", "0.0.0.0", "localhost", nil, "127.0.0.1"},
+		{"loopback bind with no advertise", "server", "127.0.0.1", "", nil, "127.0.0.1"},
+		{"routable advertise keeps bind (seed node)", "server", "0.0.0.0", "10.0.0.5", nil, "0.0.0.0"},
+		{"routable bind, no advertise", "server", "10.0.0.5", "", nil, "10.0.0.5"},
+		{"join with routable advertise keeps bind", "server", "0.0.0.0", "10.0.0.5", []string{"10.0.0.2:8301"}, "0.0.0.0"},
+		{"hostname advertise is not resolved", "server", "0.0.0.0", "bongo-1", nil, "0.0.0.0"},
+		{"dev wildcard bind, no advertise, binds loopback", "dev", "0.0.0.0", "", nil, "127.0.0.1"},
+		{"dev empty bind binds loopback", "dev", "", "", nil, "127.0.0.1"},
+		{"dev ipv6 wildcard binds loopback", "dev", "::", "", nil, "127.0.0.1"},
+		{"dev routable advertise keeps bind", "dev", "0.0.0.0", "10.0.0.5", nil, "0.0.0.0"},
+		{"dev routable bind honoured", "dev", "10.0.0.5", "", nil, "10.0.0.5"},
+		{"dev join keeps bind", "dev", "0.0.0.0", "", []string{"10.0.0.2:8301"}, "0.0.0.0"},
+		{"server wildcard bind unchanged", "server", "0.0.0.0", "", nil, "0.0.0.0"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := config.Defaults()
+			cfg.Server.Role = tt.role
 			cfg.Server.BindAddr = tt.bind
 			cfg.Server.AdvertiseAddr = tt.adv
 			cfg.Cluster.Join = tt.join

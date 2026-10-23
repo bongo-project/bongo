@@ -298,3 +298,14 @@ func TestPOP3PROXYHeaderFromUnlistedPeerIgnored(t *testing.T) {
 		}
 	}
 }
+
+// Close is called by Agent.Shutdown and may be repeated after a grace timeout;
+// a second call must not panic on the already closed channel.
+func TestPOP3CloseIsIdempotent(t *testing.T) {
+	s := NewServer(nil, nil, nil, nil, nil, false, slog.New(slog.DiscardHandler))
+	for i := range 2 {
+		if err := s.Close(); err != nil {
+			t.Fatalf("Close call %d: %v", i+1, err)
+		}
+	}
+}
