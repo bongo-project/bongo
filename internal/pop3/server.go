@@ -10,7 +10,6 @@ import (
 
 	"golang.org/x/net/netutil"
 
-	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
 	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/store"
@@ -25,7 +24,7 @@ const (
 
 // Server is a POP3 server that handles plaintext and TLS connections.
 type Server struct {
-	auth        *auth.LocalAuth
+	auth        authenticator
 	mailboxes   *store.MailboxStore
 	pebble      *store.PebbleStore
 	blobs       *store.BlobStore
@@ -48,7 +47,7 @@ type Server struct {
 
 // NewServer creates a new POP3 server.
 func NewServer(
-	authenticator *auth.LocalAuth,
+	authenticator authenticator,
 	mailboxes *store.MailboxStore,
 	pebble *store.PebbleStore,
 	blobs *store.BlobStore,

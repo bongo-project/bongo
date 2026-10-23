@@ -31,7 +31,7 @@ type quotaChecker interface {
 
 // session implements imapserver.Session and imapserver.SessionMove.
 type session struct {
-	auth      auth.Authenticator
+	auth      profileAuthenticator
 	pebble    *store.PebbleStore
 	blobs     *store.BlobStore
 	mailboxes *store.MailboxStore
@@ -224,6 +224,15 @@ func (s *session) requireNoMailbox(name string) error {
 // A variable so tests can shorten it.
 var idleRecheckInterval = 30 * time.Second
 
+// profileAuthenticator is what LOGIN needs: credentials checked and the
+// profile snapshot they were checked against, so the session epoch comes from
+// that profile and not from a later re-read.
+type profileAuthenticator interface {
+	AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error)
+}
+
+var _ profileAuthenticator = (*auth.LocalAuth)(nil)
+
 // accountStateReader is implemented by authenticators that can report the live
 // standing of an account (auth.LocalAuth). Authenticators without it get no
 // per-command check.
@@ -286,7 +295,7 @@ func (s *session) Login(username, password string) error {
 		return errAuthRateLimited
 	}
 
-	userID, err := s.auth.Authenticate(username, password)
+	userID, profile, err := s.auth.AuthenticateProfile(username, password)
 	if err != nil {
 		s.logger.Warn("imap: login failed", "username", username, "ip", s.remoteIP)
 		if s.authLimiter.Fail(ip, username) {
@@ -294,17 +303,14 @@ func (s *session) Login(username, password string) error {
 		}
 		return imapserver.ErrAuthFailed
 	}
-	if reader := s.accountReader(); reader != nil {
-		// Authenticate already refused disabled and missing profiles. This read
-		// records the epoch, and fails closed: without a baseline the session
-		// could never notice a later password reset.
-		st, err := reader.AccountState(userID)
-		if err != nil || !st.Live(st.Epoch) {
-			s.logger.Warn("imap: login refused, account state unavailable", "username", username)
-			return imapserver.ErrAuthFailed
-		}
-		s.epoch = st.Epoch
+	// Fail closed: the epoch must come from the profile the password was
+	// verified against, so a reset between verification and a re-read cannot
+	// hand the old password a session with the new epoch.
+	if profile == nil || profile.Disabled {
+		s.logger.Warn("imap: login refused, no usable profile", "username", username)
+		return imapserver.ErrAuthFailed
 	}
+	s.epoch = auth.ProtocolEpoch(profile)
 	s.userID = userID
 	s.authLimiter.Succeed(ip, username)
 	s.logger.Debug("imap: login succeeded", "username", username, "user_id", userID)

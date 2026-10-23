@@ -52,7 +52,7 @@ type RelayQueuer interface {
 
 // Backend implements gosmtp.Backend.
 type Backend struct {
-	auth         auth.Authenticator
+	auth         profileAuthenticator
 	deliverer    Deliverer
 	spfChecker   *mail.SPFChecker
 	resolver     RecipientResolver
@@ -87,7 +87,7 @@ type Backend struct {
 }
 
 // NewBackend creates a new SMTP backend.
-func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *slog.Logger) *Backend {
+func NewBackend(authenticator profileAuthenticator, deliverer Deliverer, logger *slog.Logger) *Backend {
 	return &Backend{
 		auth:      authenticator,
 		deliverer: deliverer,
@@ -264,6 +264,15 @@ type Session struct {
 	authFailures  int // failed AUTH attempts on this connection
 }
 
+// profileAuthenticator is what AUTH needs: credentials checked and the profile
+// snapshot they were checked against, so the session epoch comes from that
+// profile and not from a later re-read.
+type profileAuthenticator interface {
+	AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error)
+}
+
+var _ profileAuthenticator = (*auth.LocalAuth)(nil)
+
 // accountStateReader is implemented by authenticators that can report the live
 // standing of an account (auth.LocalAuth).
 type accountStateReader interface {
@@ -314,7 +323,7 @@ func (s *Session) AuthPlain(username, password string) error {
 		return &gosmtp.SMTPError{Code: 454, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many authentication failures; try again later"}
 	}
 
-	userID, err := s.backend.auth.Authenticate(username, password)
+	userID, profile, err := s.backend.auth.AuthenticateProfile(username, password)
 	if err != nil {
 		s.authFailures++
 		s.backend.authFail.Fail(ip, username)
@@ -329,18 +338,15 @@ func (s *Session) AuthPlain(username, password string) error {
 		return errAuthTemporary
 	}
 
-	if reader := s.accountReader(); reader != nil {
-		// Fail closed: without a baseline epoch the session could never notice
-		// a later password reset.
-		st, err := reader.AccountState(userID)
-		if err != nil || !st.Live(st.Epoch) {
-			s.authFailures++
-			s.backend.authFail.Fail(ip, username)
-			s.logger.Warn("smtp: auth refused, account state unavailable", "username", username, "ip", s.remoteIP)
-			return errAuthBadCredentials
-		}
-		s.epoch = st.Epoch
+	// Fail closed: the epoch must come from the profile the password was
+	// verified against, not a later re-read a concurrent reset could change.
+	if profile == nil || profile.Disabled {
+		s.authFailures++
+		s.backend.authFail.Fail(ip, username)
+		s.logger.Warn("smtp: auth refused, no usable profile", "username", username, "ip", s.remoteIP)
+		return errAuthBadCredentials
 	}
+	s.epoch = auth.ProtocolEpoch(profile)
 
 	s.authed = true
 	s.userID = userID

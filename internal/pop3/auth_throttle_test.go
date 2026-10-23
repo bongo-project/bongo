@@ -70,7 +70,7 @@ func newThrottleAuth(t *testing.T, accounts map[string]string) (*auth.LocalAuth,
 
 // passAttempt runs one USER/PASS exchange on a fresh session from a fixed IP
 // and reports the first response line to PASS.
-func passAttempt(t *testing.T, a *auth.LocalAuth, mb *store.MailboxStore, lim *authlimit.Limiter, user, pass string) string {
+func passAttempt(t *testing.T, a authenticator, mb *store.MailboxStore, lim *authlimit.Limiter, user, pass string) string {
 	t.Helper()
 	serverConn, clientConn := net.Pipe()
 	defer clientConn.Close()

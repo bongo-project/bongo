@@ -33,13 +33,22 @@ type popMsg struct {
 	meta     *bongov1.MailMeta // for reconstructing split messages at RETR/TOP
 }
 
+// authenticator is what POP3 needs of the auth backend: credentials checked
+// with the profile they were checked against, and the live account state.
+type authenticator interface {
+	AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error)
+	AccountState(userID string) (auth.AccountState, error)
+}
+
+var _ authenticator = (*auth.LocalAuth)(nil)
+
 // session handles a single POP3 connection.
 type session struct {
 	conn   net.Conn
 	reader *bufio.Reader
 	writer *bufio.Writer
 
-	auth        *auth.LocalAuth
+	auth        authenticator
 	mailboxes   *store.MailboxStore
 	pebble      *store.PebbleStore
 	blobs       *store.BlobStore
@@ -68,7 +77,7 @@ type session struct {
 
 func newSession(
 	conn net.Conn,
-	authenticator *auth.LocalAuth,
+	authenticator authenticator,
 	mailboxes *store.MailboxStore,
 	pebble *store.PebbleStore,
 	blobs *store.BlobStore,
@@ -300,7 +309,7 @@ func (s *session) handlePass(args string) {
 		return
 	}
 
-	userID, err := s.auth.Authenticate(s.username, args)
+	userID, profile, err := s.auth.AuthenticateProfile(s.username, args)
 	if err != nil {
 		s.logger.Warn("pop3: auth failed", "username", s.username, "ip", ip)
 		if s.authLimiter != nil {
@@ -314,16 +323,15 @@ func (s *session) handlePass(args string) {
 	if s.authLimiter != nil {
 		s.authLimiter.Succeed(ip, s.username)
 	}
-	// Fail closed at login: without a baseline epoch the session could never
-	// notice a later password reset.
-	st, err := s.auth.AccountState(userID)
-	if err != nil || !st.Live(st.Epoch) {
-		s.logger.Warn("pop3: auth refused, account state unavailable", "username", s.username, "ip", ip)
+	// Fail closed: the epoch must come from the profile the password was
+	// verified against, not a later re-read a concurrent reset could change.
+	if profile == nil || profile.Disabled {
+		s.logger.Warn("pop3: auth refused, no usable profile", "username", s.username, "ip", ip)
 		s.username = ""
 		s.respond("-ERR authentication failed")
 		return
 	}
-	s.epoch = st.Epoch
+	s.epoch = auth.ProtocolEpoch(profile)
 	s.userID = userID
 	s.authenticated = true
 	s.logger.Debug("pop3: auth succeeded", "username", s.username, "user_id", userID)

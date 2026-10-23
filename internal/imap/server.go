@@ -12,7 +12,6 @@ import (
 	"github.com/emersion/go-imap/v2/imapserver"
 	"golang.org/x/net/netutil"
 
-	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
 	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/observability"
@@ -53,7 +52,7 @@ type Server struct {
 
 // NewServer creates an IMAP server.
 func NewServer(
-	authenticator auth.Authenticator,
+	authenticator profileAuthenticator,
 	pebble *store.PebbleStore,
 	blobs *store.BlobStore,
 	mailboxes *store.MailboxStore,

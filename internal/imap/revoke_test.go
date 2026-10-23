@@ -363,3 +363,11 @@ func TestRevokedIMAPIdleEntryCheckIsPrompt(t *testing.T) {
 		t.Fatal("IDLE after revocation did not end promptly")
 	}
 }
+
+func (e errState) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+	id, err := e.Authenticate(username, password)
+	if err != nil {
+		return "", nil, err
+	}
+	return id, &bongov1.UserProfile{}, nil
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapclient"
 
 	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 const (
@@ -503,4 +504,12 @@ func TestIdleDeliveredExistsIsNotRepeatedByPoll(t *testing.T) {
 		t.Errorf("NOOP after an IDLE-delivered EXISTS re-sent EXISTS %v; the client "+
 			"reads that as further new mail", got)
 	}
+}
+
+func (a stubAuthenticator) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+	id, err := a.Authenticate(username, password)
+	if err != nil {
+		return "", nil, err
+	}
+	return id, &bongov1.UserProfile{}, nil
 }

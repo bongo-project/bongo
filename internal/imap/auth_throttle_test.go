@@ -10,6 +10,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // perUserAuth succeeds only for the accounts in ok.
@@ -22,7 +23,7 @@ func (p *perUserAuth) Authenticate(username, _ string) (string, error) {
 	return "", auth.ErrBadCredentials
 }
 
-func newThrottleSession(a auth.Authenticator, lim *authlimit.Limiter, ip string) *session {
+func newThrottleSession(a profileAuthenticator, lim *authlimit.Limiter, ip string) *session {
 	return &session{
 		auth:        a,
 		authLimiter: lim,
@@ -72,4 +73,12 @@ func TestLoginOwnSuccessForgivesOwnFailures(t *testing.T) {
 	if lim.Blocked(ip) {
 		t.Fatal("own failures should be forgiven; IP must not be blocked")
 	}
+}
+
+func (p *perUserAuth) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+	id, err := p.Authenticate(username, password)
+	if err != nil {
+		return "", nil, err
+	}
+	return id, &bongov1.UserProfile{}, nil
 }
