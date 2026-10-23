@@ -20,6 +20,7 @@ import (
 	bongomail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/pipeline"
+	"github.com/bongo-project/bongo/internal/srs"
 	"github.com/bongo-project/bongo/internal/store"
 )
 
@@ -67,6 +68,19 @@ type SenderAuthorizer interface {
 	CanSendAs(userID, addr string) (bool, error)
 }
 
+// SRSCodec rewrites a forward's envelope sender and reverses a bounce's
+// recipient. It is satisfied by *srs.Codec.
+type SRSCodec interface {
+	Forward(sender, fwdDomain string) (string, error)
+	Reverse(rcpt string) (string, error)
+}
+
+// UserDomainLookup returns the domain of a user's primary address, the domain
+// their forwards are sent from. An error or an empty domain means unknown.
+type UserDomainLookup interface {
+	UserDomain(userID string) (string, error)
+}
+
 // DeliverProcessor is the final pipeline stage. It receives a fully-scored
 // QueueEnvelope (with blob already written to the blob store), parses the raw
 // message from the io.Reader, constructs a MailMeta protobuf for each
@@ -88,6 +102,18 @@ type DeliverProcessor struct {
 	// authorizer decides whether a forward of locally authored mail may be
 	// DKIM-signed. Nil means every forward stays unsigned (fail closed).
 	authorizer SenderAuthorizer
+
+	// srs and userDomains rewrite the envelope sender of forwards and reverse
+	// bounces addressed to an SRS address. Nil srs leaves forwards untouched
+	// (fail safe: the original behaviour) and drops mail to SRS addresses on
+	// hosted domains rather than resolving them.
+	srs         SRSCodec
+	userDomains UserDomainLookup
+
+	// srsAddrLimiter and srsGlobalLimiter cap reversed bounces per original
+	// address and per node. Nil means unlimited.
+	srsAddrLimiter   ForwardLimiter
+	srsGlobalLimiter ForwardLimiter
 
 	// blobs and dedupMinSize enable attachment deduplication: when set,
 	// inbound messages with an attachment part whose encoded body is >=
@@ -175,6 +201,30 @@ func (p *DeliverProcessor) SenderAuthorizer() SenderAuthorizer { return p.author
 // SetHostedDomains sets the check for locally hosted domains; forward targets
 // on them need no verification.
 func (p *DeliverProcessor) SetHostedDomains(c HostedDomainChecker) { p.hostedDomain = c }
+
+// SetSRS sets the codec used to rewrite forward senders and reverse bounces.
+func (p *DeliverProcessor) SetSRS(c SRSCodec) { p.srs = c }
+
+// SRSEnabled reports whether forward senders are rewritten and SRS bounces
+// reversed.
+func (p *DeliverProcessor) SRSEnabled() bool { return p.srs != nil && p.userDomains != nil }
+
+// SetSRSBounceLimiters caps reversed SRS bounces: perAddress is keyed by the
+// reversed (original) address, global covers the whole node. Either may be nil.
+// A bounce over a limit is dropped, not queued for later.
+func (p *DeliverProcessor) SetSRSBounceLimiters(perAddress, global ForwardLimiter) {
+	p.srsAddrLimiter = perAddress
+	p.srsGlobalLimiter = global
+}
+
+// SRSBounceLimiters returns the per-address and node limiters set by
+// SetSRSBounceLimiters, for wiring tests.
+func (p *DeliverProcessor) SRSBounceLimiters() (perAddress, global ForwardLimiter) {
+	return p.srsAddrLimiter, p.srsGlobalLimiter
+}
+
+// SetUserDomains sets the lookup of the forwarding user's domain for SRS.
+func (p *DeliverProcessor) SetUserDomains(l UserDomainLookup) { p.userDomains = l }
 
 // SetForwardLimiter sets the per-user forward rate limiter.
 func (p *DeliverProcessor) SetForwardLimiter(l ForwardLimiter) { p.fwdLimiter = l }
@@ -444,7 +494,15 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	// Deliver to each recipient. Check account-level forwarding preferences.
 	stepStart = time.Now()
+	reversed := make(map[string]struct{})
 	for _, rcpt := range env.Recipients {
+		// An SRS address on a hosted domain is never resolved: no user owns it,
+		// and resolving would hand a bounce to a catch-all owner. It arrives
+		// here without passing SMTP RCPT (our own DSNs, agent-role deposits).
+		if p.isHostedSRS(rcpt) {
+			p.relaySRSBounce(env, gate, rcpt, reversed)
+			continue
+		}
 		rcptStart := time.Now()
 		userID, err := p.resolver.ResolveRecipient(rcpt)
 		tResolve += mark(rcptStart)
@@ -575,8 +633,15 @@ type forwardGate struct {
 	blocked string // message-level reason no forward may be sent; empty if none
 	hops    *bool  // lazily computed: only messages that forward pay for the scan
 	decided map[string]bool
-	// approved lists the targets to forward to, in decision order.
-	approved []string
+	// approved lists the forwards to send, in decision order.
+	approved []approvedForward
+}
+
+// approvedForward is a forward that passed the gate and the user whose rule or
+// preference caused it, whose domain it is sent from.
+type approvedForward struct {
+	userID string
+	target string
 }
 
 func (p *DeliverProcessor) newForwardGate(env *bongov1.QueueEnvelope, raw []byte, spamScore, spamTag float32) *forwardGate {
@@ -647,7 +712,7 @@ func (g *forwardGate) permit(userID, target string) bool {
 			"id", g.env.Id, "user", userID, "forward_to", target, "reason", reason)
 		return false
 	}
-	g.approved = append(g.approved, target)
+	g.approved = append(g.approved, approvedForward{userID: userID, target: target})
 	return true
 }
 
@@ -668,11 +733,7 @@ func (g *forwardGate) deny(userID, target string) string {
 	// Each inbound pass through the MX adds a Received header, so a message
 	// caught in a forward loop accumulates hops; past the ceiling forwarding
 	// is suppressed to break the loop.
-	if g.hops == nil {
-		over := countReceivedHeaders(g.raw) > maxForwardHops
-		g.hops = &over
-	}
-	if *g.hops {
+	if g.hopLimitExceeded() {
 		return "hop limit exceeded"
 	}
 	if len(p.forwardTargets([]string{target}, g.env.Recipients)) == 0 {
@@ -698,6 +759,16 @@ func (g *forwardGate) deny(userID, target string) string {
 	return ""
 }
 
+// hopLimitExceeded reports whether the message carries more Received headers
+// than maxForwardHops, computed once.
+func (g *forwardGate) hopLimitExceeded() bool {
+	if g.hops == nil {
+		over := countReceivedHeaders(g.raw) > maxForwardHops
+		g.hops = &over
+	}
+	return *g.hops
+}
+
 // isHostedAddress reports whether address is delivered locally: its domain is
 // hosted here and it resolves to a local user. Resolving alone is not enough,
 // because a verified send-as identity on an external domain resolves to its
@@ -717,40 +788,183 @@ func (p *DeliverProcessor) isHostedAddress(address string) bool {
 // enqueueForwards relays one copy of the message to every approved target. It
 // is the only place a forward is queued; callers must have passed each target
 // through forwardGate.permit first.
-func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byte, approved []string) {
+//
+// A FORWARD of mail with a sender leaves with an SRS envelope sender on the
+// forwarding user's domain, so the next hop's SPF check passes for that domain
+// instead of failing for the original author's. Targets are grouped by that
+// domain, one queued message per group. The null sender (a bounce) and LOCAL
+// forwards keep the original sender, as do forwards whose user's domain is
+// unknown or not hosted here.
+func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byte, approved []approvedForward) {
 	if len(approved) == 0 || p.queuer == nil {
 		return
 	}
-	targets := p.forwardTargets(approved, env.Recipients)
-	if len(targets) == 0 {
-		return
-	}
-	// The original MAIL FROM is kept. A FORWARD copy is relayed byte for
-	// byte and never re-signed, so DMARC survives only through the original
-	// author's DKIM-Signature. A LOCAL copy (see forwardOrigin) is signed with
-	// the From domain's key; its MAIL FROM was already checked against
-	// send-as at submission, and is on a hosted domain for hosted authors.
+	// The original MAIL FROM is kept unless SRS applies. A FORWARD copy is
+	// relayed byte for byte and never re-signed, so DMARC survives only through
+	// the original author's DKIM-Signature. A LOCAL copy (see forwardOrigin) is
+	// signed with the From domain's key; its MAIL FROM was already checked
+	// against send-as at submission, and is on a hosted domain for hosted
+	// authors.
 	origin := p.forwardOrigin(env, raw)
-	fwdMsg := &bongov1.OutboundMessage{
-		Id:          uuid.New().String(),
-		SenderEmail: env.Sender,
-		Recipients:  targets,
-		BlobHash:    env.BlobHash,
-		Origin:      origin,
+	rewrite := p.srs != nil && origin == bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD &&
+		strings.TrimSpace(env.Sender) != ""
+
+	type group struct {
+		sender  string
+		targets []string
 	}
-	if err := p.queuer.Enqueue(fwdMsg); err != nil {
-		p.logger.Warn("deliver: failed to enqueue forwarded message",
+	var groups []*group
+	byDomain := make(map[string]*group)
+	domains := make(map[string]string) // userID -> forwarding domain ("" = none)
+	for _, a := range approved {
+		domain := ""
+		if rewrite {
+			d, seen := domains[a.userID]
+			if !seen {
+				d = p.forwardingDomain(env, a.userID)
+				domains[a.userID] = d
+			}
+			domain = d
+		}
+		g := byDomain[domain]
+		if g == nil {
+			g = &group{sender: env.Sender}
+			if domain != "" {
+				sender, err := p.srs.Forward(env.Sender, domain)
+				if err != nil {
+					p.logger.Warn("deliver: cannot rewrite forward sender, keeping original",
+						"id", env.Id, "domain", domain, "error", err)
+				} else {
+					g.sender = sender
+				}
+			}
+			byDomain[domain] = g
+			groups = append(groups, g)
+		}
+		g.targets = append(g.targets, a.target)
+	}
+
+	for _, g := range groups {
+		targets := p.forwardTargets(g.targets, env.Recipients)
+		if len(targets) == 0 {
+			continue
+		}
+		fwdMsg := &bongov1.OutboundMessage{
+			Id:          uuid.New().String(),
+			SenderEmail: g.sender,
+			Recipients:  targets,
+			BlobHash:    env.BlobHash,
+			Origin:      origin,
+		}
+		if err := p.queuer.Enqueue(fwdMsg); err != nil {
+			p.logger.Warn("deliver: failed to enqueue forwarded message",
+				"id", env.Id,
+				"forward_to", targets,
+				"error", err,
+			)
+			continue
+		}
+		p.logger.Info("deliver: forwarded message enqueued",
 			"id", env.Id,
 			"forward_to", targets,
-			"error", err,
+			"origin", origin.String(),
+			"srs", g.sender != env.Sender,
 		)
+	}
+}
+
+// forwardingDomain returns the hosted domain userID's forwards are sent from,
+// or "" when it cannot be established. It never invents a domain: an unknown
+// or unhosted one leaves the forward with its original sender (and failing SPF
+// at the next hop), which is logged so an operator can see it.
+func (p *DeliverProcessor) forwardingDomain(env *bongov1.QueueEnvelope, userID string) string {
+	if p.userDomains == nil || p.hostedDomain == nil {
+		return ""
+	}
+	domain, err := p.userDomains.UserDomain(userID)
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if err != nil || domain == "" || !p.hostedDomain(domain) {
+		p.logger.Warn("deliver: forwarding domain unknown or not hosted, forwarding without SRS",
+			"id", env.Id, "user", userID, "error", err)
+		return ""
+	}
+	return domain
+}
+
+// isHostedSRS reports whether rcpt is an SRS0/SRS1 address on a hosted domain.
+func (p *DeliverProcessor) isHostedSRS(rcpt string) bool {
+	if p.hostedDomain == nil {
+		return false
+	}
+	rcpt = strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(rcpt), "<"), ">")
+	at := strings.LastIndexByte(rcpt, '@')
+	if at <= 0 || !srs.IsSRS(rcpt[:at]) {
+		return false
+	}
+	return p.hostedDomain(strings.ToLower(rcpt[at+1:]))
+}
+
+// relaySRSBounce reverses a bounce addressed to an SRS address and relays it to
+// the original sender. Only null-sender mail is accepted, so SRS addresses
+// cannot be used to relay arbitrary mail; spam and looping mail is dropped. A
+// refusal here is silent to the sender (the message was already accepted) and
+// logged without the address.
+func (p *DeliverProcessor) relaySRSBounce(env *bongov1.QueueEnvelope, gate *forwardGate, rcpt string, done map[string]struct{}) {
+	drop := func(reason string) {
+		p.logger.Warn("deliver: dropping mail to SRS address", "id", env.Id, "reason", reason)
+	}
+	switch {
+	case p.srs == nil:
+		drop("srs not configured")
+		return
+	case strings.TrimSpace(env.Sender) != "":
+		drop("sender is not null")
+		return
+	case gate.blocked != "":
+		drop(gate.blocked)
+		return
+	case p.queuer == nil:
+		drop("no outbound queue")
+		return
+	case gate.hopLimitExceeded():
+		drop("hop limit exceeded")
 		return
 	}
-	p.logger.Info("deliver: forwarded message enqueued",
-		"id", env.Id,
-		"forward_to", targets,
-		"origin", origin.String(),
-	)
+	orig, err := p.srs.Reverse(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(rcpt), "<"), ">"))
+	if err != nil {
+		drop("verification failed")
+		return
+	}
+	if _, dup := done[orig]; dup {
+		return
+	}
+	done[orig] = struct{}{}
+	// Anyone holding a valid SRS address can send null-sender mail to it for the
+	// whole validity window, and each such message is relayed from this host
+	// unsigned. Bounces are best effort, so over the limit it is dropped. Only
+	// the domain is logged, never the address or the SRS hash.
+	if p.srsAddrLimiter != nil && !p.srsAddrLimiter.Allow("srs:"+strings.ToLower(orig)) {
+		p.logger.Warn("deliver: dropping SRS bounce, per-address limit reached",
+			"id", env.Id, "domain", addressDomain(orig))
+		return
+	}
+	if p.srsGlobalLimiter != nil && !p.srsGlobalLimiter.Allow("srs:global") {
+		p.logger.Warn("deliver: dropping SRS bounce, node limit reached",
+			"id", env.Id, "domain", addressDomain(orig))
+		return
+	}
+	err = p.queuer.Enqueue(&bongov1.OutboundMessage{
+		Id:          uuid.New().String(),
+		SenderEmail: "",
+		Recipients:  []string{orig},
+		BlobHash:    env.BlobHash,
+		Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD,
+	})
+	if err != nil {
+		p.logger.Warn("deliver: failed to enqueue reversed bounce", "id", env.Id, "error", err)
+		return
+	}
+	p.logger.Info("deliver: bounce reversed through SRS and enqueued", "id", env.Id)
 }
 
 // forwardOrigin returns LOCAL (the queue worker DKIM-signs it) only for mail
@@ -843,4 +1057,14 @@ func (p *DeliverProcessor) forwardTargets(addresses, recipients []string) []stri
 		out = append(out, addr)
 	}
 	return out
+}
+
+// addressDomain returns the lower-cased part of addr after the last "@", or ""
+// when there is none. Used so logs identify a destination without its mailbox.
+func addressDomain(addr string) string {
+	at := strings.LastIndexByte(addr, '@')
+	if at < 0 {
+		return ""
+	}
+	return strings.ToLower(addr[at+1:])
 }

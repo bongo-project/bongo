@@ -27,6 +27,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/observability"
+	"github.com/bongo-project/bongo/internal/srs"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -58,6 +59,8 @@ type Backend struct {
 	quotaChecker QuotaChecker
 	relayQueue   RelayQueuer
 	senderPolicy SenderPolicy
+	srs          SRSVerifier
+	hostedDomain func(domain string) bool
 	subPort      int
 	logger       *slog.Logger
 
@@ -112,6 +115,23 @@ func (b *Backend) SetSPFChecker(checker *mail.SPFChecker) {
 // mail only for local recipients unless the session is authenticated).
 func (b *Backend) SetResolver(r RecipientResolver) {
 	b.resolver = r
+}
+
+// SRSVerifier reverses an SRS address issued by this server. An error means
+// the address is not valid (bad MAC, expired or malformed); satisfied by
+// *srs.Codec.
+type SRSVerifier interface {
+	Reverse(rcpt string) (string, error)
+}
+
+// SetSRS enables RCPT handling of SRS0/SRS1 addresses on hosted domains: they
+// are accepted only for a null MAIL FROM and only when Reverse verifies them,
+// and are otherwise refused like an unavailable mailbox. hosted reports whether
+// this server hosts a domain. Without it SRS addresses take the ordinary
+// resolver path.
+func (b *Backend) SetSRS(v SRSVerifier, hosted func(domain string) bool) {
+	b.srs = v
+	b.hostedDomain = hosted
 }
 
 // SenderPolicy decides which From addresses an authenticated submission user
@@ -471,6 +491,15 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		return nil
 	}
 
+	// SRS addresses belong to no user. They are checked before resolution so
+	// they never reach the domain catch-all, and for authenticated submission
+	// too, or the relay branch below would send them out to our own MX. Every
+	// refusal is the same 550 as an unavailable mailbox: no oracle beyond
+	// accept or refuse.
+	if handled, err := s.rcptSRS(to); handled {
+		return err
+	}
+
 	userID, resolveErr := s.backend.resolver.ResolveRecipient(to)
 	if resolveErr == nil {
 		// Storage quota check: reject permanently if the recipient's owning
@@ -517,6 +546,29 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	s.externalRcpts = append(s.externalRcpts, to)
 	s.logger.Debug("smtp: RCPT TO (relay)", "to", to)
 	return nil
+}
+
+// rcptSRS handles a recipient that is an SRS address on a hosted domain. It
+// reports handled=false for any other address.
+func (s *Session) rcptSRS(to string) (handled bool, err error) {
+	b := s.backend
+	if b.srs == nil || b.hostedDomain == nil {
+		return false, nil
+	}
+	addr := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(to), "<"), ">")
+	at := strings.LastIndexByte(addr, '@')
+	if at <= 0 || !srs.IsSRS(addr[:at]) || !b.hostedDomain(strings.ToLower(addr[at+1:])) {
+		return false, nil
+	}
+	if s.from == "" {
+		if _, verr := b.srs.Reverse(addr); verr == nil {
+			s.localRcpts = append(s.localRcpts, to)
+			s.logger.Debug("smtp: RCPT TO (SRS bounce)")
+			return true, nil
+		}
+	}
+	s.logger.Warn("smtp: RCPT rejected: SRS address not accepted", "null_sender", s.from == "")
+	return true, &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: "Mailbox unavailable"}
 }
 
 // inboundMeta builds the InboundMeta for the message currently being

@@ -55,6 +55,7 @@ import (
 	"github.com/bongo-project/bongo/internal/rules"
 	"github.com/bongo-project/bongo/internal/security"
 	bongosmtp "github.com/bongo-project/bongo/internal/smtp"
+	"github.com/bongo-project/bongo/internal/srs"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/handlers"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -164,7 +165,11 @@ type Agent struct {
 	// deliver stage forwards only to targets recorded here (or hosted ones).
 	ForwardTargets *store.ForwardTargetStore
 	SPFChecker     *mail.SPFChecker
-	BounceGen      *mail.BounceGenerator
+	// SRS rewrites forward senders and reverses their bounces. It is keyed from
+	// the effective session secret (the generated one in dev mode, never the
+	// possibly empty configured value), so it is nil until Run has resolved it.
+	SRS       *srs.Codec
+	BounceGen *mail.BounceGenerator
 
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
@@ -541,6 +546,16 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 	}
 	deliverProc.SetForwardLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardMaxPerHour))
 	deliverProc.SetHostedDomains(a.domainHosted)
+	// SRS: forwards of external mail leave with a sender on the forwarding
+	// user's domain, and bounces to an SRS address are reversed here before any
+	// recipient resolution. Without a codec forwards keep their original sender.
+	if a.SRS != nil && a.Store != nil {
+		deliverProc.SetSRS(a.SRS)
+		deliverProc.SetUserDomains(&store.UserDomains{Pebble: a.Store})
+		deliverProc.SetSRSBounceLimiters(
+			mail.NewRateLimiter(a.Config.SMTP.SRSBouncesPerAddressPerHour),
+			mail.NewRateLimiter(a.Config.SMTP.SRSBouncesPerHour))
+	}
 	// Forwards of mail authored by a local user are DKIM-signed only when
 	// send-as allows the header From. Agent-role deposits carry no
 	// auth_user_id (the deposit listener is unauthenticated), so they stay
@@ -569,6 +584,18 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 	}
 	stages = append(stages, deliverProc)
 	return stages, deliverProc
+}
+
+// initSRS builds the SRS codec from the effective session secret. The key is
+// derived with its own purpose label and is never logged. There is no key
+// rotation: changing the secret invalidates outstanding SRS addresses, and all
+// nodes must share it or a bounce reaching another node is refused.
+func (a *Agent) initSRS(sessionSecret []byte) {
+	if len(sessionSecret) == 0 {
+		a.SRS = nil
+		return
+	}
+	a.SRS = srs.New(security.DeriveKey(sessionSecret, srs.KeyPurpose), a.Config.SMTP.SRSMaxAgeDays)
 }
 
 // validateSessionSecret applies the session-secret rules shared by startup
@@ -701,6 +728,9 @@ func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *st
 	// Uses the same shared resolver as the pipeline so RCPT accept and
 	// deliver-stage resolution are always consistent.
 	backend.SetResolver(resolver)
+	if a.SRS != nil {
+		backend.SetSRS(a.SRS, a.domainHosted)
+	}
 
 	// Send-as policy for authenticated submission: the envelope sender and the
 	// header From must be addresses the user may send as, the same rule as
@@ -811,6 +841,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		a.logger.Info("web: auto-generated session secret for dev mode")
 	}
+	a.initSRS(sessionSecret)
 
 	// The outbound queue store and rate limiter must exist before any HTTP
 	// handlers are registered: compose and admin handlers capture them by

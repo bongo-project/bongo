@@ -109,6 +109,12 @@ message from a `tenant.com` account to an external provider (Gmail is convenient
 `pass` aligned to `tenant.com`, and DMARC `pass`. The Manage page's status checks
 should show all four rows Valid.
 
+Forwarding: mail a user forwards (account forward address or a rule) leaves with an SRS
+envelope sender on that user's own domain, so SPF at the next hop checks `tenant.com`, not
+the original author's domain. `tenant.com`'s SPF record must therefore include this host.
+A user whose profile address is not on a hosted domain keeps the original sender, and the
+forward fails SPF at the next hop.
+
 ## 6. Set a catch-all (optional)
 
 **Catch-All** routes any mail to an unrecognised address in the domain to one
