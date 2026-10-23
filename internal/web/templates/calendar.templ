@@ -254,6 +254,9 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 							<option value="FREQ=WEEKLY" if eventRrule(event) == "FREQ=WEEKLY" { selected }>{ t(ctx, "calendar.repeatWeekly") }</option>
 							<option value="FREQ=MONTHLY" if eventRrule(event) == "FREQ=MONTHLY" { selected }>{ t(ctx, "calendar.repeatMonthly") }</option>
 							<option value="FREQ=YEARLY" if eventRrule(event) == "FREQ=YEARLY" { selected }>{ t(ctx, "calendar.repeatYearly") }</option>
+							if isCustomRrule(eventRrule(event)) {
+								<option value={ eventRrule(event) } selected>{ t(ctx, "calendar.repeatCustom") }</option>
+							}
 						</select>
 					</label>
 					<label>
@@ -900,6 +903,16 @@ func parseHexColour(hex string) (int, int, int, bool) {
 		return 0, 0, 0, false
 	}
 	return r, g, b, true
+}
+
+// isCustomRrule reports whether a stored rule is not one of the form presets,
+// so the select can offer it and round-trip it unchanged.
+func isCustomRrule(r string) bool {
+	switch r {
+	case "", "FREQ=DAILY", "FREQ=WEEKLY", "FREQ=MONTHLY", "FREQ=YEARLY":
+		return false
+	}
+	return true
 }
 
 func eventRrule(e *bongov1.Event) string {

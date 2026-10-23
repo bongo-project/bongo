@@ -442,6 +442,7 @@
   "calendar.repeatWeekly": "Weekly",
   "calendar.repeatMonthly": "Monthly",
   "calendar.repeatYearly": "Yearly",
+  "calendar.repeatCustom": "Custom (keep existing)",
   "calendar.reminder5": "5 min before",
   "calendar.reminder10": "10 min before",
   "calendar.reminder15": "15 min before",
