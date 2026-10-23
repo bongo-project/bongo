@@ -41,6 +41,11 @@ type PendingData struct {
 	Remember bool   `json:"rem,omitempty"`
 	IsAdmin  bool   `json:"adm,omitempty"`
 	Exp      int64  `json:"exp"`
+	// Epoch is the account's credential fingerprint (security.SessionEpoch)
+	// when the password step passed. The 2FA step refuses the cookie if the
+	// account has changed since, so a password reset ends a login in flight.
+	// Empty for cookies issued before this field existed (not checked).
+	Epoch string `json:"ep,omitempty"`
 }
 
 // SessionData represents the signed session cookie payload.
@@ -306,13 +311,14 @@ func VerifyValue(secret []byte, purpose, value string) ([]byte, error) {
 }
 
 // CreatePendingCookie creates a short-lived signed cookie indicating that 2FA is required.
-func CreatePendingCookie(secret []byte, userID, email string, remember, isAdmin, secure bool) *http.Cookie {
+func CreatePendingCookie(secret []byte, userID, email string, remember, isAdmin, secure bool, epoch string) *http.Cookie {
 	data := PendingData{
 		UserID:   userID,
 		Email:    email,
 		Remember: remember,
 		IsAdmin:  isAdmin,
 		Exp:      time.Now().Add(pendingCookieTTL).Unix(),
+		Epoch:    epoch,
 	}
 
 	payload, _ := json.Marshal(data)

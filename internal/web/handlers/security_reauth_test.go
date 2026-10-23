@@ -300,7 +300,7 @@ func TestReauthRecoveryCodeConsumed(t *testing.T) {
 // (c) A code consumed by one path is refused by every other path.
 func TestTOTPReplay(t *testing.T) {
 	login := func(env *reauthEnv, code string) *httptest.ResponseRecorder {
-		pending := middleware.CreatePendingCookie(throttleSessionSecret, reauthUserID, reauthEmail, false, false, false)
+		pending := middleware.CreatePendingCookie(throttleSessionSecret, reauthUserID, reauthEmail, false, false, false, "")
 		mux := http.NewServeMux()
 		mux.HandleFunc("POST /login/2fa", env.authH.TwoFactorVerify)
 		return postForm(mux, "/login/2fa", url.Values{"code": {code}}, pending)
@@ -557,7 +557,7 @@ func TestConfirmTOTPRecordsSetupStep(t *testing.T) {
 		t.Fatalf("setup not recorded: enabled=%v step=%d", p.TotpEnabled, p.TotpLastStep)
 	}
 
-	pending := middleware.CreatePendingCookie(throttleSessionSecret, reauthUserID, reauthEmail, false, false, false)
+	pending := middleware.CreatePendingCookie(throttleSessionSecret, reauthUserID, reauthEmail, false, false, false, "")
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /login/2fa", env.authH.TwoFactorVerify)
 	rr := postForm(mux, "/login/2fa", url.Values{"code": {code}}, pending)
@@ -613,7 +613,7 @@ func TestTOTPLoginDoubleSubmitOneWins(t *testing.T) {
 		var mu sync.Mutex
 		wins := 0
 		for range 8 {
-			pending := middleware.CreatePendingCookie(throttleSessionSecret, reauthUserID, reauthEmail, false, false, false)
+			pending := middleware.CreatePendingCookie(throttleSessionSecret, reauthUserID, reauthEmail, false, false, false, "")
 			wg.Add(1)
 			go func() {
 				defer wg.Done()

@@ -407,8 +407,9 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Best-effort domain quota (usage is a periodic recompute): refuse a new
-	// event for a user already at or over quota.
-	if quotaExceeded(h.quota, nil, userID, 0) {
+	// event that would not fit. The estimate is the stored record size, the
+	// same quantity the usage recompute counts.
+	if quotaExceeded(h.quota, nil, userID, store.EventRecordSize(event)) {
 		refuseQuota(w, r)
 		return
 	}
@@ -465,7 +466,7 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	updated.CreatedAt = existing.CreatedAt
 	updated.Guid = existing.Guid
 	updated.UpdatedAt = existing.UpdatedAt
-	if proto.Size(updated) > proto.Size(existing) && quotaExceeded(h.quota, nil, userID, 0) {
+	if growth := int64(proto.Size(updated) - proto.Size(existing)); growth > 0 && quotaExceeded(h.quota, nil, userID, growth) {
 		refuseQuota(w, r)
 		return
 	}
@@ -591,7 +592,9 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	defer file.Close()
 
 	// All or nothing, best effort: refuse the whole upload up front when it
-	// would not fit, rather than importing part of it.
+	// would not fit, rather than importing part of it. The upload size is an
+	// approximation: the stored size is roughly the raw bytes plus the copied
+	// fields.
 	if quotaExceeded(h.quota, nil, userID, hdr.Size) {
 		refuseQuotaFlash(w, r, "/calendar")
 		return

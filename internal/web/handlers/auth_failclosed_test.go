@@ -102,7 +102,7 @@ func TestTwoFactorVerifySessionHasEpochDespiteLaterReadFailure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env := newReauthEnv(t, true, 50)
 			env.authH.SetProfileLoader(&failAfterFirst{inner: env.store})
-			pending := middleware.CreatePendingCookie(throttleSessionSecret, reauthUserID, reauthEmail, false, false, false)
+			pending := middleware.CreatePendingCookie(throttleSessionSecret, reauthUserID, reauthEmail, false, false, false, "")
 			mux := http.NewServeMux()
 			mux.HandleFunc("POST /login/2fa", env.authH.TwoFactorVerify)
 			rr := postForm(mux, "/login/2fa", url.Values{"code": {tt.code(env, t)}}, pending)
