@@ -150,7 +150,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// If TOTP is enabled, issue a short-lived pending cookie and redirect to 2FA page.
 	if totpEnabled {
-		cookie := middleware.CreatePendingCookie(h.sessionSecret, userID, canonical, remember, isAdmin, h.tlsEnabled)
+		cookie := middleware.CreatePendingCookie(h.sessionSecret, userID, canonical, remember, isAdmin, h.tlsEnabled, epoch)
 		http.SetCookie(w, cookie)
 		http.Redirect(w, r, "/login/2fa", http.StatusSeeOther)
 		return
@@ -196,6 +196,20 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.recordFailure(ip, pending.Email)
 		http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
+		return
+	}
+
+	// The pending cookie is only good for the credential state it was issued
+	// against. After a password reset, 2FA reset or logout elsewhere the
+	// account epoch differs, and finishing here would mint a fresh session
+	// against the new credentials. Checked before consumeSecondFactor so the
+	// refusal does not burn a TOTP step, and not counted as a failure. The
+	// epoch includes SessionGeneration, so a logout on another device during
+	// 2FA entry also sends the user back to /login; that is harmless. Cookies
+	// without an epoch (issued before the field existed) are accepted.
+	if pending.Epoch != "" && pending.Epoch != security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration) {
+		http.SetCookie(w, middleware.ClearPendingCookie())
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
