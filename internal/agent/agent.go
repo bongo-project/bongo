@@ -2732,10 +2732,12 @@ func (a *Agent) recomputeDomainUsage() {
 
 // computeAndWriteDomainUsage scans the /user/{id}/mail/{guid} MailMeta keys in
 // pebble and sums raw_message.size per primary domain (derived from the owner's
-// /user/{id}/profile). It also adds len(ical_raw) for /user/{id}/event/{guid}
-// and len(vcard_raw) for /user/{id}/contact/{guid}: those live inline in Pebble
-// rather than as blobs, and CalDAV/CardDAV PUT is quota-gated, so they must
-// count. The per-domain totals are written via quotaStore.SetUsage.
+// /user/{id}/profile). It also adds the stored (marshalled) size of each
+// /user/{id}/event/{guid} and /user/{id}/contact/{guid} record: those live
+// inline in Pebble rather than as blobs, and web, CalDAV and CardDAV writes are
+// quota-gated, so they must count. Stored size, not ical_raw/vcard_raw, because
+// web-form records have no raw field. The per-domain totals are written via
+// quotaStore.SetUsage.
 //
 // IMAP COPY/MOVE add a MailboxMessage, not a MailMeta, so they are not counted.
 //
@@ -2806,18 +2808,11 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 			if meta.RawMessage != nil {
 				domainBytes[domain] += meta.RawMessage.Size
 			}
-		case "event":
-			var ev bongov1.Event
-			if uErr := proto.Unmarshal(val, &ev); uErr != nil {
-				continue
-			}
-			domainBytes[domain] += int64(len(ev.IcalRaw))
-		case "contact":
-			var c bongov1.Contact
-			if uErr := proto.Unmarshal(val, &c); uErr != nil {
-				continue
-			}
-			domainBytes[domain] += int64(len(c.VcardRaw))
+		case "event", "contact":
+			// Events and contacts live inline in Pebble and carry no blobs, so
+			// their stored size is the marshalled record. Counting the raw
+			// iCal/vCard alone would score a web-form record (no raw) as zero.
+			domainBytes[domain] += int64(len(val))
 		}
 	}
 	iter.Close()

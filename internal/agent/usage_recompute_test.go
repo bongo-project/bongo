@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -193,6 +194,7 @@ func TestComputeAndWriteDomainUsage_CountsEventsAndContacts(t *testing.T) {
 	writeRecomputeProfile(t, ps, "u2", "bob@other.com")
 
 	writeMailMeta(t, ps, "u1", "m1", 1000)
+	stored := map[string]int64{}
 	for key, msg := range map[string]proto.Message{
 		"/user/u1/event/e1":   &bongov1.Event{Guid: "e1", IcalRaw: make([]byte, 317)},
 		"/user/u1/event/e2":   &bongov1.Event{Guid: "e2", IcalRaw: make([]byte, 41)},
@@ -206,15 +208,74 @@ func TestComputeAndWriteDomainUsage_CountsEventsAndContacts(t *testing.T) {
 		if err := ps.Set([]byte(key), b); err != nil {
 			t.Fatalf("set %s: %v", key, err)
 		}
+		stored[key] = int64(len(b))
 	}
 
 	computeAndWriteDomainUsage(ps, dqs, testLogger())
 
-	if got, _ := dqs.GetUsage("example.com"); got != 1000+317+41+203 {
-		t.Errorf("example.com usage = %d, want %d", got, 1000+317+41+203)
+	// Events and contacts count as their stored (marshalled) size; mail counts
+	// once as raw_message.size.
+	want := 1000 + stored["/user/u1/event/e1"] + stored["/user/u1/event/e2"] + stored["/user/u1/contact/c1"]
+	if got, _ := dqs.GetUsage("example.com"); got != want {
+		t.Errorf("example.com usage = %d, want %d", got, want)
 	}
-	if got, _ := dqs.GetUsage("other.com"); got != 59 {
-		t.Errorf("other.com usage = %d, want 59", got)
+	if got, _ := dqs.GetUsage("other.com"); got != stored["/user/u2/contact/c2"] {
+		t.Errorf("other.com usage = %d, want %d", got, stored["/user/u2/contact/c2"])
+	}
+	if got, _ := dqs.GetUsage("other.com"); got < 59 {
+		t.Errorf("other.com usage = %d, must be at least the raw vCard size 59", got)
+	}
+}
+
+// A form-created event carries no ical_raw. It must still count its stored
+// size, otherwise a user can grow storage without bound past the quota.
+func TestComputeAndWriteDomainUsage_CountsFormEventWithoutRaw(t *testing.T) {
+	ps, dqs, applier := newRecomputeTestEnv(t)
+	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
+
+	events := store.NewEventStore(ps, applier)
+	guid, err := events.Create("u1", &bongov1.Event{
+		Title:       "Planning",
+		Description: strings.Repeat("d", 1337),
+		Location:    "Room 4",
+		StartTime:   1900000000,
+		EndTime:     1900003600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	val, err := ps.Get([]byte("/user/u1/event/" + guid))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	computeAndWriteDomainUsage(ps, dqs, testLogger())
+
+	got, _ := dqs.GetUsage("example.com")
+	if got == 0 || got != int64(len(val)) {
+		t.Errorf("usage = %d, want stored record size %d (non-zero)", got, len(val))
+	}
+}
+
+// A new record's pre-check estimate must equal what the recompute counts.
+func TestRecordSizeEstimateMatchesRecompute(t *testing.T) {
+	ps, dqs, applier := newRecomputeTestEnv(t)
+	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
+
+	ev := &bongov1.Event{Title: "t", Description: strings.Repeat("x", 977), StartTime: 1900000000}
+	ct := &bongov1.Contact{DisplayName: "Ada", Email: "ada@x.example", VcardRaw: make([]byte, 211)}
+	want := store.EventRecordSize(ev) + store.ContactRecordSize(ct)
+	if _, err := store.NewEventStore(ps, applier).Create("u1", ev); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.NewContactStore(ps, applier).Create("u1", ct); err != nil {
+		t.Fatal(err)
+	}
+
+	computeAndWriteDomainUsage(ps, dqs, testLogger())
+
+	if got, _ := dqs.GetUsage("example.com"); got != want {
+		t.Errorf("usage = %d, estimate = %d", got, want)
 	}
 }
 

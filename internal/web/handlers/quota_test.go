@@ -239,6 +239,80 @@ func TestCalendarQuota(t *testing.T) {
 		}
 	})
 
+	t.Run("create boundary uses stored record size", func(t *testing.T) {
+		form := eventForm("Lunch")
+		form.Set("description", strings.Repeat("d", 1337))
+		parsed, err := parseEventForm(formReq(http.MethodPost, "/", form))
+		if err != nil {
+			t.Fatal(err)
+		}
+		size := store.EventRecordSize(parsed)
+		if size < 1337 {
+			t.Fatalf("estimate %d smaller than the description", size)
+		}
+		for _, tc := range []struct {
+			name string
+			hr   int64
+			want int
+		}{{"exact fit allowed", size, 1}, {"one byte short refused", size - 1, 0}} {
+			t.Run(tc.name, func(t *testing.T) {
+				h, env := newHandler(t, map[string]int64{quotaUser: tc.hr})
+				w := httptest.NewRecorder()
+				h.CreateEvent(w, formReq(http.MethodPost, "/calendar/event", form))
+				if env.countEvents(t) != tc.want {
+					t.Fatalf("events=%d want %d (status %d)", env.countEvents(t), tc.want, w.Code)
+				}
+				if tc.want == 1 {
+					// The estimate must equal what was actually stored.
+					evs, _, _ := env.events.ListAll(quotaUser, 0, 0)
+					raw, err := env.ps.Get([]byte("/user/" + quotaUser + "/event/" + evs[0].Guid))
+					if err != nil || int64(len(raw)) != size {
+						t.Fatalf("stored %d bytes (err %v), estimate %d", len(raw), err, size)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("update growth delta against headroom", func(t *testing.T) {
+		seedForm := eventForm("Standup")
+		grownForm := eventForm("Standup")
+		grownForm.Set("description", strings.Repeat("g", 613))
+		seed, _ := parseEventForm(formReq(http.MethodPut, "/", seedForm))
+		grown, _ := parseEventForm(formReq(http.MethodPut, "/", grownForm))
+		delta := int64(proto.Size(grown) - proto.Size(seed))
+		if delta < 613 {
+			t.Fatalf("delta %d", delta)
+		}
+		for _, tc := range []struct {
+			name string
+			form url.Values
+			hr   int64
+			code int
+		}{
+			{"growth fits exactly", grownForm, delta, http.StatusSeeOther},
+			{"growth one byte over refused", grownForm, delta - 1, http.StatusInsufficientStorage},
+			{"shrink at zero headroom allowed", seedForm, 0, http.StatusSeeOther},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				h, env := newHandler(t, map[string]int64{quotaUser: tc.hr})
+				start := seed
+				if tc.name == "shrink at zero headroom allowed" {
+					start = grown
+				}
+				guid, err := env.events.Create(quotaUser, start)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w := httptest.NewRecorder()
+				h.UpdateEvent(w, withGUID(formReq(http.MethodPut, "/calendar/event/"+guid, tc.form), guid))
+				if w.Code != tc.code {
+					t.Fatalf("status=%d want %d", w.Code, tc.code)
+				}
+			})
+		}
+	})
+
 	t.Run("import", func(t *testing.T) {
 		for _, tc := range []struct {
 			name string
@@ -277,7 +351,7 @@ func TestCalendarQuota(t *testing.T) {
 		}{
 			{"same size allowed", "Standup", "Standup", http.StatusSeeOther},
 			{"shrink allowed", "Stand", "Stand", http.StatusSeeOther},
-			{"grows by exactly one byte refused", "Standupx", "Standup", http.StatusInsufficientStorage},
+			{"grows by a few bytes refused", "Standupx", "Standup", http.StatusInsufficientStorage},
 			{"growth refused", "Standup with a much longer title", "Standup", http.StatusInsufficientStorage},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
@@ -385,11 +459,82 @@ func TestContactsQuota(t *testing.T) {
 		})
 	}
 
+	t.Run("create and quickadd boundary use stored record size", func(t *testing.T) {
+		createForm := url.Values{"display_name": {"Ada"}, "email": {"ada@x.example"}, "notes": {strings.Repeat("n", 1337)}}
+		c := &bongov1.Contact{}
+		buildVCardFromForm(c, formReq(http.MethodPost, "/", createForm))
+		createSize := store.ContactRecordSize(c)
+		q := &bongov1.Contact{DisplayName: "Q", Email: "q@x.example"}
+		syncQuickFieldsToVCard(q)
+		quickSize := store.ContactRecordSize(q)
+		for _, tc := range []struct {
+			name string
+			hr   int64
+			want int
+		}{{"exact fit allowed", 0, 1}, {"one byte short refused", -1, 0}} {
+			t.Run("create/"+tc.name, func(t *testing.T) {
+				h, env := newHandler(t, map[string]int64{quotaUser: createSize + tc.hr})
+				h.CreateContact(httptest.NewRecorder(), formReq(http.MethodPost, "/contacts", createForm))
+				if env.countContacts(t) != tc.want {
+					t.Fatalf("contacts=%d want %d", env.countContacts(t), tc.want)
+				}
+				if tc.want == 1 {
+					cs, _, _ := env.contacts.List(quotaUser, 0, 0)
+					raw, err := env.ps.Get([]byte("/user/" + quotaUser + "/contact/" + cs[0].Guid))
+					if err != nil || int64(len(raw)) != createSize {
+						t.Fatalf("stored %d bytes (err %v), estimate %d", len(raw), err, createSize)
+					}
+				}
+			})
+			t.Run("quickadd/"+tc.name, func(t *testing.T) {
+				h, env := newHandler(t, map[string]int64{quotaUser: quickSize + tc.hr})
+				h.QuickAddContact(httptest.NewRecorder(), formReq(http.MethodPost, "/contacts/quick-add", url.Values{"from_email": {"q@x.example"}, "from_name": {"Q"}}))
+				if env.countContacts(t) != tc.want {
+					t.Fatalf("contacts=%d want %d", env.countContacts(t), tc.want)
+				}
+			})
+		}
+	})
+
 	t.Run("import refused when payload does not fit", func(t *testing.T) {
 		h, env := newHandler(t, map[string]int64{quotaUser: int64(len(vcf)) - 1})
 		h.ImportContacts(httptest.NewRecorder(), uploadReq(t, "/contacts/import", "vcf", []byte(vcf), nil))
 		if env.countContacts(t) != 0 {
 			t.Fatal("payload larger than headroom must store nothing")
+		}
+	})
+
+	t.Run("update growth delta against headroom", func(t *testing.T) {
+		seedForm := url.Values{"display_name": {"Ada"}, "email": {"ada@x.example"}, "notes": {"aaaa"}}
+		growForm := url.Values{"display_name": {"Ada"}, "email": {"ada@x.example"}, "notes": {strings.Repeat("g", 613)}}
+		// Measure the delta the same way the handler does, on the stored record.
+		probe := &bongov1.Contact{}
+		buildVCardFromForm(probe, formReq(http.MethodPut, "/", seedForm))
+		before := proto.Size(probe)
+		buildVCardFromForm(probe, formReq(http.MethodPut, "/", growForm))
+		delta := int64(proto.Size(probe) - before)
+		if delta <= 0 {
+			t.Fatalf("delta=%d, want growth", delta)
+		}
+		for _, tc := range []struct {
+			name     string
+			hr       int64
+			wantCode int
+		}{{"headroom equals delta allowed", delta, http.StatusSeeOther}, {"headroom one below delta refused", delta - 1, http.StatusInsufficientStorage}} {
+			t.Run(tc.name, func(t *testing.T) {
+				h, env := newHandler(t, map[string]int64{quotaUser: tc.hr})
+				seed := &bongov1.Contact{}
+				buildVCardFromForm(seed, formReq(http.MethodPut, "/", seedForm))
+				guid, err := env.contacts.Create(quotaUser, seed)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w := httptest.NewRecorder()
+				h.UpdateContact(w, withGUID(formReq(http.MethodPut, "/contacts/"+guid, growForm), guid))
+				if w.Code != tc.wantCode {
+					t.Fatalf("status=%d want %d", w.Code, tc.wantCode)
+				}
+			})
 		}
 	})
 
@@ -401,28 +546,20 @@ func TestContactsQuota(t *testing.T) {
 		}{
 			{"same size allowed", "aaaa", http.StatusSeeOther},
 			{"shrink allowed", "a", http.StatusSeeOther},
-			{"grows by exactly one byte refused", "aaaaa", http.StatusInsufficientStorage},
+			{"grows by a few bytes refused", "aaaaa", http.StatusInsufficientStorage},
 			{"growth refused", "aaaa and then a good deal more text", http.StatusInsufficientStorage},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				h, env := newHandler(t, over)
-				seed := &bongov1.Contact{DisplayName: "Ada", Email: "ada@x.example"}
-				seed.VcardRaw = []byte("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Ada\r\nEMAIL:ada@x.example\r\nNOTE:aaaa\r\nEND:VCARD\r\n")
+				// Seed through the same builder the handler uses so the derived
+				// quick fields match and "same size" really is the same size.
+				seed := &bongov1.Contact{}
+				buildVCardFromForm(seed, formReq(http.MethodPut, "/", url.Values{"display_name": {"Ada"}, "email": {"ada@x.example"}, "notes": {"aaaa"}}))
 				guid, err := env.contacts.Create(quotaUser, seed)
 				if err != nil {
 					t.Fatal(err)
 				}
 				form := url.Values{"display_name": {"Ada"}, "email": {"ada@x.example"}, "notes": {tc.notes}}
-				if tc.notes == "aaaaa" {
-					vcfLen := func(notes string) int {
-						c := &bongov1.Contact{DisplayName: "Ada", Email: "ada@x.example", VcardRaw: seed.VcardRaw}
-						buildVCardFromForm(c, formReq(http.MethodPut, "/", url.Values{"display_name": {"Ada"}, "email": {"ada@x.example"}, "notes": {notes}}))
-						return len(c.VcardRaw)
-					}
-					if vcfLen("aaaa") != len(seed.VcardRaw) || vcfLen("aaaaa")-vcfLen("aaaa") != 1 {
-						t.Fatalf("fixture must grow the vCard by exactly 1 byte: %d, %d, seed %d", vcfLen("aaaa"), vcfLen("aaaaa"), len(seed.VcardRaw))
-					}
-				}
 				w := httptest.NewRecorder()
 				h.UpdateContact(w, withGUID(formReq(http.MethodPut, "/contacts/"+guid, form), guid))
 				if w.Code != tc.wantCode {
