@@ -158,6 +158,33 @@ smtp {
   # literal for outbound, which many strict receivers still reject.
   hostname = "mail.example.com"
 
+  # Forwarded mail (account forwarding and rule forwards) leaves with an SRS
+  # envelope sender, SRS0=...@<the forwarding user's domain>, so SPF at the next
+  # hop checks your domain rather than the original author's. The forwarding
+  # domain's SPF record must therefore include this host (it already does for
+  # outbound mail). The Return-Path of forwarded mail changes accordingly; the
+  # header From is untouched. Bounces to an SRS address are accepted only with a
+  # null MAIL FROM, only when the HMAC verifies and only within this many days
+  # (1-365; 0 means the default, 21), and are relayed to the original sender.
+  #
+  # The SRS key is derived from web.session_secret. All nodes must share it, or
+  # a bounce reaching another node is refused. Rotating the secret invalidates
+  # outstanding SRS addresses, so bounces for forwards sent within the window
+  # are lost; key rotation is not implemented. Upgrade every node before relying
+  # on SRS: a node on an older binary forwards with the original sender.
+  # srs_max_age_days = 21
+
+  # Anyone holding a valid SRS address can send null-sender mail to it for the
+  # whole window above, and each such bounce is relayed from this host unsigned.
+  # These caps bound that. srs_bounces_per_address_per_hour limits bounces to
+  # one original sender address; srs_bounces_per_hour limits all of them on this
+  # node. Both are hourly, counted in memory per node (a restart resets them, a
+  # cluster allows up to the cap on each node) and 0 disables. A bounce over a
+  # cap is dropped, not delayed: bounces are best effort, so the original sender
+  # may miss a notification during a burst.
+  # srs_bounces_per_address_per_hour = 5
+  # srs_bounces_per_hour = 200
+
   # Set true ONLY when a trusted reverse proxy (e.g. Traefik/HAProxy) sits in
   # front and sends the PROXY protocol header, so Bongo sees the real client IP.
   # Anything that judges the connecting IP depends on this being right:

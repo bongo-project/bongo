@@ -51,6 +51,25 @@ address. PROXY protocol and `X-Forwarded-*` headers are now believed only from l
 (private and loopback peers are no longer trusted implicitly). Startup fails if `proxy_protocol` is
 enabled with an empty list, and `X-Forwarded-For` is ignored until the proxy is listed.
 
+## Forwarded mail now uses SRS
+
+Mail that Bongo forwards (an account forward address or a rule's forward action) now leaves with an
+SRS envelope sender, `SRS0=...@<the forwarding user's domain>`, instead of the original author's
+address. The `Return-Path` of forwarded mail changes accordingly; the header `From` is untouched.
+SPF at the next hop therefore checks the forwarding user's domain, so that domain's SPF record must
+include this host (it already does if it can send outbound mail). Null-sender bounces and mail you
+authored and forwarded are not rewritten.
+
+Bounces for forwarded mail come back to the SRS address. They are accepted only with a null sender,
+only when the address's HMAC verifies, and only within `smtp.srs_max_age_days` (default 21), then
+relayed to the original sender. Spam-tagged bounces are dropped. Backscatter to a forged sender is
+limited by that rule but not eliminated.
+
+The SRS key is derived from `web.session_secret`. Every node must share it, or a bounce that reaches
+another node is refused. Rotating the secret invalidates outstanding SRS addresses, so bounces for
+forwards sent within the window are lost; key rotation is not implemented. Upgrade every node
+before relying on SRS: a node on an older binary still forwards with the original sender.
+
 ## What is not finished
 
 Being direct about this so you do not waste time reporting things already known:
