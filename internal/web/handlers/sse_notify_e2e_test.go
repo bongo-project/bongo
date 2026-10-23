@@ -221,3 +221,11 @@ func crossHasFlag(flags []imap.Flag, want imap.Flag) bool {
 	}
 	return false
 }
+
+func (a crossAuth) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+	id, err := a.Authenticate(username, password)
+	if err != nil {
+		return "", nil, err
+	}
+	return id, &bongov1.UserProfile{}, nil
+}

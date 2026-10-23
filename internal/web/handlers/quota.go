@@ -16,6 +16,8 @@ import (
 //
 // RecipientWouldExceedQuota(userID, 0) means "is the user's domain already at
 // or over quota"; a positive addBytes also refuses a write that would not fit.
+// Every caller passes the quantity the usage recompute counts for what it
+// stores (mail: MailMeta.RawMessage.Size).
 //
 // The check is best effort, not a hard limit. Usage is recomputed by a
 // leader-only job roughly every ten minutes, so a burst of writes between

@@ -49,60 +49,60 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 19.1 | US-001: Rate-limit calendar sharing | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.41(e). |
-| 19.2 | US-002: Create send-as address records only after verification | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.39(a). |
-| 19.3 | US-003: Account creation replaces another user's unverified claim | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B26(b). |
-| 19.4 | US-004: Revoke verified send-as identities on another account's address | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B26(c). |
-| 19.5 | US-005: Deleting an alias cannot remove an admin-added address | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B26(a). |
-| 19.6 | US-006: IMAP, POP3 and SMTP take the session epoch from the profile they verified | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
-| 19.7 | US-007: Change password checks the current password against the locked profile | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
-| 19.8 | US-008: Session checks fail closed for admin rights when the profile cannot be read | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.41(f). |
-| 19.9 | US-009: LOCAL forwards count against the author's recipient budget | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.42(b). |
-| 19.10 | US-010: Forwarding a forged sender produces no backscatter | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B27(b). |
-| 19.11 | US-011: Cap the request body on CalDAV and CardDAV | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
-| 19.12 | US-012: IMAP APPEND and SMTP RCPT weigh the message size against quota | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
-| 19.13 | US-013: Web compose weighs the message size against quota | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.41(b). |
+| 19.1 | US-001: Rate-limit calendar sharing | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 18.41(e). 20 per user per rolling hour via mail.RateLimiter (now with SetClock and RetryAfter); 429 with Retry-After; wired in Agent.Run. |
+| 19.2 | US-002: Create send-as address records only after verification | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.39(a). |
+| 19.3 | US-003: Account creation replaces another user's unverified claim | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B26(b). |
+| 19.4 | US-004: Revoke verified send-as identities on another account's address | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B26(c). |
+| 19.5 | US-005: Deleting an alias cannot remove an admin-added address | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B26(a). |
+| 19.6 | US-006: IMAP, POP3 and SMTP take the session epoch from the profile they verified | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 2026-10-23 review finding (progress.md, 18.43 entry). IMAP, POP3 and SMTP take the epoch from AuthenticateProfile; no separate AccountState call at login. |
+| 19.7 | US-007: Change password checks the current password against the locked profile | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 2026-10-23 review finding (progress.md, 18.43 entry). reauthenticate compares bcrypt against the profile loaded under lockUser; Authenticate is not consulted. |
+| 19.8 | US-008: Session checks fail closed for admin rights when the profile cannot be read | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.41(f). |
+| 19.9 | US-009: LOCAL forwards count against the author's recipient budget | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.42(b). |
+| 19.10 | US-010: Forwarding a forged sender produces no backscatter | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B27(b). |
+| 19.11 | US-011: Cap the request body on CalDAV and CardDAV | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 2026-10-23 review finding (progress.md, 18.43 entry). davMaxBodyBytes 10 MiB after auth, 413 for Content-Length and chunked. go-webdav v0.7.0 answers 201 to every PUT, so the update case asserts 201, not 204. |
+| 19.12 | US-012: IMAP APPEND and SMTP RCPT weigh the message size against quota | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 2026-10-23 review finding (progress.md, 18.43 entry). IMAP APPEND weighs the literal size; SMTP RCPT weighs MAIL FROM SIZE (no SIZE keeps today's behaviour, documented). |
+| 19.13 | US-013: Web compose weighs the message size against quota | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-23) | Source: 18.41(b). Compose weighs len(rawMsg) once per send for sender, each local recipient and drafts, before any blob is written. |
 
 ## Phase 20: Hardening v0.9.0, Phase D: CI, supply chain and test reliability
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 20.1 | US-032: Pin the nginx image by digest | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
-| 20.2 | US-033: Dependabot keeps actions and base images current | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
-| 20.3 | US-034: Run the certs hook test in CI | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
-| 20.4 | US-035: Ready means the web listener is bound | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.40 (new flake: `TestUserManagement`). |
-| 20.5 | US-036: Make TestSMTPFullMailFlow deterministic | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.40. |
-| 20.6 | US-037: SIGHUP tests fail instead of hanging | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B24. |
-| 20.7 | US-038: End-to-end test of a bounce through SRS | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.42(e), 18.43(f). Needs 19.10. |
-| 20.8 | US-039: Middleware-level test for ReissueSessionCookie | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
+| 20.1 | US-032: Pin the nginx image by digest | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
+| 20.2 | US-033: Dependabot keeps actions and base images current | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
+| 20.3 | US-034: Run the certs hook test in CI | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.39(d). |
+| 20.4 | US-035: Ready means the web listener is bound | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.40 (new flake: `TestUserManagement`). |
+| 20.5 | US-036: Make TestSMTPFullMailFlow deterministic | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.40. |
+| 20.6 | US-037: SIGHUP tests fail instead of hanging | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B24. |
+| 20.7 | US-038: End-to-end test of a bounce through SRS | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.42(e), 18.43(f). Needs 19.10. |
+| 20.8 | US-039: Middleware-level test for ReissueSessionCookie | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
 
 ## Phase 21: Hardening v0.10.0, Phase C: data correctness
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 21.1 | US-022: Web-composed local mail runs the recipient's rules and forwarding | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.42(a). |
-| 21.2 | US-023: Remove calendar shares, including legacy entries | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.41(d). |
-| 21.3 | US-024: Quota refusals on full-page forms render inside the app | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.41(c). |
-| 21.4 | US-025: All-day events keep their date in any server time zone | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
-| 21.5 | US-026: CalDAV reads the master event, not the first VEVENT | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
-| 21.6 | US-027: Calendar import keeps the raw iCalendar data and groups overrides | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
-| 21.7 | US-028: The orphan report lists stale legacy aliases and catch-alls | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.39(c). |
-| 21.8 | US-029: Followers remove orphan users rows at startup | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B22. |
-| 21.9 | US-030: The reload log shows which config file version was read | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B23. |
-| 21.10 | US-031: SMTP listeners honour server.bind_addr | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B25. |
+| 21.1 | US-022: Web-composed local mail runs the recipient's rules and forwarding | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.42(a). |
+| 21.2 | US-023: Remove calendar shares, including legacy entries | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.41(d). |
+| 21.3 | US-024: Quota refusals on full-page forms render inside the app | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.41(c). |
+| 21.4 | US-025: All-day events keep their date in any server time zone | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
+| 21.5 | US-026: CalDAV reads the master event, not the first VEVENT | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
+| 21.6 | US-027: Calendar import keeps the raw iCalendar data and groups overrides | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 2026-10-23 review finding (progress.md, 18.43 entry). |
+| 21.7 | US-028: The orphan report lists stale legacy aliases and catch-alls | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.39(c). |
+| 21.8 | US-029: Followers remove orphan users rows at startup | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B22. |
+| 21.9 | US-030: The reload log shows which config file version was read | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B23. |
+| 21.10 | US-031: SMTP listeners honour server.bind_addr | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B25. |
 
 ## Phase 22: Hardening v0.11.0, Phase B: agent role and cluster transport security
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 22.1 | US-014: Sign internal requests with the effective session secret | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.42(f). |
-| 22.2 | US-015: Agent-role SMTP refuses invalid SRS recipients at RCPT | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: 18.42(d). |
-| 22.3 | US-016: Agent-role antispam does not bypass DMARC for submitted mail | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B27(d). |
-| 22.4 | US-017: Cluster listeners get their own bind address | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B7 (L6 in `docs/security-review-2026-07-06.md`). |
-| 22.5 | US-018: Agent gRPC servers require mutual TLS | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B20, B21 (`agent_server.tls.*` keys). |
-| 22.6 | US-019: Agent gRPC clients dial with mutual TLS and bind privately | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B20. Needs 22.4. |
-| 22.7 | US-020: Raft transport has no plaintext fallback and verifies peers | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B7 (H4 in `docs/security-review-2026-07-06.md`). |
-| 22.8 | US-021: Blob sync and cluster join travel over TLS | [prd-hardening-v0.9.md](backlog/prd-hardening-v0.9.md) | TODO | Source: B7 (M8 in `docs/security-review-2026-07-06.md`). |
+| 22.1 | US-014: Sign internal requests with the effective session secret | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.42(f). |
+| 22.2 | US-015: Agent-role SMTP refuses invalid SRS recipients at RCPT | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: 18.42(d). |
+| 22.3 | US-016: Agent-role antispam does not bypass DMARC for submitted mail | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B27(d). |
+| 22.4 | US-017: Cluster listeners get their own bind address | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B7 (L6 in `docs/security-review-2026-07-06.md`). |
+| 22.5 | US-018: Agent gRPC servers require mutual TLS | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B20, B21 (`agent_server.tls.*` keys). |
+| 22.6 | US-019: Agent gRPC clients dial with mutual TLS and bind privately | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B20. Needs 22.4. |
+| 22.7 | US-020: Raft transport has no plaintext fallback and verifies peers | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B7 (H4 in `docs/security-review-2026-07-06.md`). |
+| 22.8 | US-021: Blob sync and cluster join travel over TLS | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | TODO | Source: B7 (M8 in `docs/security-review-2026-07-06.md`). |
 
 ## Backlog (unscheduled)
 

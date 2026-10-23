@@ -1368,3 +1368,9 @@ v0.8.2 tagged at 0a76063 after a rerun: the first main CI run failed TestUserMan
 Phase 18 is closed and archived (43 tasks, v0.8.0 to v0.8.2). The open follow-ups and backlog items went through a PRD instead of new rows: prds/backlog/prd-hardening-v0.9.md, 39 stories, each checked against 0a76063 and tagged with its source. Already fixed and left out: B8, B9, B16, B17, B18 (78b6477), B12, B15. Operator decisions: one release per phase group (v0.9.0 = Phases 19 and 20, v0.10.0 = 21, v0.11.0 = 22); B7 cluster transport back in scope; the drafter's defaults accepted; US-010 uses a non-relaying bounce sink, not an SRS flag. Review findings during these releases go to the PRD's section 8.2, not to TASKS.md.
 
 PATTERN: [process] Before scoping a release from old backlog rows, verify each against the code and git log: seven of the fourteen status-less rows were already fixed.
+
+## 2026-10-23 — Phase 19 batch 1 (19.1, 19.6, 19.7, 19.11, 19.12, 19.13) DONE
+
+Workflow wf_f8c2ba6a-228 in worktrees from 21dc5e0, four workflow tasks. 19.6+19.7 was rejected once (no TOTP-account case, so a login epoch mixing in the TOTP state survived; a vacuous DisableTOTP assertion) and passed after the fix round; the others passed first time. The 19.12+19.13 review left one surviving mutation that mattered: the compose size test compared two copies of the same variable, so a wrong size went unnoticed. The orchestrator added an assertion against store.RawMessageBytes and the mutant went red. Orchestrator mutations: share limiter doubled (red), DAV cap 11 MiB (red), reauth bcrypt check disabled (red). The US-011 204 criterion was amended: go-webdav v0.7.0 answers every PUT with 201. Review findings went to section 8.2 of the PRD, not to TASKS.md.
+
+PATTERN: [testing] A test that compares two values copied from the same variable proves nothing; compare against the bytes actually stored.

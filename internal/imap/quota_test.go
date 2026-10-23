@@ -29,10 +29,12 @@ type fakeQuota struct {
 	over  bool
 	err   error
 	calls int
+	sizes []int64
 }
 
-func (f *fakeQuota) RecipientOverQuota(string) (bool, error) {
+func (f *fakeQuota) RecipientWouldExceedQuota(_ string, addBytes int64) (bool, error) {
 	f.calls++
+	f.sizes = append(f.sizes, addBytes)
 	return f.over, f.err
 }
 
@@ -180,7 +182,7 @@ func TestAppendNilQuotaCheckerUnlimited(t *testing.T) {
 }
 
 // Drives the real DomainQuotaStore through Append at an awkward limit.
-// Usage one byte under the limit is accepted; usage equal to it is refused.
+// A message that exactly fits is accepted; one byte more, or usage at the limit, is refused.
 func TestAppendDomainQuotaBoundary(t *testing.T) {
 	const limit = int64(1_048_583)
 	tests := []struct {
@@ -188,7 +190,8 @@ func TestAppendDomainQuotaBoundary(t *testing.T) {
 		usage  int64
 		wantOK bool
 	}{
-		{"one byte under limit", limit - 1, true},
+		{"message exactly fits", limit - int64(len(quotaTestMsg)), true},
+		{"message one byte too large", limit - int64(len(quotaTestMsg)) + 1, false},
 		{"at limit", limit, false},
 		{"over limit", limit + 4097, false},
 	}
@@ -250,5 +253,81 @@ func TestServerSetQuotaCheckerReachesNewSessions(t *testing.T) {
 	sess, _, _ = srv.newSession(nil)
 	if sess.(*session).quota != nil {
 		t.Errorf("session quota after clearing = %v, want nil", sess.(*session).quota)
+	}
+}
+
+// paddedMessage builds a minimal valid message of exactly n bytes.
+func paddedMessage(t *testing.T, n int) []byte {
+	t.Helper()
+	head := "From: a@example.test\r\nTo: b@example.test\r\nSubject: quota\r\n\r\n"
+	if n < len(head) {
+		t.Fatalf("paddedMessage(%d): shorter than header", n)
+	}
+	return append([]byte(head), bytes.Repeat([]byte("x"), n-len(head))...)
+}
+
+// The message size is weighed, not just whether the domain is already full.
+func TestAppendWeighsMessageSize(t *testing.T) {
+	e := newQuotaEnv(t, nil)
+	applier := &imapDirectApplier{store: e.ps, mailboxes: e.mailboxs}
+	dq := store.NewDomainQuotaStore(e.ps, applier)
+	e.sess.quota = dq
+
+	prof, err := proto.Marshal(&bongov1.UserProfile{Email: "alice@quota.test"})
+	if err != nil {
+		t.Fatalf("marshal profile: %v", err)
+	}
+	if err := e.ps.Set([]byte("/user/u1/profile"), prof); err != nil {
+		t.Fatalf("write profile: %v", err)
+	}
+	if err := dq.SetQuota("quota.test", &bongov1.DomainQuota{MaxStorageBytes: 10_000_000}); err != nil {
+		t.Fatalf("SetQuota: %v", err)
+	}
+	if err := dq.SetUsage("quota.test", 9_950_000); err != nil {
+		t.Fatalf("SetUsage: %v", err)
+	}
+
+	_, err = e.sess.Append("INBOX", newLiteral(paddedMessage(t, 100_000)), nil)
+	var ie *imap.Error
+	if !errors.As(err, &ie) || ie.Code != imap.ResponseCodeOverQuota {
+		t.Fatalf("Append 100000 bytes: want NO [OVERQUOTA], got %v", err)
+	}
+	if n := e.blobFiles(t); n != 0 {
+		t.Errorf("blob files after refused APPEND = %d, want 0", n)
+	}
+	if _, err := e.sess.Append("INBOX", newLiteral(paddedMessage(t, 10_000)), nil); err != nil {
+		t.Fatalf("Append 10000 bytes: %v", err)
+	}
+}
+
+// The size passed to the checker is the stored MailMeta.RawMessage.Size, the
+// quantity the usage recompute adds up.
+func TestAppendQuotaSizeMatchesStoredSize(t *testing.T) {
+	fq := &fakeQuota{}
+	e := newQuotaEnv(t, fq)
+	if _, err := e.sess.Append("INBOX", newLiteral(paddedMessage(t, 7_321)), nil); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if len(fq.sizes) != 1 {
+		t.Fatalf("checker calls = %d, want 1", len(fq.sizes))
+	}
+	iter, err := e.ps.PrefixScan([]byte("/user/u1/mail/"))
+	if err != nil {
+		t.Fatalf("PrefixScan: %v", err)
+	}
+	defer iter.Close()
+	if !iter.Next() {
+		t.Fatal("no stored mail key")
+	}
+	val, err := iter.Value()
+	if err != nil {
+		t.Fatalf("iter value: %v", err)
+	}
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(val, &meta); err != nil {
+		t.Fatalf("unmarshal MailMeta: %v", err)
+	}
+	if got := meta.GetRawMessage().GetSize(); got != 7_321 || fq.sizes[0] != got {
+		t.Errorf("stored size = %d, checker addBytes = %d, want both 7321", got, fq.sizes[0])
 	}
 }

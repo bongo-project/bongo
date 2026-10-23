@@ -606,3 +606,11 @@ func TestOutboundRecipientLimitNotSpentOnRejectedFrom(t *testing.T) {
 		t.Errorf("remaining = %d, want 7", got)
 	}
 }
+
+func (f *fakeAuth) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+	id, err := f.Authenticate(username, password)
+	if err != nil {
+		return "", nil, err
+	}
+	return id, &bongov1.UserProfile{}, nil
+}

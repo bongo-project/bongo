@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/mail"
 	"slices"
@@ -32,7 +33,21 @@ type CalendarHandler struct {
 	search    *store.SearchManager
 	quota     QuotaChecker // nil = unlimited
 	shares    shareTargetResolver
+	// shareLimiter caps ShareCalendar requests per user. nil = unlimited.
+	shareLimiter shareRateLimiter
 }
+
+// shareRateLimiter is the per-user limiter ShareCalendar consults.
+type shareRateLimiter interface {
+	Allow(string) bool
+	RetryAfter(string) time.Duration
+}
+
+// SetShareLimiter sets the per-user cap on calendar share requests.
+func (h *CalendarHandler) SetShareLimiter(l shareRateLimiter) { h.shareLimiter = l }
+
+// ShareLimiter returns the per-user share limiter, or nil.
+func (h *CalendarHandler) ShareLimiter() shareRateLimiter { return h.shareLimiter }
 
 // maxCalendarShares caps how many users one calendar can be shared with.
 const maxCalendarShares = 50
@@ -289,6 +304,17 @@ func (h *CalendarHandler) UpdateCalendar(w http.ResponseWriter, r *http.Request)
 func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	calID := chi.URLParam(r, "calendarID")
+
+	// Rate-limit first, per authenticated user, so every outcome counts and a
+	// logged-in user cannot probe which addresses are live accounts. The
+	// budget is per node and resets on restart, like the other mail.RateLimiter
+	// budgets.
+	if h.shareLimiter != nil && !h.shareLimiter.Allow(userID) {
+		secs := max(int(math.Ceil(h.shareLimiter.RetryAfter(userID).Seconds())), 1)
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+		http.Error(w, "too many share requests", http.StatusTooManyRequests)
+		return
+	}
 
 	cal, err := h.calendars.Get(userID, calID)
 	if err != nil {
