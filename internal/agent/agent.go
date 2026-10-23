@@ -161,6 +161,7 @@ type Agent struct {
 	// so tests can confirm the limiters were wired in the real startup path.
 	composeHandler    *handlers.ComposeHandler
 	addrVerifyHandler *handlers.AddressVerifyHandler
+	calendarHandler   *handlers.CalendarHandler
 	// ForwardTargets holds verified external forwarding targets per user; the
 	// deliver stage forwards only to targets recorded here (or hosted ones).
 	ForwardTargets *store.ForwardTargetStore
@@ -695,6 +696,16 @@ func (a *Agent) recipientLimiter() *mail.RateLimiter {
 func (a *Agent) wireComposeLimits(h *handlers.ComposeHandler) {
 	h.SetRecipientLimiter(a.recipientLimiter())
 	h.SetMaxRecipients(a.Config.SMTP.Limits.MaxRecipients)
+}
+
+// calendarSharesPerHour is the per-user, rolling-hour cap on calendar share
+// requests. It is fixed rather than configurable: it exists to stop
+// the share endpoint doubling as an account-existence oracle.
+const calendarSharesPerHour = 20
+
+// wireCalendarShareLimiter caps calendar share requests per user per hour.
+func (a *Agent) wireCalendarShareLimiter(h *handlers.CalendarHandler) {
+	h.SetShareLimiter(mail.NewRateLimiter(calendarSharesPerHour))
 }
 
 // wireAddressVerifyLimiter caps send-as verification mails per user per hour.
@@ -1317,6 +1328,8 @@ func (a *Agent) Run(ctx context.Context) error {
 				calendarH.SetQuotaChecker(a.DomainQuota)
 			}
 			calendarH.SetShareResolver(sharedResolver)
+			a.wireCalendarShareLimiter(calendarH)
+			a.calendarHandler = calendarH
 			r.Get("/calendar", calendarH.CalendarIndex)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/{year}/{month}", calendarH.MonthView)

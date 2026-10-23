@@ -12,6 +12,7 @@ type RateLimiter struct {
 	limit   int
 	window  time.Duration
 	senders map[string][]time.Time
+	now     func() time.Time // nil = time.Now
 }
 
 // NewRateLimiter creates a rate limiter.
@@ -22,6 +23,22 @@ func NewRateLimiter(msgsPerHour int) *RateLimiter {
 		window:  time.Hour,
 		senders: make(map[string][]time.Time),
 	}
+}
+
+// SetClock replaces the time source, for tests that need to move the window.
+// A nil function restores time.Now.
+func (rl *RateLimiter) SetClock(now func() time.Time) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.now = now
+}
+
+// clock returns the current time. The caller must hold rl.mu.
+func (rl *RateLimiter) clock() time.Time {
+	if rl.now != nil {
+		return rl.now()
+	}
+	return time.Now()
 }
 
 // Allow checks if the sender is allowed to send another message.
@@ -40,7 +57,7 @@ func (rl *RateLimiter) AllowN(sender string, n int) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	now := time.Now()
+	now := rl.clock()
 	valid := rl.trimLocked(sender, now)
 	if len(valid)+n > rl.limit {
 		return false
@@ -60,7 +77,24 @@ func (rl *RateLimiter) Remaining(sender string) int {
 	}
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	return max(rl.limit-len(rl.trimLocked(sender, time.Now())), 0)
+	return max(rl.limit-len(rl.trimLocked(sender, rl.clock())), 0)
+}
+
+// RetryAfter reports how long until the sender's oldest live entry leaves the
+// window and frees a slot. It returns 0 when the sender is under the limit or
+// the limiter is disabled.
+func (rl *RateLimiter) RetryAfter(sender string) time.Duration {
+	if rl.limit <= 0 {
+		return 0
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := rl.clock()
+	valid := rl.trimLocked(sender, now)
+	if len(valid) < rl.limit {
+		return 0
+	}
+	return max(valid[0].Add(rl.window).Sub(now), 0)
 }
 
 // trimLocked drops expired timestamps for sender and returns the live ones.

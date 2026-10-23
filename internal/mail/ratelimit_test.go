@@ -100,3 +100,46 @@ func TestRateLimiterDisabledAllowN(t *testing.T) {
 		t.Error("disabled limiter must report ample remaining")
 	}
 }
+
+func TestRateLimiterSlidingClockAndRetryAfter(t *testing.T) {
+	start := time.Date(2026, 10, 23, 9, 0, 0, 0, time.UTC)
+	now := start
+	rl := NewRateLimiter(2)
+	rl.SetClock(func() time.Time { return now })
+
+	if d := rl.RetryAfter("a"); d != 0 {
+		t.Fatalf("unused sender RetryAfter = %v, want 0", d)
+	}
+	rl.Allow("a") // t=0
+	now = start.Add(10*time.Minute + 3*time.Second)
+	rl.Allow("a") // t=10m03s
+	if rl.Allow("a") {
+		t.Fatal("third request inside the window should be rejected")
+	}
+	if d, want := rl.RetryAfter("a"), 49*time.Minute+57*time.Second; d != want {
+		t.Errorf("RetryAfter = %v, want %v", d, want)
+	}
+	if d := rl.RetryAfter("other"); d != 0 {
+		t.Errorf("other sender RetryAfter = %v, want 0", d)
+	}
+
+	tests := []struct {
+		name    string
+		at      time.Duration
+		allowed bool
+	}{
+		{"59m59s still limited", 59*time.Minute + 59*time.Second, false},
+		{"60m01s first entry expired", 60*time.Minute + time.Second, true},
+	}
+	for _, tt := range tests {
+		now = start.Add(tt.at)
+		if got := rl.Allow("a"); got != tt.allowed {
+			t.Errorf("%s: Allow = %v, want %v", tt.name, got, tt.allowed)
+		}
+	}
+	// Disabled limiter never reports a wait.
+	off := NewRateLimiter(0)
+	if d := off.RetryAfter("a"); d != 0 {
+		t.Errorf("disabled RetryAfter = %v, want 0", d)
+	}
+}
