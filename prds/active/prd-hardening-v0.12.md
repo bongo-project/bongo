@@ -473,3 +473,38 @@ From the Phase 23 batch 3 reviews (2026-10-24):
     writing any copy rolls back the others and answers 4xx. Agent deposits
     are split the same way, get fresh envelope ids, and a deposit with no
     recipients is refused before its blob is stored. (24.1)
+
+From the Phase 24 batch 4 reviews (2026-10-24):
+
+- Two nodes handling one compose send ID at once are not serialised (the
+  send lock is per process). (24.2)
+- CalDAV `eventToCalendarObject` (`internal/caldav/server.go`) synthesises
+  DTSTART/DTEND for web-created events with a TZID and no VTIMEZONE, the
+  same gap 24.3 closed in the export; a shared icalevent builder would fix
+  both. Raw events whose TZID has no VTIMEZONE in `ical_raw` still export
+  with a dangling TZID (logged at debug); `setEventTimes` keeps such a TZID
+  on edit; the synthesised export drops RRULE. (24.3)
+- Week, day and the calendar index place timed events in the server zone,
+  not the user's preference zone; the month grid does the same, for
+  consistency. Recurring-event reminders dedupe on userID:guid:minutes, and
+  the reminder query now expands recurrences over a ~29 h window. (24.4)
+- `parseEventForm` accepts any int32 `reminder_minutes` from a crafted POST
+  (the UI offers at most 60); a reminder longer than the 15 h look-ahead
+  fires late. Bound it to the offered options. (24.4)
+- The PRD's claim that all-day events on the first and last day of a month
+  were missing from the grid was disproved; the real gap was neighbouring
+  months' all-day events in the leading and trailing cells, now fixed.
+  (24.4)
+- Release notes, batch 4:
+  - The web composer sends a hidden send ID. A retried send skips the steps
+    already done, and a resubmission of the same form with different
+    content (including a different From) gets 409. A compose tab opened
+    before the upgrade gets 400 and must be reloaded. A recipient listed in
+    both To and Cc now gets one copy. Send-log records are swept after 7
+    days. (24.2)
+  - Calendar export includes each referenced VTIMEZONE once, before the
+    events, and writes events without stored iCalendar data in UTC. (24.3)
+  - All-day reminders count down to midnight in the owner's preference time
+    zone; the month grid shows neighbouring months' all-day events in its
+    leading and trailing cells. (24.4)
+
