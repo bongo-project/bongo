@@ -20,6 +20,10 @@ type NodeMeta struct {
 	Role     string `json:"role"`
 	RaftAddr string `json:"raft_addr"`
 	HTTPAddr string `json:"http_addr"`
+	// PeerAddr is the host:port of the node's mutually authenticated peer
+	// listener (blob sync, cluster join). Empty for a node without peers and
+	// for nodes that predate the listener.
+	PeerAddr string `json:"peer_addr,omitempty"`
 }
 
 // GossipNode wraps a memberlist instance with its configuration.
@@ -67,6 +71,7 @@ func NewGossipNode(cfg *config.Config, httpAddr string, raftAddr string, logger 
 		Role:     cfg.Server.Role,
 		RaftAddr: raftAddr,
 		HTTPAddr: httpAddr,
+		PeerAddr: cfg.ClusterPeerAddr(),
 	}
 
 	delegate := &gossipDelegate{meta: meta}
@@ -120,6 +125,7 @@ func (g *GossipNode) Members() []MemberInfo {
 				info.Role = meta.Role
 				info.RaftAddr = meta.RaftAddr
 				info.HTTPAddr = meta.HTTPAddr
+				info.PeerAddr = meta.PeerAddr
 			}
 		}
 		members = append(members, info)
@@ -144,6 +150,7 @@ type MemberInfo struct {
 	Status   string `json:"status"`
 	RaftAddr string `json:"raft_addr,omitempty"`
 	HTTPAddr string `json:"http_addr,omitempty"`
+	PeerAddr string `json:"peer_addr,omitempty"`
 }
 
 // gossipDelegate implements memberlist.Delegate.

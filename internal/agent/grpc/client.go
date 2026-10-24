@@ -2,13 +2,14 @@ package agentgrpc
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -30,6 +31,7 @@ type AgentClientConfig struct {
 	Meta              map[string]string
 	HeartbeatInterval time.Duration
 	DialTimeout       time.Duration
+	TLS               TLSFiles // mutual TLS material; NewAgentClient fails when incomplete
 }
 
 // DefaultAgentClientConfig returns configuration with sensible defaults.
@@ -45,6 +47,7 @@ func DefaultAgentClientConfig() AgentClientConfig {
 type AgentClient struct {
 	config AgentClientConfig
 	logger *slog.Logger
+	tlsCfg *tls.Config
 
 	mu     sync.Mutex
 	conn   *grpc.ClientConn
@@ -54,8 +57,14 @@ type AgentClient struct {
 	done   chan struct{}
 }
 
-// NewAgentClient creates an AgentClient with the given configuration.
-func NewAgentClient(config AgentClientConfig, logger *slog.Logger) *AgentClient {
+// NewAgentClient creates an AgentClient with the given configuration. It
+// fails, naming the config key, when the mutual TLS files are incomplete or
+// unreadable: there is no plaintext fallback.
+func NewAgentClient(config AgentClientConfig, logger *slog.Logger) (*AgentClient, error) {
+	tlsCfg, err := clientTLSConfig(config.TLS, config.ServerAddr)
+	if err != nil {
+		return nil, fmt.Errorf("agent client: %w", err)
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -68,8 +77,9 @@ func NewAgentClient(config AgentClientConfig, logger *slog.Logger) *AgentClient 
 	return &AgentClient{
 		config: config,
 		logger: logger,
+		tlsCfg: tlsCfg,
 		done:   make(chan struct{}),
-	}
+	}, nil
 }
 
 // Start connects to the server, registers, and starts the heartbeat loop.
@@ -81,7 +91,7 @@ func (c *AgentClient) Start(ctx context.Context) error {
 
 	conn, err := grpc.NewClient(
 		c.config.ServerAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(credentials.NewTLS(c.tlsCfg)),
 	)
 	if err != nil {
 		return fmt.Errorf("agent client: dial %s: %w", c.config.ServerAddr, err)

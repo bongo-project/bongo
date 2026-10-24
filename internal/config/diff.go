@@ -85,7 +85,7 @@ var restartKeys = []string{
 	"server.role", "server.name", "server.trusted_proxies", "server.bind_addr", "server.advertise_addr", "server.agents",
 	"cluster.bind_addr", "cluster.join", "cluster.raft.port", "cluster.raft.snapshot_threshold",
 	"cluster.raft.snapshot_interval", "cluster.raft.trailing_logs",
-	"cluster.gossip.port", "cluster.gossip.encryption_key",
+	"cluster.gossip.port", "cluster.gossip.encryption_key", "cluster.peer_port",
 	"cluster.tls.cert_file", "cluster.tls.key_file", "cluster.tls.ca_file",
 	"storage.data_dir", "storage.pebble.cache_size", "storage.attachment_dedup_min_size", "storage.blob_gc",
 	"smtp.enabled", "smtp.port", "smtp.submission_port", "smtp.hostname", "smtp.proxy_protocol", "smtp.srs_max_age_days",

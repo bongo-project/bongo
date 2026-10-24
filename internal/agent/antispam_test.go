@@ -415,10 +415,8 @@ func TestBuildAntispamProcessorDNSBLWiring(t *testing.T) {
 // TestStartProcessorAgentDNSBLWiring covers the SECOND construction site.
 // An agent-role node builds its own processor with a different option set
 // (no Bayes), and nothing in the test suite reached that code: deleting the
-// DNSBL wiring there left the whole package green. startProcessorAgent
-// itself registers over gRPC and cannot run in a unit test, so the option
-// assembly now lives in buildAgentAntispamProcessor, which this exercises
-// directly.
+// DNSBL wiring there left the whole package green. The option assembly
+// lives in buildAgentAntispamProcessor, which this exercises directly.
 func TestStartProcessorAgentDNSBLWiring(t *testing.T) {
 	newAgent := func(enabled bool) *Agent {
 		cfg := config.Defaults()

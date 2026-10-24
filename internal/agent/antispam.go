@@ -152,10 +152,9 @@ func dnsblOption(cfg *config.Config, logger *slog.Logger) pipelineantispam.Optio
 
 // buildAgentAntispamProcessor constructs the antispam processor for an
 // agent-role node (startProcessorAgent's "antispam" case). It is a named
-// method rather than an inline switch case purely so it can be tested:
-// startProcessorAgent itself registers over gRPC and cannot run in a unit
-// test, which meant the DNSBL wiring here had no regression coverage at all
-// and could be deleted with the whole suite staying green.
+// method rather than an inline switch case so the DNSBL wiring can be tested
+// on its own, without starting the gRPC listener and registration that
+// startProcessorAgent performs.
 //
 // It deliberately differs from buildAntispamProcessor: an agent node has no
 // local Pebble store or Raft, so the Bayes filter (which needs per-user

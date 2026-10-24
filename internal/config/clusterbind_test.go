@@ -124,3 +124,45 @@ func TestClusterBindAddrIsRestartClass(t *testing.T) {
 		t.Fatalf("ClassOf(cluster.bind_addr) = %v, %v; want restart", c, ok)
 	}
 }
+
+func TestClusterPeerAddr(t *testing.T) {
+	tests := []struct {
+		name      string
+		role      string
+		bind, adv string
+		join      []string
+		port      int
+		want      string
+	}{
+		{"single node loopback advertise", "server", "0.0.0.0", "127.0.0.1", nil, 8302, ""},
+		{"dev", "dev", "0.0.0.0", "10.0.0.5", nil, 8302, ""},
+		{"routable advertise", "server", "0.0.0.0", "10.0.0.5", nil, 8302, "10.0.0.5:8302"},
+		{"custom port", "server", "0.0.0.0", "10.0.0.5", nil, 9443, "10.0.0.5:9443"},
+		{"ipv6 advertise", "server", "0.0.0.0", "2001:db8::5", nil, 8302, "[2001:db8::5]:8302"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Defaults()
+			cfg.Server.Role = tt.role
+			cfg.Server.BindAddr = tt.bind
+			cfg.Server.AdvertiseAddr = tt.adv
+			cfg.Cluster.Join = tt.join
+			cfg.Cluster.PeerPort = tt.port
+			if got := cfg.ClusterPeerAddr(); got != tt.want {
+				t.Errorf("ClusterPeerAddr = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// A config file written before cluster.peer_port existed must still load and
+// get the default port.
+func TestPeerPortDefaultsWhenAbsentFromFile(t *testing.T) {
+	cfg, err := LoadFromFile("../../test/testdata/config.hcl")
+	if err != nil {
+		t.Fatalf("LoadFromFile: %v", err)
+	}
+	if cfg.Cluster.PeerPort != 8302 {
+		t.Errorf("PeerPort = %d, want 8302", cfg.Cluster.PeerPort)
+	}
+}

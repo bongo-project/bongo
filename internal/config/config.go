@@ -78,7 +78,11 @@ type ClusterConfig struct {
 	// the advertise address (loopback for a single node), never
 	// server.bind_addr. Set it when the advertise address is not on a local
 	// interface (NAT, container networks). See Config.ClusterBindHost.
-	BindAddr string       `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
+	BindAddr string `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
+	// PeerPort is the port of the node-to-node HTTPS listener that serves blob
+	// sync and cluster join. It is a flat key, not a block, so existing config
+	// files without it still load. Used only when the node has peers.
+	PeerPort int          `hcl:"peer_port,optional" mapstructure:"peer_port"`
 	Join     []string     `hcl:"join,optional" mapstructure:"join"`
 	Raft     RaftConfig   `hcl:"raft,block" mapstructure:"raft"`
 	Gossip   GossipConfig `hcl:"gossip,block" mapstructure:"gossip"`
@@ -1162,6 +1166,7 @@ func Defaults() *Config {
 			BindAddr:   "0.0.0.0",
 		},
 		Cluster: ClusterConfig{
+			PeerPort: 8302,
 			Raft: RaftConfig{
 				DataDir:           "/var/lib/bongo-go/raft",
 				Port:              8300,
@@ -1441,6 +1446,17 @@ func (c *Config) ClusterHasPeers() bool {
 		return true
 	}
 	return len(c.Cluster.Join) > 0 || !IsLoopbackHost(c.effectiveAdvertise())
+}
+
+// ClusterPeerAddr returns the host:port other nodes use to reach this node's
+// peer listener (blob sync and cluster join), built from the advertise address
+// rather than the bind host so NAT setups work. It is empty when the node has
+// no peers, because no peer listener runs then.
+func (c *Config) ClusterPeerAddr() string {
+	if !c.ClusterHasPeers() {
+		return ""
+	}
+	return net.JoinHostPort(c.effectiveAdvertise(), strconv.Itoa(c.Cluster.PeerPort))
 }
 
 // isUnspecifiedHost reports whether addr is empty or a wildcard address.

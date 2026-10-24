@@ -4,17 +4,18 @@ package agentgrpc
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
 	"github.com/bongo-project/bongo/internal/pipeline"
@@ -163,6 +164,7 @@ func (r *AgentRegistry) removeRoleMappingsLocked(agent *RegisteredAgent) {
 // AgentServerConfig holds configuration for the gRPC agent server.
 type AgentServerConfig struct {
 	Port         int
+	BindHost     string // specific IP to listen on (cluster bind host); never a wildcard
 	AgentTTL     time.Duration
 	ReapInterval time.Duration
 	TLS          TLSFiles // mutual TLS material; Start fails when incomplete
@@ -187,6 +189,7 @@ type AgentServer struct {
 	logger     *slog.Logger
 	config     AgentServerConfig
 	listenAddr string
+	dialTLS    *tls.Config // base client config for DispatchOrLocal; set by Start
 
 	grpcServer *grpc.Server
 	stopReaper chan struct{}
@@ -228,12 +231,20 @@ func (s *AgentServer) Start() error {
 	if err != nil {
 		return fmt.Errorf("agent grpc: %w", err)
 	}
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.config.Port))
+	dialTLS, err := clientTLSBase(s.config.TLS)
+	if err != nil {
+		return fmt.Errorf("agent grpc: %w", err)
+	}
+	if err := requireSpecificHost(s.config.BindHost); err != nil {
+		return fmt.Errorf("agent grpc: %w", err)
+	}
+	lis, err := net.Listen("tcp", net.JoinHostPort(s.config.BindHost, strconv.Itoa(s.config.Port)))
 	if err != nil {
 		return fmt.Errorf("agent grpc: listen on port %d: %w", s.config.Port, err)
 	}
 
 	s.listenAddr = lis.Addr().String()
+	s.dialTLS = dialTLS
 
 	s.grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
 	bongov1.RegisterAgentServiceServer(s.grpcServer, s)
@@ -405,7 +416,7 @@ func (s *AgentServer) DispatchOrLocal(
 	}
 
 	// Dial the remote agent and send ProcessMessage.
-	conn, err := grpc.NewClient(agentInfo.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := s.dialAgent(agentInfo.Address)
 	if err != nil {
 		s.logger.Warn("dispatch: failed to connect to agent", "agent_id", agentInfo.ID, "address", agentInfo.Address, "error", err)
 		if localProcessor != nil {
@@ -429,6 +440,22 @@ func (s *AgentServer) DispatchOrLocal(
 	}
 
 	return resp.Result, nil
+}
+
+// dialAgent opens a mutual TLS connection to a registered agent, verifying
+// its certificate against the dialled host. It fails when the server has not
+// been started (no TLS material loaded) rather than dialling in plaintext.
+func (s *AgentServer) dialAgent(addr string) (*grpc.ClientConn, error) {
+	if s.dialTLS == nil {
+		return nil, fmt.Errorf("agent grpc server not started: no TLS material loaded")
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("agent address %q: %w", addr, err)
+	}
+	cfg := s.dialTLS.Clone()
+	cfg.ServerName = host
+	return grpc.NewClient(addr, grpc.WithTransportCredentials(credentials.NewTLS(cfg)))
 }
 
 func (s *AgentServer) reapLoop() {

@@ -179,6 +179,14 @@ type Agent struct {
 	// Config.Web.SessionSecret for that, which is empty in dev.
 	internalSecret []byte
 
+	// peerTLS and peerClient are set only when the node has peers: the strict
+	// cluster mTLS config and an HTTP client built on it, used for cluster
+	// join and shared with blob sync. peerServer is the listener that serves
+	// those routes to peers. All three are nil for a single node and dev.
+	peerTLS    *tls.Config
+	peerClient *http.Client
+	peerServer *http.Server
+
 	// dmarcEvaluator overrides the DMARC evaluator of the agent antispam
 	// processor. Nil in production (a live-DNS evaluator is built); tests set
 	// it to stay offline.
@@ -953,11 +961,6 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/internal/cluster/members", clusterH.Members)
 
 		if a.Raft != nil {
-			joinH := handlers.NewJoinHandler(a.Raft.Raft)
-			r.Post("/internal/cluster/join", joinH.Join)
-		}
-
-		if a.Raft != nil {
 			userH := handlers.NewUserHandler(a, a.Metadata)
 			if a.Mailboxes != nil {
 				userH.SetMailboxes(a.Mailboxes)
@@ -966,15 +969,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	})
 
-	// Blob sync routes: signed with their own key, separate from the control plane.
-	if a.Blobs != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireBlobSyncAuth(sessionSecret))
-			blobH := handlers.NewBlobHandler(a.Blobs)
-			r.Get("/internal/blob/{hash}", blobH.Get)
-			r.Head("/internal/blob/{hash}", blobH.Head)
-		})
-	}
+	// Cluster join and blob sync. On a node with peers they are served only by
+	// the mutually authenticated peer listener, never on this public router.
+	a.registerPublicPeerRoutes(r, sessionSecret)
 
 	// Static assets (public).
 	r.Handle("/static/*", http.StripPrefix("/static/", handlers.StaticHandler()))
@@ -1520,6 +1517,22 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.logger.Info("raft: leadership acquired", "leader", string(leaderAddr))
 	}
 
+	// A node with peers serves blob sync and cluster join on a private mTLS
+	// listener. Load the strict cluster TLS config and bind it before gossip
+	// starts, so the peer address gossip advertises is already live; a missing
+	// or unreadable file fails startup before anything is advertised.
+	if peerListenerEnabled(a.Config) {
+		peerTLS, err := cluster.LoadPeerTLS(a.Config)
+		if err != nil {
+			return fmt.Errorf("loading peer listener TLS: %w", err)
+		}
+		a.peerTLS = peerTLS
+		a.peerClient = newPeerHTTPClient(peerTLS)
+		if err := a.startPeerListener(sessionSecret); err != nil {
+			return err
+		}
+	}
+
 	// Start memberlist gossip for node discovery.
 	if a.Config.Server.Role == "server" || a.Config.Server.Role == "dev" {
 		raftAddr := ""
@@ -1550,6 +1563,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		a.BlobSync = cluster.NewBlobSyncer(a.Blobs, &lazyMemberLister{agent: a}, a.logger)
 		a.BlobSync.SetSharedSecret(sessionSecret)
+		if a.peerTLS != nil {
+			a.BlobSync.SetPeerTLS(a.peerTLS)
+		}
 		a.Raft.FSM.SetBlobSyncer(a.BlobSync)
 		a.Raft.FSM.SetSearchManager(a.Search)
 
@@ -3340,22 +3356,62 @@ func (a *Agent) notify(userID, mailbox string, notif bongoimap.Notification) {
 	a.Notifier.Notify(userID, mailbox, notif)
 }
 
-// newJoinRequest builds the signed cluster join request for a peer's HTTP
-// address. It signs with the effective internal secret, so a node whose
-// configured session secret is empty (dev mode generates one) still passes the
-// peer's RequireInternalAuth.
-func (a *Agent) newJoinRequest(peerHTTPAddr, id, raftAddr string) (*http.Request, error) {
+// joinTarget returns the scheme and address to reach m's join endpoint. With
+// peer TLS it is the https peer listener, and a member that advertises none
+// (an older node) is unreachable rather than tried over plaintext. Without it
+// the join goes to the public web address over http, as before.
+func (a *Agent) joinTarget(m cluster.MemberInfo) (scheme, addr string, ok bool) {
+	if a.peerTLS != nil {
+		return "https", m.PeerAddr, m.PeerAddr != ""
+	}
+	return "http", m.HTTPAddr, m.HTTPAddr != ""
+}
+
+// newJoinRequest builds the signed cluster join request for a peer. It signs
+// with the effective internal secret, so a node whose configured session
+// secret is empty (dev mode generates one) still passes the peer's
+// RequireInternalAuth.
+func (a *Agent) newJoinRequest(m cluster.MemberInfo, id, raftAddr string) (*http.Request, error) {
+	scheme, addr, ok := a.joinTarget(m)
+	if !ok {
+		return nil, fmt.Errorf("member %q advertises no address to join through", m.Name)
+	}
 	body, err := json.Marshal(map[string]string{"id": id, "addr": raftAddr})
 	if err != nil {
 		return nil, fmt.Errorf("marshal join request: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, "http://"+peerHTTPAddr+"/internal/cluster/join", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, scheme+"://"+addr+"/internal/cluster/join", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("build join request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	security.SignInternalRequest(req, a.internalSecret)
 	return req, nil
+}
+
+// sendJoin posts a join request to one peer and returns the response status.
+// It uses the peer client (cluster CA, client certificate) when the node has
+// peers, so a peer with a certificate from another CA fails here. Failures are
+// logged with the peer name, never the secret.
+func (a *Agent) sendJoin(m cluster.MemberInfo, id, raftAddr string) (int, error) {
+	req, err := a.newJoinRequest(m, id, raftAddr)
+	if err != nil {
+		a.logger.Warn("raft auto-join: skipping peer", "peer", m.Name, "error", err)
+		return 0, err
+	}
+	client := http.DefaultClient
+	if a.peerClient != nil {
+		client = a.peerClient
+	}
+	resp, err := client.Do(req) //nolint:gosec // internal cluster endpoint
+	if err != nil {
+		a.logger.Warn("raft auto-join: failed to contact peer", "peer", m.Name, "addr", req.URL.Host, "error", err)
+		return 0, fmt.Errorf("contacting peer %s: %w", m.Name, err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		a.logger.Debug("raft auto-join: failed to close response body", "peer", m.Name, "error", err)
+	}
+	return resp.StatusCode, nil
 }
 
 // autoJoinRaft finds the Raft leader via gossip metadata and sends a join request.
@@ -3375,35 +3431,30 @@ func (a *Agent) autoJoinRaft() {
 		}
 	}
 
-	// Find the leader's HTTP address from gossip.
+	// Find the leader through gossip metadata.
 	members := a.Gossip.Members()
 	for _, m := range members {
-		if m.HTTPAddr == "" || m.Name == a.Config.Server.Name {
+		if m.Name == a.Config.Server.Name {
+			continue
+		}
+		if _, _, ok := a.joinTarget(m); !ok {
+			if a.peerTLS != nil {
+				a.logger.Warn("raft auto-join: skipping member that advertises no peer address", "peer", m.Name)
+			}
 			continue
 		}
 
-		req, err := a.newJoinRequest(m.HTTPAddr, a.Config.Server.Name, string(a.Raft.Transport.LocalAddr()))
+		status, err := a.sendJoin(m, a.Config.Server.Name, string(a.Raft.Transport.LocalAddr()))
 		if err != nil {
-			a.logger.Debug("raft auto-join: failed to build request", "peer", m.Name, "error", err)
 			continue
 		}
-		resp, err := http.DefaultClient.Do(req) //nolint:gosec // internal cluster endpoint
-		if err != nil {
-			a.logger.Debug("raft auto-join: failed to contact peer", "peer", m.Name, "error", err)
-			continue
-		}
-		if err := resp.Body.Close(); err != nil {
-			a.logger.Debug("raft auto-join: failed to close response body", "peer", m.Name, "error", err)
-			continue
-		}
-
-		if resp.StatusCode == http.StatusOK {
+		if status == http.StatusOK {
 			a.logger.Info("raft: auto-joined cluster via peer", "peer", m.Name)
 			return
 		}
 
 		// If not leader, try the next peer.
-		a.logger.Debug("raft auto-join: peer is not leader", "peer", m.Name, "status", resp.StatusCode)
+		a.logger.Debug("raft auto-join: peer is not leader", "peer", m.Name, "status", status)
 	}
 
 	a.logger.Warn("raft auto-join: could not find leader to join")
@@ -3446,13 +3497,10 @@ func (a *Agent) runAgent(ctx context.Context) error {
 	// Register non-processor roles (smtp, imap, etc.) with the server using
 	// the HTTP health-check address as the listen address.
 	if len(nonProcessorRoles) > 0 {
-		grpcCfg := agentgrpc.DefaultAgentClientConfig()
-		grpcCfg.ServerAddr = a.Config.AgentServer.ServerAddress
-		grpcCfg.AgentID = a.Config.Server.Name
-		grpcCfg.Roles = nonProcessorRoles
-		grpcCfg.ListenAddr = addr
-
-		client := agentgrpc.NewAgentClient(grpcCfg, a.logger)
+		client, err := a.newAgentClient(a.Config.Server.Name, nonProcessorRoles, addr)
+		if err != nil {
+			return err
+		}
 		if err := client.Start(ctx); err != nil {
 			return fmt.Errorf("agent grpc client: %w", err)
 		}
@@ -3578,25 +3626,27 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 	}
 
 	// Start a local gRPC server on a random port.
-	procSrv := agentgrpc.NewAgentProcessorServer(proc, agentgrpc.TLSFiles{
-		CertFile: a.Config.AgentServer.TLS.CertFile,
-		KeyFile:  a.Config.AgentServer.TLS.KeyFile,
-		CAFile:   a.Config.AgentServer.TLS.CAFile,
-	}, a.logger)
-	if err := procSrv.Start(net.JoinHostPort(a.Config.Server.BindAddr, "0")); err != nil {
+	// Bind the cluster bind host, not server.bind_addr: that is normally the
+	// wildcard, which would both listen everywhere and advertise an address
+	// the server cannot dial.
+	bindHost, err := a.Config.ClusterBindHost()
+	if err != nil {
+		return fmt.Errorf("agent grpc listener needs a specific bind address (set cluster.bind_addr or server.advertise_addr): %w", err)
+	}
+	procSrv := agentgrpc.NewAgentProcessorServer(proc, a.agentTLSFiles(), a.logger)
+	if err := procSrv.Start(net.JoinHostPort(bindHost, "0")); err != nil {
 		return fmt.Errorf("start processor server: %w", err)
 	}
 	a.agentProcessors = append(a.agentProcessors, procSrv)
 
 	// Register with the bongo-go server. Each processor role gets its own
 	// registration so the server can maintain per-role agent lists.
-	grpcCfg := agentgrpc.DefaultAgentClientConfig()
-	grpcCfg.ServerAddr = a.Config.AgentServer.ServerAddress
-	grpcCfg.AgentID = fmt.Sprintf("%s-%s", a.Config.Server.Name, role)
-	grpcCfg.Roles = []string{role}
-	grpcCfg.ListenAddr = procSrv.ListenAddr()
-
-	client := agentgrpc.NewAgentClient(grpcCfg, a.logger)
+	agentID := fmt.Sprintf("%s-%s", a.Config.Server.Name, role)
+	client, err := a.newAgentClient(agentID, []string{role}, procSrv.ListenAddr())
+	if err != nil {
+		procSrv.Stop()
+		return err
+	}
 	if err := client.Start(ctx); err != nil {
 		procSrv.Stop()
 		return fmt.Errorf("register %s agent: %w", role, err)
@@ -3606,9 +3656,36 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 	a.logger.Info("agent: processor started",
 		"role", role,
 		"grpc_addr", procSrv.ListenAddr(),
-		"agent_id", grpcCfg.AgentID,
+		"agent_id", agentID,
 	)
 	return nil
+}
+
+// agentTLSFiles returns the agent_server.tls material used by every agent
+// gRPC listener and client on this node.
+func (a *Agent) agentTLSFiles() agentgrpc.TLSFiles {
+	return agentgrpc.TLSFiles{
+		CertFile: a.Config.AgentServer.TLS.CertFile,
+		KeyFile:  a.Config.AgentServer.TLS.KeyFile,
+		CAFile:   a.Config.AgentServer.TLS.CAFile,
+	}
+}
+
+// newAgentClient builds the registration client for the given roles. It
+// fails at construction, naming the key, when the mutual TLS files are
+// incomplete.
+func (a *Agent) newAgentClient(agentID string, roles []string, listenAddr string) (*agentgrpc.AgentClient, error) {
+	cfg := agentgrpc.DefaultAgentClientConfig()
+	cfg.ServerAddr = a.Config.AgentServer.ServerAddress
+	cfg.AgentID = agentID
+	cfg.Roles = roles
+	cfg.ListenAddr = listenAddr
+	cfg.TLS = a.agentTLSFiles()
+	client, err := agentgrpc.NewAgentClient(cfg, a.logger)
+	if err != nil {
+		return nil, fmt.Errorf("agent grpc client: %w", err)
+	}
+	return client, nil
 }
 
 // shutdownAgent performs graceful shutdown for agent-role nodes.
@@ -3806,6 +3883,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 		} else {
 			a.logger.Info("http server shut down gracefully")
 		}
+	}
+	if err := a.shutdownPeerServer(); err != nil {
+		errs = append(errs, fmt.Errorf("shutting down peer server: %w", err))
 	}
 
 	// 2. SMTP server.
