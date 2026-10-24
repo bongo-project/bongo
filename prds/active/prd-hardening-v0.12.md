@@ -19,7 +19,7 @@ before that change merges.
 |-------|-------|---------|------------|
 | A | Security | US-001 to US-008 | 23.1 to 23.8 |
 | B | Mail and calendar correctness | US-009 to US-013 | 24.1 to 24.5 |
-| C | Reliability and supply chain | US-014 to US-017 | 25.1 to 25.4 |
+| C | Reliability and supply chain | US-014 to US-018 | 25.1 to 25.5 |
 
 v0.12.0 is tagged when all three phases are done.
 
@@ -320,9 +320,32 @@ are current.
 - [ ] Fixture tests in CI cover: pinned, unpinned, quoted key, flow style,
       the bongo exemption, a missing file and a file with no images.
 
+### US-018: Uploads do not hold whole files in memory
+**Source:** the 26.5 security review (2026-10-24); added to scope by the
+operator the same day.
+
+**Description:** the mailbox import (`internal/web/handlers/mail.go`
+ImportMbox) calls `ParseMultipartForm(500<<20)`, which may hold up to
+500 MiB of an upload in memory, then reads the whole file again before the
+quota check. Compose holds up to 32 MiB per send. Production caps the
+container at 512 MB, so a few parallel large imports from one account can
+get it killed.
+
+**Acceptance Criteria:**
+- [ ] Multipart parsing on these routes keeps at most a small amount in
+      memory (for example 8 MiB) and spools the rest to temporary files,
+      which are removed when the request ends.
+- [ ] The mbox import reads messages as a stream; peak memory does not grow
+      with the file size (a test feeds a large generated mbox and bounds the
+      heap growth, or proves the reader never buffers the whole file).
+- [ ] The import's size is checked against the user's quota before any
+      message is processed, and an over-quota import writes nothing.
+- [ ] Upload size limits and existing import behaviour (messages, folders,
+      errors) are unchanged.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-17 are the acceptance criteria of US-001 to US-017.
+FR-1 to FR-18 are the acceptance criteria of US-001 to US-018.
 
 ## 5. Non-Goals (Out of Scope)
 
@@ -371,6 +394,7 @@ at the web port. No other story changes a config key production sets.
 ### 8.1 Decisions (operator, 2026-10-24)
 
 1. Scope: the 17 items in section 3, all three phases, one release.
+   US-018 added on 2026-10-24 after the 26.5 security review.
 2. Multi-node items stay deferred until a multi-node cluster is planned.
 3. US-003 allows SIZE to be underestimated by a tenth plus 1 KiB. RFC 1870
    calls SIZE an estimate and Postfix does not enforce it in DATA, so a
