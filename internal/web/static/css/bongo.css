@@ -3960,3 +3960,10 @@ a.admin-nav-item.active,
 .unread-badge {
   color: #1A1D21 !important;
 }
+
+/* AGPL-3.0 section 13 source link on the login page */
+.login-source {
+  position: fixed; bottom: 12px; left: 0; right: 0;
+  margin: 0; text-align: center; font-size: 0.8rem;
+}
+.login-source a { color: var(--text-muted); }

@@ -103,7 +103,7 @@ var restartKeys = []string{
 	"imap.enabled", "imap.port", "imap.port_tls", "imap.proxy_protocol",
 	"pop3.enabled", "pop3.port", "pop3.port_tls", "pop3.proxy_protocol",
 	"web.port", "web.session_secret", "web.tls.cert_file", "web.tls.key_file",
-	"web.https_redirect", "web.http_redirect_port", "web.plain_http", "web.behind_tls_proxy",
+	"web.https_redirect", "web.http_redirect_port", "web.plain_http", "web.behind_tls_proxy", "web.source_url",
 	"antispam.rspamd.enabled", "antispam.rspamd.url",
 	"antispam.spamassassin.enabled", "antispam.spamassassin.host", "antispam.spamassassin.port",
 	"antispam.spamassassin.timeout", "antispam.spamassassin.threshold",

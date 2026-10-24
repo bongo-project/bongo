@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/a-h/templ"
+
 	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 )
@@ -45,6 +47,11 @@ func i18nJSON(ctx context.Context) string {
 // InjectLocale middleware. Falls back to "en" if not set.
 func localeFromCtx(ctx context.Context) string {
 	return middleware.LocaleFromContext(ctx)
+}
+
+// sourceURL returns the configured link target for the "Source code" link.
+func sourceURL(ctx context.Context) templ.SafeURL {
+	return templ.URL(middleware.SourceURLFromContext(ctx))
 }
 
 // t translates a message ID using the locale from the request context.
