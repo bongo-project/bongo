@@ -328,13 +328,13 @@ func TestDiffIncrementOneClasses(t *testing.T) {
 		},
 		ClassRestart: {
 			"storage.blob_gc", "pipeline.quarantine_retention", "pipeline.error_retention",
-			"storage.pebble.cache_size",
+			"storage.pebble.cache_size", "agent_server.tls.cert_file", "agent_server.tls.key_file",
+			"agent_server.tls.ca_file",
 		},
 		ClassNoOp: {
 			"telemetry.prometheus.enabled", "telemetry.prometheus.port", "antispam.builtin.enabled",
 			"caldav.enabled", "web.enabled", "cluster.raft.data_dir",
-			"server.datacenter", "agent_server.tls.cert_file", "agent_server.tls.key_file",
-			"agent_server.tls.ca_file", "smtp.tls.ca_file", "web.tls.ca_file", "storage.pebble.wal_dir",
+			"server.datacenter", "smtp.tls.ca_file", "web.tls.ca_file", "storage.pebble.wal_dir",
 		},
 	}
 	for class, ks := range want {
@@ -353,8 +353,8 @@ func TestDiffIncrementOneClasses(t *testing.T) {
 			noopCount++
 		}
 	}
-	if hotCount != 5 || noopCount != 13 {
-		t.Errorf("hot=%d noop=%d, want 5 and 13", hotCount, noopCount)
+	if hotCount != 5 || noopCount != 10 {
+		t.Errorf("hot=%d noop=%d, want 5 and 10", hotCount, noopCount)
 	}
 }
 

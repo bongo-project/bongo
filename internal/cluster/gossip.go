@@ -32,7 +32,11 @@ type GossipNode struct {
 func NewGossipNode(cfg *config.Config, httpAddr string, raftAddr string, logger *slog.Logger) (*GossipNode, error) {
 	mlCfg := memberlist.DefaultLANConfig()
 	mlCfg.Name = cfg.Server.Name
-	mlCfg.BindAddr = clusterBindHost(cfg)
+	bindHost, err := cfg.ClusterBindHost()
+	if err != nil {
+		return nil, err
+	}
+	mlCfg.BindAddr = bindHost
 	mlCfg.BindPort = cfg.Cluster.Gossip.Port
 	mlCfg.LogOutput = io.Discard // We use slog.
 

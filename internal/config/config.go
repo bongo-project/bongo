@@ -41,11 +41,10 @@ type ServerConfig struct {
 	Role       string `hcl:"role,optional" mapstructure:"role"`
 	Name       string `hcl:"name,optional" mapstructure:"name"`
 	Datacenter string `hcl:"datacenter,optional" mapstructure:"datacenter"`
-	// BindAddr is shared by the protocol listeners, raft and gossip. When the
-	// effective advertise address (AdvertiseAddr, else BindAddr) is a loopback
-	// literal or "localhost", raft and gossip bind to that loopback address
-	// instead, so a single node does not expose its cluster transports to
-	// other hosts or containers. Hostnames are not resolved.
+	// BindAddr is the address the protocol listeners bind to. Raft and gossip
+	// do not follow it: they bind cluster.bind_addr, else the effective
+	// advertise address (AdvertiseAddr, else BindAddr), with "localhost"
+	// mapped to 127.0.0.1. See Config.ClusterBindHost.
 	BindAddr      string   `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
 	AdvertiseAddr string   `hcl:"advertise_addr,optional" mapstructure:"advertise_addr"`
 	Agents        []string `hcl:"agents,optional" mapstructure:"agents"`
@@ -75,10 +74,15 @@ type AgentConfig struct {
 }
 
 type ClusterConfig struct {
-	Join   []string     `hcl:"join,optional" mapstructure:"join"`
-	Raft   RaftConfig   `hcl:"raft,block" mapstructure:"raft"`
-	Gossip GossipConfig `hcl:"gossip,block" mapstructure:"gossip"`
-	TLS    TLSConfig    `hcl:"tls,block" mapstructure:"tls"`
+	// BindAddr is the IP literal raft and gossip listen on. Unset, they bind
+	// the advertise address (loopback for a single node), never
+	// server.bind_addr. Set it when the advertise address is not on a local
+	// interface (NAT, container networks). See Config.ClusterBindHost.
+	BindAddr string       `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
+	Join     []string     `hcl:"join,optional" mapstructure:"join"`
+	Raft     RaftConfig   `hcl:"raft,block" mapstructure:"raft"`
+	Gossip   GossipConfig `hcl:"gossip,block" mapstructure:"gossip"`
+	TLS      TLSConfig    `hcl:"tls,block" mapstructure:"tls"`
 }
 
 type RaftConfig struct {
@@ -791,6 +795,15 @@ func (c *Config) Validate() error {
 		if c.AgentServer == nil || c.AgentServer.ServerAddress == "" {
 			return fmt.Errorf("agent_server.address: required when role is \"agent\"")
 		}
+		for _, k := range []struct{ key, val string }{
+			{"agent_server.tls.cert_file", c.AgentServer.TLS.CertFile},
+			{"agent_server.tls.key_file", c.AgentServer.TLS.KeyFile},
+			{"agent_server.tls.ca_file", c.AgentServer.TLS.CAFile},
+		} {
+			if k.val == "" {
+				return fmt.Errorf("%s: required when role is \"agent\" (agent gRPC uses mutual TLS)", k.key)
+			}
+		}
 	}
 
 	// Multi-node cluster transport gate. A server that joins peers carries the
@@ -820,6 +833,18 @@ func (c *Config) Validate() error {
 		}
 		if IsLoopbackHost(adv) {
 			return fmt.Errorf("cluster: cluster.join is set but raft/gossip advertise the loopback address %q; set server.advertise_addr to this node's routable IP", adv)
+		}
+	}
+
+	// Reject a cluster bind address that could never work before anything
+	// listens. A bare wildcard server.bind_addr with no advertise address is
+	// left to NewRaftNode and NewGossipNode, which refuse it at startup;
+	// Validate has always accepted it so that config shape checks stay usable
+	// without a full node setup.
+	if c.Server.Role == "server" || c.Server.Role == "dev" {
+		if _, err := c.ClusterBindHost(); err != nil &&
+			(c.Cluster.BindAddr != "" || c.Server.AdvertiseAddr != "" || !isUnspecifiedHost(c.Server.BindAddr)) {
+			return err
 		}
 	}
 
@@ -1352,6 +1377,79 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, FileStamp, error) {
 	ApplyOverrides(v, cfg)
 
 	return cfg, configFile, stamp, nil
+}
+
+// effectiveAdvertise returns the address raft and gossip tell peers to use:
+// server.advertise_addr, else server.bind_addr.
+func (c *Config) effectiveAdvertise() string {
+	if c.Server.AdvertiseAddr != "" {
+		return c.Server.AdvertiseAddr
+	}
+	return c.Server.BindAddr
+}
+
+// ClusterBindHost returns the IP literal the raft and gossip transports listen
+// on, in this order:
+//
+//  1. cluster.bind_addr, which must be a specific IP literal.
+//  2. In the dev role, a wildcard (or empty) bind_addr with no advertise
+//     address and no cluster.join binds 127.0.0.1: a single ephemeral node has
+//     no peers.
+//  3. The effective advertise address (server.advertise_addr, else
+//     server.bind_addr), with "localhost" mapped to 127.0.0.1.
+//
+// server.bind_addr is shared with every protocol listener and is normally
+// 0.0.0.0, so it never widens the cluster transports. An unspecified or
+// non-IP result is an error for the server role, because memberlist binds
+// every interface when it cannot parse its bind address. The dev role keeps
+// its historical wildcard result, since dev raft is in-memory.
+func (c *Config) ClusterBindHost() (string, error) {
+	if c.Cluster.BindAddr != "" {
+		ip := net.ParseIP(c.Cluster.BindAddr)
+		if ip == nil || ip.IsUnspecified() {
+			return "", fmt.Errorf("cluster.bind_addr %q must be a specific IP address, not a hostname or wildcard", c.Cluster.BindAddr)
+		}
+		return c.Cluster.BindAddr, nil
+	}
+	if c.Server.Role == "dev" && c.Server.AdvertiseAddr == "" && len(c.Cluster.Join) == 0 && isUnspecifiedHost(c.Server.BindAddr) {
+		return "127.0.0.1", nil
+	}
+	host := c.effectiveAdvertise()
+	if strings.EqualFold(host, "localhost") {
+		return "127.0.0.1", nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return "", fmt.Errorf("cluster: cannot derive a raft/gossip bind address from %q (not an IP address); set cluster.bind_addr to this node's local interface IP or use an IP literal for server.advertise_addr", host)
+	}
+	if ip.IsUnspecified() && c.Server.Role != "dev" {
+		return "", fmt.Errorf("cluster: raft/gossip would bind the wildcard address %q; set cluster.bind_addr to this node's local interface IP or set server.advertise_addr", host)
+	}
+	return host, nil
+}
+
+// ClusterHasPeers reports whether this node is, or may become, part of a
+// multi-node cluster: a server with a join list or a non-loopback advertise
+// address, or one whose raft/gossip listeners are explicitly bound to a
+// non-loopback interface (reachable by other hosts whatever it advertises).
+// Such a node must run raft over mutually authenticated TLS.
+func (c *Config) ClusterHasPeers() bool {
+	if c.Server.Role != "server" {
+		return false
+	}
+	if c.Cluster.BindAddr != "" && !IsLoopbackHost(c.Cluster.BindAddr) {
+		return true
+	}
+	return len(c.Cluster.Join) > 0 || !IsLoopbackHost(c.effectiveAdvertise())
+}
+
+// isUnspecifiedHost reports whether addr is empty or a wildcard address.
+func isUnspecifiedHost(addr string) bool {
+	if addr == "" {
+		return true
+	}
+	ip := net.ParseIP(addr)
+	return ip != nil && ip.IsUnspecified()
 }
 
 // IsLoopbackHost reports whether host is a loopback IP literal or "localhost".

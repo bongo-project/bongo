@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
 	"github.com/bongo-project/bongo/internal/pipeline"
@@ -23,19 +24,22 @@ type AgentProcessorServer struct {
 	bongov1.UnimplementedAgentServiceServer
 
 	processor pipeline.Processor
+	tlsFiles  TLSFiles
 	logger    *slog.Logger
 
 	grpcServer *grpc.Server
 	listenAddr string // resolved address after Start
 }
 
-// NewAgentProcessorServer creates an AgentProcessorServer wrapping proc.
-func NewAgentProcessorServer(proc pipeline.Processor, logger *slog.Logger) *AgentProcessorServer {
+// NewAgentProcessorServer creates an AgentProcessorServer wrapping proc. The
+// listener requires mutual TLS using tlsFiles; Start fails if they are unset.
+func NewAgentProcessorServer(proc pipeline.Processor, tlsFiles TLSFiles, logger *slog.Logger) *AgentProcessorServer {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AgentProcessorServer{
 		processor: proc,
+		tlsFiles:  tlsFiles,
 		logger:    logger,
 	}
 }
@@ -44,13 +48,18 @@ func NewAgentProcessorServer(proc pipeline.Processor, logger *slog.Logger) *Agen
 // random port), registers the AgentService, and starts serving in the
 // background. The resolved listen address is available via ListenAddr.
 func (s *AgentProcessorServer) Start(addr string) error {
+	// TLS first: a misconfigured server must not bind the port.
+	tlsCfg, err := serverTLSConfig(s.tlsFiles)
+	if err != nil {
+		return fmt.Errorf("agent processor: %w", err)
+	}
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("agent processor: listen %s: %w", addr, err)
 	}
 	s.listenAddr = lis.Addr().String()
 
-	s.grpcServer = grpc.NewServer()
+	s.grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
 	bongov1.RegisterAgentServiceServer(s.grpcServer, s)
 
 	go func() {

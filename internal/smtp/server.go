@@ -53,17 +53,18 @@ type RelayQueuer interface {
 
 // Backend implements gosmtp.Backend.
 type Backend struct {
-	auth         profileAuthenticator
-	deliverer    Deliverer
-	spfChecker   *mail.SPFChecker
-	resolver     RecipientResolver
-	quotaChecker QuotaChecker
-	relayQueue   RelayQueuer
-	senderPolicy SenderPolicy
-	srs          SRSVerifier
-	hostedDomain func(domain string) bool
-	subPort      int
-	logger       *slog.Logger
+	auth          profileAuthenticator
+	deliverer     Deliverer
+	spfChecker    *mail.SPFChecker
+	resolver      RecipientResolver
+	quotaChecker  QuotaChecker
+	relayQueue    RelayQueuer
+	senderPolicy  SenderPolicy
+	srs           SRSVerifier
+	srsAllDomains bool // agent mode: verify SRS on every domain, no hosted-domain test
+	hostedDomain  func(domain string) bool
+	subPort       int
+	logger        *slog.Logger
 
 	hostname   string              // public hostname, used in the Received header
 	outboundRL *inboundRateLimiter // nil = disabled; per-user submission rate limit
@@ -137,6 +138,16 @@ type SRSVerifier interface {
 func (b *Backend) SetSRS(v SRSVerifier, hosted func(domain string) bool) {
 	b.srs = v
 	b.hostedDomain = hosted
+}
+
+// SetSRSAnyDomain enables RCPT handling of SRS0/SRS1 addresses on every
+// domain. It is the agent mode: an agent role has no store and so no list of
+// hosted domains, and the HMAC check in Reverse replaces the hosted-domain
+// test. It does not set a hosted-domain function, so the no-relay sender
+// handling stays off.
+func (b *Backend) SetSRSAnyDomain(v SRSVerifier) {
+	b.srs = v
+	b.srsAllDomains = true
 }
 
 // SetHostedDomain tells the backend which domains this server hosts, which the
@@ -506,6 +517,16 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		}
 	}
 
+	// SRS addresses belong to no user. They are checked before resolution so
+	// they never reach the domain catch-all, and for authenticated submission
+	// too, or the relay branch below would send them out to our own MX. They
+	// are also checked before the no-resolver shortcut: an agent has no
+	// resolver yet still verifies them. Every refusal is the same 550 as an
+	// unavailable mailbox: no oracle beyond accept or refuse.
+	if handled, err := s.rcptSRS(to); handled {
+		return err
+	}
+
 	// Without a resolver (dev/agent role) fall back to accepting locally; the
 	// server-role deployment always wires a resolver.
 	if s.backend.resolver == nil {
@@ -513,14 +534,6 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		return nil
 	}
 
-	// SRS addresses belong to no user. They are checked before resolution so
-	// they never reach the domain catch-all, and for authenticated submission
-	// too, or the relay branch below would send them out to our own MX. Every
-	// refusal is the same 550 as an unavailable mailbox: no oracle beyond
-	// accept or refuse.
-	if handled, err := s.rcptSRS(to); handled {
-		return err
-	}
 	// The no-relay sender used for forwards of unauthenticated mail is checked
 	// at the same point, for the same reasons.
 	if handled, err := s.rcptNoRelay(to); handled {
@@ -581,16 +594,18 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	return nil
 }
 
-// rcptSRS handles a recipient that is an SRS address on a hosted domain. It
+// rcptSRS handles a recipient that is an SRS address on a hosted domain (any
+// domain in agent mode). It
 // reports handled=false for any other address.
 func (s *Session) rcptSRS(to string) (handled bool, err error) {
 	b := s.backend
-	if b.srs == nil || b.hostedDomain == nil {
+	if b.srs == nil || (!b.srsAllDomains && b.hostedDomain == nil) {
 		return false, nil
 	}
 	addr := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(to), "<"), ">")
 	at := strings.LastIndexByte(addr, '@')
-	if at <= 0 || !srs.IsSRS(addr[:at]) || !b.hostedDomain(strings.ToLower(addr[at+1:])) {
+	if at <= 0 || !srs.IsSRS(addr[:at]) ||
+		(!b.srsAllDomains && !b.hostedDomain(strings.ToLower(addr[at+1:]))) {
 		return false, nil
 	}
 	if s.from == "" {

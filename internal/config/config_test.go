@@ -637,7 +637,7 @@ func TestConfigValidate(t *testing.T) {
 			modify: func(c *Config) {
 				c.Server.Role = "agent"
 				c.Server.Agents = []string{"antispam", "antivirus"}
-				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400", TLS: TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"}}
 			},
 			wantErr: false,
 		},
@@ -646,7 +646,7 @@ func TestConfigValidate(t *testing.T) {
 			modify: func(c *Config) {
 				c.Server.Role = "agent"
 				c.Server.Agents = []string{"smtp", "imap", "pop3", "antispam", "antivirus", "caldav"}
-				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400", TLS: TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"}}
 			},
 			wantErr: false,
 		},
@@ -679,7 +679,7 @@ func TestConfigValidate(t *testing.T) {
 			modify: func(c *Config) {
 				c.Server.Role = "agent"
 				c.Server.Agents = []string{"antispam", "bogus"}
-				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400", TLS: TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"}}
 			},
 			wantErr: true,
 			errMsg:  "unknown agent type",
@@ -693,6 +693,39 @@ func TestConfigValidate(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "agent_server.address",
+		},
+		{
+			name: "agent role without tls cert_file",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = []string{"antispam"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400", TLS: TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"}}
+				c.AgentServer.TLS.CertFile = ""
+			},
+			wantErr: true,
+			errMsg:  "agent_server.tls.cert_file",
+		},
+		{
+			name: "agent role without tls key_file",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = []string{"antispam"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400", TLS: TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"}}
+				c.AgentServer.TLS.KeyFile = ""
+			},
+			wantErr: true,
+			errMsg:  "agent_server.tls.key_file",
+		},
+		{
+			name: "agent role without tls ca_file",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = []string{"antispam"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400", TLS: TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"}}
+				c.AgentServer.TLS.CAFile = ""
+			},
+			wantErr: true,
+			errMsg:  "agent_server.tls.ca_file",
 		},
 		{
 			name: "single-node server without cluster security is allowed",

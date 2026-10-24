@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
@@ -36,34 +34,26 @@ func startTestServer(t *testing.T) (*AgentServer, bongov1.AgentServiceClient, fu
 		t.Fatalf("create spool store: %v", err)
 	}
 
-	// Use ephemeral port.
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-
+	// Go through the real Start (mutual TLS, ephemeral port).
+	pki := newTestPKI(t)
 	config := AgentServerConfig{
-		Port:         0, // unused, we provide our own listener
+		Port:         0,
 		AgentTTL:     DefaultAgentTTL,
 		ReapInterval: DefaultReapInterval,
+		TLS:          pki.server,
 	}
 
 	srv := NewAgentServer(blobs, spool, logger, config)
-	grpcSrv := grpc.NewServer()
-	bongov1.RegisterAgentServiceServer(grpcSrv, srv)
-	srv.grpcServer = grpcSrv
-	srv.stopReaper = make(chan struct{})
+	if err := srv.Start(); err != nil {
+		t.Fatalf("start server: %v", err)
+	}
 
-	go grpcSrv.Serve(lis)
-	go srv.reapLoop()
-
-	addr := lis.Addr().String()
 	conn, err := grpc.NewClient(
-		addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		srv.ListenAddr(),
+		grpc.WithTransportCredentials(pki.goodClientCreds(t)),
 	)
 	if err != nil {
-		grpcSrv.Stop()
+		srv.Stop()
 		t.Fatalf("dial server: %v", err)
 	}
 

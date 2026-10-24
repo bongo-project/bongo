@@ -347,7 +347,10 @@ func TestNewAgentAgentModeSkipsStorage(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "agent"
 	cfg.Server.Agents = []string{"antispam"}
-	cfg.AgentServer = &config.AgentConfig{ServerAddress: "127.0.0.1:8400"}
+	cfg.AgentServer = &config.AgentConfig{
+		ServerAddress: "127.0.0.1:8400",
+		TLS:           config.TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"},
+	}
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -398,7 +401,10 @@ func TestAgentRoleConfigValidation(t *testing.T) {
 
 	// With valid agents and server address, should pass.
 	cfg.Server.Agents = []string{"antispam"}
-	cfg.AgentServer = &config.AgentConfig{ServerAddress: "127.0.0.1:8400"}
+	cfg.AgentServer = &config.AgentConfig{
+		ServerAddress: "127.0.0.1:8400",
+		TLS:           config.TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"},
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("unexpected validation error: %v", err)
 	}
