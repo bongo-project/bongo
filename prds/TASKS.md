@@ -142,7 +142,7 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 |---|------|-----|--------|-------|
 | 26.1 | US-001: The repository is licensed AGPL-3.0 | [prd-public-release.md](active/prd-public-release.md) | TODO | |
 | 26.2 | US-002: Demo data is synthetic | [prd-public-release.md](active/prd-public-release.md) | TODO | |
-| 26.3 | US-003: Operational and personal details are scrubbed from the tree | [prd-public-release.md](active/prd-public-release.md) | TODO | |
+| 26.3 | US-003: Operational and personal details are scrubbed from the tree | [prd-public-release.md](active/prd-public-release.md) | DONE (2026-10-24) | Replaced the production host name and access note, a hosted application's sender address and sign-in subjects, the private infra repository name, an internal user id, message id and blob hashes in prds/ (4 files). The same list, plus a retired logging host name found only in history, is the US-004 replacement list. Kept: the operator's address in SECURITY.md (contact) and .mailmap, generic /mnt/data paths in deploy templates. |
 | 26.4 | US-004: History is rewritten | [prd-public-release.md](active/prd-public-release.md) | TODO | |
 | 26.5 | US-005: The open security items are reviewed before publishing | [prd-public-release.md](active/prd-public-release.md) | TODO | |
 | 26.6 | US-006: CI is safe on a public repository | [prd-public-release.md](active/prd-public-release.md) | TODO | |
