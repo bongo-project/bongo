@@ -192,6 +192,15 @@ type Agent struct {
 	controlServer *http.Server
 	controlAddr   string
 
+	// redirectServer serves the plain-HTTP to HTTPS redirect when
+	// https_redirect is set. It is bound before ready and drained by Shutdown.
+	redirectServer *http.Server
+
+	// webListenHook, when set by a test, receives the bound web listener
+	// before Serve starts so the test can close it under the server. Nil in
+	// production.
+	webListenHook func(net.Listener)
+
 	// dmarcEvaluator overrides the DMARC evaluator of the agent antispam
 	// processor. Nil in production (a live-DNS evaluator is built); tests set
 	// it to stay offline.
@@ -1979,6 +1988,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("web listen: %w", err)
 	}
+	if a.webListenHook != nil {
+		a.webListenHook(webLn)
+	}
 	// The control listener is bound the same way. A failure releases the web
 	// listener, because Run's early returns do not call Shutdown.
 	ctlLn, err := net.Listen("tcp", a.Config.Server.ControlAddr)
@@ -1986,7 +1998,32 @@ func (a *Agent) Run(ctx context.Context) error {
 		_ = webLn.Close()
 		return fmt.Errorf("control listen on %s: %w", a.Config.Server.ControlAddr, err)
 	}
+	// The HTTPS redirect (not in dev mode) is bound before ready too, and
+	// before any server starts, so a failure only has raw listeners to close.
+	var redirectLn net.Listener
+	var redirectHandler http.Handler
+	if a.Config.Web.HTTPSRedirect && webTLSCfg != nil && a.Config.Server.Role != "dev" {
+		redirectPort := a.Config.Web.HTTPRedirectPort
+		if redirectPort == 0 {
+			redirectPort = 80
+		}
+		redirectAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(redirectPort))
+		httpsHost := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
+		redirectHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			target := "https://" + httpsHost + r.RequestURI
+			http.Redirect(w, r, target, http.StatusMovedPermanently) // #nosec G710 -- target host is server config, path/query preserve same request URI
+		})
+		redirectLn, err = net.Listen("tcp", redirectAddr)
+		if err != nil {
+			_ = ctlLn.Close()
+			_ = webLn.Close()
+			return fmt.Errorf("redirect listen on %s: %w", redirectAddr, err)
+		}
+	}
 	a.startControlServer(ctlLn, cr)
+	if redirectLn != nil {
+		a.startRedirectServer(redirectLn, redirectHandler)
+	}
 
 	a.ready.Store(true)
 
@@ -1996,27 +2033,6 @@ func (a *Agent) Run(ctx context.Context) error {
 		"bind", a.Config.Server.BindAddr,
 		"http_addr", addr,
 	)
-
-	// Start HTTPS redirect server when configured (not in dev mode).
-	if a.Config.Web.HTTPSRedirect && webTLSCfg != nil && a.Config.Server.Role != "dev" {
-		redirectPort := a.Config.Web.HTTPRedirectPort
-		if redirectPort == 0 {
-			redirectPort = 80
-		}
-		redirectAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(redirectPort))
-		httpsHost := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
-		redirectHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			target := "https://" + httpsHost + r.RequestURI
-			http.Redirect(w, r, target, http.StatusMovedPermanently) // #nosec G710 -- target host is server config, path/query preserve same request URI
-		})
-		go func() {
-			redirectSrv := newRedirectServer(redirectAddr, redirectHandler, a.logger)
-			if err := redirectSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				a.logger.Error("web: redirect server error", "error", err)
-			}
-		}()
-		a.logger.Info("web: HTTP->HTTPS redirect started", "addr", redirectAddr)
-	}
 
 	// Start HTTP server in background.
 	httpErrCh := make(chan error, 1)
@@ -2047,8 +2063,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	case <-ctx.Done():
 	case err := <-httpErrCh:
 		if err != nil {
-			_ = a.shutdownControlServer()
-			return fmt.Errorf("http server: %w", err)
+			// Serve died after ready: run the full shutdown so ready is
+			// reset and the stores, Raft and listeners are released. The
+			// Serve error stays first so the cause is not hidden.
+			serveErr := fmt.Errorf("http server: %w", err)
+			a.logger.Error("web: server stopped, shutting down", "error", err)
+			return errors.Join(serveErr, a.Shutdown())
 		}
 	}
 
@@ -3569,6 +3589,9 @@ func (a *Agent) runAgent(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("web listen: %w", err)
 	}
+	if a.webListenHook != nil {
+		a.webListenHook(webLn)
+	}
 
 	a.ready.Store(true)
 
@@ -3593,7 +3616,9 @@ func (a *Agent) runAgent(ctx context.Context) error {
 	case <-ctx.Done():
 	case err := <-httpErrCh:
 		if err != nil {
-			return fmt.Errorf("http server: %w", err)
+			serveErr := fmt.Errorf("http server: %w", err)
+			a.logger.Error("web: server stopped, shutting down", "error", err)
+			return errors.Join(serveErr, a.shutdownAgent())
 		}
 	}
 
@@ -3921,6 +3946,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	}
 	if err := a.shutdownControlServer(); err != nil {
 		errs = append(errs, fmt.Errorf("shutting down control server: %w", err))
+	}
+	if err := a.shutdownRedirectServer(); err != nil {
+		errs = append(errs, fmt.Errorf("shutting down redirect server: %w", err))
 	}
 	if err := a.shutdownPeerServer(); err != nil {
 		errs = append(errs, fmt.Errorf("shutting down peer server: %w", err))

@@ -146,6 +146,30 @@ func (a *Agent) shutdownControlServer() error {
 	return a.controlServer.Shutdown(drainCtx)
 }
 
+// startRedirectServer serves the HTTP to HTTPS redirect on an already bound
+// listener. A Serve error after ready is logged only.
+func (a *Agent) startRedirectServer(ln net.Listener, h http.Handler) {
+	addr := ln.Addr().String()
+	srv := newRedirectServer(addr, h, a.logger)
+	a.redirectServer = srv
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			a.logger.Error("web: redirect server error", "addr", addr, "error", err)
+		}
+	}()
+	a.logger.Info("web: HTTP->HTTPS redirect started", "addr", addr)
+}
+
+// shutdownRedirectServer drains the redirect listener.
+func (a *Agent) shutdownRedirectServer() error {
+	if a.redirectServer == nil {
+		return nil
+	}
+	drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.redirectServer.Shutdown(drainCtx)
+}
+
 // shutdownPeerServer drains the peer listener.
 func (a *Agent) shutdownPeerServer() error {
 	if a.peerServer == nil {

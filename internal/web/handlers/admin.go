@@ -1305,8 +1305,8 @@ func (h *AdminHandler) ToggleDomain(w http.ResponseWriter, r *http.Request) {
 //
 // There is no composite Raft command, so the cascade is a series of single
 // deletes. Partial-failure semantics: the security-relevant keys (domain-admin
-// grants, everything under /system/domain/{d}/, catch-all, orphaned address
-// records) go first and the /system/domain/{d} key goes last. If any step
+// grants, everything under /system/domain/{d}/, catch-all, send-as claims on
+// the domain, orphaned address records) go first and the /system/domain/{d} key goes last. If any step
 // fails the request returns 500, the domain stays listed and the delete can be
 // retried. CreateDomain purges leftovers and AuthorizedDomains ignores domains
 // whose key is missing, so a half-finished delete never leaks admin scope to a
@@ -2439,6 +2439,26 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 		flash := "Cannot+remove+primary+address"
 		http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 		return
+	}
+
+	// Drop the send-as claim of the path user and, when the record belongs to
+	// someone else, of its owner, so the settings page stops listing it. This
+	// goes first and fails the request: the admin sees success only if the
+	// claim is gone, and a retry is safe because both deletes are idempotent.
+	// Other users' pending claims are deliberately kept. They are those users'
+	// own unverified statements, not attached to the record being removed, and
+	// SubmitCode re-checks availability before honouring one.
+	avs := store.NewAddressVerifyStore(h.store, h.applier)
+	owners := []string{userID}
+	if ok && existing.UserId != "" && existing.UserId != userID {
+		owners = append(owners, existing.UserId)
+	}
+	for _, owner := range owners {
+		if err := avs.Delete(owner, address); err != nil {
+			h.logger.Error("admin: failed to remove send-as claim", "user_id", owner, "address", address, "error", err)
+			http.Error(w, "failed to remove address", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if err := h.addresses.Delete(address); err != nil {

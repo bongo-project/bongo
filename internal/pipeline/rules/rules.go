@@ -68,10 +68,18 @@ func (p *RulesProcessor) Name() string {
 // A "delete" rule results in StageResult.Action "reject". A "tag" rule appends
 // tag names to env.PendingTags, which the deliver stage applies to MailMeta.
 //
-// When multiple recipients have conflicting rules, the most significant action
-// wins: reject > pass (target mailbox is set from the first move/copy match).
+// The stage decides per envelope, so producers write one envelope per local
+// recipient (SMTP EnqueueLocal, agent DepositMessage, compose). The
+// multi-recipient loop below exists only for legacy spool entries written
+// before that change. Its merge semantics are known to be wrong for more than
+// one recipient: any delete rejects the whole envelope and the first
+// move/copy target applies to every recipient. A warning is logged when an
+// envelope carries more than one recipient.
 func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope, msg io.Reader) (*bongov1.StageResult, error) {
 	start := time.Now()
+	if n := len(env.GetRecipients()); n > 1 {
+		p.logger.Warn("rules: envelope has multiple recipients; rules are applied envelope-wide", "id", env.GetId(), "recipients", n)
+	}
 
 	raw, err := io.ReadAll(msg)
 	if err != nil {

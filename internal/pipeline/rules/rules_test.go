@@ -1,8 +1,10 @@
 package rules_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -173,9 +175,10 @@ func TestRulesDeleteAction(t *testing.T) {
 }
 
 func TestRulesMultipleRecipients(t *testing.T) {
-	// Each recipient's rules are evaluated independently.
-	// alice has a move rule matching; bob has no rules.
-	// The first matching move should set env.TargetMailbox.
+	// Envelopes are expected to carry one recipient. A multi-recipient
+	// envelope (legacy spool entry) still works with envelope-wide semantics:
+	// alice has a move rule matching; bob has no rules; the first matching
+	// move sets env.TargetMailbox for everyone, and a warning is logged.
 	provider := &mockRuleProvider{
 		rules: map[string][]*bongov1.FilterRule{
 			"alice@example.com": {
@@ -193,7 +196,9 @@ func TestRulesMultipleRecipients(t *testing.T) {
 		},
 	}
 
-	p := rulesprocessor.NewRulesProcessor(provider, nil)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	p := rulesprocessor.NewRulesProcessor(provider, logger)
 	env := &bongov1.QueueEnvelope{
 		Recipients: []string{"alice@example.com", "bob@example.com"},
 	}
@@ -213,6 +218,23 @@ func TestRulesMultipleRecipients(t *testing.T) {
 	}
 	if env.TargetMailbox != "Promotions" {
 		t.Errorf("expected TargetMailbox=Promotions, got %q", env.TargetMailbox)
+	}
+	if !strings.Contains(logs.String(), "multiple recipients") {
+		t.Errorf("expected multi-recipient warning, got log %q", logs.String())
+	}
+}
+
+func TestRulesSingleRecipientNoWarning(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	p := rulesprocessor.NewRulesProcessor(&mockRuleProvider{}, logger)
+	env := &bongov1.QueueEnvelope{Recipients: []string{"alice@example.com"}}
+	msg := strings.NewReader(minimalMessage("a@x.example", "alice@example.com", "Hi", "Body"))
+	if _, err := p.Process(context.Background(), env, msg); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(logs.String(), "multiple recipients") {
+		t.Errorf("unexpected warning for single recipient: %q", logs.String())
 	}
 }
 
