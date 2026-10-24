@@ -34,17 +34,31 @@ Reporters are credited by name when a fix ships, unless they ask otherwise.
 Bongo is pre-1.0. Only the most recent tagged release receives security fixes.
 Older tags remain in the repository for history and are not maintained.
 
+| Version | Supported |
+|---------|-----------|
+| Latest release (see the repository's tags) | Yes |
+| Anything older | No |
+
 ## Known limitations
 
-**Single-node deployments** behind a reverse proxy are the configuration that has
-received security review. Two adversarial code reviews covered the mail edge, web
-authentication and storage paths; their findings are fixed.
+**Single-node deployments** are the configuration that has received security
+review, both directly on the internet and behind a reverse proxy. Three
+adversarial code reviews covered the mail edge, web authentication, storage and
+cluster paths, followed by the hardening releases v0.9.0 to v0.12.0; their
+findings are fixed or listed here.
 
-**Multi-node clustering is not hardened.** Known open weaknesses remain in the
-Raft transport, the blob-sync and peer-join HTTP paths, and the cluster bind
-address. These are not reachable in a single-node deployment but become live when
-a cluster is formed. Run cluster traffic on a trusted private network and do not
-expose ports 8300 or 8301. Reports in this area are still welcome.
+**Multi-node clustering is less tested.** Since v0.11.0 the Raft transport, blob
+sync and cluster join use mutual TLS from a cluster CA, and cluster listeners have
+their own bind address. Clusters have not been run in production, there is no
+background catch-up for message bodies missed while a node was down, and nodes
+are not version-aware, so every node must run the same release. Keep cluster
+ports (8300 to 8302) off the public internet. Reports in this area are welcome.
+
+**Web sessions during a storage fault.** If the account record cannot be read
+because the store is failing, ordinary web pages still load for an existing
+session, so a disabled account or a revoked cookie keeps working for as long as
+the fault lasts. Administrative pages refuse with 503, and IMAP, POP3 and SMTP
+refuse with a temporary error. A user cannot cause this state.
 
 **Web logout signs the user out everywhere.** Logout bumps a per-user session
 generation that is part of the session epoch, so every web session for that user,
@@ -75,16 +89,9 @@ trusted proxy, forwarded headers are ignored: rate limits and lockout see the
 proxy's IP and `/metrics` sees a private address, so keep the proxy-level
 restriction on `/metrics`.
 
-**Send-as claims are visible in the address list, and unverified.** Adding a
-send-as address gives the same reply whether the address was free, taken, hosted
-here or an alias, and verification requests answer "not found" for both missing
-and foreign addresses. The address list itself still shows whether your claim
-took, so a user can probe which external addresses are unclaimed. The same
-design lets anyone claim an external address unverified and so block a
-legitimate user on another tenant from adding it. Closing both needs the global
-address record to be created only after verification succeeds, with a per-user
-pending claim until then. Query-string `flash` and `error` messages are also
-still reflected (escaped) on many pages.
+**Query-string messages.** `flash` and `error` messages in the query string are
+reflected, escaped, on many pages, so a crafted link can show misleading text but
+cannot inject markup.
 
 **Shutdown waits up to 30 seconds for in-flight mail.** On shutdown the server
 waits for pipeline messages and store-touching background workers to finish
@@ -100,7 +107,7 @@ are not waited for.
 ## Scope
 
 In scope: the server (`internal/`, `cmd/`), the protocol implementations, and the
-deployment configuration in `deploy/`.
+example deployment in `deploy/` (a template, not any particular live deployment).
 
 Out of scope: third-party dependencies, which should be reported upstream;
 issues requiring existing administrator access to the host; and example domains
