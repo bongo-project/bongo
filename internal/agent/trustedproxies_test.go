@@ -110,6 +110,7 @@ func TestRunWiresProxyTrustIntoEveryListener(t *testing.T) {
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Cluster.Gossip.Port = freePort(t)
 	cfg.SMTP.Enabled = true
 	cfg.SMTP.Port = freePort(t)

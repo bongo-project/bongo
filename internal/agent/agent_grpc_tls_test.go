@@ -155,6 +155,7 @@ func TestRunAgentRegistersOverMutualTLS(t *testing.T) {
 	cfg := fx.agentConfig("imap")
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -186,6 +187,7 @@ func TestRunAgentMissingTLSFailsNamingKey(t *testing.T) {
 	cfg := fx.agentConfig("imap")
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.AgentServer.TLS.CAFile = ""
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -203,6 +205,7 @@ func TestServerAndDevRolesBuildNoAgentGRPC(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 	cfg.Cluster.Gossip.Port = freePort(t)

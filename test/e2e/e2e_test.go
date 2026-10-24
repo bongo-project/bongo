@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	smtplib "net/smtp"
+	"strconv"
 	"testing"
 	"time"
 
@@ -27,11 +28,19 @@ func freePort(t *testing.T) int {
 	return port
 }
 
+// freeControlAddr returns a loopback host:port for server.control_addr that
+// was free a moment ago, so no test binds the default 8081.
+func freeControlAddr(t *testing.T) string {
+	t.Helper()
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t)))
+}
+
 func TestE2EDevMode(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.SMTP.Enabled = true
 
 	logger := testLogger()

@@ -48,6 +48,12 @@ type ServerConfig struct {
 	BindAddr      string   `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
 	AdvertiseAddr string   `hcl:"advertise_addr,optional" mapstructure:"advertise_addr"`
 	Agents        []string `hcl:"agents,optional" mapstructure:"agents"`
+	// ControlAddr is the loopback host:port of the control listener that
+	// serves the /internal/* control-plane routes (queue, cluster snapshot,
+	// user create and so on), authenticated by an HMAC over
+	// web.session_secret. They are never served on the public web listener.
+	// The host must be a loopback IP literal. Default 127.0.0.1:8081.
+	ControlAddr string `hcl:"control_addr,optional" mapstructure:"control_addr"`
 	// TrustedProxies lists the addresses (bare IPs or CIDRs) of reverse
 	// proxies whose PROXY protocol headers (smtp/imap/pop3 proxy_protocol) and
 	// X-Forwarded-For / X-Forwarded-Proto headers (web) are believed. Empty by
@@ -55,6 +61,24 @@ type ServerConfig struct {
 	// co-tenant container cannot forge client IPs. Enabling proxy_protocol
 	// with an empty list fails validation. See ParseTrustedProxies.
 	TrustedProxies []string `hcl:"trusted_proxies,optional" mapstructure:"trusted_proxies"`
+}
+
+// validateControlAddr requires server.control_addr to be a loopback IP literal
+// with a port. A hostname is refused because it can resolve to a routable
+// address, and a wildcard or routable IP would expose the control plane.
+func (c *Config) validateControlAddr() error {
+	host, portStr, err := net.SplitHostPort(c.Server.ControlAddr)
+	if err != nil {
+		return fmt.Errorf("server.control_addr: %q must be a loopback IP address and port such as 127.0.0.1:8081: %w", c.Server.ControlAddr, err)
+	}
+	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("server.control_addr: host %q must be a loopback IP literal (127.0.0.1 or [::1])", host)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("server.control_addr: port %q must be a number from 1 to 65535", portStr)
+	}
+	return nil
 }
 
 // ParseTrustedProxies parses server.trusted_proxies once at startup. A
@@ -786,6 +810,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server.role: unknown role %q (valid: dev, server, edge, agent)", c.Server.Role)
 	}
 
+	if err := c.validateControlAddr(); err != nil {
+		return err
+	}
+
 	if c.Server.Role == "agent" {
 		if len(c.Server.Agents) == 0 {
 			return fmt.Errorf("server.agents: role \"agent\" requires a non-empty agents list")
@@ -1160,10 +1188,11 @@ func Defaults() *Config {
 
 	return &Config{
 		Server: ServerConfig{
-			Role:       "dev",
-			Name:       hostname,
-			Datacenter: "dc1",
-			BindAddr:   "0.0.0.0",
+			Role:        "dev",
+			Name:        hostname,
+			Datacenter:  "dc1",
+			BindAddr:    "0.0.0.0",
+			ControlAddr: "127.0.0.1:8081",
 		},
 		Cluster: ClusterConfig{
 			PeerPort: 8302,

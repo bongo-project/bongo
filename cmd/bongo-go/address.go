@@ -39,7 +39,7 @@ var addressRepairCmd = &cobra.Command{
 }
 
 func init() {
-	addressCmd.PersistentFlags().StringVar(&addressHTTPAddr, "http-addr", "127.0.0.1:8080", "HTTP address of the local node")
+	addressCmd.PersistentFlags().StringVar(&addressHTTPAddr, "http-addr", "127.0.0.1:8081", "address of the local node's control listener (server.control_addr)")
 	addressCmd.PersistentFlags().StringVar(&addressSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
 
 	addressCmd.AddCommand(addressOrphansCmd)

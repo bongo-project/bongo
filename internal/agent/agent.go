@@ -187,6 +187,11 @@ type Agent struct {
 	peerClient *http.Client
 	peerServer *http.Server
 
+	// controlServer serves the /internal control-plane routes on
+	// server.control_addr. controlAddr is the address it actually bound.
+	controlServer *http.Server
+	controlAddr   string
+
 	// dmarcEvaluator overrides the DMARC evaluator of the agent antispam
 	// processor. Nil in production (a live-DNS evaluator is built); tests set
 	// it to stay offline.
@@ -946,32 +951,40 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.DKIMRegistry = mail.NewDKIMRegistry()
 	}
 
-	// Internal control-plane routes.
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireInternalAuth(sessionSecret))
+	// Internal control-plane routes. They are served only by the control
+	// listener (server.control_addr, loopback), never by the public web router
+	// r, and each group keeps its own HMAC gate. Only SecurityHeaders is shared
+	// with r: no compression, CSRF or session middleware belongs on this gate.
+	cr := chi.NewRouter()
+	cr.Use(middleware.SecurityHeaders())
+	cr.Group(func(cr chi.Router) {
+		cr.Use(middleware.RequireInternalAuth(sessionSecret))
 
-		if a.Raft != nil {
+		// Raw Pebble access is a development aid only.
+		if a.Raft != nil && a.Config.Server.Role == "dev" {
 			kv := handlers.NewKVHandler(a)
-			r.Put("/internal/kv/*", kv.Put)
-			r.Get("/internal/kv/*", kv.Get)
-			r.Delete("/internal/kv/*", kv.Delete)
+			cr.Put("/internal/kv/*", kv.Put)
+			cr.Get("/internal/kv/*", kv.Get)
+			cr.Delete("/internal/kv/*", kv.Delete)
 		}
 
 		clusterH := handlers.NewClusterHandler(&lazyMemberLister{agent: a})
-		r.Get("/internal/cluster/members", clusterH.Members)
+		cr.Get("/internal/cluster/members", clusterH.Members)
 
 		if a.Raft != nil {
 			userH := handlers.NewUserHandler(a, a.Metadata)
 			if a.Mailboxes != nil {
 				userH.SetMailboxes(a.Mailboxes)
 			}
-			r.Post("/internal/user/create", userH.Create)
+			cr.Post("/internal/user/create", userH.Create)
 		}
 	})
 
 	// Cluster join and blob sync. On a node with peers they are served only by
-	// the mutually authenticated peer listener, never on this public router.
-	a.registerPublicPeerRoutes(r, sessionSecret)
+	// the mutually authenticated peer listener. A node without peers has
+	// nobody to join or sync with, so they are reachable only on the control
+	// listener, never on the public web router.
+	a.registerControlPeerRoutes(cr, sessionSecret)
 
 	// Static assets (public).
 	r.Handle("/static/*", http.StripPrefix("/static/", handlers.StaticHandler()))
@@ -1750,38 +1763,38 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.goWorker("queue-worker", func() { a.QueueWorker.Run(queueCtx) })
 
 		// Queue HTTP routes.
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireInternalAuth(sessionSecret))
+		cr.Group(func(cr chi.Router) {
+			cr.Use(middleware.RequireInternalAuth(sessionSecret))
 			queueH := handlers.NewQueueHandler(a.QueueStore)
-			r.Get("/internal/queue/stats", queueH.Stats)
-			r.Post("/internal/queue/{id}/retry", queueH.Retry)
-			r.Delete("/internal/queue/{id}", queueH.Drop)
+			cr.Get("/internal/queue/stats", queueH.Stats)
+			cr.Post("/internal/queue/{id}/retry", queueH.Retry)
+			cr.Delete("/internal/queue/{id}", queueH.Drop)
 		})
 
 		// Address-index repair routes. Same private/internal gate as the queue
 		// routes above: these mutate mail routing and must never be public.
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireInternalAuth(sessionSecret))
+		cr.Group(func(cr chi.Router) {
+			cr.Use(middleware.RequireInternalAuth(sessionSecret))
 			addrRepairH := handlers.NewAddressRepairHandler(a.Store, a.AddressStore, a.logger)
-			r.Get("/internal/addresses/orphaned", addrRepairH.List)
-			r.Post("/internal/addresses/repair", addrRepairH.Repair)
+			cr.Get("/internal/addresses/orphaned", addrRepairH.List)
+			cr.Post("/internal/addresses/repair", addrRepairH.Repair)
 		})
 
 		// Forced raft snapshot. Same private/internal gate: this drives the
 		// leader's state machine and truncates the raft log.
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireInternalAuth(sessionSecret))
+		cr.Group(func(cr chi.Router) {
+			cr.Use(middleware.RequireInternalAuth(sessionSecret))
 			snapH := handlers.NewClusterSnapshotHandler(a.Raft.Raft, a.logger)
-			r.Post("/internal/cluster/snapshot", snapH.Snapshot)
+			cr.Post("/internal/cluster/snapshot", snapH.Snapshot)
 		})
 
 		// Dangling-mail routes: metadata whose body blob is missing. Same
 		// private/internal gate -- the purge destroys mail metadata.
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireInternalAuth(sessionSecret))
+		cr.Group(func(cr chi.Router) {
+			cr.Use(middleware.RequireInternalAuth(sessionSecret))
 			danglingH := handlers.NewDanglingMailHandler(a.Store, a.Blobs, a, a.logger)
-			r.Get("/internal/mail/dangling", danglingH.List)
-			r.Post("/internal/mail/purge-dangling", danglingH.Purge)
+			cr.Get("/internal/mail/dangling", danglingH.List)
+			cr.Post("/internal/mail/purge-dangling", danglingH.Purge)
 		})
 	}
 
@@ -1956,6 +1969,14 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("web listen: %w", err)
 	}
+	// The control listener is bound the same way. A failure releases the web
+	// listener, because Run's early returns do not call Shutdown.
+	ctlLn, err := net.Listen("tcp", a.Config.Server.ControlAddr)
+	if err != nil {
+		_ = webLn.Close()
+		return fmt.Errorf("control listen on %s: %w", a.Config.Server.ControlAddr, err)
+	}
+	a.startControlServer(ctlLn, cr)
 
 	a.ready.Store(true)
 
@@ -2016,6 +2037,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	case <-ctx.Done():
 	case err := <-httpErrCh:
 		if err != nil {
+			_ = a.shutdownControlServer()
 			return fmt.Errorf("http server: %w", err)
 		}
 	}
@@ -3359,7 +3381,10 @@ func (a *Agent) notify(userID, mailbox string, notif bongoimap.Notification) {
 // joinTarget returns the scheme and address to reach m's join endpoint. With
 // peer TLS it is the https peer listener, and a member that advertises none
 // (an older node) is unreachable rather than tried over plaintext. Without it
-// the join goes to the public web address over http, as before.
+// the join goes to the public web address over http, as before. That web port
+// no longer serves /internal/cluster/join (it answers 404), so this fallback
+// is dead and should be removed; a peerless node advertises no PeerAddr and
+// nobody can join it.
 func (a *Agent) joinTarget(m cluster.MemberInfo) (scheme, addr string, ok bool) {
 	if a.peerTLS != nil {
 		return "https", m.PeerAddr, m.PeerAddr != ""
@@ -3883,6 +3908,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 		} else {
 			a.logger.Info("http server shut down gracefully")
 		}
+	}
+	if err := a.shutdownControlServer(); err != nil {
+		errs = append(errs, fmt.Errorf("shutting down control server: %w", err))
 	}
 	if err := a.shutdownPeerServer(); err != nil {
 		errs = append(errs, fmt.Errorf("shutting down peer server: %w", err))

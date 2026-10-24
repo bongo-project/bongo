@@ -4,8 +4,9 @@ package integration
 
 import (
 	"context"
-	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,101 +15,156 @@ import (
 	"github.com/bongo-project/bongo/internal/security"
 )
 
-// startInternalRoutesAgent brings up a real dev-role agent and returns its base
-// URL. This deliberately goes through agent.NewAgent + a.Run rather than
-// building a router in the test: the invariant under test is that the
-// PRODUCTION router wires RequireInternalAuth around the /internal group, and a
-// test that constructs its own router cannot observe that.
 const internalRoutesSecret = "internal-routes-test-secret-0123456789"
 
-func startInternalRoutesAgent(t *testing.T) (baseURL string, cancel context.CancelFunc) {
+// internalRoutesAgent is a running agent whose web and control listeners are
+// both reachable, so a test can compare the same request on each.
+type internalRoutesAgent struct {
+	webURL     string
+	controlURL string
+	cancel     context.CancelFunc
+}
+
+// startInternalRoutesAgent brings up a real agent of the given role. This
+// deliberately goes through agent.NewAgent + a.Run rather than building a
+// router in the test: the invariant under test is that the PRODUCTION wiring
+// keeps the control plane off the public listener and behind
+// RequireInternalAuth on the control listener, and a test that constructs its
+// own router cannot observe that.
+//
+// The server role advertises loopback with no join list, so it has no peers
+// and the peer listener stays closed.
+func startInternalRoutesAgent(t *testing.T, role string) internalRoutesAgent {
 	t.Helper()
 
 	cfg := config.Defaults()
 	cfg.Web.SessionSecret = internalRoutesSecret
-	cfg.Server.Role = "dev"
+	cfg.Server.Role = role
 	cfg.Server.BindAddr = "127.0.0.1"
+	if role == "server" {
+		cfg.Server.Name = "internal-routes-node"
+		cfg.Server.AdvertiseAddr = "127.0.0.1"
+		cfg.Web.PlainHTTP = true
+		cfg.Storage.DataDir = t.TempDir()
+		cfg.Cluster.Raft.DataDir = t.TempDir()
+		cfg.Cluster.Gossip.EncryptionKey = "AAAAAAAAAAAAAAAAAAAAAA=="
+	}
 	sharedAssignFreePorts(t, cfg)
 
 	_, cancelFn, _ := sharedStartAgent(t, cfg)
 
-	return fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port), cancelFn
+	return internalRoutesAgent{
+		webURL:     "http://127.0.0.1:" + strconv.Itoa(cfg.Web.Port),
+		controlURL: "http://" + cfg.Server.ControlAddr,
+		cancel:     cancelFn,
+	}
 }
 
-// TestInternalRoutesRequireAuth is a wiring test, not a middleware test.
-//
-// internal/web/middleware/internal_test.go already proves RequireInternalAuth
-// rejects an unsigned request, and the handler tests mount their handlers on
-// bare chi routers. Both pass whether or not the real server actually applies
-// the middleware, so deleting the `r.Use(middleware.RequireInternalAuth(...))`
-// line in agent.go leaves every one of them green while /internal/kv/* serves
-// arbitrary Pebble reads and writes to anyone who can reach the port.
-//
-// Unlike /metrics, this group has no PrivateOnly() IP layer behind it -- the
-// HMAC is the only control -- so nothing catches the message if it goes.
-func TestInternalRoutesRequireAuth(t *testing.T) {
-	baseURL, cancel := startInternalRoutesAgent(t)
-	defer cancel()
+type signFunc func(*http.Request, []byte)
 
-	// Every route registered under an /internal prefix in agent.go. When a
-	// route is added there, add it here: an /internal route that reaches its
-	// handler unauthenticated is a control-plane bypass.
-	routes := []struct {
-		method string
-		path   string
-	}{
-		{http.MethodPut, "/internal/kv/test%2Fkey"},
-		{http.MethodGet, "/internal/kv/test%2Fkey"},
-		{http.MethodDelete, "/internal/kv/test%2Fkey"},
-		{http.MethodGet, "/internal/cluster/members"},
-		{http.MethodPost, "/internal/cluster/join"},
-		{http.MethodPost, "/internal/cluster/snapshot"},
-		{http.MethodGet, "/internal/blob/" + strings.Repeat("a", 64)},
-		{http.MethodHead, "/internal/blob/" + strings.Repeat("a", 64)},
-		{http.MethodPost, "/internal/user/create"},
-		{http.MethodGet, "/internal/queue/stats"},
-		{http.MethodPost, "/internal/queue/some-id/retry"},
-		{http.MethodDelete, "/internal/queue/some-id"},
+type internalRoute struct {
+	method string
+	path   string
+	sign   signFunc
+	// devOnly routes exist only in the dev role.
+	devOnly bool
+	// handlerMay404 marks routes whose handler legitimately answers 404 for
+	// the dummy id used here, so a signed 404 on the control port is not read
+	// as "route missing".
+	handlerMay404 bool
+}
+
+func internalRouteTable() []internalRoute {
+	blob := "/internal/blob/" + strings.Repeat("a", 64)
+	ctl := security.SignInternalRequest
+	return []internalRoute{
+		{http.MethodPut, "/internal/kv/test%2Fkey", ctl, true, false},
+		{http.MethodGet, "/internal/kv/test%2Fkey", ctl, true, true},
+		{http.MethodDelete, "/internal/kv/test%2Fkey", ctl, true, false},
+		{http.MethodGet, "/internal/cluster/members", ctl, false, false},
+		{http.MethodPost, "/internal/cluster/snapshot", ctl, false, false},
+		{http.MethodPost, "/internal/user/create", ctl, false, false},
+		{http.MethodGet, "/internal/queue/stats", ctl, false, false},
+		{http.MethodPost, "/internal/queue/some-id/retry", ctl, false, true},
+		{http.MethodDelete, "/internal/queue/some-id", ctl, false, true},
+		{http.MethodGet, "/internal/addresses/orphaned", ctl, false, false},
+		{http.MethodPost, "/internal/addresses/repair", ctl, false, false},
+		{http.MethodGet, "/internal/mail/dangling", ctl, false, false},
+		{http.MethodPost, "/internal/mail/purge-dangling", ctl, false, false},
+		// Peer routes of a node without peers: no peer listener exists, so
+		// they live on the control listener.
+		{http.MethodPost, "/internal/cluster/join", ctl, false, false},
+		{http.MethodGet, blob, security.SignBlobSyncRequest, false, true},
+		{http.MethodHead, blob, security.SignBlobSyncRequest, false, true},
 	}
+}
 
+func doInternal(t *testing.T, method, url string, body string, sign signFunc) int {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	if sign != nil {
+		sign(req, []byte(internalRoutesSecret))
+	}
 	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, url, err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	return resp.StatusCode
+}
 
-	for _, rt := range routes {
-		name := rt.method + " " + rt.path
-		t.Run(name, func(t *testing.T) {
-			for _, hdr := range []struct {
-				label string
-				value string
-			}{
-				{"no auth header", ""},
-				{"forged auth header", "not-a-valid-hmac"},
-			} {
-				req, err := http.NewRequest(rt.method, baseURL+rt.path, strings.NewReader("{}"))
-				if err != nil {
-					t.Fatalf("build request: %v", err)
-				}
-				if hdr.value != "" {
-					req.Header.Set("X-Bongo-Internal-Auth", hdr.value)
-				}
+// TestInternalRoutesLeavePublicListener is the wiring test for the control
+// plane split. Every /internal route must answer 404 on the public web port
+// even with a VALID signature (so the 404 cannot be explained by auth), must
+// answer 401 on the control port unsigned, and must reach its handler on the
+// control port when signed.
+//
+// Unlike /metrics, the control group has no PrivateOnly() IP layer behind it:
+// the HMAC plus the loopback-only listener are the controls, so deleting
+// either leaves the handler tests green. This table is what notices.
+func TestInternalRoutesLeavePublicListener(t *testing.T) {
+	for _, role := range []string{"dev", "server"} {
+		t.Run(role, func(t *testing.T) {
+			ag := startInternalRoutesAgent(t, role)
+			defer ag.cancel()
 
-				resp, err := client.Do(req)
-				if err != nil {
-					t.Fatalf("%s: %v", hdr.label, err)
-				}
-				resp.Body.Close()
+			for _, rt := range internalRouteTable() {
+				t.Run(rt.method+" "+rt.path, func(t *testing.T) {
+					kvAbsent := rt.devOnly && role != "dev"
+					body := ""
 
-				// 404 would mean the route is not registered in this
-				// configuration, which makes the case vacuous rather than
-				// passing -- fail loudly so it is not mistaken for coverage.
-				if resp.StatusCode == http.StatusNotFound {
-					t.Fatalf("%s: route not registered (404); this case proves nothing. "+
-						"Either the path is wrong or the route moved -- fix the table, do not delete the case", hdr.label)
-				}
-				if resp.StatusCode != http.StatusUnauthorized {
-					t.Errorf("%s: status = %d, want 401. An unauthenticated caller reached the "+
-						"control plane: check that the /internal group in agent.go still calls "+
-						"r.Use(middleware.RequireInternalAuth(sessionSecret))", hdr.label, resp.StatusCode)
-				}
+					if got := doInternal(t, rt.method, ag.webURL+rt.path, body, rt.sign); got != http.StatusNotFound {
+						t.Errorf("web port, validly signed: status = %d, want 404 (control plane must not be on the public listener)", got)
+					}
+					if got := doInternal(t, rt.method, ag.webURL+rt.path, body, nil); got != http.StatusNotFound {
+						t.Errorf("web port, unsigned: status = %d, want 404", got)
+					}
+
+					if kvAbsent {
+						if got := doInternal(t, rt.method, ag.controlURL+rt.path, body, rt.sign); got != http.StatusNotFound {
+							t.Errorf("control port, signed, role %s: status = %d, want 404 (kv is dev-only)", role, got)
+						}
+						return
+					}
+
+					if got := doInternal(t, rt.method, ag.controlURL+rt.path, body, nil); got != http.StatusUnauthorized {
+						t.Errorf("control port, unsigned: status = %d, want 401", got)
+					}
+					if got := doInternal(t, rt.method, ag.controlURL+rt.path, body, func(r *http.Request, _ []byte) {
+						r.Header.Set("X-Bongo-Internal-Auth", "not-a-valid-hmac")
+					}); got != http.StatusUnauthorized {
+						t.Errorf("control port, forged header: status = %d, want 401", got)
+					}
+					got := doInternal(t, rt.method, ag.controlURL+rt.path, body, rt.sign)
+					if got == http.StatusUnauthorized || (got == http.StatusNotFound && !rt.handlerMay404) {
+						t.Errorf("control port, signed: status = %d, want the handler to answer", got)
+					}
+				})
 			}
 		})
 	}
@@ -119,24 +175,12 @@ func TestInternalRoutesRequireAuth(t *testing.T) {
 // signed for one surface must get 401 on the other, and each surface must
 // accept its own signature (so the 401s cannot be explained by a broken route).
 func TestInternalRoutesRejectCrossSigned(t *testing.T) {
-	baseURL, cancel := startInternalRoutesAgent(t)
-	defer cancel()
-	secret := []byte(internalRoutesSecret)
-	client := &http.Client{Timeout: 10 * time.Second}
+	ag := startInternalRoutesAgent(t, "dev")
+	defer ag.cancel()
 
 	blobPath := "/internal/blob/" + strings.Repeat("a", 64)
-	status := func(method, path string, sign func(*http.Request, []byte)) int {
-		req, err := http.NewRequest(method, baseURL+path, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sign(req, secret)
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		return resp.StatusCode
+	status := func(method, path string, sign signFunc) int {
+		return doInternal(t, method, ag.controlURL+path, "", sign)
 	}
 
 	if got := status(http.MethodGet, blobPath, security.SignInternalRequest); got != http.StatusUnauthorized {
@@ -148,7 +192,7 @@ func TestInternalRoutesRejectCrossSigned(t *testing.T) {
 	if got := status(http.MethodGet, "/internal/kv/test%2Fkey", security.SignBlobSyncRequest); got != http.StatusUnauthorized {
 		t.Errorf("blob-signed GET kv = %d, want 401", got)
 	}
-	// Positive controls: a correctly signed request is authenticated (not 401/404).
+	// Positive controls: a correctly signed request is authenticated (not 401).
 	if got := status(http.MethodGet, blobPath, security.SignBlobSyncRequest); got == http.StatusUnauthorized {
 		t.Errorf("blob-signed GET blob = %d, want authenticated", got)
 	}

@@ -35,6 +35,7 @@ func setupSmokeAgent(t *testing.T) *smokeClient {
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.SMTP.Enabled = true
 	cfg.IMAP.Enabled = true
 

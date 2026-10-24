@@ -63,6 +63,16 @@ server {
   # with cluster.join set is refused if this is loopback.
   advertise_addr = "127.0.0.1"
 
+  # control_addr — loopback host:port of the control listener. The /internal/*
+  # control-plane routes (queue, addresses, cluster snapshot and members, user
+  # create, dangling mail) are served only here, never on the public web port,
+  # and still require the HMAC signature derived from web.session_secret. The
+  # host must be a loopback IP literal ("127.0.0.1" or "[::1]"); anything else
+  # fails validation. A bind failure fails startup. The bongo-go CLI defaults
+  # --http-addr to 127.0.0.1:8081, so pass --http-addr if you change this.
+  # Needs a restart.
+  control_addr = "127.0.0.1:8081"
+
   # agents — ONLY for role = "agent". The list of protocol processors this agent
   # runs. Valid: smtp, imap, pop3, antispam, antivirus, caldav.
   # agents = ["smtp", "imap"]

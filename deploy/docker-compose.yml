@@ -88,9 +88,10 @@ services:
       - "traefik.http.routers.bongo.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
       - "traefik.http.services.bongo.loadbalancer.server.port=8080"
 
-      # Restrict control-plane + metrics paths to private networks (deny public).
-      # Higher priority than the main router so these paths match here first.
-      # bongo's own control-plane calls hit 127.0.0.1 directly, bypassing Traefik.
+      # Restrict metrics to private networks (deny public). Higher priority than
+      # the main router so these paths match here first. /internal is kept as
+      # defence in depth: bongo serves its control routes only on the loopback
+      # control listener (server.control_addr), so the web port answers 404.
       - "traefik.http.routers.bongo-internal.rule=Host(`${WEB_HOST}`) && (PathPrefix(`/internal`) || PathPrefix(`/metrics`))"
       - "traefik.http.routers.bongo-internal.entrypoints=websecure"
       - "traefik.http.routers.bongo-internal.tls.certresolver=${TRAEFIK_CERTRESOLVER}"

@@ -46,7 +46,7 @@ var queueDropCmd = &cobra.Command{
 }
 
 func init() {
-	queueCmd.PersistentFlags().StringVar(&queueHTTPAddr, "http-addr", "127.0.0.1:8080", "HTTP address of the local node")
+	queueCmd.PersistentFlags().StringVar(&queueHTTPAddr, "http-addr", "127.0.0.1:8081", "address of the local node's control listener (server.control_addr)")
 	queueCmd.PersistentFlags().BoolVar(&queueJSON, "json", false, "Output as JSON")
 	queueCmd.PersistentFlags().StringVar(&queueSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
 

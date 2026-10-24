@@ -14,7 +14,8 @@ and zero configuration required.
 
 | Service    | Port | Protocol          |
 |------------|------|-------------------|
-| HTTP       | 8080 | Health, internal   |
+| HTTP       | 8080 | Health, web UI     |
+| Control    | 8081 | /internal, loopback only |
 | SMTP MX    | 2525 | Inbound mail       |
 | SMTP Sub   | 2587 | Submission (auth)  |
 | IMAP       | 1143 | Plaintext/STARTTLS |
