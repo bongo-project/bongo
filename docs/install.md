@@ -214,14 +214,16 @@ bongo-go user create \
   --email you@example.com \
   --password 'a-strong-password' \
   --admin \
-  --http-addr http://127.0.0.1:8080 \
+  --http-addr http://127.0.0.1:8081 \
   --session-secret "$BONGO_WEB_SESSION_SECRET"
 ```
 
-`--http-addr` must point at the running node's web listener and match its
-scheme and port: `http://127.0.0.1:8080` in reverse-proxy mode
-(`web.plain_http = true`), or `https://127.0.0.1:443` when the web listener
-terminates TLS itself. `--session-secret` must match the node's
+`--http-addr` must point at the running node's control listener
+(`server.control_addr`, default `http://127.0.0.1:8081`, always plain HTTP and
+loopback only). The `/internal/*` routes are not served on the public web
+port. If you change `server.control_addr`, pass the new address here, because
+the CLI does not read the server config.
+`--session-secret` must match the node's
 `web.session_secret`; it also falls back to the `BONGO_WEB_SESSION_SECRET`
 environment variable. Then log in to the web UI and add your domain(s) from the
 admin area — additional domains are managed at runtime, not in the config file.

@@ -550,8 +550,9 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		// The declared SIZE (RFC 1870) is weighed against the domain's
 		// headroom. Without SIZE the weight is 0, so only a domain already at
 		// or over quota is refused; that gap remains. A declared SIZE is
-		// trusted and not re-checked in DATA, the stored message is a Received
-		// header larger, and each RCPT is weighed alone.
+		// enforced in DATA (an overrun gets 552 5.3.4), but the stored message
+		// is still one Received header larger than the declared SIZE, and each
+		// RCPT is weighed alone.
 		if s.backend.quotaChecker != nil {
 			over, qErr := s.backend.quotaChecker.RecipientWouldExceedQuota(userID, s.declaredSize)
 			if qErr != nil {
@@ -715,6 +716,18 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
+	// Enforce the SIZE declared on MAIL FROM (RFC 1870 permits refusing a
+	// larger message), with the slack in declaredSizeAllowance. The bytes
+	// counted are the message as go-smtp hands it over: after dot-unstuffing,
+	// excluding the terminating "." line, and before the Received and
+	// Received-SPF prefix added below. The submission header read is inside
+	// the count. The overrun is only seen while the body is
+	// read, so the rate-limit units above are already spent when the 552 is
+	// returned; this errs on the strict side, as a later StoreBlob failure does.
+	if s.declaredSize > 0 {
+		r = &declaredSizeReader{r: r, limit: declaredSizeAllowance(s.declaredSize)}
+	}
+
 	// Authenticated submission: the header From must be an address the user may
 	// send as, because the outbound queue DKIM-signs by the header From domain.
 	// The (bounded) header block is read here and replayed ahead of the body.
@@ -817,6 +830,35 @@ func (s *Session) Data(r io.Reader) error {
 	observability.SMTPMessagesTotal.WithLabelValues("accepted").Inc()
 	s.logger.Info("smtp: message delivered", "from", s.from, "recipients", s.localRcpts)
 	return nil
+}
+
+// declaredSizeAllowance is how many bytes a message that declared SIZE may
+// carry. SIZE is the client's estimate (RFC 1870 section 5), and some MTAs
+// count line endings as LF or estimate before adding headers, so a strict
+// limit would refuse legitimate mail. A tenth plus 1 KiB covers that and
+// still stops a client declaring 1 KB to pass the RCPT quota check and then
+// sending up to the message cap.
+func declaredSizeAllowance(declared int64) int64 {
+	return declared + declared/10 + 1024
+}
+
+// declaredSizeReader fails with 552 5.3.4 once more than limit bytes have
+// been read, and never hands out a byte beyond the limit.
+type declaredSizeReader struct {
+	r     io.Reader
+	limit int64
+	n     int64
+}
+
+func (d *declaredSizeReader) Read(p []byte) (int, error) {
+	n, err := d.r.Read(p)
+	if over := d.n + int64(n) - d.limit; over > 0 {
+		keep := max(n-int(over), 0)
+		d.n = d.limit + 1
+		return keep, &gosmtp.SMTPError{Code: 552, EnhancedCode: gosmtp.EnhancedCode{5, 3, 4}, Message: "Message exceeds declared SIZE"}
+	}
+	d.n += int64(n)
+	return n, err
 }
 
 // dataFailure maps an error from the DATA phase to what the client sees.

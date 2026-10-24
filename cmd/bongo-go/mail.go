@@ -46,7 +46,7 @@ var mailPurgeDanglingCmd = &cobra.Command{
 }
 
 func init() {
-	mailCmd.PersistentFlags().StringVar(&mailHTTPAddr, "http-addr", "127.0.0.1:8080", "HTTP address of the local node")
+	mailCmd.PersistentFlags().StringVar(&mailHTTPAddr, "http-addr", "127.0.0.1:8081", "address of the local node's control listener (server.control_addr)")
 	mailCmd.PersistentFlags().StringVar(&mailSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
 	mailPurgeDanglingCmd.Flags().BoolVar(&mailPurgeConfirm, "confirm", false, "actually delete the listed metadata (required; the deletion cannot be undone)")
 

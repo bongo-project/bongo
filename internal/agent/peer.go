@@ -46,10 +46,10 @@ func (a *Agent) registerPeerRoutes(r chi.Router, sessionSecret []byte) {
 	}
 }
 
-// registerPublicPeerRoutes mounts the peer endpoints on the public web router
+// registerControlPeerRoutes mounts the peer endpoints on the control router
 // only when the node has no peers. With peers they are served exclusively by
-// the peer listener, so the public web port answers 404 for them.
-func (a *Agent) registerPublicPeerRoutes(r chi.Router, sessionSecret []byte) {
+// the peer listener, so neither the web nor the control port serves them.
+func (a *Agent) registerControlPeerRoutes(r chi.Router, sessionSecret []byte) {
 	if peerListenerEnabled(a.Config) {
 		return
 	}
@@ -113,6 +113,37 @@ func (a *Agent) servePeer(h http.Handler) error {
 	}()
 	a.logger.Info("peer: listening (mutual TLS)", "addr", addr)
 	return nil
+}
+
+// startControlServer serves the control router on an already bound listener,
+// with the same explicit timeouts and error log as the web server.
+func (a *Agent) startControlServer(ln net.Listener, h http.Handler) {
+	addr := ln.Addr().String()
+	srv := newHTTPServer(addr, h, a.logger)
+	a.controlServer = srv
+	a.controlAddr = addr
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			a.logger.Error("control: listener stopped", "addr", addr, "error", err)
+		}
+	}()
+	a.logger.Info("control: listening", "addr", addr)
+}
+
+// ControlAddr returns the address the control listener bound, or "" before
+// Run has bound it.
+func (a *Agent) ControlAddr() string {
+	return a.controlAddr
+}
+
+// shutdownControlServer drains the control listener.
+func (a *Agent) shutdownControlServer() error {
+	if a.controlServer == nil {
+		return nil
+	}
+	drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.controlServer.Shutdown(drainCtx)
 }
 
 // shutdownPeerServer drains the peer listener.
