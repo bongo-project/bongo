@@ -1426,3 +1426,28 @@ From the Phase 22 batch 2 reviews (2026-10-24):
   set to its own IP; the `agent_server.tls` certificate needs both
   serverAuth and clientAuth EKU and a SAN for the dialled address. (22.6,
   22.8)
+
+From the operator discussion on rolling upgrades (2026-10-24). Both are
+prerequisites for running more than one node; neither affects the single-node
+production deployment.
+- Blob catch-up after a mixed-version window. Blob sync has no retry or
+  reconciliation: a node pulls a blob once, when the FSM enqueues it, and a
+  failed pull is never repeated. The v0.10.0 to v0.11.0 upgrade is not
+  rollable for this reason: v0.11.0 nodes serve and pull blobs only over the
+  peer listener, v0.10.0 nodes only over the web port, so a body that lands on
+  one side stays missing on the other while its metadata replicates through
+  Raft. A background pass that compares the referenced blob set with the local
+  store and pulls what is missing would close that gap, and also any gap left
+  by a peer that was down when a blob was written.
+- Version-aware rolling upgrades. Nodes do not know each other's versions:
+  gossip `NodeMeta` carries role and addresses but no version, and nothing
+  gates a new Raft command type until every member understands it. An older
+  FSM refuses an unknown op, or, for a composite command addressed as a key
+  (as Bayes training is), writes it as a literal key and diverges silently.
+  Needed: each node publishes its version in gossip metadata; new Raft
+  command types stay off until every member reports a version that
+  understands them; and an integration test that runs a mixed-version
+  cluster through a rolling upgrade. Until then, each release must be
+  reviewed by hand for rolling compatibility: additive protobuf and gossip
+  fields only, no new command types in use during the window, peer routes and
+  transport TLS requirements unchanged.
