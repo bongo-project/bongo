@@ -1389,8 +1389,6 @@ From the Phase 22 batch 1 reviews (2026-10-24):
   tests. (22.1, 22.7)
 - `Config.Validate` accepts a server with `server.bind_addr` 0.0.0.0 and no
   `advertise_addr`; it now fails only at startup, in NewRaftNode. (22.4)
-- `startProcessorAgent` passing the TLS files has no test (it cannot run in a
-  unit test); a mutation there fails closed. US-019 can cover it. (22.5)
 - Release notes for v0.11.0: a server with a non-loopback `advertise_addr`
   and no join now needs cert, key and ca_file; one with `server.bind_addr`
   0.0.0.0 and no `advertise_addr` no longer starts; role agent needs the
@@ -1400,3 +1398,31 @@ From the Phase 22 batch 1 reviews (2026-10-24):
   also requires peers to present that certificate (it never dials itself).
   Production (role server, single node, loopback advertise) is unaffected.
   (22.1-22.7)
+
+From the Phase 22 batch 2 reviews (2026-10-24):
+
+- Role server does not run `AgentServer`, so an agent-role node has nothing
+  to register with and `DispatchOrLocal` has no caller: agent mode does not
+  work end to end, before or after v0.11.0. Wiring it is a feature, not a
+  hardening fix. (22.6)
+- `loadTLSFiles` (`internal/agent/grpc/tls.go`): the empty `ca_file` check is
+  redundant (LoadCAPool fails and names the key anyway); an equivalent
+  mutant survives. (22.6)
+- The `LimitReader(maxBlobSyncBytes)` bound on pulled blobs is untested; an
+  oversized blob still fails the hash check, but the bound is the disk
+  guard. (22.8)
+- `cluster.peer_port`, like the raft and gossip ports, is not validated
+  (0, out of range, or equal to another cluster port). (22.8)
+- `ClusterPeerAddr` and the raft advertise address use the advertise
+  address, while `ClusterHasPeers` is also true for a non-loopback
+  `cluster.bind_addr` alone: with a loopback advertise the peer listener
+  binds the routable address but advertises 127.0.0.1. Fails closed. (22.8)
+- Other `/internal/*` routes still sit on the public web router behind HMAC;
+  the design note lists them as a follow-up. (22.8)
+- Release notes for v0.11.0, in addition to batch 1: a node with peers opens
+  the peer listener on `cluster.peer_port` (8302) and no longer serves blob
+  sync or join on the web port, so every node must be upgraded together; an
+  agent with processor roles needs `cluster.bind_addr` or `advertise_addr`
+  set to its own IP; the `agent_server.tls` certificate needs both
+  serverAuth and clientAuth EKU and a SAN for the dialled address. (22.6,
+  22.8)

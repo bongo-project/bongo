@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bongo-project/bongo/internal/cluster"
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 )
@@ -45,7 +46,7 @@ func TestNewJoinRequestSignsWithEffectiveSecret(t *testing.T) {
 	}
 	do := func(srv *httptest.Server) int {
 		t.Helper()
-		req, err := a.newJoinRequest(srv.Listener.Addr().String(), "node-b", "10.0.0.2:7000")
+		req, err := a.newJoinRequest(cluster.MemberInfo{Name: "peer", HTTPAddr: srv.Listener.Addr().String()}, "node-b", "10.0.0.2:7000")
 		if err != nil {
 			t.Fatal(err)
 		}

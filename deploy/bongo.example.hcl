@@ -99,6 +99,15 @@ cluster {
     # encryption_key = "base64-32-byte-key"
   }
 
+  # peer_port — port of the node-to-node HTTPS listener for blob sync and
+  # cluster join. Opened only when the node has peers (cluster.join set or a
+  # non-loopback advertise address); a single node never opens it. It binds the
+  # cluster bind address, requires a client certificate from the cluster CA
+  # (cluster.tls) and must be reachable only between nodes, like the raft and
+  # gossip ports. The node certificate needs an IP SAN for
+  # server.advertise_addr.
+  peer_port = 8302
+
   # IMPORTANT: in the current build the IMAP (993) and POP3 (995) implicit-TLS
   # and STARTTLS listeners read their certificate from cluster.tls. Point this
   # at your mail-host certificate (e.g. Let's Encrypt for mail.example.com).
@@ -661,11 +670,13 @@ telemetry {
 # The tls files are REQUIRED for role = "agent" (config validation and listener
 # start-up both refuse to proceed without all three). They secure the agent
 # gRPC listeners with mutual TLS: every client must present a certificate
-# signed by ca_file, and TLS 1.2 is the minimum. One cert/key pair is used in
-# both directions, so the certificate needs both serverAuth and clientAuth
-# extended key usage. Changing them needs a restart.
-# NOTE: outbound agent gRPC clients still dial plaintext until a later change
-# adds the client half; do not rely on this block for client-side TLS yet.
+# signed by ca_file, and TLS 1.2 is the minimum. Outbound agent gRPC clients
+# use the same files and verify the server against ca_file, using the host in
+# address as the name (the certificate needs a matching IP or DNS SAN). One
+# cert/key pair is used in both directions, so the certificate needs both
+# serverAuth and clientAuth extended key usage. The listeners bind the cluster
+# bind host (cluster.bind_addr, else server.advertise_addr), never a wildcard.
+# Changing them needs a restart.
 # agent_server {
 #   address = "10.0.0.2:8400"
 #   tls {

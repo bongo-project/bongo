@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,6 +31,9 @@ type BlobSyncer struct {
 	queue   chan string
 	client  *http.Client
 	secret  []byte
+	// peerTLS is true once SetPeerTLS has run: pulls then use https against the
+	// peer listener and never fall back to the plaintext HTTPAddr.
+	peerTLS bool
 }
 
 // NewBlobSyncer creates a new BlobSyncer.
@@ -48,6 +52,39 @@ func NewBlobSyncer(blobs *store.BlobStore, members MemberLister, logger *slog.Lo
 // SetSharedSecret sets the auth secret used for internal blob fetches.
 func (bs *BlobSyncer) SetSharedSecret(secret []byte) {
 	bs.secret = append([]byte(nil), secret...)
+}
+
+// SetPeerTLS switches the syncer to the peer listener: pulls go to
+// https://<PeerAddr> with the cluster CA as the only trust root and the node
+// certificate for client auth, and members that advertise no PeerAddr are
+// skipped rather than contacted over plaintext. cfg is cloned.
+func (bs *BlobSyncer) SetPeerTLS(cfg *tls.Config) {
+	bs.client = &http.Client{
+		Timeout:   bs.client.Timeout,
+		Transport: &http.Transport{TLSClientConfig: cfg.Clone()},
+	}
+	bs.peerTLS = true
+}
+
+// PeerTLSEnabled reports whether pulls go to the mutually authenticated peer
+// listener over https.
+func (bs *BlobSyncer) PeerTLSEnabled() bool { return bs.peerTLS }
+
+// endpoint returns the scheme and address to reach m for blob transfers. With
+// peer TLS it is always https against the peer listener, and a member that
+// advertises none (an older node) is skipped, never reached over plaintext.
+func (bs *BlobSyncer) endpoint(m MemberInfo) (scheme, addr string, ok bool) {
+	if bs.peerTLS {
+		if m.PeerAddr == "" {
+			bs.logger.Warn("blobsync: skipping member that advertises no peer address", "peer", m.Name)
+			return "", "", false
+		}
+		return "https", m.PeerAddr, true
+	}
+	if m.HTTPAddr == "" {
+		return "", "", false
+	}
+	return "http", m.HTTPAddr, true
 }
 
 // shortHash returns the first 12 characters of h, or h itself if shorter.
@@ -105,12 +142,13 @@ func (bs *BlobSyncer) EnsureBlob(hash string) error {
 func (bs *BlobSyncer) pull(hash string) error {
 	members := bs.members.Members()
 	for _, m := range members {
-		if m.HTTPAddr == "" {
+		scheme, addr, ok := bs.endpoint(m)
+		if !ok {
 			continue
 		}
 
 		// HEAD check.
-		headURL := fmt.Sprintf("http://%s/internal/blob/%s", m.HTTPAddr, hash)
+		headURL := fmt.Sprintf("%s://%s/internal/blob/%s", scheme, addr, hash)
 		headReq, err := http.NewRequest(http.MethodHead, headURL, nil)
 		if err != nil {
 			continue
@@ -118,6 +156,7 @@ func (bs *BlobSyncer) pull(hash string) error {
 		security.SignBlobSyncRequest(headReq, bs.secret)
 		resp, err := bs.client.Do(headReq)
 		if err != nil {
+			bs.logger.Warn("blobsync: peer request failed", "peer", m.Name, "addr", addr, "hash", shortHash(hash), "error", err)
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
@@ -132,7 +171,7 @@ func (bs *BlobSyncer) pull(hash string) error {
 		}
 
 		// GET the blob.
-		getURL := fmt.Sprintf("http://%s/internal/blob/%s", m.HTTPAddr, hash)
+		getURL := fmt.Sprintf("%s://%s/internal/blob/%s", scheme, addr, hash)
 		getReq, err := http.NewRequest(http.MethodGet, getURL, nil)
 		if err != nil {
 			continue
@@ -140,6 +179,7 @@ func (bs *BlobSyncer) pull(hash string) error {
 		security.SignBlobSyncRequest(getReq, bs.secret)
 		resp, err = bs.client.Do(getReq)
 		if err != nil {
+			bs.logger.Warn("blobsync: peer request failed", "peer", m.Name, "addr", addr, "hash", shortHash(hash), "error", err)
 			continue
 		}
 
@@ -168,7 +208,7 @@ func (bs *BlobSyncer) pull(hash string) error {
 			return fmt.Errorf("hash mismatch: expected %s, got %s", hash, storedHash)
 		}
 
-		bs.logger.Debug("blobsync: pulled blob", "hash", shortHash(hash), "from", m.HTTPAddr)
+		bs.logger.Debug("blobsync: pulled blob", "hash", shortHash(hash), "peer", m.Name, "from", addr)
 		return nil
 	}
 

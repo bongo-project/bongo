@@ -1416,3 +1416,11 @@ Workflow wf_6a4aa3be-bfd in worktrees from 6bae258, three workflow tasks. 22.5 p
 PATTERN: [testing] A bind test must also dial an address that should NOT answer; reachability on the intended address is satisfied by a wildcard bind too.
 PATTERN: [tls] A wrong-CA client test must force its certificate with GetClientCertificate; Go silently sends none when it does not match the server's advertised CAs, and the test then passes for the wrong reason.
 PATTERN: [testing] A helper tested on its own does not prove its caller uses it; test the effect through the real entry point (Run) as well.
+
+## 2026-10-24 — Phase 22 batch 2 (22.6, 22.8) DONE; Phase 22 complete
+
+Batch 1 merged as #63 (d077733); make test-all had caught test/integration/raft_test.go still building a stream layer with InsecureSkipVerify and no CA pool, fixed before the PR. Batch 2 ran as workflow wf_c766ab14-4ac in worktrees from d077733; both tasks passed review (MINOR). The advisor found that no production code runs AgentServer, so agent mode cannot register with anything (recorded, not wired: that is a feature), and the 22.8 worker found gossip advertised server.bind_addr:web.port, so multi-node blob pull and join had never reached a peer. The orchestrator closed four review gaps, each mutation-tested red: the dispatch-before-start test passed against a plaintext fallback because its target refused every connection (now asserts the not-started error); the bind-host refusal test caught its mutants only by a ticker panic (now by its own assertion); the dev-role test leaked its Run goroutine and read agent state while Run was live; LoadPeerTLS was strict only because raft loaded first (now pinned directly). Review findings went to section 8.2 of the PRD.
+
+PATTERN: [testing] A negative test against an address that refuses every connection passes whatever the client does; assert on the reason, or point it at a listener that would accept the wrong behaviour.
+PATTERN: [testing] A mutant that goes red only through a panic is killed by accident; fix the fixture so the assertion itself fails.
+PATTERN: [cluster] Check what a node advertises, not just what it binds: a wildcard advertised address is unreachable from every peer.

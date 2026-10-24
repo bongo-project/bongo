@@ -173,6 +173,7 @@ Legend for "Class":
 | `cluster.raft.snapshot_interval` | `cluster/raft.go:209` via `RaftSnapshotInterval()` | ctor | RESTART |
 | `cluster.raft.trailing_logs` | `cluster/raft.go:210-211,219` | ctor | RESTART |
 | `cluster.gossip.port` | `cluster/gossip.go:36` | ctor | RESTART |
+| `cluster.peer_port` | `agent/agent.go` (peer listener) | startup | RESTART |
 | `cluster.gossip.encryption_key` | `cluster/gossip.go:44` | ctor. SECRET | RESTART |
 | `cluster.tls.cert_file`, `.key_file` | `cluster/raft.go:99,313`; ALSO IMAP and POP3 listener TLS: `agent.go:1314-1315,1364-1365` via `mailListenerTLS` (`:2882`) | ctor; loaded once | RESTART |
 | `cluster.tls.ca_file` | `cluster/raft.go:323-324` | ctor | RESTART |

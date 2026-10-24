@@ -53,6 +53,13 @@ func (s *AgentProcessorServer) Start(addr string) error {
 	if err != nil {
 		return fmt.Errorf("agent processor: %w", err)
 	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("agent processor: listen address %q: %w", addr, err)
+	}
+	if err := requireSpecificHost(host); err != nil {
+		return fmt.Errorf("agent processor: %w", err)
+	}
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("agent processor: listen %s: %w", addr, err)

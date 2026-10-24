@@ -2,17 +2,11 @@ package agentgrpc
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
-	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -26,107 +20,26 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/bongo-project/bongo/internal/pipeline"
+	"github.com/bongo-project/bongo/internal/testutil"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
-
-// testCA is a throwaway certificate authority generated inside a test.
-type testCA struct {
-	cert    *x509.Certificate
-	key     *ecdsa.PrivateKey
-	certPEM []byte
-}
-
-func newTestCA(t *testing.T, name string) *testCA {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generate CA key: %v", err)
-	}
-	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(time.Now().UnixNano()),
-		Subject:               pkix.Name{CommonName: name},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(time.Hour),
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatalf("create CA cert: %v", err)
-	}
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		t.Fatalf("parse CA cert: %v", err)
-	}
-	return &testCA{
-		cert:    cert,
-		key:     key,
-		certPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
-	}
-}
-
-// issue returns a leaf certificate signed by the CA with both EKUs, so the
-// same pair can serve in either direction.
-func (ca *testCA) issue(t *testing.T, cn string) tls.Certificate {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generate leaf key: %v", err)
-	}
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject:      pkix.Name{CommonName: cn},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
-		DNSNames:     []string{"localhost"},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
-	if err != nil {
-		t.Fatalf("create leaf cert: %v", err)
-	}
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
-}
-
-func writePEM(t *testing.T, dir, name, blockType string, der []byte) string {
-	t.Helper()
-	p := filepath.Join(dir, name)
-	if err := os.WriteFile(p, pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der}), 0o600); err != nil {
-		t.Fatalf("write %s: %v", name, err)
-	}
-	return p
-}
-
-// writeLeaf stores a leaf certificate and key as PEM files.
-func writeLeaf(t *testing.T, dir, prefix string, c tls.Certificate) (certFile, keyFile string) {
-	t.Helper()
-	keyDER, err := x509.MarshalECPrivateKey(c.PrivateKey.(*ecdsa.PrivateKey))
-	if err != nil {
-		t.Fatalf("marshal key: %v", err)
-	}
-	return writePEM(t, dir, prefix+".crt", "CERTIFICATE", c.Certificate[0]),
-		writePEM(t, dir, prefix+".key", "EC PRIVATE KEY", keyDER)
-}
 
 // testPKI is a good CA, a rogue CA, and server credentials on disk.
 type testPKI struct {
 	dir    string
-	ca     *testCA
-	rogue  *testCA
+	ca     *testutil.CA
+	rogue  *testutil.CA
 	server TLSFiles
 }
 
 func newTestPKI(t *testing.T) *testPKI {
 	t.Helper()
 	dir := t.TempDir()
-	ca := newTestCA(t, "good CA")
-	rogue := newTestCA(t, "rogue CA")
-	certFile, keyFile := writeLeaf(t, dir, "server", ca.issue(t, "server"))
+	ca := testutil.NewCA(t, "good CA")
+	rogue := testutil.NewCA(t, "rogue CA")
+	certFile, keyFile := testutil.WriteLeaf(t, dir, "server", ca.Issue(t, "server"))
 	caFile := filepath.Join(dir, "ca.pem")
-	if err := os.WriteFile(caFile, ca.certPEM, 0o600); err != nil {
+	if err := os.WriteFile(caFile, ca.CertPEM, 0o600); err != nil {
 		t.Fatalf("write CA: %v", err)
 	}
 	return &testPKI{
@@ -139,7 +52,7 @@ func newTestPKI(t *testing.T) *testPKI {
 // A nil cert means the client presents no certificate.
 func (p *testPKI) clientCreds(cert *tls.Certificate) credentials.TransportCredentials {
 	pool := x509.NewCertPool()
-	pool.AddCert(p.ca.cert)
+	pool.AddCert(p.ca.Cert)
 	cfg := &tls.Config{RootCAs: pool, ServerName: "127.0.0.1", MinVersion: tls.VersionTLS12}
 	if cert != nil {
 		// GetClientCertificate forces the certificate to be sent even when it
@@ -153,7 +66,7 @@ func (p *testPKI) clientCreds(cert *tls.Certificate) credentials.TransportCreden
 
 // goodClientCreds presents a certificate signed by the good CA.
 func (p *testPKI) goodClientCreds(t *testing.T) credentials.TransportCredentials {
-	c := p.ca.issue(t, "client")
+	c := p.ca.Issue(t, "client")
 	return p.clientCreds(&c)
 }
 
@@ -228,7 +141,7 @@ func startRealAgentServer(t *testing.T, files TLSFiles, port int) *AgentServer {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := NewAgentServer(nil, nil, logger, AgentServerConfig{
-		Port: port, AgentTTL: DefaultAgentTTL, ReapInterval: DefaultReapInterval, TLS: files,
+		Port: port, BindHost: "127.0.0.1", AgentTTL: DefaultAgentTTL, ReapInterval: DefaultReapInterval, TLS: files,
 	})
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -255,12 +168,9 @@ func TestStartRequiresTLSKeysAndLeavesPortFree(t *testing.T) {
 				row.mut(&f)
 				port := freePort(t)
 				var err error
-				// Probe with the same bind form Start uses; a specific
-				// address can bind beside a wildcard listener on BSD.
 				probe := fmt.Sprintf("127.0.0.1:%d", port)
 				if kind == "AgentServer" {
-					probe = fmt.Sprintf(":%d", port)
-					srv := NewAgentServer(nil, nil, logger, AgentServerConfig{Port: port, TLS: f})
+					srv := NewAgentServer(nil, nil, logger, AgentServerConfig{Port: port, BindHost: "127.0.0.1", TLS: f})
 					err = srv.Start()
 				} else {
 					srv := NewAgentProcessorServer(&countingProcessor{}, f, logger)
@@ -284,11 +194,11 @@ func TestStartUnreadableTLSFileLeavesPortFree(t *testing.T) {
 	f := pki.server
 	f.CAFile = filepath.Join(pki.dir, "absent.pem")
 	port := freePort(t)
-	srv := NewAgentServer(nil, nil, nil, AgentServerConfig{Port: port, TLS: f})
+	srv := NewAgentServer(nil, nil, nil, AgentServerConfig{Port: port, BindHost: "127.0.0.1", TLS: f})
 	if err := srv.Start(); err == nil {
 		t.Fatal("Start succeeded with unreadable CA file")
 	}
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		t.Fatalf("port not free: %v", err)
 	}
@@ -306,7 +216,7 @@ func clientMatrix() []clientCase {
 		{"CA-signed client cert", func(t *testing.T, p *testPKI) credentials.TransportCredentials { return p.goodClientCreds(t) }, true},
 		{"no client cert", func(t *testing.T, p *testPKI) credentials.TransportCredentials { return p.clientCreds(nil) }, false},
 		{"client cert from other CA", func(t *testing.T, p *testPKI) credentials.TransportCredentials {
-			c := p.rogue.issue(t, "rogue client")
+			c := p.rogue.Issue(t, "rogue client")
 			return p.clientCreds(&c)
 		}, false},
 		{"plaintext", func(t *testing.T, p *testPKI) credentials.TransportCredentials { return insecure.NewCredentials() }, false},
