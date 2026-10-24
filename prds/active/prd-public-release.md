@@ -116,7 +116,7 @@ hardening PRDs list open findings while production faces the internet.
 - [ ] No workflow uses `pull_request_target` or exposes secrets to pull
       requests from forks; checked and recorded.
 - [ ] `CI_RUNNER` stays unset, so pull requests run on GitHub-hosted
-      runners, not on the self-hosted runner on mcsvr1.
+      runners, not on the self-hosted runner.
 - [ ] The operator sets "Require approval for all outside collaborators"
       for fork pull-request workflows (repository setting).
 

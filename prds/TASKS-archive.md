@@ -269,7 +269,7 @@ auditable; 14.10 fixes the quarantine-release race and corrects the key-space ta
 
 ## Phase 15: Production logging
 
-Source: TydeWhatMay/infra `docs/prod-logging.md` item 3 (survey 2026-10-09). bongo's own
+Source: the deployment repository `docs/prod-logging.md` item 3 (survey 2026-10-09). bongo's own
 JSONL log (`{job="bongo"}` in Loki) is all slog JSON, but container stdout
 (`{job="docker"}`) carried ~1,000 text lines/day from libraries given no logger: go-imap
 (`handling SELECT command: mailbox "Notes" not found` every 5 min), net/http TLS handshake
