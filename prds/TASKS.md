@@ -104,6 +104,38 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 | 22.7 | US-020: Raft transport has no plaintext fallback and verifies peers | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-24) | Source: B7 (H4 in `docs/security-review-2026-07-06.md`). A server with peers (join, non-loopback advertise or cluster.bind_addr) needs readable cert, key and ca_file or refuses to start; no plaintext fallback and no InsecureSkipVerify. The listener requires a client certificate from the cluster CA; a foreign-CA peer fails the handshake. A single node with a cert and no CA still starts over TLS. |
 | 22.8 | US-021: Blob sync and cluster join travel over TLS | [prd-hardening-v0.9.md](active/prd-hardening-v0.9.md) | DONE (2026-10-24) | Source: B7 (M8 in `docs/security-review-2026-07-06.md`). Design note in docs/multi-node-cluster-checklist.md. A node with peers serves /internal/blob/* and /internal/cluster/join only on a new mTLS peer listener (cluster.peer_port, default 8302, cluster bind host, cluster CA via LoadPeerTLS, HMAC kept) and removes them from the public router; blob pulls and auto-join use https to the gossiped peer_addr and log failures with the peer name. Gossip used to advertise server.bind_addr:web.port, so multi-node blob pull and join never reached a peer. Without peers nothing changes. |
 
+## Phase 23: Hardening v0.12.0, Phase A: security
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 23.1 | US-001: Control routes leave the public web listener | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 23.2 | US-002: Bounce relay only for SPF-pass or authenticated senders | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 23.3 | US-003: SMTP DATA honours the declared SIZE | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 23.4 | US-004: A global budget for DAV request bodies in flight | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 23.5 | US-005: Send-as claim requests leak nothing and do not pile up | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 23.6 | US-006: Send-as claims are cleaned up and settled once | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 23.7 | US-007: Account checks fail closed on store errors | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 23.8 | US-008: The HTTPS redirect server and Serve errors do not fail silently | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+
+## Phase 24: Hardening v0.12.0, Phase B: mail and calendar correctness
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 24.1 | US-009: Rules apply per recipient on SMTP delivery | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 24.2 | US-010: Retrying a web send does not duplicate | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 24.3 | US-011: Calendar export keeps time zones | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 24.4 | US-012: All-day reminders and the month grid use the user's zone | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 24.5 | US-013: Compose messages are translated | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+
+## Phase 25: Hardening v0.12.0, Phase C: reliability and supply chain
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 25.1 | US-014: Config.Validate refuses bad binds and ports | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 25.2 | US-015: The known flaky tests are fixed at the cause | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 25.3 | US-016: Toolchain and pinned dependencies are current | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 25.4 | US-017: The image-pin check reads YAML, not lines | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+
 ## Backlog (unscheduled)
 
 | # | Task | Status | Notes |
