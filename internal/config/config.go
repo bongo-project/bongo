@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -379,6 +380,31 @@ type WebConfig struct {
 	// TLS-terminating proxy (e.g. Traefik). When set, auth cookies are marked
 	// Secure even though the local connection is plain HTTP.
 	BehindTLSProxy bool `hcl:"behind_tls_proxy,optional" mapstructure:"behind_tls_proxy"`
+	// SourceURL is where the web UI's "Source code" link points. Bongo is
+	// AGPL-3.0, so a deployment running modified code must offer that code to
+	// its users (section 13); a modified deployment points this at its own
+	// source. Must be an http or https URL.
+	SourceURL string `hcl:"source_url,optional" mapstructure:"source_url"`
+}
+
+// DefaultSourceURL is the upstream repository, used when web.source_url is
+// unset.
+const DefaultSourceURL = "https://github.com/bongo-project/bongo"
+
+// validateSourceURL checks web.source_url. Empty is allowed and means the
+// default.
+func (c *Config) validateSourceURL() error {
+	if c.Web.SourceURL == "" {
+		return nil
+	}
+	u, err := url.Parse(c.Web.SourceURL)
+	if err != nil {
+		return fmt.Errorf("web.source_url: invalid URL: %w", err)
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("web.source_url: %q must be an absolute http or https URL", c.Web.SourceURL)
+	}
+	return nil
 }
 
 type CalDAVConfig struct {
@@ -811,6 +837,10 @@ func (c *Config) Validate() error {
 	}
 
 	if err := c.validateControlAddr(); err != nil {
+		return err
+	}
+
+	if err := c.validateSourceURL(); err != nil {
 		return err
 	}
 
@@ -1252,8 +1282,9 @@ func Defaults() *Config {
 			MaxConnectionsPerIP: 50,
 		},
 		Web: WebConfig{
-			Enabled: true,
-			Port:    443,
+			Enabled:   true,
+			Port:      443,
+			SourceURL: DefaultSourceURL,
 		},
 		CalDAV: CalDAVConfig{
 			Enabled: true,

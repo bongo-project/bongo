@@ -925,6 +925,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Set up HTTP routes.
 	r := chi.NewRouter()
 	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.InjectSourceURL(a.Config.Web.SourceURL))
 	r.Use(chimw.Compress(5, "text/html", "text/css", "application/javascript", "application/json", "text/plain", "image/svg+xml"))
 	health := handlers.NewHealthHandler(a)
 	r.Get("/health/live", health.Live)

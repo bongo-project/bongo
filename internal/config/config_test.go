@@ -1665,3 +1665,40 @@ func TestTrustedProxiesValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestWebSourceURL(t *testing.T) {
+	if got := Defaults().Web.SourceURL; got != DefaultSourceURL {
+		t.Errorf("default web.source_url = %q, want %q", got, DefaultSourceURL)
+	}
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"default", DefaultSourceURL, false},
+		{"empty means default", "", false},
+		{"custom https", "https://git.example.org/me/bongo", false},
+		{"http", "http://git.internal/bongo", false},
+		{"javascript scheme", "javascript:alert(1)", true},
+		{"ftp scheme", "ftp://example.org/bongo", true},
+		{"no scheme", "example.org/bongo", true},
+		{"no host", "https:///bongo", true},
+		{"control character", "https://example.org/\x7f", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Defaults()
+			cfg.Web.SourceURL = tt.url
+			err := cfg.Validate()
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("Validate: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "web.source_url") {
+				t.Fatalf("Validate error = %v, want one naming web.source_url", err)
+			}
+		})
+	}
+}

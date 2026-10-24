@@ -377,6 +377,12 @@ web {
   # Also list the proxy in server.trusted_proxies: X-Forwarded-For and
   # X-Forwarded-Proto are ignored otherwise, so rate limits and lockout see the
   # proxy's IP and HSTS is not emitted.
+
+  # --- Source code link (AGPL-3.0 section 13) ---
+  # The web UI links to the source of the running software. If you run a
+  # modified Bongo, point this at where users can get your modified source.
+  # Must be an http or https URL.
+  # source_url = "https://github.com/bongo-project/bongo"
 }
 
 

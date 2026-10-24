@@ -136,3 +136,9 @@ bodies and attachments are content-addressed blobs on disk, deduplicated and
 synced between nodes; per-user SQLite and Bleve indexes are derived and
 rebuildable. A backup is the Pebble keyspace plus referenced blobs. See
 [`CLAUDE.md`](CLAUDE.md) for the full picture.
+
+## Licence
+
+Bongo is licensed under the GNU Affero General Public License v3.0; see [LICENSE](LICENSE).
+
+Bundled third-party code (JavaScript, fonts and Go modules that ship NOTICE files) is credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
