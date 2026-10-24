@@ -150,7 +150,8 @@ func DomainKeyExists(ps *PebbleStore, domain string) (exists bool, rErr error) {
 
 // PurgeDomainConfig removes the domain-owned configuration through Raft, one
 // command per key: domain-admin grants, everything under /system/domain/{d}/
-// (owner, dkim, quota, usage), the catch-all, and address records whose user
+// (owner, dkim, quota, usage), the catch-all, send-as claims on the domain
+// (/user/{id}/addrverify/{addr}, every user's), and address records whose user
 // no longer exists. Records of live users are left alone. It never touches
 // the /system/domain/{d} key itself or any blob.
 //
@@ -190,6 +191,14 @@ func PurgeDomainConfig(ps *PebbleStore, applier RaftApplier, domain string) erro
 			keys = append(keys, r.key)
 		}
 	}
+
+	// Send-as claims (any user's) for addresses on the domain: they would
+	// otherwise stay listed on the settings page of whoever made them.
+	claims, err := domainClaimKeys(ps, "@"+d)
+	if err != nil {
+		return fmt.Errorf("purge domain config: %w", err)
+	}
+	keys = append(keys, claims...)
 
 	var errs []error
 	for _, k := range keys {
@@ -241,4 +250,27 @@ func closeIter(it Iterator, dst *error) {
 	if cErr := it.Close(); cErr != nil {
 		*dst = errors.Join(*dst, fmt.Errorf("close iterator: %w", cErr))
 	}
+}
+
+// domainClaimKeys returns every send-as claim key, /user/{id}/addrverify/{addr},
+// whose address ends in suffix (e.g. "@example.com"). The key is split into
+// exact segments so a mail guid or mailbox name containing "addrverify", or a
+// /fwdverify/ key, never matches; the "@" in the suffix keeps subdomains out.
+// It is one prefix scan of /user/, the same cost DomainDependentCounts pays.
+func domainClaimKeys(ps *PebbleStore, suffix string) (out [][]byte, rErr error) {
+	it, err := ps.PrefixScan([]byte("/user/"))
+	if err != nil {
+		return nil, fmt.Errorf("scan claims: %w", err)
+	}
+	defer closeIter(it, &rErr)
+	for it.Next() {
+		parts := strings.SplitN(strings.TrimPrefix(string(it.Key()), "/user/"), "/", 3)
+		if len(parts) != 3 || parts[0] == "" || parts[1] != "addrverify" {
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(parts[2]), suffix) {
+			out = append(out, append([]byte(nil), it.Key()...))
+		}
+	}
+	return out, nil
 }

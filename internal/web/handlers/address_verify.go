@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -510,8 +511,11 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 // user verified first, an account or alias was created); in that case the
 // claim is dropped and the generic "verification failed" reply is returned,
 // leaving the holder's record untouched. The check and the write are separate
-// steps (no Raft primitive makes them atomic), so two submits racing in the
-// same instant can still both pass it and the later write wins.
+// steps (no Raft primitive makes them atomic), so a per-address lock held
+// across both makes two simultaneous correct submits yield one owner and one
+// refusal. The lock is per process: it serialises SubmitCode against itself
+// only, not against admin AddAddress or CreateUser, and several nodes would
+// need a composite compare-and-set Raft command (not built).
 //
 // The success path is two non-atomic Raft writes in a deliberate order:
 // AddressStore.Put(Verified=true, CanSend=true) first, then a best-effort delete
@@ -595,7 +599,19 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 	}
 
 	// Correct code. The address may have been allocated since the request.
-	unavailable, err := h.addressUnavailable(userID, address)
+	// The check and the write happen under the address lock. An existing
+	// record of the caller's own keeps its kind.
+	rec := own
+	if rec == nil {
+		rec = &bongov1.AddressRecord{
+			UserId: userID,
+			Domain: address[strings.LastIndex(address, "@")+1:],
+			Kind:   "identity",
+		}
+	}
+	rec.CanSend = true
+	rec.Verified = true
+	unavailable, err, putErr := h.allocateLocked(userID, address, rec)
 	if err != nil {
 		h.logger.Error("address-verify: submit: ownership check failed", "address", address, "error", err)
 		http.Error(w, "failed to look up address", http.StatusInternalServerError)
@@ -610,20 +626,9 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Set Verified+CanSend on the address (first write, must succeed). An
-	// existing record of the caller's own keeps its kind.
-	rec := own
-	if rec == nil {
-		rec = &bongov1.AddressRecord{
-			UserId: userID,
-			Domain: address[strings.LastIndex(address, "@")+1:],
-			Kind:   "identity",
-		}
-	}
-	rec.CanSend = true
-	rec.Verified = true
-	if err := h.addresses.Put(address, rec); err != nil {
-		h.logger.Error("address-verify: submit: failed to set verified+can_send", "user_id", userID, "address", address, "error", err)
+	// Verified+CanSend was written above (first write, must succeed).
+	if putErr != nil {
+		h.logger.Error("address-verify: submit: failed to set verified+can_send", "user_id", userID, "address", address, "error", putErr)
 		http.Error(w, "failed to verify address", http.StatusInternalServerError)
 		return
 	}
@@ -636,6 +641,52 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 
 	h.logger.Info("address-verify: address verified", "user_id", userID, "address", address)
 	http.Redirect(w, r, "/settings/addresses?flash=Address+verified", http.StatusSeeOther)
+}
+
+// sendAsAddrLocks serialises SubmitCode per normalised address across the
+// whole process. Entries are reference counted and removed when unused.
+var sendAsAddrLocks = struct {
+	mu sync.Mutex
+	m  map[string]*addrLock
+}{m: map[string]*addrLock{}}
+
+type addrLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func lockSendAsAddr(address string) (unlock func()) {
+	sendAsAddrLocks.mu.Lock()
+	l := sendAsAddrLocks.m[address]
+	if l == nil {
+		l = &addrLock{}
+		sendAsAddrLocks.m[address] = l
+	}
+	l.refs++
+	sendAsAddrLocks.mu.Unlock()
+
+	l.mu.Lock()
+	return func() {
+		l.mu.Unlock()
+		sendAsAddrLocks.mu.Lock()
+		if l.refs--; l.refs == 0 {
+			delete(sendAsAddrLocks.m, address)
+		}
+		sendAsAddrLocks.mu.Unlock()
+	}
+}
+
+// allocateLocked runs the availability check and, for a free address, the
+// record write under the per-address lock. unavailable=true means the address
+// was taken and nothing was written; checkErr is a failed check, putErr a
+// failed write. The lock is released on every path.
+func (h *AddressVerifyHandler) allocateLocked(userID, address string, rec *bongov1.AddressRecord) (unavailable bool, checkErr, putErr error) {
+	defer lockSendAsAddr(address)()
+	unavailable, checkErr = h.addressUnavailable(userID, address)
+	if checkErr != nil || unavailable {
+		return unavailable, checkErr, nil
+	}
+	return false, nil, h.addresses.Put(address, rec)
 }
 
 // resetClaim clears a spent challenge back to a bare claim, keeping the
