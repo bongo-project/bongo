@@ -163,11 +163,13 @@ func dnsblOption(cfg *config.Config, logger *slog.Logger) pipelineantispam.Optio
 // without blending. DNSBL goes through the same dnsblOption helper both
 // sites share, so the two cannot drift in how the option is built.
 //
-// Known gap (follow-up): this processor gets no SenderAuthorizer, so an
-// envelope with Trusted and AuthUserId set keeps the unconditional DMARC
-// bypass. AgentServer.DispatchOrLocal has no production callers today; before
-// it is wired, fail closed here (run DMARC when AuthUserId is set) or apply
-// the gate on the server.
+// An agent has no store, so it cannot check who an authenticated user may send
+// as. It therefore wires a deny-all SenderAuthorizer: an envelope carrying
+// Trusted and AuthUserId runs DMARC instead of keeping the bypass, and the
+// verdict is recorded as trusted_from_unauthorised. A Trusted envelope with no
+// AuthUserId (a trusted network) still bypasses, as it does on the server; the
+// agent cannot verify that flag either (the deposit channel strips it today),
+// so widening this is a decision for whoever wires AgentServer.DispatchOrLocal.
 func (a *Agent) buildAgentAntispamProcessor() pipeline.Processor {
 	builtin := a.Config.Antispam.Builtin
 	opts := []pipelineantispam.Option{
@@ -179,15 +181,26 @@ func (a *Agent) buildAgentAntispamProcessor() pipeline.Processor {
 		opts = append(opts, pipelineantispam.WithThresholdSource(thresholds))
 	}
 	if a.Config.Antispam.DMARCEnabled() && a.Config.Server.Role != "dev" {
-		opts = append(opts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), a.Config.Antispam.DMARCEnforce()))
+		eval := a.dmarcEvaluator
+		if eval == nil {
+			eval = mail.NewDMARCEvaluator()
+		}
+		opts = append(opts, pipelineantispam.WithDMARC(eval, a.Config.Antispam.DMARCEnforce()))
 	}
 	// Agent-role envelopes do carry SourceIp (see
 	// internal/smtp/agent_delivery.go), so DNSBL is wired here too.
 	if opt := dnsblOption(a.Config, a.logger); opt != nil {
 		opts = append(opts, opt)
 	}
+	opts = append(opts, pipelineantispam.WithSenderAuthorizer(denyAllAuthorizer{}))
 	return pipelineantispam.NewBuiltinProcessor(antispam.NewScorer(), opts...)
 }
+
+// denyAllAuthorizer is the agent's SenderAuthorizer: with no store there is no
+// way to grant any user any From address, so none is granted.
+type denyAllAuthorizer struct{}
+
+func (denyAllAuthorizer) CanSendAs(string, string) (bool, error) { return false, nil }
 
 // newSpamThresholdHolder builds the process-wide holder from config. The
 // accessors clamp, so a valid pair always results; the error path guards

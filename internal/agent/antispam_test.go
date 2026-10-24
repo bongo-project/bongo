@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/antispam"
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
 	"github.com/bongo-project/bongo/internal/store"
@@ -484,4 +487,81 @@ func TestSpamThresholdHolderSharedByBuilders(t *testing.T) {
 			t.Errorf("%s with tiny thresholds: action %q, want quarantine", name, got)
 		}
 	}
+}
+
+// dmarcTXTResolver serves one canned reject policy so the DMARC verdict is
+// deterministic and offline.
+type dmarcTXTResolver struct{}
+
+func (dmarcTXTResolver) LookupTXT(_ context.Context, domain string) ([]string, error) {
+	if domain == "_dmarc.example.com" {
+		return []string{"v=DMARC1; p=reject"}, nil
+	}
+	return nil, nil
+}
+func (dmarcTXTResolver) LookupIP(context.Context, string) ([]net.IP, error)  { return nil, nil }
+func (dmarcTXTResolver) LookupMX(context.Context, string) ([]*net.MX, error) { return nil, nil }
+
+// grantAuthorizer lets one user send as one address.
+type grantAuthorizer struct{ user, addr string }
+
+func (g grantAuthorizer) CanSendAs(user, addr string) (bool, error) {
+	return user == g.user && addr == g.addr, nil
+}
+
+func authenticatedSpoofEnvelope() *bongov1.QueueEnvelope {
+	return &bongov1.QueueEnvelope{
+		Sender:     "spammer@attacker.net",
+		Recipients: []string{"victim@example.com"},
+		SpfResult:  "softfail",
+		Trusted:    true,
+		AuthUserId: "u1",
+	}
+}
+
+// TestAgentAntispamDMARCNotBypassedOnUnverifiableTrust: the agent has no store
+// to check who u1 may send as, so Trusted plus AuthUserId must not skip DMARC.
+// The control is the server-role processor with an authorizer granting u1 the
+// From address, which still bypasses.
+func TestAgentAntispamDMARCNotBypassedOnUnverifiableTrust(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "agent"
+	msg := antispamTestMessage("someone@example.com", "Hello", "Just a note.")
+	eval := mail.NewDMARCEvaluatorWithResolver(dmarcTXTResolver{})
+
+	t.Run("agent processor runs DMARC and records the failure", func(t *testing.T) {
+		a := &Agent{Config: cfg, logger: testLogger(), dmarcEvaluator: eval}
+		proc := a.buildAgentAntispamProcessor()
+		builtin, ok := proc.(*pipelineantispam.BuiltinProcessor)
+		if !ok {
+			t.Fatalf("processor is %T, want *BuiltinProcessor", proc)
+		}
+		if !builtin.HasSenderAuthorizer() {
+			t.Error("agent processor has no sender authorizer; the DMARC bypass is unconditional")
+		}
+		res, err := proc.Process(context.Background(), authenticatedSpoofEnvelope(), strings.NewReader(msg))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.DmarcResult != "fail" {
+			t.Errorf("DmarcResult = %q, want fail (reasons=%v)", res.DmarcResult, res.Reasons)
+		}
+		if !slices.Contains(res.Reasons, "trusted_from_unauthorised") {
+			t.Errorf("reasons %v missing trusted_from_unauthorised", res.Reasons)
+		}
+	})
+
+	t.Run("server processor with a granting authorizer still bypasses", func(t *testing.T) {
+		proc := buildAntispamProcessor(cfg, "builtin", antispam.NewScorer(), nil, nil, testLogger(), nil,
+			pipelineantispam.WithDMARC(eval, true),
+			pipelineantispam.WithSenderAuthorizer(grantAuthorizer{user: "u1", addr: "someone@example.com"}),
+		)
+		res, err := proc.Process(context.Background(), authenticatedSpoofEnvelope(), strings.NewReader(msg))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.DmarcResult != "" {
+			t.Errorf("DmarcResult = %q, want \"\" (granted sender keeps the bypass)", res.DmarcResult)
+		}
+	})
 }

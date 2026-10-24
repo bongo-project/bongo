@@ -3,6 +3,8 @@ package cluster
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -84,7 +86,11 @@ func NewRaftNode(
 	case "server":
 		// TCP transport for production clusters.
 		raftPort := strconv.Itoa(cfg.Cluster.Raft.Port)
-		bindAddr := net.JoinHostPort(clusterBindHost(cfg), raftPort)
+		bindHost, err := cfg.ClusterBindHost()
+		if err != nil {
+			return nil, err
+		}
+		bindAddr := net.JoinHostPort(bindHost, raftPort)
 		advertise := bindAddr
 		if cfg.Server.AdvertiseAddr != "" {
 			advertise = net.JoinHostPort(cfg.Server.AdvertiseAddr, raftPort)
@@ -95,22 +101,35 @@ func NewRaftNode(
 			return nil, fmt.Errorf("resolving raft advertise address: %w", err)
 		}
 
+		// A node with peers needs mutually authenticated TLS. Everything is
+		// loaded and checked before any listener opens, and there is no
+		// plaintext fallback.
+		strict := cfg.ClusterHasPeers()
+		var tlsCfg *tls.Config
+		if strict {
+			tlsCfg, err = loadStrictRaftTLS(cfg)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		var netTransport *raft.NetworkTransport
-		useTLS := cfg.Cluster.TLS.CertFile != "" && cfg.Cluster.TLS.KeyFile != ""
-		// Tolerate a not-yet-provisioned cert on first boot (mirrors the mail
-		// listeners): warn loudly and fall back to a plaintext transport rather
-		// than crashing. A cert that exists but fails to load is a real
-		// misconfiguration and still fails hard below.
-		if useTLS {
+		useTLS := strict || (cfg.Cluster.TLS.CertFile != "" && cfg.Cluster.TLS.KeyFile != "")
+		// Single node only: tolerate a not-yet-provisioned cert on first boot
+		// (mirrors the mail listeners). Raft then listens on loopback alone, so
+		// the plaintext transport is unreachable from other hosts.
+		if useTLS && !strict {
 			if _, statErr := os.Stat(cfg.Cluster.TLS.CertFile); os.IsNotExist(statErr) {
 				logger.Warn("raft: TLS certificate not found, using an unencrypted transport; provide the cert and restart", "cert_file", cfg.Cluster.TLS.CertFile)
 				useTLS = false
 			}
 		}
 		if useTLS {
-			tlsCfg, tlsErr := loadRaftTLS(cfg)
-			if tlsErr != nil {
-				return nil, fmt.Errorf("loading raft TLS: %w", tlsErr)
+			if tlsCfg == nil {
+				tlsCfg, err = loadRaftTLS(cfg)
+				if err != nil {
+					return nil, fmt.Errorf("loading raft TLS: %w", err)
+				}
 			}
 			stream, streamErr := NewTLSStreamLayer(bindAddr, addr, tlsCfg)
 			if streamErr != nil {
@@ -121,7 +140,7 @@ func NewRaftNode(
 				MaxPool: 3,
 				Timeout: 10 * time.Second,
 			})
-			logger.Info("raft: TLS transport enabled")
+			logger.Info("raft: TLS transport enabled", "mutual_auth", strict)
 		} else {
 			netTransport, err = raft.NewTCPTransport(bindAddr, addr, 3, 10*time.Second, io.Discard)
 			if err != nil {
@@ -308,6 +327,46 @@ func (n *RaftNode) Shutdown() error {
 	return future.Error()
 }
 
+// loadStrictRaftTLS builds the raft TLS configuration for a node with peers:
+// cert, key and CA are all mandatory, each is read explicitly so a failure
+// names the offending key and file, and peers must present a certificate
+// signed by the CA.
+func loadStrictRaftTLS(cfg *config.Config) (*tls.Config, error) {
+	t := cfg.Cluster.TLS
+	for _, f := range []struct{ key, path string }{
+		{"cluster.tls.cert_file", t.CertFile},
+		{"cluster.tls.key_file", t.KeyFile},
+		{"cluster.tls.ca_file", t.CAFile},
+	} {
+		if f.path == "" {
+			return nil, fmt.Errorf("%s is required when the node has peers (cluster.join set or a non-loopback advertise address); raft must not run unauthenticated", f.key)
+		}
+	}
+	certPEM, err := os.ReadFile(t.CertFile) // #nosec G304 -- operator-configured path
+	if err != nil {
+		return nil, fmt.Errorf("cluster.tls.cert_file %q: %w", t.CertFile, err)
+	}
+	keyPEM, err := os.ReadFile(t.KeyFile) // #nosec G304 -- operator-configured path
+	if err != nil {
+		return nil, fmt.Errorf("cluster.tls.key_file %q: %w", t.KeyFile, err)
+	}
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("cluster.tls.cert_file %q / key_file %q: %w", t.CertFile, t.KeyFile, err)
+	}
+	pool, err := security.LoadCAPool(t.CAFile)
+	if err != nil {
+		return nil, fmt.Errorf("cluster.tls.ca_file %q: %w", t.CAFile, err)
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{pair},
+		MinVersion:   tls.VersionTLS12,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    pool,
+		RootCAs:      pool,
+	}, nil
+}
+
 // loadRaftTLS builds a tls.Config from the cluster TLS configuration.
 func loadRaftTLS(cfg *config.Config) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(cfg.Cluster.TLS.CertFile, cfg.Cluster.TLS.KeyFile)
@@ -320,15 +379,29 @@ func loadRaftTLS(cfg *config.Config) (*tls.Config, error) {
 		MinVersion:   tls.VersionTLS12,
 	}
 
+	// A single node has no peers to authenticate. Without a CA file it trusts
+	// only its own certificate chain, so the listener still requires a client
+	// certificate and the dialer still verifies.
+	// The listener is loopback-only in this mode.
+	var caPool *x509.CertPool
 	if cfg.Cluster.TLS.CAFile != "" {
-		caPool, err := security.LoadCAPool(cfg.Cluster.TLS.CAFile)
+		caPool, err = security.LoadCAPool(cfg.Cluster.TLS.CAFile)
 		if err != nil {
 			return nil, fmt.Errorf("loading CA pool: %w", err)
 		}
-		tlsCfg.ClientCAs = caPool
-		tlsCfg.RootCAs = caPool
-		tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+	} else {
+		certPEM, readErr := os.ReadFile(cfg.Cluster.TLS.CertFile) // #nosec G304 -- operator-configured path
+		if readErr != nil {
+			return nil, fmt.Errorf("reading TLS certificate: %w", readErr)
+		}
+		caPool = x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(certPEM) {
+			return nil, errors.New("no certificates found in cluster.tls.cert_file")
+		}
 	}
+	tlsCfg.ClientCAs = caPool
+	tlsCfg.RootCAs = caPool
+	tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
 
 	return tlsCfg, nil
 }
@@ -342,7 +415,14 @@ type TLSStreamLayer struct {
 
 // NewTLSStreamLayer creates a TLS-wrapped stream layer for Raft.
 // If advertise is nil, the listener address is used.
+//
+// The configuration must carry a CA pool for both directions and require
+// client certificates: a stream layer that cannot authenticate its peers is
+// refused rather than silently weakened.
 func NewTLSStreamLayer(bindAddr string, advertise net.Addr, tlsCfg *tls.Config) (*TLSStreamLayer, error) {
+	if tlsCfg.RootCAs == nil || tlsCfg.ClientCAs == nil || tlsCfg.ClientAuth != tls.RequireAndVerifyClientCert {
+		return nil, errors.New("raft TLS requires RootCAs, ClientCAs and ClientAuth RequireAndVerifyClientCert")
+	}
 	ln, err := tls.Listen("tcp", bindAddr, tlsCfg)
 	if err != nil {
 		return nil, fmt.Errorf("tls listen: %w", err)
@@ -361,14 +441,18 @@ func (t *TLSStreamLayer) Accept() (net.Conn, error) { return t.listener.Accept()
 func (t *TLSStreamLayer) Close() error              { return t.listener.Close() }
 func (t *TLSStreamLayer) Addr() net.Addr            { return t.advertise }
 
+// dialConfig is the client-side TLS configuration for outbound raft streams.
+func (t *TLSStreamLayer) dialConfig() *tls.Config {
+	return &tls.Config{
+		Certificates: t.tlsCfg.Certificates,
+		RootCAs:      t.tlsCfg.RootCAs,
+		MinVersion:   tls.VersionTLS12,
+	}
+}
+
 func (t *TLSStreamLayer) Dial(address raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: timeout}
-	conn, err := tls.DialWithDialer(dialer, "tcp", string(address), &tls.Config{
-		Certificates:       t.tlsCfg.Certificates,
-		RootCAs:            t.tlsCfg.RootCAs,
-		InsecureSkipVerify: t.tlsCfg.RootCAs == nil, // #nosec G402 -- private raft peers may use pinned self-signed certs without a CA
-		MinVersion:         tls.VersionTLS12,
-	})
+	conn, err := tls.DialWithDialer(dialer, "tcp", string(address), t.dialConfig())
 	if err != nil {
 		return nil, fmt.Errorf("tls dial %s: %w", address, err)
 	}

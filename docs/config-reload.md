@@ -160,7 +160,7 @@ Legend for "Class":
 | Key | Consumer | How read today | Class |
 |---|---|---|---|
 | `agent_server.address` | `agent.go:2625,2658,2804` (`runAgent`, `startProcessorAgent`) | ctor, gRPC dial target | RESTART |
-| `agent_server.tls.cert_file`, `.key_file`, `.ca_file` | none (`grep AgentServer` finds only `.ServerAddress` uses) | none | NO-OP |
+| `agent_server.tls.cert_file`, `.key_file`, `.ca_file` | `agent.go` `startProcessorAgent` -> `agentgrpc.NewAgentProcessorServer`; `agentgrpc.AgentServer.Start` (server side, not yet wired) | ctor, read once at listener start (mutual TLS) | RESTART |
 
 `cluster`
 
@@ -305,8 +305,7 @@ TLS as well as raft transport.
 ### 4.2 Keys with no reader (NO-OP)
 
 Sixteen leaf keys are parsed and then never read in non-test code at
-`b2eb0b9`: `server.datacenter`, `agent_server.tls.cert_file`, `.key_file`,
-`.ca_file`, `cluster.raft.data_dir`, `storage.pebble.cache_size`,
+`b2eb0b9`: `server.datacenter`, `cluster.raft.data_dir`, `storage.pebble.cache_size`,
 `storage.pebble.wal_dir`, `smtp.tls.ca_file`, `web.enabled`,
 `web.tls.ca_file`, `caldav.enabled`, `antispam.builtin.enabled`,
 `pipeline.error_retention`, `pipeline.quarantine_retention`,

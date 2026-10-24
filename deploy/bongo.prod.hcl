@@ -22,8 +22,8 @@ server {
   #
   # While advertise_addr is loopback, raft (8300) and gossip (8301) listen on
   # loopback only, whatever bind_addr says, so other containers on the compose
-  # network cannot reach them. A routable advertise_addr makes them follow
-  # bind_addr again.
+  # network cannot reach them. A routable advertise_addr makes them listen on
+  # that address (or on cluster.bind_addr), never on bind_addr.
   bind_addr      = "0.0.0.0"
   advertise_addr = "127.0.0.1"
 

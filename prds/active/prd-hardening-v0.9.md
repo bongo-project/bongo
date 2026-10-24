@@ -1369,3 +1369,34 @@ From the Phase 21 batch 2 reviews and CI (2026-10-24):
   again; on a busy CI runner another test can take it in between ("address
   already in use", PR #61, passed on rerun). (20.4)
 
+
+From the Phase 22 batch 1 reviews (2026-10-24):
+
+- `Reload()` in `internal/agent/agent.go` calls `validateSessionSecret` with
+  role "agent" and an empty secret, so an agent without
+  `web.session_secret` can never hot-reload; `runAgent` also skips the
+  32-byte minimum. (22.1)
+- The `cmd/bongo-go` CLIs sign with their own `--session-secret`, so they
+  cannot authenticate to a dev node that auto-generated its secret. (22.1)
+- On an agent, a Trusted envelope with no AuthUserId still bypasses DMARC.
+  Once DispatchOrLocal has a caller, the deny-all authorizer makes every
+  server-dispatched authenticated envelope run DMARC on the agent, including
+  users sending from their own p=reject domains; the server should pass a
+  verified send-as decision instead. (22.3)
+- `TestNothingSignsWithConfiguredSessionSecret` and
+  `TestRaftSourceNeverSkipsVerify` read source from disk, so `-overlay`
+  mutations cannot reach them; both rules are also held by behavioural
+  tests. (22.1, 22.7)
+- `Config.Validate` accepts a server with `server.bind_addr` 0.0.0.0 and no
+  `advertise_addr`; it now fails only at startup, in NewRaftNode. (22.4)
+- `startProcessorAgent` passing the TLS files has no test (it cannot run in a
+  unit test); a mutation there fails closed. US-019 can cover it. (22.5)
+- Release notes for v0.11.0: a server with a non-loopback `advertise_addr`
+  and no join now needs cert, key and ca_file; one with `server.bind_addr`
+  0.0.0.0 and no `advertise_addr` no longer starts; role agent needs the
+  three `agent_server.tls` files and, until US-019, cannot reach its servers;
+  an agent with no or a different `web.session_secret` refuses SRS bounces
+  with 550. A single node with a cluster.tls certificate and no ca_file now
+  also requires peers to present that certificate (it never dials itself).
+  Production (role server, single node, loopback advertise) is unaffected.
+  (22.1-22.7)

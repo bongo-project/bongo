@@ -4,6 +4,7 @@ package integration
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"net/http"
 	"strings"
@@ -320,10 +321,18 @@ func TestRaftTLSStreamLayer(t *testing.T) {
 		t.Fatalf("X509KeyPair: %v", err)
 	}
 
+	// The self-signed certificate is its own CA: both sides verify the peer
+	// against it, as the stream layer now requires.
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(certPEM) {
+		t.Fatal("AppendCertsFromPEM: no certificate")
+	}
 	tlsCfg := &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: true, //nolint:gosec // test only
-		MinVersion:         tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      pool,
+		ClientCAs:    pool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		MinVersion:   tls.VersionTLS12,
 	}
 
 	// Create two TLS stream layers and verify they can connect.

@@ -1408,3 +1408,11 @@ Batch 1 merged as #61 (0721edb) after one CI rerun for the TestReadyImpliesWebBo
 
 PATTERN: [calendar] An all-day date is a UTC date; every reader (form, change detection, writer, views, export, CalDAV) must use one helper, and rounding to the nearest UTC midnight keeps legacy local-midnight records on their date.
 
+
+## 2026-10-24 — Phase 22 batch 1 (22.1-22.5, 22.7) DONE
+
+Workflow wf_6a4aa3be-bfd in worktrees from 6bae258, three workflow tasks. 22.5 passed review (MINOR) after its work stage was retried once. 22.1-22.3 and 22.4+22.7 were each rejected in the final review for one surviving mutant, closed by the orchestrator before merge: Run could go back to picking the secret inline without storing it on the Agent and the package stayed green (now TestRunSetsInternalSecret, red against that mutant); raft could bind server.bind_addr (0.0.0.0) with a routable advertise address and still pass, because the tests only dialled the advertise address (now the loopback dial must fail, red against that mutant). The docs gained the third mTLS trigger (a non-loopback cluster.bind_addr). The advisor found that wiring SRS on the agent backend alone was a no-op: Rcpt accepted every recipient before the SRS check when there was no resolver. Review findings went to section 8.2 of the PRD.
+
+PATTERN: [testing] A bind test must also dial an address that should NOT answer; reachability on the intended address is satisfied by a wildcard bind too.
+PATTERN: [tls] A wrong-CA client test must force its certificate with GetClientCertificate; Go silently sends none when it does not match the server's advertised CAs, and the test then passes for the wrong reason.
+PATTERN: [testing] A helper tested on its own does not prove its caller uses it; test the effect through the real entry point (Run) as well.
