@@ -580,6 +580,7 @@
   "common.previousPage": "Previous page",
   "common.nextPage": "Next page",
   "nav.mailboxNav": "Mailbox navigation",
+  "nav.sourceCode": "Source code",
   "admin.messageQueue": "Message Queue",
   "editor.bold": "Bold",
   "editor.italic": "Italic",

@@ -580,6 +580,7 @@
   "common.previousPage": "Page précédente",
   "common.nextPage": "Page suivante",
   "nav.mailboxNav": "Navigation des boîtes aux lettres",
+  "nav.sourceCode": "Code source",
   "admin.messageQueue": "File de messages",
   "editor.bold": "Gras",
   "editor.italic": "Italique",

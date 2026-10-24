@@ -185,7 +185,7 @@ built.
 | MIME | emersion/go-message + jhillyerd/enmime |
 | HTTP | go-chi/chi v5 |
 | Templates | a-h/templ |
-| Frontend | HTMX + Alpine.js + Sortable.js + Pico CSS + TipTap (composer) |
+| Frontend | HTMX + Alpine.js (CSP build) + Sortable.js, all vendored locally; first-party rich editor for the composer (`richeditor.js`, contenteditable); Geist fonts |
 | Serialization | Protocol Buffers (Pebble values, Raft commands) |
 
 ## Conventions

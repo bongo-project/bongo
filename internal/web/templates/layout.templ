@@ -52,6 +52,7 @@ templ Layout(title string, email string) {
 						title={ t(ctx, "nav.toggleTheme") }
 					></button>
 					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
+					<a href={ sourceURL(ctx) } class="topbar-link" rel="noopener">{ t(ctx, "nav.sourceCode") }</a>
 					<span class="user-email" aria-label={ t(ctx, "nav.loggedInAs") + " " + email }>{ email }</span>
 					<form method="post" action="/logout" class="u-m0">
 						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
@@ -148,6 +149,7 @@ templ LayoutWithContent(title string, email string) {
 						title={ t(ctx, "nav.toggleTheme") }
 					></button>
 					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
+					<a href={ sourceURL(ctx) } class="topbar-link" rel="noopener">{ t(ctx, "nav.sourceCode") }</a>
 					<span class="user-email" aria-label={ t(ctx, "nav.loggedInAs") + " " + email }>{ email }</span>
 					<form method="post" action="/logout" class="u-m0">
 						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
@@ -204,6 +206,7 @@ templ LoginLayout(title string) {
 		</head>
 		<body class="login-page">
 			{ children... }
+			<p class="login-source"><a href={ sourceURL(ctx) } rel="noopener">{ t(ctx, "nav.sourceCode") }</a></p>
 		</body>
 	</html>
 }

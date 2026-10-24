@@ -252,6 +252,7 @@ TLS as well as raft transport.
 | `web.https_redirect`, `web.http_redirect_port` | `agent.go:1447-1448` | ctor | RESTART |
 | `web.plain_http` | `agent.go:505,947`; also forced true in dev at `agent.go:266` and by `--plain-http` (`cmd/bongo-go/agent.go:116-117`) | ctor | RESTART |
 | `web.behind_tls_proxy` | `agent.go:510` | ctor, decides cookie `Secure` | RESTART |
+| `web.source_url` | `agent.go` (router middleware `InjectSourceURL`) | ctor; target of the "Source code" link | RESTART |
 
 `caldav`
 
