@@ -403,6 +403,7 @@ func TestMailBlobRequiresMessageOwnership(t *testing.T) {
 	ownerClient := loginAs(t, baseURL, "blob-owner@localhost", "ownerpass")
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("send_id", composeSendID())
 	_ = writer.WriteField("to", "blob-owner@localhost")
 	_ = writer.WriteField("subject", "Private attachment")
 	_ = writer.WriteField("body", "Attached private data")

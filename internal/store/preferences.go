@@ -68,3 +68,22 @@ func (s *PreferenceStore) Set(userID string, prefs *bongov1.UserPreferences) err
 	}
 	return s.applier.ApplyCommand(cmd, 5*time.Second)
 }
+
+// ResolveZone turns a stored time zone name into a location. An empty name,
+// "Local" (which LoadLocation would resolve to the server's zone) or a name
+// that does not load all resolve to UTC.
+func ResolveZone(name string) *time.Location {
+	if name == "" || name == "Local" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
+// Location returns the user's preferred time zone, UTC when unset or invalid.
+func (s *PreferenceStore) Location(userID string) *time.Location {
+	return ResolveZone(s.Get(userID).GetTimezone())
+}

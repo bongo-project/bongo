@@ -14,6 +14,7 @@ import (
 func sendCompose(t *testing.T, env *composeSendAsEnv, userID, email string, to []string, cc []string) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {strings.Join(to, ", ")},
 		"cc":      {strings.Join(cc, ", ")},
 		"subject": {"limit test"},

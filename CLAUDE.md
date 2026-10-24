@@ -129,6 +129,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /user/{user_id}/rule/{guid}          → mail filter rule
 /user/{user_id}/tag/{name}           → TagMeta protobuf (colour, sort_order)
 /user/{user_id}/addrverify/{address} → send-as verification challenge
+/user/{user_id}/sendlog/{send_id}/{step} → web compose send step done (40-byte record, not a protobuf)
 /user/{user_id}/bayes/{category}/{token} → Bayes token counts (uvarint)
 /user/{user_id}/bayes/trained        → Bayes trained-message count (uvarint)
 /user/{user_id}/bayes/msg/{guid}     → category a message was last trained as (spam|ham)
@@ -142,6 +143,14 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 # Blob store (content-addressable, separate from Pebble)
 /data/blobs/{first-2-hex}/{sha256-hash} → raw file content
 ```
+
+Send log: `step` is `local/{hex16(sha256(rcpt))}`, `external` or `sent`. The value is 8 bytes of
+big-endian unix seconds plus the 32-byte content fingerprint of the submission; `send_id` is the
+128-bit hex ID the compose form carries. It makes a retried web send idempotent (object IDs are
+derived from the send ID, finished steps are skipped, different content under a used ID is a 409).
+The leader's orphan GC deletes entries older than `store.SendLogTTL` (7 days) via `sweepSendLogs`;
+deleting a user covers the rest. Delivery is at-least-once: a crash between an object write and
+its marker repeats that one write, and two nodes handling one send ID at once are not serialised.
 
 Only MailMeta and the outbound queue reference blobs. An earlier revision of this table said
 events and contacts carried BlobRefs; they do not. `Event.ical_raw` and `Contact.vcard_raw` are

@@ -24,11 +24,18 @@ type fakeSpool struct {
 	mu   sync.Mutex
 	envs []*bongov1.QueueEnvelope
 	err  error
+	// failOn fails the failOn-th Enqueue call (1-based) once; 0 disables it.
+	failOn int
+	calls  int
 }
 
 func (f *fakeSpool) Enqueue(env *bongov1.QueueEnvelope) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.calls++
+	if f.failOn != 0 && f.calls == f.failOn {
+		return errors.New("injected spool failure")
+	}
 	if f.err != nil {
 		return f.err
 	}
@@ -101,6 +108,7 @@ func TestComposeLocalEnvelopeSenderIsFromAlias(t *testing.T) {
 	env, uid, email := newPipelineEnv(t)
 	env.seedAddress(t, "alias@example.com", uid, "example.com", true, true)
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {"bob@example.com"},
 		"from":    {"alias@example.com"},
 		"subject": {"alias test"},
@@ -151,6 +159,7 @@ func TestComposeLocalEnvelopeCarriesWholeMessage(t *testing.T) {
 	att := bytes.Repeat([]byte("ATTACHMENT-PAYLOAD-"), 500)
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("send_id", sendID())
 	_ = mw.WriteField("to", "bob@example.com, ext@external.example")
 	_ = mw.WriteField("subject", "big")
 	_ = mw.WriteField("body", "see attached")

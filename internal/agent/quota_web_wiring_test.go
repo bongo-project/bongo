@@ -107,7 +107,7 @@ func TestWebWritePathsQuotaWired(t *testing.T) {
 	}{
 		{"mbox import", postMbox, func(c int) bool { return c == http.StatusOK }},
 		{"compose send", func() int {
-			return postForm("/compose/send", url.Values{"to": {"admin@localhost"}, "subject": {"wired"}, "body": {"hi"}})
+			return postForm("/compose/send", url.Values{"send_id": {composeSendID()}, "to": {"admin@localhost"}, "subject": {"wired"}, "body": {"hi"}})
 		}, func(c int) bool { return c == http.StatusSeeOther }},
 		{"compose draft", func() int {
 			return postForm("/compose/draft", url.Values{"to": {"admin@localhost"}, "subject": {"wired"}, "body": {"hi"}})

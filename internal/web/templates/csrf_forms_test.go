@@ -135,3 +135,32 @@ func TestRenderedUploadFormPassesRequireCSRF(t *testing.T) {
 		t.Fatalf("rendered token rejected: called=%v status=%d", called, rr.Code)
 	}
 }
+
+var sendIDFieldRe = regexp.MustCompile(`<input type="hidden" name="send_id" value="([^"]*)"`)
+
+// TestComposeFormCarriesFreshSendID: the compose form carries a send ID of the
+// shape handlers.Send accepts, and every render gets its own, so one rendering
+// is one send. _csrf stays the first field.
+func TestComposeFormCarriesFreshSendID(t *testing.T) {
+	ctx, _ := csrfRenderCtx(t)
+	render := func() string {
+		var buf bytes.Buffer
+		if err := ComposePage("new", "", "", "", "", "", 0, nil, "", "").Render(ctx, &buf); err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		m := sendIDFieldRe.FindStringSubmatch(buf.String())
+		if m == nil {
+			t.Fatal("compose form has no send_id field")
+		}
+		return m[1]
+	}
+	a, b := render(), render()
+	for _, id := range []string{a, b} {
+		if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(id) {
+			t.Errorf("send_id %q is not 32 lowercase hex characters", id)
+		}
+	}
+	if a == b {
+		t.Errorf("two renders share send_id %q", a)
+	}
+}

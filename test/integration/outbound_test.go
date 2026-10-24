@@ -183,6 +183,7 @@ func TestWebUIComposeExternalRecipientRelaysOutbound(t *testing.T) {
 	}
 
 	resp, err = client.PostForm(baseURL+"/compose/send", url.Values{
+		"send_id": {composeSendID()},
 		"to":      {"bob@external.com"},
 		"subject": {"webui outbound relay"},
 		"body":    {"This message should leave via the outbound relay."},

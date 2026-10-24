@@ -2163,6 +2163,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 			prevUsers = a.sweepOrphanedUsers(prevUsers)
 			prevGhosts = a.sweepGhostUserTrees(prevGhosts)
 			prevBlobs, prevBlobMode = a.blobGCPass(prevBlobs, prevBlobMode, minAge)
+			a.sweepSendLogs(time.Now(), store.SendLogTTL)
 		}
 	}
 }
@@ -2814,6 +2815,63 @@ func (a *Agent) reclaimGhostUserTree(userID string) {
 
 	a.logger.Warn("orphan-gc: reclaimed ghost user tree",
 		"user", userID, "keys_deleted", deleted, "keys_found", len(keys))
+}
+
+// sweepSendLogs deletes web-compose send log entries (store.SendLogKey) older
+// than ttl, through Raft, and returns how many it removed. The entries only
+// need to outlive a retry, so age alone decides; there is no reference to
+// check. Leader-only. A user whose tree is already gone is covered by the ghost
+// tree sweep.
+func (a *Agent) sweepSendLogs(now time.Time, ttl time.Duration) int {
+	if a.Raft == nil || !a.IsLeader() {
+		return 0
+	}
+	userIDs, err := a.Metadata.System.ListUserIDs()
+	if err != nil {
+		a.logger.Warn("orphan-gc: listing users for send log sweep failed", "error", err)
+		return 0
+	}
+	cutoff := now.Add(-ttl)
+	deleted := 0
+	for _, userID := range userIDs {
+		iter, err := a.Store.PrefixScan(store.SendLogPrefix(userID))
+		if err != nil {
+			a.logger.Warn("orphan-gc: scanning send log failed", "user", userID, "error", err)
+			continue
+		}
+		var expired [][]byte
+		for iter.Next() {
+			val, err := iter.Value()
+			if err != nil {
+				continue
+			}
+			at, _, err := store.DecodeSendLogRecord(val)
+			if err != nil {
+				// Not ours to interpret; a malformed record would otherwise
+				// never be reclaimed, so treat it as expired.
+				expired = append(expired, append([]byte(nil), iter.Key()...))
+				continue
+			}
+			if at.Before(cutoff) {
+				expired = append(expired, append([]byte(nil), iter.Key()...))
+			}
+		}
+		if err := iter.Close(); err != nil {
+			a.logger.Warn("orphan-gc: closing send log iterator", "user", userID, "error", err)
+			continue
+		}
+		for _, k := range expired {
+			if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: k}, 5*time.Second); err != nil {
+				a.logger.Warn("orphan-gc: deleting send log entry failed", "user", userID, "error", err)
+				continue
+			}
+			deleted++
+		}
+	}
+	if deleted > 0 {
+		a.logger.Info("orphan-gc: reclaimed send log entries", "count", deleted)
+	}
+	return deleted
 }
 
 // sweepOrphanedMail runs one orphan-reclamation pass and returns the set of

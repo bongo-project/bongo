@@ -241,6 +241,7 @@ func TestRichComposeEndToEnd(t *testing.T) {
 			`<script>alert(1)</script>`
 
 		resp, err := client.PostForm(baseURL+"/compose/send", url.Values{
+			"send_id":   {composeSendID()},
 			"to":        {"admin@localhost"},
 			"subject":   {richSubject},
 			"body":      {richBody},
@@ -371,6 +372,7 @@ func TestRichComposeEndToEnd(t *testing.T) {
 		// raw-bytes check below does not match the Subject header line.
 		plainSubject := "PlainCompose-Integration-Test"
 		resp, err := client.PostForm(baseURL+"/compose/send", url.Values{
+			"send_id":   {composeSendID()},
 			"to":        {"admin@localhost"},
 			"subject":   {plainSubject},
 			"body":      {"hello plain"},

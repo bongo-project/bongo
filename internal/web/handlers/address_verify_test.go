@@ -649,6 +649,7 @@ func TestSelfServe_UnverifiedAddress_SendRejected(t *testing.T) {
 	env.seedAddress(t, unverifiedAddr, userID, "other.example", false, false)
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {email},
 		"subject": {"Test"},
 		"body":    {"hello"},

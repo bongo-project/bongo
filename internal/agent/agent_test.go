@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -595,6 +597,43 @@ func TestSweepOrphanedUsersLogsReclaimedUser(t *testing.T) {
 	}
 	if n := len(orphanLogLines(t, buf, "orphan-gc: reclaimed orphaned user rows")); n != 1 {
 		t.Errorf("summary line count = %d, want 1 (unchanged)", n)
+	}
+}
+
+func TestSweepSendLogsRemovesOnlyExpiredEntries(t *testing.T) {
+	a := blobGCLeaderTestAgentWithLogger(t, testLogger())
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	uid, err := auth.CreateUser(a, a.Metadata, "sendlog@localhost", "Sendlog", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	now := time.Date(2030, 5, 6, 13, 7, 41, 0, time.UTC)
+	var fp [32]byte
+	fp[0] = 1
+	put := func(id, step string, at time.Time) []byte {
+		key := store.SendLogKey(uid, id, step)
+		if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: key, Value: store.EncodeSendLogRecord(at, fp)}, 5*time.Second); err != nil {
+			t.Fatalf("put %s: %v", key, err)
+		}
+		return key
+	}
+	// Either side of the cutoff by a second, not by a round number of days.
+	old := put(strings.Repeat("a", 32), "sent", now.Add(-store.SendLogTTL-time.Second))
+	oldLocal := put(strings.Repeat("a", 32), store.SendLogLocalStep("Bob@Example.com"), now.Add(-store.SendLogTTL-37*time.Hour))
+	fresh := put(strings.Repeat("b", 32), "external", now.Add(-store.SendLogTTL+time.Second))
+
+	if got := a.sweepSendLogs(now, store.SendLogTTL); got != 2 {
+		t.Fatalf("deleted = %d, want 2", got)
+	}
+	for _, k := range [][]byte{old, oldLocal} {
+		if _, err := a.Store.Get(k); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("expired key %s survived: %v", k, err)
+		}
+	}
+	if _, err := a.Store.Get(fresh); err != nil {
+		t.Errorf("fresh key %s was swept: %v", fresh, err)
 	}
 }
 
