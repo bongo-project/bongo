@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,13 @@ func freePort(t *testing.T) int {
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
 	return port
+}
+
+// freeControlAddr returns a loopback host:port for server.control_addr that
+// was free a moment ago, so no test binds the default 8081.
+func freeControlAddr(t *testing.T) string {
+	t.Helper()
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t)))
 }
 
 func TestWebDAVMethodsRegistered(t *testing.T) {
@@ -99,6 +107,7 @@ func TestAgentRunAndCancel(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 
@@ -174,6 +183,7 @@ func TestEnsureConfiguredDomainSeedsOnStartup(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 	cfg.SMTP.DKIM.Domain = "example.test"
@@ -239,6 +249,7 @@ func TestHealthEndpoints(t *testing.T) {
 	cfg.Server.Role = "dev"
 	port := freePort(t)
 	cfg.Web.Port = port
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 	cfg.Cluster.Gossip.Port = freePort(t)
@@ -433,6 +444,7 @@ func TestSweepGhostUserTrees(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 

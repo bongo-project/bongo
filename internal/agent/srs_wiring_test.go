@@ -108,6 +108,7 @@ func TestSRSWiredIntoRun(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = true
 	cfg.SMTP.Port = freePort(t)

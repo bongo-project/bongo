@@ -169,6 +169,7 @@ func TestRunSetsInternalSecret(t *testing.T) {
 	cfg.Web.SessionSecret = ""
 	port := freePort(t)
 	cfg.Web.Port = port
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 	cfg.Cluster.Gossip.Port = freePort(t)

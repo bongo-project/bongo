@@ -42,7 +42,8 @@ func TestForwardOfUnauthenticatedSenderHasNoRelaySender(t *testing.T) {
 		{name: "spf softfail dmarc none", spf: "softfail", dmarc: "none", wantNoRelay: true},
 		{name: "spf pass", spf: "pass", wantAuth: true, wantSRSSender: true},
 		{name: "spf pass mixed case", spf: "Pass", wantAuth: true, wantSRSSender: true},
-		{name: "dmarc pass only", spf: "fail", dmarc: "pass", wantAuth: true, wantSRSSender: true},
+		{name: "spf fail dmarc pass is unauthenticated", spf: "fail", dmarc: "pass", wantNoRelay: true},
+		{name: "spf fail dmarc pass without SRS configured", spf: "fail", dmarc: "pass", noSRS: true, wantNoRelay: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -210,20 +211,18 @@ func TestSPFPassBounceRelayedOnce(t *testing.T) {
 
 func TestSenderAuthenticated(t *testing.T) {
 	tests := []struct {
-		name  string
-		env   *bongov1.QueueEnvelope
-		dmarc string
-		want  bool
+		name string
+		env  *bongov1.QueueEnvelope
+		want bool
 	}{
-		{"nothing", &bongov1.QueueEnvelope{}, "", false},
-		{"spf pass", &bongov1.QueueEnvelope{SpfResult: "pass"}, "", true},
-		{"spf PASS", &bongov1.QueueEnvelope{SpfResult: "PASS"}, "", true},
-		{"dmarc pass", &bongov1.QueueEnvelope{SpfResult: "fail"}, "pass", true},
-		{"authenticated submission", &bongov1.QueueEnvelope{SpfResult: "softfail", AuthUserId: "u"}, "", true},
-		{"fail and fail", &bongov1.QueueEnvelope{SpfResult: "fail"}, "fail", false},
+		{"nothing", &bongov1.QueueEnvelope{}, false},
+		{"spf pass", &bongov1.QueueEnvelope{SpfResult: "pass"}, true},
+		{"spf PASS", &bongov1.QueueEnvelope{SpfResult: "PASS"}, true},
+		{"spf fail", &bongov1.QueueEnvelope{SpfResult: "fail"}, false},
+		{"authenticated submission", &bongov1.QueueEnvelope{SpfResult: "softfail", AuthUserId: "u"}, true},
 	}
 	for _, tt := range tests {
-		if got := senderAuthenticated(tt.env, tt.dmarc); got != tt.want {
+		if got := senderAuthenticated(tt.env); got != tt.want {
 			t.Errorf("%s: senderAuthenticated = %v, want %v", tt.name, got, tt.want)
 		}
 	}

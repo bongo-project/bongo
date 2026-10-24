@@ -171,9 +171,10 @@ explicit auth):
   certificate in `cluster.tls` with no `ca_file` is still accepted and the
   strict loader is never called for the peer listener.
 
-Follow-up for a PRD with a release scope: `/internal/kv/*`,
-`/internal/cluster/members` and `/internal/user/create` remain on the public
-router behind HMAC only.
+Every other `/internal/*` route (queue, user create, address repair,
+snapshot, dangling mail, cluster members, and in dev `/internal/kv/*`) is
+served only on the loopback control listener (`server.control_addr`, default
+`127.0.0.1:8081`), still behind HMAC. The web port answers 404 for them.
 
 ## Sanity check
 

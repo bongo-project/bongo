@@ -632,7 +632,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	tRecipients = mark(stepStart)
 
-	p.enqueueForwards(env, raw, gate.approved, dmarcResult)
+	p.enqueueForwards(env, raw, gate.approved)
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
 	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)
@@ -821,7 +821,7 @@ func (p *DeliverProcessor) isHostedAddress(address string) bool {
 // targets cost nothing, matching compose, which counts external recipients.
 // The budget is in memory and per node, and a slot is not refunded when the
 // enqueue fails.
-func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byte, approved []approvedForward, dmarcResult string) {
+func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byte, approved []approvedForward) {
 	if len(approved) == 0 || p.queuer == nil {
 		return
 	}
@@ -834,15 +834,15 @@ func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byt
 	origin := p.forwardOrigin(env, raw)
 	if origin == bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL && p.authorRL != nil {
 		local, refused := p.chargeAuthor(env, approved)
-		p.enqueueGroups(env, local, bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL, dmarcResult)
+		p.enqueueGroups(env, local, bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL)
 		if len(refused) > 0 {
 			p.logger.Warn("deliver: author recipient budget spent, forwarding unsigned",
 				"id", env.Id, "user", env.AuthUserId, "targets", len(refused))
 		}
-		p.enqueueGroups(env, refused, bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD, dmarcResult)
+		p.enqueueGroups(env, refused, bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD)
 		return
 	}
-	p.enqueueGroups(env, approved, origin, dmarcResult)
+	p.enqueueGroups(env, approved, origin)
 }
 
 // chargeAuthor splits approved into the forwards that stay LOCAL and those the
@@ -893,7 +893,8 @@ type forwardGroup struct {
 // bounce) and LOCAL forwards keep the original sender, as do authenticated
 // forwards whose user's domain is unknown or not hosted here.
 //
-//   - Authenticated original (see senderAuthenticated): SRS, with targets
+//   - Authenticated original (SPF pass or an authenticated submitter; see
+//     senderAuthenticated): SRS, with targets
 //     grouped by forwarding domain. Needs an SRS codec.
 //   - Unauthenticated original: the sender is the reserved no-relay address on
 //     the forwarding domain, which takes bounces and discards them, so a forged
@@ -903,13 +904,13 @@ type forwardGroup struct {
 //     nothing can bounce back to the forged one.
 //
 // A target forwarded by several users is queued once, by the first of them.
-func (p *DeliverProcessor) enqueueGroups(env *bongov1.QueueEnvelope, approved []approvedForward, origin bongov1.OutboundOrigin, dmarcResult string) {
+func (p *DeliverProcessor) enqueueGroups(env *bongov1.QueueEnvelope, approved []approvedForward, origin bongov1.OutboundOrigin) {
 	if len(approved) == 0 {
 		return
 	}
 	isForward := origin == bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD
 	hasSender := strings.TrimSpace(env.Sender) != ""
-	authenticated := senderAuthenticated(env, dmarcResult)
+	authenticated := senderAuthenticated(env)
 	srsRewrite := p.srs != nil && isForward && hasSender && authenticated
 	noRelay := isForward && hasSender && !authenticated
 
@@ -1207,11 +1208,13 @@ func addressDomain(addr string) string {
 }
 
 // senderAuthenticated reports whether the original sender of env is
-// authenticated: SPF passed, DMARC passed, or the message was submitted by an
-// authenticated local user (whose SPF result describes the client's own IP, not
-// the sender's domain, and whose trusted envelope skips DMARC).
-func senderAuthenticated(env *bongov1.QueueEnvelope, dmarcResult string) bool {
+// authenticated: SPF passed for the envelope sender, or the message was
+// submitted by an authenticated local user (whose SPF result describes the
+// client's own IP, not the sender's domain, and whose trusted envelope skips
+// DMARC). DMARC is deliberately not consulted: it aligns the header From, but
+// bounces go to the envelope sender, so a DMARC pass with an SPF fail still
+// leaves a forgeable MAIL FROM and would relay backscatter to it.
+func senderAuthenticated(env *bongov1.QueueEnvelope) bool {
 	return strings.EqualFold(env.GetSpfResult(), "pass") ||
-		strings.EqualFold(dmarcResult, "pass") ||
 		env.GetAuthUserId() != ""
 }

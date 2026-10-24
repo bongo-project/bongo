@@ -267,6 +267,7 @@ func TestShutdownWaitsForBackgroundWorker(t *testing.T) {
 func TestShutdownStopsRealWorkersWithoutCtxCancel(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -329,6 +330,7 @@ func TestShutdownStopsRealWorkersWithoutCtxCancel(t *testing.T) {
 func TestShutdownIsIdempotent(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)

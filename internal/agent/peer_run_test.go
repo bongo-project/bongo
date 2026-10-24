@@ -25,6 +25,7 @@ func peerRunConfig(t *testing.T, bind, advertise string) *config.Config {
 	cfg.Server.BindAddr = bind
 	cfg.Server.AdvertiseAddr = advertise
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Web.PlainHTTP = true
 	cfg.Web.SessionSecret = strings.Repeat("s", 40)
 	cfg.SMTP.Enabled = false
@@ -146,6 +147,14 @@ func TestRunWithPeersOpensPeerListener(t *testing.T) {
 	if got := webStatus(t, webAddr, "/internal/cluster/join"); got != http.StatusNotFound {
 		t.Errorf("web port /internal/cluster/join = %d, want 404", got)
 	}
+	// Nor does the control listener: with peers they exist only on the peer
+	// listener.
+	if got := webStatus(t, cfg.Server.ControlAddr, "/internal/blob/"+hash); got != http.StatusNotFound {
+		t.Errorf("control port /internal/blob = %d, want 404", got)
+	}
+	if got := webStatus(t, cfg.Server.ControlAddr, "/internal/cluster/join"); got != http.StatusNotFound {
+		t.Errorf("control port /internal/cluster/join = %d, want 404", got)
+	}
 	// The peer listener binds the cluster address only, not every interface.
 	if dialOpen(net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Cluster.PeerPort))) {
 		t.Error("peer listener answers on loopback; it must bind the cluster address only")
@@ -230,8 +239,13 @@ func TestRunWithoutPeersOpensNoPeerListener(t *testing.T) {
 				t.Errorf("join request scheme = %v, want http", req)
 			}
 			webAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Web.Port))
-			if got := webStatus(t, webAddr, "/internal/blob/"+hash); got != http.StatusUnauthorized {
-				t.Errorf("public /internal/blob = %d, want 401 (route kept)", got)
+			// With nobody to sync with, the blob route is off the public
+			// port and answers on the control listener only.
+			if got := webStatus(t, webAddr, "/internal/blob/"+hash); got != http.StatusNotFound {
+				t.Errorf("public /internal/blob = %d, want 404", got)
+			}
+			if got := webStatus(t, cfg.Server.ControlAddr, "/internal/blob/"+hash); got != http.StatusUnauthorized {
+				t.Errorf("control /internal/blob = %d, want 401 (route on the control listener)", got)
 			}
 		})
 	}

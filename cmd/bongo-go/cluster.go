@@ -46,7 +46,7 @@ var clusterSnapshotCmd = &cobra.Command{
 }
 
 func init() {
-	clusterCmd.PersistentFlags().StringVar(&clusterHTTPAddr, "http-addr", "127.0.0.1:8080", "HTTP address of the local node")
+	clusterCmd.PersistentFlags().StringVar(&clusterHTTPAddr, "http-addr", "127.0.0.1:8081", "address of the local node's control listener (server.control_addr)")
 	// Persistent on clusterCmd: both subcommands call auth-gated /internal/
 	// endpoints, so the flag belongs to the group rather than one member.
 	clusterCmd.PersistentFlags().StringVar(&clusterSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")

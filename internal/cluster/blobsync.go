@@ -81,6 +81,8 @@ func (bs *BlobSyncer) endpoint(m MemberInfo) (scheme, addr string, ok bool) {
 		}
 		return "https", m.PeerAddr, true
 	}
+	// The public web port no longer serves /internal/blob, so this plaintext
+	// fallback reaches a 404 and should be removed.
 	if m.HTTPAddr == "" {
 		return "", "", false
 	}

@@ -1424,3 +1424,10 @@ Batch 1 merged as #63 (d077733); make test-all had caught test/integration/raft_
 PATTERN: [testing] A negative test against an address that refuses every connection passes whatever the client does; assert on the reason, or point it at a listener that would accept the wrong behaviour.
 PATTERN: [testing] A mutant that goes red only through a panic is killed by accident; fix the fixture so the assertion itself fails.
 PATTERN: [cluster] Check what a node advertises, not just what it binds: a wildcard advertised address is unreachable from every peer.
+
+## 2026-10-24: Phase 23 batch 1 (23.1 to 23.3)
+
+- 23.1 control listener, 23.2 bounce relay needs SPF pass, 23.3 declared SIZE enforced in DATA and BDAT. All three reviews MINOR; fixed in the orchestrator: CLI default flag test, stale docs, a BDAT wire test, and a SIZE slack (a tenth plus 1 KiB) after the reviewer flagged the interop risk of a strict limit.
+PATTERN: [smtp] go-smtp advertises CHUNKING and routes BDAT through the same Session.Data; a body guard there covers both, but test BDAT on the wire rather than assume it is off.
+PATTERN: [smtp] A client-declared size is an estimate; enforce it with slack, or legitimate mail from MTAs that count differently is refused.
+PATTERN: [testing] Pin a CLI flag default with Lookup(name).DefValue; nothing else notices a reverted default.

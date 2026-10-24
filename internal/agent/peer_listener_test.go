@@ -199,7 +199,7 @@ func TestPublicRouterPeerRoutes(t *testing.T) {
 			}
 			a := &Agent{Config: cfg, logger: testLogger(), Blobs: blobs, Raft: &cluster.RaftNode{}}
 			r := chi.NewRouter()
-			a.registerPublicPeerRoutes(r, peerTestSecret())
+			a.registerControlPeerRoutes(r, peerTestSecret())
 			srv := httptest.NewServer(r)
 			defer srv.Close()
 

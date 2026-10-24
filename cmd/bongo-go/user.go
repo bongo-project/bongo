@@ -35,7 +35,7 @@ var userCreateCmd = &cobra.Command{
 func init() {
 	userCreateCmd.Flags().StringVar(&userEmail, "email", "", "User email address (required)")
 	userCreateCmd.Flags().StringVar(&userPassword, "password", "", "User password (required)")
-	userCreateCmd.Flags().StringVar(&userHTTPAddr, "http-addr", "http://127.0.0.1:8080", "HTTP address of a running node")
+	userCreateCmd.Flags().StringVar(&userHTTPAddr, "http-addr", "http://127.0.0.1:8081", "URL of the running node's control listener (server.control_addr)")
 	userCreateCmd.Flags().StringVar(&userSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
 	userCreateCmd.Flags().BoolVar(&userAdmin, "admin", false, "Grant the new user administrator privileges")
 	if err := userCreateCmd.MarkFlagRequired("email"); err != nil {

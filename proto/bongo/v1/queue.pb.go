@@ -153,7 +153,7 @@ type OutboundMessage struct {
 	Attachments []*BlobRef        `protobuf:"bytes,14,rep,name=attachments,proto3" json:"attachments,omitempty"`
 	Origin      OutboundOrigin    `protobuf:"varint,15,opt,name=origin,proto3,enum=bongo.v1.OutboundOrigin" json:"origin,omitempty"`
 	// sender_authenticated is set on a FORWARD whose original sender passed SPF
-	// or DMARC (or was an authenticated local author). The queue worker sends a
+	// (or was an authenticated local author). The queue worker sends a
 	// DSN for a failed FORWARD only when it is true, so a forged sender never
 	// receives backscatter. Records queued before this field existed read as
 	// false and therefore default to no DSN. Ignored for other origins.

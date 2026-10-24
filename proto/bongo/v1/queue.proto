@@ -51,7 +51,7 @@ message OutboundMessage {
   OutboundOrigin origin = 15;
 
   // sender_authenticated is set on a FORWARD whose original sender passed SPF
-  // or DMARC (or was an authenticated local author). The queue worker sends a
+  // (or was an authenticated local author). The queue worker sends a
   // DSN for a failed FORWARD only when it is true, so a forged sender never
   // receives backscatter. Records queued before this field existed read as
   // false and therefore default to no DSN. Ignored for other origins.

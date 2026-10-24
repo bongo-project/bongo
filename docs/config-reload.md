@@ -153,6 +153,7 @@ Legend for "Class":
 | `server.datacenter` | none | none | NO-OP |
 | `server.bind_addr` | `smtp/server.go` (listenAddr); `agent.go:942,1342,1343,1385,1386,1452,1453,2636,2796`; `cluster/raft.go:87`; `cluster/gossip.go:35` | ctor, listener addresses | RESTART |
 | `server.advertise_addr` | `cluster/raft.go:89`, `cluster/gossip.go:58` | ctor | RESTART |
+| `server.control_addr` | `agent.go` (`Run`, control listener bind) | listener address | RESTART |
 | `server.agents` | `agent.go:2624,2643,2698` (`runAgent`) | ctor; agent role only | RESTART |
 
 `agent_server` (pointer block; only meaningful for role `agent`)

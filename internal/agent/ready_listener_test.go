@@ -30,6 +30,7 @@ func readyTestConfig(t *testing.T, role string) *config.Config {
 		cfg.Storage.DataDir = t.TempDir()
 	}
 	cfg.Web.Port = freePort(t)
+	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.SMTP.Port = freePort(t)
 	cfg.SMTP.SubmissionPort = freePort(t)
 	cfg.IMAP.Port = freePort(t)
@@ -165,4 +166,107 @@ func TestReadyImpliesWebBound(t *testing.T) {
 			t.Run(strconv.Itoa(i), func(t *testing.T) { dialAfterReady(t, "dev") })
 		}
 	})
+}
+
+// TestRunControlPortTakenNeverReady holds the control port and checks that Run
+// fails naming the control listener, never reports ready, and releases the web
+// port it had already bound.
+func TestRunControlPortTakenNeverReady(t *testing.T) {
+	cfg := readyTestConfig(t, "dev")
+	held, err := net.Listen("tcp", cfg.Server.ControlAddr)
+	if err != nil {
+		t.Fatalf("hold control port: %v", err)
+	}
+	defer held.Close()
+
+	a := newReadyTestAgent(t, cfg)
+	t.Cleanup(func() { _ = a.Shutdown() })
+
+	var sawReady atomic.Bool
+	stopPoll := make(chan struct{})
+	pollDone := make(chan struct{})
+	go func() {
+		defer close(pollDone)
+		for {
+			select {
+			case <-stopPoll:
+				return
+			default:
+			}
+			if a.Ready() {
+				sawReady.Store(true)
+			}
+			runtime.Gosched()
+		}
+	}()
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- a.Run(context.Background()) }()
+
+	var runErr error
+	select {
+	case runErr = <-runDone:
+	case <-time.After(20 * time.Second):
+		close(stopPoll)
+		<-pollDone
+		t.Fatal("Run did not return with the control port taken")
+	}
+	close(stopPoll)
+	<-pollDone
+
+	if runErr == nil || !strings.Contains(runErr.Error(), "control listen") {
+		t.Fatalf("Run error = %v, want one containing %q", runErr, "control listen")
+	}
+	if sawReady.Load() || a.Ready() {
+		t.Error("Ready() was true although the control listener never bound")
+	}
+	// The web listener bound first must not be leaked to the next attempt.
+	webAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Web.Port))
+	ln, err := net.Listen("tcp", webAddr)
+	if err != nil {
+		t.Fatalf("web port still held after a control bind failure: %v", err)
+	}
+	_ = ln.Close()
+}
+
+// TestControlServerHasExplicitTimeouts runs a real agent and inspects the
+// server behind the control listener, so a server built without timeouts
+// would be caught.
+func TestControlServerHasExplicitTimeouts(t *testing.T) {
+	cfg := readyTestConfig(t, "dev")
+	a := newReadyTestAgent(t, cfg)
+	runDone := make(chan error, 1)
+	go func() { runDone <- a.Run(context.Background()) }()
+	t.Cleanup(func() { _ = a.Shutdown() })
+
+	deadline := time.Now().Add(30 * time.Second)
+	for !a.Ready() {
+		if time.Now().After(deadline) {
+			t.Fatal("agent not ready")
+		}
+		select {
+		case err := <-runDone:
+			t.Fatalf("Run returned before ready: %v", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	srv := a.controlServer
+	if srv == nil {
+		t.Fatal("no control server after ready")
+	}
+	if srv.ReadHeaderTimeout == 0 || srv.ReadTimeout == 0 || srv.WriteTimeout == 0 || srv.IdleTimeout == 0 {
+		t.Errorf("control server missing a timeout: %+v", srv)
+	}
+	if a.ControlAddr() != cfg.Server.ControlAddr {
+		t.Errorf("ControlAddr() = %q, want %q", a.ControlAddr(), cfg.Server.ControlAddr)
+	}
+	// Run is stopped by Shutdown; the control port must be released with it.
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	ln, err := net.Listen("tcp", cfg.Server.ControlAddr)
+	if err != nil {
+		t.Fatalf("control port still held after Shutdown: %v", err)
+	}
+	_ = ln.Close()
 }

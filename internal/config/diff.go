@@ -82,7 +82,7 @@ var noopKeys = []string{
 // storage.pebble.cache_size are being wired at startup, so they are restart
 // even though docs/config-reload.md sections 4.1 and 4.2 still say NO-OP.
 var restartKeys = []string{
-	"server.role", "server.name", "server.trusted_proxies", "server.bind_addr", "server.advertise_addr", "server.agents",
+	"server.role", "server.name", "server.trusted_proxies", "server.bind_addr", "server.advertise_addr", "server.control_addr", "server.agents",
 	"cluster.bind_addr", "cluster.join", "cluster.raft.port", "cluster.raft.snapshot_threshold",
 	"cluster.raft.snapshot_interval", "cluster.raft.trailing_logs",
 	"cluster.gossip.port", "cluster.gossip.encryption_key", "cluster.peer_port",
