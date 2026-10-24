@@ -252,16 +252,28 @@ var errAccountRevoked = &imap.Error{
 	Text: "Account no longer available",
 }
 
+// errAccountStateUnavailable is what a command is answered with when the
+// account state cannot be read. It is temporary: the session stays open and
+// the client may retry.
+var errAccountStateUnavailable = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Code: imap.ResponseCodeUnavailable,
+	Text: "Account state temporarily unavailable, try again later",
+}
+
 // checkAccount ends the session when the account was disabled or deleted or
 // its password was reset since LOGIN. It must run at the start of every
 // authenticated command: go-imap calls Poll only after a command has already
 // succeeded, so Poll alone would let the first command after revocation
 // return data. The cost is one Pebble Get per command (never per message).
 //
-// A missing profile fails closed. A store read error fails open, like the web
-// session check, so a storage outage does not drop every client; the command
-// itself fails if the store is really down. (LOGIN is stricter: it fails closed
-// on any error.)
+// The check fails closed. A missing or revoked profile refuses the command and
+// ends the session; a store read error refuses the command with a temporary
+// NO [UNAVAILABLE] but keeps the session, so the client can retry once the
+// store recovers. LOGIN fails closed on any error too. An authenticator that
+// cannot report account state is not checked; the only production
+// authenticator (auth.LocalAuth) can, so a future remote authenticator must
+// implement AccountState rather than rely on that exemption.
 func (s *session) checkAccount() error {
 	reader := s.accountReader()
 	if reader == nil || s.userID == "" {
@@ -269,8 +281,8 @@ func (s *session) checkAccount() error {
 	}
 	st, err := reader.AccountState(s.userID)
 	if err != nil {
-		s.logger.Warn("imap: account state check failed, allowing command", "user", s.userID, "error", err)
-		return nil
+		s.logger.Warn("imap: account state check failed, refusing command", "user", s.userID, "error", err)
+		return errAccountStateUnavailable
 	}
 	if st.Live(s.epoch) {
 		return nil
@@ -793,6 +805,14 @@ type updateWriter interface {
 // the client restarted and issued a fresh SELECT.
 func (s *session) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
 	if err := s.checkAccount(); err != nil {
+		// go-imap treats a Poll error as fatal to the connection, and Poll runs
+		// after the command has already been answered (NOOP has no handler of
+		// its own). A temporary store error therefore skips the mailbox diff,
+		// so no mailbox data is sent, and leaves the session usable; the next
+		// command's own check refuses it. Revocation still ends the session.
+		if errors.Is(err, errAccountStateUnavailable) {
+			return nil
+		}
 		return err
 	}
 	return s.pollUpdates(w, allowExpunge)

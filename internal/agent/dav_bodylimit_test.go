@@ -65,9 +65,11 @@ func vcardObject(size int) string {
 }
 
 type davBodyEnv struct {
-	srv   *httptest.Server
-	quota *countingQuota
-	ps    *store.PebbleStore
+	srv *httptest.Server
+	// budget is the handler's injected body budget.
+	budget *davBodyBudget
+	quota  *countingQuota
+	ps     *store.PebbleStore
 	// putPath is the object URL; contentType the PUT media type.
 	putPath     string
 	contentType string
@@ -88,11 +90,11 @@ func newCalDAVBodyEnv(t *testing.T) *davBodyEnv {
 	backend := bongocaldav.NewBackend(events, calendars, logger)
 	q := &countingQuota{}
 	backend.SetQuotaChecker(q)
-	h := &caldavHTTPHandler{auth: a, backend: backend, limiter: authlimit.New(davMaxAuthFailures, time.Minute), logger: logger}
+	_, h := newDAVHandlers(a, nil, backend, authlimit.New(davMaxAuthFailures, time.Minute), logger)
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return &davBodyEnv{
-		srv: srv, quota: q, ps: ps,
+		srv: srv, budget: h.budget, quota: q, ps: ps,
 		putPath:     "/caldav/uid1/calendars/default/cap1.ics",
 		contentType: "text/calendar",
 		stored: func() bool {
@@ -111,11 +113,11 @@ func newCardDAVBodyEnv(t *testing.T) *davBodyEnv {
 	backend := bongocarddav.NewBackend(contacts, nil, logger)
 	q := &countingQuota{}
 	backend.SetQuotaChecker(q)
-	h := &carddavHTTPHandler{auth: a, backend: backend, limiter: authlimit.New(davMaxAuthFailures, time.Minute), logger: logger}
+	h, _ := newDAVHandlers(a, backend, nil, authlimit.New(davMaxAuthFailures, time.Minute), logger)
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return &davBodyEnv{
-		srv: srv, quota: q, ps: ps,
+		srv: srv, budget: h.budget, quota: q, ps: ps,
 		putPath:     "/carddav/uid1/addressbooks/default/cap1.vcf",
 		contentType: "text/vcard",
 		stored: func() bool {

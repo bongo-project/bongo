@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -33,7 +34,51 @@ type verifyTestEnv struct {
 	logBuf      *bytes.Buffer
 }
 
+// newVerifyTestEnvFull builds the env and starts the background sender, as the
+// agent does. Tests that read the queue go through flush first.
 func newVerifyTestEnvFull(t *testing.T) *verifyTestEnv {
+	t.Helper()
+	env := newVerifyTestEnvStopped(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		env.handler.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	waitRunning(t, env.handler)
+	return env
+}
+
+// waitRunning blocks until the sender goroutine has marked itself running.
+func waitRunning(t *testing.T, h *AddressVerifyHandler) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !h.running.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("sender did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// flush waits until the background sender has finished every submitted job.
+func (e *verifyTestEnv) flush(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !e.handler.idle() {
+		if time.Now().After(deadline) {
+			t.Fatal("background verification sender did not go idle")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// newVerifyTestEnvStopped builds the env without starting the sender.
+func newVerifyTestEnvStopped(t *testing.T) *verifyTestEnv {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -144,6 +189,7 @@ func (e *verifyTestEnv) submitCodeHTTP(t *testing.T, userID, sessionEmail, addre
 // the plaintext code from the email body. This simulates what the user sees.
 func (e *verifyTestEnv) extractCodeFromQueue(t *testing.T) string {
 	t.Helper()
+	e.flush(t)
 	pending, err := e.qs.ListPending(10)
 	if err != nil {
 		t.Fatalf("ListPending: %v", err)
@@ -218,6 +264,7 @@ func TestSelfServe_HappyPath(t *testing.T) {
 	}
 
 	// Assert: email was queued TO the claimed address.
+	env.flush(t)
 	pending, err := env.qs.ListPending(10)
 	if err != nil {
 		t.Fatalf("ListPending: %v", err)
@@ -431,6 +478,7 @@ func TestSelfServe_RateLimit_ExistingChallengePreventsNewCode(t *testing.T) {
 	if w1.Code != http.StatusSeeOther {
 		t.Fatalf("first RequestVerification = %d", w1.Code)
 	}
+	env.flush(t)
 	count1, _ := env.qs.ListPending(10)
 
 	// Second request while first is still valid: should be rate-limited.
@@ -445,6 +493,7 @@ func TestSelfServe_RateLimit_ExistingChallengePreventsNewCode(t *testing.T) {
 	}
 
 	// No additional email should have been queued.
+	env.flush(t)
 	count2, _ := env.qs.ListPending(10)
 	if len(count2) > len(count1) {
 		t.Error("a second code was queued despite an existing valid challenge (rate limit bypassed)")
@@ -514,6 +563,7 @@ func TestSelfServe_CrossUserRequest_Rejected(t *testing.T) {
 		if !strings.Contains(loc, "error") {
 			// Redirect without error means the request was accepted — which is wrong.
 			// Acceptable only if a "code sent" flash was shown but no code was queued.
+			env.flush(t)
 			pending, _ := env.qs.ListPending(10)
 			if len(pending) > 0 {
 				t.Error("verification email sent for cross-user ownership attempt")
@@ -787,6 +837,7 @@ func TestSelfServe_PerUserLimit_RefusesWithoutLeakingAddress(t *testing.T) {
 	if _, has, _ := env.verifyStore.Get(userID, addrs[3]); has {
 		t.Error("a challenge was stored for the refused request")
 	}
+	env.flush(t)
 	pending, _ := env.qs.ListPending(10)
 	if len(pending) != 3 {
 		t.Errorf("queue holds %d messages, want exactly 3", len(pending))

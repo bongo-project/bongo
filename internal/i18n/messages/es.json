@@ -667,6 +667,7 @@
   "admin.dkimRecord": "DKIM",
   "admin.dmarcRecord": "DMARC",
   "settings.sendAsRequested": "Solicitud recibida. Si la dirección se puede añadir, ahora aparece en su lista.",
+  "settings.sendAsTooManyPending": "Hay demasiadas direcciones pendientes de verificación. Verifique una primero.",
   "settings.sendAsVerificationFailed": "La verificación ha fallado. Vuelva a añadir la dirección si todavía la necesita.",
   "admin.tempPasswordLabel": "Contraseña temporal",
   "admin.tempPasswordNotice": "Contraseña restablecida. Esta contraseña temporal se muestra una sola vez y no se puede recuperar. Entréguesela al usuario ahora.",

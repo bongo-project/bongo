@@ -232,6 +232,7 @@ type Agent struct {
 	quarantinePurgeCancel context.CancelFunc
 	orphanGCCancel        context.CancelFunc
 	usageCancel           context.CancelFunc
+	addrVerifyCancel      context.CancelFunc
 
 	// pipelineDone is closed by startPipelineRunner once Runner.Run has
 	// returned. Nil when no runner was started.
@@ -1036,19 +1037,26 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Shared brute-force throttle for DAV Basic Auth (CalDAV + CardDAV): a source
 	// IP that fails Basic Auth too many times is locked out with HTTP 429.
 	davAuthLimiter := authlimit.New(davMaxAuthFailures, davAuthFailWindow)
-
-	// CardDAV endpoint with basic auth.
+	var (
+		carddavBackend *bongocarddav.Backend
+		caldavBackend  *bongocaldav.Backend
+	)
 	if a.Contacts != nil {
-		carddavBackend := bongocarddav.NewBackend(a.Contacts, a.Search, a.logger)
+		carddavBackend = bongocarddav.NewBackend(a.Contacts, a.Search, a.logger)
 		if a.DomainQuota != nil {
 			carddavBackend.SetQuotaChecker(a.DomainQuota)
 		}
-		carddavHandler := &carddavHTTPHandler{
-			auth:    a.Auth,
-			backend: carddavBackend,
-			limiter: davAuthLimiter,
-			logger:  a.logger,
+	}
+	if a.Events != nil && a.Calendars != nil {
+		caldavBackend = bongocaldav.NewBackend(a.Events, a.Calendars, a.logger)
+		if a.DomainQuota != nil {
+			caldavBackend.SetQuotaChecker(a.DomainQuota)
 		}
+	}
+	carddavHandler, caldavHandler := newDAVHandlers(a.Auth, carddavBackend, caldavBackend, davAuthLimiter, a.logger)
+
+	// CardDAV endpoint with basic auth.
+	if carddavBackend != nil {
 		r.Handle("/carddav/*", carddavHandler)
 		r.Get("/.well-known/carddav", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/carddav/", http.StatusMovedPermanently)
@@ -1056,17 +1064,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	// CalDAV endpoint with basic auth.
-	if a.Events != nil && a.Calendars != nil {
-		caldavBackend := bongocaldav.NewBackend(a.Events, a.Calendars, a.logger)
-		if a.DomainQuota != nil {
-			caldavBackend.SetQuotaChecker(a.DomainQuota)
-		}
-		caldavHandler := &caldavHTTPHandler{
-			auth:    a.Auth,
-			backend: caldavBackend,
-			limiter: davAuthLimiter,
-			logger:  a.logger,
-		}
+	if caldavBackend != nil {
 		r.Handle("/caldav/*", caldavHandler)
 		r.Get("/.well-known/caldav", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/caldav/", http.StatusMovedPermanently)
@@ -1960,6 +1958,18 @@ func (a *Agent) Run(ctx context.Context) error {
 		usageCtx, usageCancel := context.WithCancel(ctx)
 		a.usageCancel = usageCancel
 		a.goWorker("usage-recompute", func() { a.runUsageRecompute(usageCtx, usageRecomputeInterval) })
+	}
+
+	// Send-as verification mail is built and queued off the request path. The
+	// worker context is deliberately not derived from ctx: SIGTERM cancels ctx
+	// before the HTTP server drains, and requests accepted during the drain
+	// still need a sender. closeListenersAndStopWorkers cancels it after
+	// httpServer.Shutdown; the worker then drains its buffer and is waited for
+	// before Raft and the stores close.
+	if a.addrVerifyHandler != nil && a.Blobs != nil && a.QueueStore != nil {
+		addrVerifyCtx, addrVerifyCancel := context.WithCancel(context.Background())
+		a.addrVerifyCancel = addrVerifyCancel
+		a.goWorker("addr-verify-mail", func() { a.addrVerifyHandler.Run(addrVerifyCtx) })
 	}
 
 	// Bind the web port before reporting ready, so Ready() implies a dial to
@@ -3972,6 +3982,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	if a.usageCancel != nil {
 		a.usageCancel()
 	}
+	if a.addrVerifyCancel != nil {
+		a.addrVerifyCancel()
+	}
 	return errs
 }
 
@@ -4114,12 +4127,17 @@ const (
 	// davAuthFailWindow is the lockout/forget window for DAV auth failures.
 	davAuthFailWindow = 15 * time.Minute
 	// davMaxBodyBytes caps a DAV request body. The body is buffered by
-	// davLimitBody rather than just wrapped in http.MaxBytesReader because
+	// serveDAVBody rather than just wrapped in http.MaxBytesReader because
 	// go-webdav turns body read errors into 400 (it formats them with %v, so
 	// the *http.MaxBytesError is lost) and its iCal/vCard decoders stop at
 	// END:, never reading trailing bytes. Concurrent authenticated clients can
-	// each pin up to this much memory.
+	// each pin up to this much memory; davBodyBudgetBytes bounds the total.
+	// The budget counts the final buffer, not the transient old-plus-new
+	// copy io.ReadAll holds while a chunked body grows.
 	davMaxBodyBytes = 10 << 20
+	// davBodyBudgetBytes is the process-wide ceiling on bytes held by DAV
+	// request bodies at once, shared by CalDAV and CardDAV.
+	davBodyBudgetBytes = 64 << 20
 )
 
 // davBasicAuth authenticates a DAV request via HTTP Basic Auth with per-source-IP
@@ -4157,28 +4175,112 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 	return userID, true
 }
 
-// davLimitBody buffers the request body, refusing anything over davMaxBodyBytes
-// with 413. Call it only after authentication, so an unauthenticated client
-// never has its body read. On success r.Body is replaced by an in-memory copy
-// and true is returned; otherwise the response has been written.
-func davLimitBody(w http.ResponseWriter, r *http.Request) bool {
+// davBodyBudget bounds the bytes held by buffered DAV request bodies across
+// the whole process. davMaxBodyBytes only caps one request, so without it
+// concurrent authenticated clients can each pin that much.
+type davBodyBudget struct {
+	mu          sync.Mutex
+	limit, used int64
+}
+
+// newDAVBodyBudget panics if limit is below davMaxBodyBytes: such a budget
+// could never admit a chunked request, which reserves the per-request max.
+func newDAVBodyBudget(limit int64) *davBodyBudget {
+	if limit < davMaxBodyBytes {
+		panic("agent: DAV body budget smaller than the per-request body cap")
+	}
+	return &davBodyBudget{limit: limit}
+}
+
+// tryAcquire reserves n bytes without blocking, reporting whether it fit.
+func (b *davBodyBudget) tryAcquire(n int64) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.used+n > b.limit {
+		return false
+	}
+	b.used += n
+	return true
+}
+
+// release returns n bytes. It panics on underflow so a double release is
+// caught instead of silently inflating the budget.
+func (b *davBodyBudget) release(n int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if n > b.used {
+		panic("agent: DAV body budget released more than held")
+	}
+	b.used -= n
+}
+
+// serveDAVBody buffers the request body under the process-wide budget and then
+// runs next, refusing anything over davMaxBodyBytes with 413 and, when the
+// budget is exhausted, 503 with Retry-After before reading any of the body.
+// Call it only after authentication, so an unauthenticated client never has its
+// body read or can drain the budget. The reservation spans next, because the
+// buffered bytes stay alive until it returns; it is released on every exit,
+// including a panic.
+func serveDAVBody(w http.ResponseWriter, r *http.Request, budget *davBodyBudget, logger *slog.Logger, userID string, next http.Handler) {
 	if r.ContentLength > davMaxBodyBytes {
 		http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
-		return false
+		return
 	}
+	// An unknown length reserves the per-request max up front rather than
+	// growing as bytes arrive, so a refusal never follows a partial read.
+	reserve := int64(davMaxBodyBytes)
+	if r.ContentLength >= 0 {
+		reserve = r.ContentLength
+	}
+	if !budget.tryAcquire(reserve) {
+		logger.Warn("dav: request body budget exhausted", "path", r.URL.Path, "user_id", userID)
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, "Server busy, try again later", http.StatusServiceUnavailable)
+		return
+	}
+	held := reserve
+	defer func() { budget.release(held) }()
+
 	r.Body = http.MaxBytesReader(w, r.Body, davMaxBodyBytes)
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
-			return false
+	var body []byte
+	if r.ContentLength >= 0 {
+		body = make([]byte, r.ContentLength)
+		if _, err := io.ReadFull(r.Body, body); err != nil {
+			davBodyReadError(w, err)
+			return
 		}
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return false
+	} else {
+		var err error
+		body, err = io.ReadAll(r.Body)
+		if err != nil {
+			davBodyReadError(w, err)
+			return
+		}
+		// cap, not len: ReadAll over-allocates and cap is what is pinned.
+		if c := int64(cap(body)); c < held {
+			budget.release(held - c)
+			held = c
+		}
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
-	return true
+	next.ServeHTTP(w, r)
+}
+
+func davBodyReadError(w http.ResponseWriter, err error) {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	http.Error(w, "Bad request", http.StatusBadRequest)
+}
+
+// newDAVHandlers builds both DAV handlers around one body budget, so the
+// davBodyBudgetBytes ceiling is per process rather than per protocol.
+func newDAVHandlers(a *auth.LocalAuth, cardBackend *bongocarddav.Backend, calBackend *bongocaldav.Backend, limiter *authlimit.Limiter, logger *slog.Logger) (*carddavHTTPHandler, *caldavHTTPHandler) {
+	budget := newDAVBodyBudget(davBodyBudgetBytes)
+	return &carddavHTTPHandler{auth: a, backend: cardBackend, limiter: limiter, budget: budget, logger: logger},
+		&caldavHTTPHandler{auth: a, backend: calBackend, limiter: limiter, budget: budget, logger: logger}
 }
 
 // carddavHTTPHandler wraps a CardDAV backend with throttled HTTP basic auth.
@@ -4186,16 +4288,13 @@ type carddavHTTPHandler struct {
 	auth    *auth.LocalAuth
 	backend *bongocarddav.Backend
 	limiter *authlimit.Limiter
+	budget  *davBodyBudget
 	logger  *slog.Logger
 }
 
 func (h *carddavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID, ok := davBasicAuth(w, r, h.auth, h.limiter, "Bongo CardDAV", h.logger)
 	if !ok {
-		return
-	}
-
-	if !davLimitBody(w, r) {
 		return
 	}
 
@@ -4206,7 +4305,7 @@ func (h *carddavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Backend: h.backend,
 		Prefix:  "/carddav",
 	}
-	handler.ServeHTTP(w, r)
+	serveDAVBody(w, r, h.budget, h.logger, userID, &handler)
 }
 
 // caldavHTTPHandler wraps a CalDAV backend with throttled HTTP basic auth.
@@ -4214,16 +4313,13 @@ type caldavHTTPHandler struct {
 	auth    *auth.LocalAuth
 	backend *bongocaldav.Backend
 	limiter *authlimit.Limiter
+	budget  *davBodyBudget
 	logger  *slog.Logger
 }
 
 func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID, ok := davBasicAuth(w, r, h.auth, h.limiter, "Bongo CalDAV", h.logger)
 	if !ok {
-		return
-	}
-
-	if !davLimitBody(w, r) {
 		return
 	}
 
@@ -4234,7 +4330,7 @@ func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Backend: h.backend,
 		Prefix:  "/caldav",
 	}
-	handler.ServeHTTP(w, r)
+	serveDAVBody(w, r, h.budget, h.logger, userID, &handler)
 }
 
 // newHTTPServer builds the web/health listener. ErrorLog routes net/http's

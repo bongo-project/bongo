@@ -152,9 +152,18 @@ func (s *session) handle() {
 
 		// A revoked account gets nothing further, and in particular its pending
 		// DELE marks are not applied (no UPDATE state).
-		if s.authenticated && !s.accountLive() {
-			s.respond("-ERR account no longer available")
-			return
+		// A store error that hides the account state is refused the same way,
+		// with a temporary code, so access is never granted unverified.
+		if s.authenticated {
+			live, err := s.accountLive()
+			if err != nil {
+				s.respond("-ERR [SYS/TEMP] account state unavailable, try again later")
+				return
+			}
+			if !live {
+				s.respond("-ERR account no longer available")
+				return
+			}
 		}
 
 		switch cmd {
@@ -229,21 +238,22 @@ func (s *session) flushWriter() {
 
 // accountLive reports whether the authenticated account is still enabled,
 // still exists and still has the password it logged in with. It costs one
-// Pebble Get per command. A missing profile fails closed; a store read error
-// fails open (as the web session check does) so an outage does not drop every
-// client, while PASS itself is stricter and fails closed on any error.
-func (s *session) accountLive() bool {
+// Pebble Get per command. The check fails closed: a missing profile reports
+// not live, and a store read error is returned so the caller refuses the
+// command and closes without applying DELE marks. PASS also fails closed on
+// any error.
+func (s *session) accountLive() (bool, error) {
 	st, err := s.auth.AccountState(s.userID)
 	if err != nil {
-		s.logger.Warn("pop3: account state check failed, allowing command", "user", s.userID, "error", err)
-		return true
+		s.logger.Warn("pop3: account state check failed, refusing command", "user", s.userID, "error", err)
+		return false, err
 	}
 	if st.Live(s.epoch) {
-		return true
+		return true, nil
 	}
 	s.logger.Info("pop3: closing session, account no longer valid", "user", s.userID,
 		"missing", st.Missing, "disabled", st.Disabled)
-	return false
+	return false, nil
 }
 
 func (s *session) handleQuit() {
@@ -258,6 +268,7 @@ func (s *session) handleCapa() {
 	s.writeString("USER\r\n")
 	s.writeString("UIDL\r\n")
 	s.writeString("TOP\r\n")
+	s.writeString("RESP-CODES\r\n")
 	if !s.isTLS && s.tlsCfg != nil {
 		s.writeString("STLS\r\n")
 	}

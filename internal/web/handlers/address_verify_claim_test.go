@@ -76,6 +76,7 @@ func (e *verifyTestEnv) assertNoClaim(t *testing.T, userID, address string) {
 
 func (e *verifyTestEnv) queued(t *testing.T) int {
 	t.Helper()
+	e.flush(t)
 	pending, err := e.qs.ListPending(50)
 	if err != nil {
 		t.Fatal(err)
