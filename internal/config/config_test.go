@@ -623,8 +623,11 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "server role is valid",
-			modify:  func(c *Config) { c.Server.Role = "server" },
+			name: "server role is valid",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Server.AdvertiseAddr = "127.0.0.1"
+			},
 			wantErr: false,
 		},
 		{
@@ -731,6 +734,7 @@ func TestConfigValidate(t *testing.T) {
 			name: "single-node server without cluster security is allowed",
 			modify: func(c *Config) {
 				c.Server.Role = "server"
+				c.Server.AdvertiseAddr = "127.0.0.1"
 				c.Cluster.Join = nil
 			},
 			wantErr: false,
@@ -758,6 +762,7 @@ func TestConfigValidate(t *testing.T) {
 			name: "server joining peers with gossip encryption and raft mTLS is allowed",
 			modify: func(c *Config) {
 				c.Server.Role = "server"
+				c.Server.AdvertiseAddr = "10.0.0.5"
 				c.Cluster.Join = []string{"10.0.0.2:8301"}
 				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
 				c.Cluster.TLS = TLSConfig{
@@ -1546,6 +1551,7 @@ func TestRaftConfigValidate(t *testing.T) {
 func TestConfigValidateRejectsRaftPairing(t *testing.T) {
 	cfg := Defaults()
 	cfg.Server.Role = "server"
+	cfg.Server.AdvertiseAddr = "127.0.0.1"
 	cfg.Cluster.Raft.SnapshotThreshold = 256
 	cfg.Cluster.Raft.TrailingLogs = 256
 

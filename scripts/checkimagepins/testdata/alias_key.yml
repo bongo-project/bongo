@@ -1,0 +1,6 @@
+x-k: &k image
+services:
+  good:
+    image: nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  evil:
+    *k : nginx:1

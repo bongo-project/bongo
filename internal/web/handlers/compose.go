@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	netmail "net/mail"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/queue"
@@ -296,6 +298,16 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
+// composeText translates a message ID into the request's locale.
+func composeText(r *http.Request, id string) string {
+	return i18n.T(middleware.LocaleFromContext(r.Context()), id)
+}
+
+// composeError writes a translated plain-text error response.
+func composeError(w http.ResponseWriter, r *http.Request, id string, code int) {
+	http.Error(w, composeText(r, id), code)
+}
+
 // Send processes the compose form and delivers the message.
 func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
@@ -303,7 +315,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, composeMultipartMaxBytes)
 	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
 		if err2 := r.ParseForm(); err2 != nil {
-			http.Error(w, "Invalid form", http.StatusBadRequest)
+			composeError(w, r, "compose.errInvalidForm", http.StatusBadRequest)
 			return
 		}
 	}
@@ -315,7 +327,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// any write or rate-limit spend.
 	sendID := r.FormValue("send_id")
 	if !sendIDPattern.MatchString(sendID) {
-		http.Error(w, "This compose form is out of date. Please reload the compose page and try again.", http.StatusBadRequest)
+		composeError(w, r, "compose.errFormOutdated", http.StatusBadRequest)
 		return
 	}
 
@@ -328,7 +340,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	replyUIDStr := r.FormValue("reply_uid")
 
 	if to == "" || subject == "" {
-		http.Error(w, "To and Subject are required", http.StatusBadRequest)
+		composeError(w, r, "compose.errToSubjectRequired", http.StatusBadRequest)
 		return
 	}
 
@@ -357,16 +369,16 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	chosenFrom := strings.ToLower(strings.TrimSpace(r.FormValue("from")))
 	if chosenFrom != "" && !strings.EqualFold(chosenFrom, email) {
 		if h.addresses == nil {
-			http.Error(w, "Send-as is not available on this node", http.StatusForbidden)
+			composeError(w, r, "compose.errSendAsUnavailable", http.StatusForbidden)
 			return
 		}
 		allowed, err := store.CanSendAs(h.addresses, userID, email, chosenFrom)
 		switch {
 		case err != nil:
-			http.Error(w, "Address lookup failed", http.StatusInternalServerError)
+			composeError(w, r, "compose.errAddressLookup", http.StatusInternalServerError)
 			return
 		case !allowed:
-			http.Error(w, "Forbidden: address is not authorised for sending", http.StatusForbidden)
+			composeError(w, r, "compose.errAddressForbidden", http.StatusForbidden)
 			return
 		}
 		fromAddr = chosenFrom
@@ -402,7 +414,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	if r.MultipartForm != nil && r.MultipartForm.File["attachments"] != nil {
 		for _, fh := range r.MultipartForm.File["attachments"] {
 			if fh.Size > 25<<20 {
-				http.Error(w, "Individual attachment must be under 25MB", http.StatusBadRequest)
+				composeError(w, r, "compose.errAttachmentTooLarge", http.StatusBadRequest)
 				return
 			}
 			f, err := fh.Open()
@@ -457,14 +469,14 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			// Reject before any user-visible writes (blob store, Sent copy, enqueue),
 			// mirroring the attachment-size rejection above.
 			// Map the lowercase sentinel errors to friendly, capitalized 400 messages.
-			msg := "Message could not be built"
+			id := "compose.errBuildMessage"
 			switch {
 			case errors.Is(buildErr, errInlineImageTooLarge):
-				msg = "Inline image too large (max 1MB each)"
+				id = "compose.errInlineTooLarge"
 			case errors.Is(buildErr, errTotalInlineTooLarge):
-				msg = "Total inline images too large (max 10MB)"
+				id = "compose.errTotalInlineTooLarge"
 			}
-			http.Error(w, msg, http.StatusBadRequest)
+			composeError(w, r, id, http.StatusBadRequest)
 			return
 		}
 	} else {
@@ -498,7 +510,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		maxRcpts = defaultMaxRecipients
 	}
 	if len(localRecipients)+len(externalRecipients) > maxRcpts {
-		http.Error(w, "Too many recipients", http.StatusBadRequest)
+		composeError(w, r, "compose.errTooManyRecipients", http.StatusBadRequest)
 		return
 	}
 
@@ -527,18 +539,18 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// say), because the derived Message-ID is shared by every step.
 	if err := lg.checkAll(); err != nil {
 		if errors.Is(err, errSendConflict) {
-			http.Error(w, "This send was already started with different content. Open a new compose window to send another.", http.StatusConflict)
+			composeError(w, r, "compose.errSendConflict", http.StatusConflict)
 			return
 		}
 		h.logger.Warn("web: reading send log failed", "user", userID, "error", err)
-		http.Error(w, "Failed to check send state", http.StatusInternalServerError)
+		composeError(w, r, "compose.errSendState", http.StatusInternalServerError)
 		return
 	}
 	for _, step := range steps {
 		done, err := lg.done(step)
 		if err != nil {
 			h.logger.Warn("web: reading send log failed", "user", userID, "error", err)
-			http.Error(w, "Failed to check send state", http.StatusInternalServerError)
+			composeError(w, r, "compose.errSendState", http.StatusInternalServerError)
 			return
 		}
 		stepDone[step] = done
@@ -572,7 +584,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Refuse before anything is stored or the rate limiters spend budget.
 	if len(localRecipients) > 0 && h.spool == nil {
 		h.logger.Error("web: cannot send to local recipients: inbound spool not configured", "user", userID)
-		http.Error(w, "Local delivery is not available on this node", http.StatusServiceUnavailable)
+		composeError(w, r, "compose.errLocalUnavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -603,7 +615,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 		wh, err := h.blobs.Put(rawMsg)
 		if err != nil {
-			http.Error(w, "Failed to store message", http.StatusInternalServerError)
+			composeError(w, r, "compose.errStoreMessage", http.StatusInternalServerError)
 			return
 		}
 		rawHash = wh
@@ -640,11 +652,11 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// budget was paid by the attempt that did the work.
 	if len(externalRecipients) > 0 && !stepDone["external"] {
 		if h.rateLimiter != nil && !h.rateLimiter.Allow(email) {
-			http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
+			composeError(w, r, "compose.errRateLimit", http.StatusTooManyRequests)
 			return
 		}
 		if h.recipientRL != nil && !h.recipientRL.AllowN(userID, len(externalRecipients)) {
-			http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
+			composeError(w, r, "compose.errRateLimit", http.StatusTooManyRequests)
 			return
 		}
 	}
@@ -685,7 +697,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		if len(layout) > 0 {
 			wh, err := h.blobs.Put(rawMsg)
 			if err != nil {
-				http.Error(w, "Failed to store message", http.StatusInternalServerError)
+				composeError(w, r, "compose.errStoreMessage", http.StatusInternalServerError)
 				return
 			}
 			envHash = wh
@@ -706,12 +718,12 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := h.spool.Enqueue(env); err != nil {
 				h.logger.Warn("web: failed to spool local recipient copy", "recipient", rcpt, "guid", guid, "error", err)
-				http.Error(w, "Failed to deliver local recipient copy", http.StatusInternalServerError)
+				composeError(w, r, "compose.errLocalCopy", http.StatusInternalServerError)
 				return
 			}
 			if err := lg.mark(step); err != nil {
 				h.logger.Warn("web: failed to record local delivery", "recipient", rcpt, "guid", guid, "error", err)
-				http.Error(w, "Failed to deliver local recipient copy", http.StatusInternalServerError)
+				composeError(w, r, "compose.errLocalCopy", http.StatusInternalServerError)
 				return
 			}
 			stepDone[step] = true
@@ -723,7 +735,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// silently dropped while the user is told it was sent — fail loudly instead.
 	if len(externalRecipients) > 0 && h.queueStore == nil {
 		h.logger.Error("web: cannot send to external recipients: outbound queue not configured", "user", userID, "guid", guid, "recipients", externalRecipients)
-		http.Error(w, "Outbound delivery is not available on this node", http.StatusServiceUnavailable)
+		composeError(w, r, "compose.errOutboundUnavailable", http.StatusServiceUnavailable)
 		return
 	}
 	if len(externalRecipients) > 0 && !stepDone["external"] {
@@ -744,13 +756,13 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := h.queueStore.Enqueue(outMsg); err != nil {
 				h.logger.Warn("web: failed to enqueue outbound delivery", "user", userID, "guid", guid, "error", err)
-				http.Error(w, "Failed to enqueue outbound delivery", http.StatusInternalServerError)
+				composeError(w, r, "compose.errEnqueue", http.StatusInternalServerError)
 				return
 			}
 		}
 		if err := lg.mark("external"); err != nil {
 			h.logger.Warn("web: failed to record outbound enqueue", "user", userID, "guid", guid, "error", err)
-			http.Error(w, "Failed to enqueue outbound delivery", http.StatusInternalServerError)
+			composeError(w, r, "compose.errEnqueue", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -768,14 +780,14 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	if !sentSkipped {
 		if _, err := h.mailboxes.DeliverMessage(userID, "Sent", meta, store.FlagSeen); err != nil {
-			http.Error(w, "Failed to store message in Sent", http.StatusInternalServerError)
+			composeError(w, r, "compose.errStoreSent", http.StatusInternalServerError)
 			return
 		}
 	}
 	if !stepDone["sent"] {
 		if err := lg.mark("sent"); err != nil {
 			h.logger.Warn("web: failed to record Sent copy", "user", userID, "guid", guid, "error", err)
-			http.Error(w, "Failed to store message in Sent", http.StatusInternalServerError)
+			composeError(w, r, "compose.errStoreSent", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -802,14 +814,14 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("web: message sent", "from", fromAddr, "to_count", len(allRecipients), "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
 
 	// Build flash message based on delivery type.
-	flash := "Message+sent"
+	flashID := "compose.flashSent"
 	if len(localRecipients) > 0 && len(externalRecipients) > 0 {
-		flash = "Message+sent+to+local+recipients%3B+external+delivery+queued"
+		flashID = "compose.flashSentLocalQueued"
 	} else if len(externalRecipients) > 0 {
-		flash = "Message+queued+for+delivery"
+		flashID = "compose.flashQueued"
 	}
 
-	http.Redirect(w, r, "/mail/Sent?flash="+flash, http.StatusSeeOther)
+	http.Redirect(w, r, "/mail/Sent?flash="+url.QueryEscape(composeText(r, flashID)), http.StatusSeeOther)
 }
 
 // SaveDraft saves a message as a draft.
@@ -870,14 +882,14 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	if bodyMode == "rich" {
 		built, _, buildErr := h.buildRichMessage(email, to, cc, subject, body, userID, draftMessageID, "", "", attachmentFiles, false)
 		if buildErr != nil {
-			msg := "Draft could not be built"
+			id := "compose.errBuildDraft"
 			switch {
 			case errors.Is(buildErr, errInlineImageTooLarge):
-				msg = "Inline image too large (max 1MB each)"
+				id = "compose.errInlineTooLarge"
 			case errors.Is(buildErr, errTotalInlineTooLarge):
-				msg = "Total inline images too large (max 10MB)"
+				id = "compose.errTotalInlineTooLarge"
 			}
-			http.Error(w, msg, http.StatusBadRequest)
+			composeError(w, r, id, http.StatusBadRequest)
 			return
 		}
 		rawMsg = built
@@ -913,7 +925,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		}
 		wh, err := h.blobs.Put(rawMsg)
 		if err != nil {
-			http.Error(w, "Failed to store draft", http.StatusInternalServerError)
+			composeError(w, r, "compose.errStoreDraft", http.StatusInternalServerError)
 			return
 		}
 		rawHash = wh
@@ -938,13 +950,13 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	// A draft is authored by the user, not received mail: mark it Seen so it
 	// does not count as unread.
 	if _, err := h.mailboxes.DeliverMessage(userID, "Drafts", meta, store.FlagSeen); err != nil {
-		http.Error(w, "Failed to store draft", http.StatusInternalServerError)
+		composeError(w, r, "compose.errStoreDraft", http.StatusInternalServerError)
 		return
 	}
 
 	h.logger.Info("web: draft saved", "user", userID)
 
-	http.Redirect(w, r, "/mail/Drafts?flash=Draft+saved", http.StatusSeeOther)
+	http.Redirect(w, r, "/mail/Drafts?flash="+url.QueryEscape(composeText(r, "compose.flashDraftSaved")), http.StatusSeeOther)
 }
 
 // EditDraft reopens a saved draft in the compose form. A rich draft
