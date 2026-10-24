@@ -799,9 +799,10 @@ func (s *Session) Data(r io.Reader) error {
 				BlobHash:    blobHash,
 				Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
 			}
-			// Partial failure: EnqueueLocal above has already committed, so
-			// returning 451 here makes the sender retry the whole message and
-			// the local recipients receive a duplicate. That is deliberate: a
+			// Partial failure: EnqueueLocal above has already committed its
+			// N envelopes (one per local recipient), so returning 451 here
+			// makes the sender retry the whole message and the local
+			// recipients receive a duplicate. That is deliberate: a
 			// duplicate is recoverable, a lost message is not, and the two
 			// queues cannot be committed atomically.
 			if err := s.backend.relayQueue.Enqueue(out); err != nil {

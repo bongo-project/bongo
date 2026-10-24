@@ -2,13 +2,18 @@ package agentgrpc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
@@ -427,4 +432,149 @@ func TestFetchBlob(t *testing.T) {
 	// For streaming RPCs, error may come on first Recv, not on initial call.
 	// Ignore any error here.
 	_ = err
+}
+
+// TestDepositMessageSplitsRecipients: a multi-recipient deposit (an older
+// agent) becomes one single-recipient envelope per recipient with distinct
+// ids and one shared blob.
+func TestDepositMessageSplitsRecipients(t *testing.T) {
+	srv, client, cleanup := startTestServer(t)
+	defer cleanup()
+
+	body := []byte("From: s@example.com\r\nSubject: Test\r\n\r\nHello")
+	resp, err := client.DepositMessage(context.Background(), &bongov1.DepositRequest{
+		Envelope: &bongov1.QueueEnvelope{
+			Id:         "agent-supplied-id",
+			Sender:     "s@example.com",
+			Recipients: []string{"a@example.com", "b@example.com"},
+			SpfResult:  "pass",
+		},
+		Message: body,
+	})
+	if err != nil {
+		t.Fatalf("DepositMessage: %v", err)
+	}
+
+	envs, err := srv.spool.List("incoming")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(envs) != 2 {
+		t.Fatalf("envelopes = %d, want 2", len(envs))
+	}
+	if envs[0].Id == envs[1].Id {
+		t.Error("envelopes share an id")
+	}
+	seen := map[string]bool{}
+	for _, e := range envs {
+		if len(e.Recipients) != 1 {
+			t.Fatalf("envelope %s has %d recipients", e.Id, len(e.Recipients))
+		}
+		seen[e.Recipients[0]] = true
+		if e.BlobHash != resp.BlobHash || e.SpfResult != "pass" {
+			t.Errorf("envelope %s blob/spf mismatch: %+v", e.Id, e)
+		}
+	}
+	if !seen["a@example.com"] || !seen["b@example.com"] {
+		t.Errorf("recipients = %v", seen)
+	}
+}
+
+func TestDepositMessageNoRecipients(t *testing.T) {
+	_, client, cleanup := startTestServer(t)
+	defer cleanup()
+	_, err := client.DepositMessage(context.Background(), &bongov1.DepositRequest{
+		Envelope: &bongov1.QueueEnvelope{Id: "x", Sender: "s@example.com"},
+		Message:  []byte("Subject: x\r\n\r\ny"),
+	})
+	if err == nil {
+		t.Fatal("expected error for deposit without recipients")
+	}
+}
+
+// failingEnqueuer fails the n-th Enqueue (1-based) and delegates the rest.
+type failingEnqueuer struct {
+	*pipeline.SpoolStore
+	failAt, calls int
+}
+
+func (f *failingEnqueuer) Enqueue(env *bongov1.QueueEnvelope) error {
+	f.calls++
+	if f.calls == f.failAt {
+		return fmt.Errorf("injected enqueue failure")
+	}
+	return f.SpoolStore.Enqueue(env)
+}
+
+// TestDepositMessagePartialFailureRollsBack: when the second envelope cannot
+// be written the deposit fails with Internal and the first is removed.
+func TestDepositMessagePartialFailureRollsBack(t *testing.T) {
+	srv, client, cleanup := startTestServer(t)
+	defer cleanup()
+	srv.enqueuer = &failingEnqueuer{SpoolStore: srv.spool, failAt: 2}
+
+	_, err := client.DepositMessage(context.Background(), &bongov1.DepositRequest{
+		Envelope: &bongov1.QueueEnvelope{
+			Id:         "x",
+			Sender:     "s@example.com",
+			Recipients: []string{"a@example.com", "b@example.com"},
+		},
+		Message: []byte("Subject: x\r\n\r\ny"),
+	})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("code = %v (err %v), want Internal", status.Code(err), err)
+	}
+	envs, lerr := srv.spool.List("incoming")
+	if lerr != nil {
+		t.Fatal(lerr)
+	}
+	if len(envs) != 0 {
+		t.Fatalf("incoming has %d envelopes after failure, want 0", len(envs))
+	}
+}
+
+// TestDepositMessageIgnoresCallerID: a caller-supplied id (here a traversal
+// attempt) is never used as the spool file name.
+func TestDepositMessageIgnoresCallerID(t *testing.T) {
+	srv, client, cleanup := startTestServer(t)
+	defer cleanup()
+	_, err := client.DepositMessage(context.Background(), &bongov1.DepositRequest{
+		Envelope: &bongov1.QueueEnvelope{
+			Id:         "../processing/evil",
+			Sender:     "s@example.com",
+			Recipients: []string{"a@example.com"},
+		},
+		Message: []byte("Subject: x\r\n\r\ny"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envs, lerr := srv.spool.List("incoming")
+	if lerr != nil || len(envs) != 1 {
+		t.Fatalf("envs=%d err=%v", len(envs), lerr)
+	}
+	if strings.Contains(envs[0].Id, "..") || envs[0].Id == "../processing/evil" {
+		t.Errorf("caller id reached the spool: %q", envs[0].Id)
+	}
+}
+
+// TestDepositMessageNoRecipientsStoresNoBlob proves a deposit without
+// recipients is refused before the blob is written, so it leaves nothing for
+// GC to reclaim.
+func TestDepositMessageNoRecipientsStoresNoBlob(t *testing.T) {
+	srv, client, cleanup := startTestServer(t)
+	defer cleanup()
+
+	body := []byte("From: a@example.com\r\nSubject: none\r\n\r\nno recipients")
+	_, err := client.DepositMessage(context.Background(), &bongov1.DepositRequest{
+		Envelope: &bongov1.QueueEnvelope{Sender: "a@example.com"},
+		Message:  body,
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("DepositMessage err = %v, want InvalidArgument", err)
+	}
+	sum := sha256.Sum256(body)
+	if srv.blobs.Exists(hex.EncodeToString(sum[:])) {
+		t.Fatal("refused deposit stored its blob")
+	}
 }

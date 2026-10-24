@@ -1439,3 +1439,10 @@ PATTERN: [testing] A comment that justifies a choice (cap rather than len) needs
 PATTERN: [testing] A shared guard called from many sites still needs a table test over every site with the failing input, or a per-site exemption survives.
 PATTERN: [shutdown] A background worker fed by HTTP handlers must take its context from Background and be cancelled after the HTTP drain, not from the signal context.
 PATTERN: [testing] Run timing-sensitive whole-package mutation checks one at a time; parallel runs produce load-induced failures that look like kills.
+
+## 2026-10-24: Phase 23 batch 3 (23.6, 23.8, 24.1); Phase 23 complete
+
+- 23.6 claim clean-up and SubmitCode lock, 23.8 redirect bind and Serve errors, 24.1 one envelope per recipient. All three reviews rejected once for test gaps (a lock reuse case, the runAgent Serve-error drain, rollback and caller-id handling in DepositMessage) and passed as MINOR after the fix round. The orchestrator moved the deposit recipient check before the blob write, bounded the deposit log, and tidied go.mod (pflag is now a direct dependency).
+PATTERN: [process] Ask the deployment owner before a change that turns a logged failure into a startup failure; production may rely on the old behaviour.
+PATTERN: [api] Validate a request completely before the first side effect; a check after a content-addressed write leaves an orphan for GC.
+PATTERN: [logging] A log line built from a caller-sized list needs a bound, like the pipeline's maxLoggedRecipients.

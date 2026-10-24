@@ -13,10 +13,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
@@ -186,6 +188,7 @@ type AgentServer struct {
 	registry   *AgentRegistry
 	blobs      *store.BlobStore
 	spool      *pipeline.SpoolStore
+	enqueuer   pipeline.EnvelopeSpool // write path for deposits; spool, replaceable in tests
 	logger     *slog.Logger
 	config     AgentServerConfig
 	listenAddr string
@@ -209,6 +212,7 @@ func NewAgentServer(
 		registry:   NewAgentRegistry(),
 		blobs:      blobs,
 		spool:      spool,
+		enqueuer:   spool,
 		logger:     logger,
 		config:     config,
 		stopReaper: make(chan struct{}),
@@ -315,6 +319,10 @@ func (s *AgentServer) ProcessMessage(_ context.Context, _ *ProcessRequest) (*Pro
 	return nil, status.Error(codes.Unimplemented, "ProcessMessage is handled by agent-side processors, not the server")
 }
 
+// maxLoggedDepositIDs bounds the envelope ids logged per deposit, as the
+// pipeline bounds logged recipients.
+const maxLoggedDepositIDs = 20
+
 // DepositMessage implements AgentServiceServer.DepositMessage.
 // Stores the message content as a blob and enqueues the envelope in the spool.
 func (s *AgentServer) DepositMessage(_ context.Context, req *DepositRequest) (*DepositResponse, error) {
@@ -323,6 +331,11 @@ func (s *AgentServer) DepositMessage(_ context.Context, req *DepositRequest) (*D
 	}
 	if len(req.Message) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "message is required")
+	}
+	// Checked before the blob is stored, so a refused deposit leaves no
+	// orphan blob for GC.
+	if len(req.Envelope.GetRecipients()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "at least one recipient is required")
 	}
 
 	hash, err := s.blobs.Put(req.Message)
@@ -347,11 +360,36 @@ func (s *AgentServer) DepositMessage(_ context.Context, req *DepositRequest) (*D
 	// listener must not be able to pick one.
 	env.AuthUserId = ""
 
-	if err := s.spool.Enqueue(env); err != nil {
+	// One envelope per recipient, sharing the one blob: the rules stage and
+	// quarantine decide per envelope, so one recipient's rule must not file or
+	// drop another's copy. Splitting here, not only in the agent, also covers
+	// older agents that still send multi-recipient deposits. The writes are
+	// not atomic as a group; see pipeline.EnqueueAll for the rollback and
+	// duplicate-on-retry semantics.
+	rcpts := env.GetRecipients()
+	envs := make([]*bongov1.QueueEnvelope, 0, len(rcpts))
+	ids := make([]string, 0, len(rcpts))
+	for _, rcpt := range rcpts {
+		e := proto.Clone(env).(*bongov1.QueueEnvelope)
+		e.Recipients = []string{rcpt}
+		// Always a fresh id, never the caller's: the id becomes a spool file
+		// name, so a caller-chosen id could traverse paths or overwrite an
+		// envelope.
+		e.Id = uuid.New().String()
+		envs = append(envs, e)
+		ids = append(ids, e.Id)
+	}
+	if err := pipeline.EnqueueAll(s.enqueuer, envs, s.logger); err != nil {
 		return nil, status.Errorf(codes.Internal, "enqueue message: %v", err)
 	}
 
-	s.logger.Info("message deposited", "id", env.Id, "blob_hash", hash, "sender", env.Sender)
+	// The deposit has no recipient cap, so log the count and a bounded
+	// sample of ids rather than every id.
+	logged := ids
+	if len(logged) > maxLoggedDepositIDs {
+		logged = logged[:maxLoggedDepositIDs]
+	}
+	s.logger.Info("message deposited", "copies", len(ids), "ids", logged, "blob_hash", hash, "sender", env.Sender)
 	return &DepositResponse{BlobHash: hash}, nil
 }
 

@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -59,7 +60,7 @@ type QuotaChecker interface {
 // asynchronous processing by the pipeline Runner.
 type DeliveryPipeline struct {
 	blobs  *store.BlobStore
-	spool  *pipeline.SpoolStore
+	spool  pipeline.EnvelopeSpool
 	logger *slog.Logger
 }
 
@@ -103,30 +104,55 @@ func (d *DeliveryPipeline) StoreBlob(r io.Reader) (string, error) {
 	return blobHash, nil
 }
 
-// EnqueueLocal enqueues a QueueEnvelope referencing an already-stored blob into
-// the spool for asynchronous local pipeline delivery.
+// EnqueueLocal enqueues one QueueEnvelope per local recipient, all referencing
+// the same already-stored blob, into the spool for asynchronous local pipeline
+// delivery.
+//
+// The rules stage, quarantine and the deliver target mailbox decide per
+// envelope, so one envelope per recipient stops one user's rule from filing or
+// dropping another's copy. The blob is content-addressed and stored once. The
+// Received and Received-SPF headers are part of that blob, and SPF result,
+// source IP and trust are copied unchanged, so every copy carries identical
+// authentication input.
+//
+// Partial failure: the envelopes cannot be committed atomically. If any write
+// fails, those already written are removed best-effort and an error is
+// returned, so the SMTP reply is 451 for the whole transaction and the reply
+// never claims success for an envelope that was not written. If the runner has
+// already picked up a written envelope it cannot be rolled back, and the
+// client's retry delivers a duplicate to that recipient. That is deliberate.
 func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHash string, meta *InboundMeta) error {
+	if len(recipients) == 0 {
+		return errors.New("enqueuing message to spool: no recipients")
+	}
 	if meta == nil {
 		meta = &InboundMeta{}
 	}
-	env := &bongov1.QueueEnvelope{
-		Id:         uuid.New().String(),
-		Sender:     from,
-		Recipients: recipients,
-		ReceivedAt: time.Now().Unix(),
-		BlobHash:   blobHash,
-		SpfResult:  meta.SPFResult,
-		SourceIp:   meta.SourceIP,
-		Trusted:    meta.Trusted,
-		AuthUserId: meta.AuthUserID,
+	receivedAt := time.Now().Unix()
+	envs := make([]*bongov1.QueueEnvelope, 0, len(recipients))
+	ids := make([]string, 0, len(recipients))
+	for _, rcpt := range recipients {
+		env := &bongov1.QueueEnvelope{
+			Id:         uuid.New().String(),
+			Sender:     from,
+			Recipients: []string{rcpt},
+			ReceivedAt: receivedAt,
+			BlobHash:   blobHash,
+			SpfResult:  meta.SPFResult,
+			SourceIp:   meta.SourceIP,
+			Trusted:    meta.Trusted,
+			AuthUserId: meta.AuthUserID,
+		}
+		envs = append(envs, env)
+		ids = append(ids, env.Id)
 	}
 
-	if err := d.spool.Enqueue(env); err != nil {
+	if err := pipeline.EnqueueAll(d.spool, envs, d.logger); err != nil {
 		return fmt.Errorf("enqueuing message to spool: %w", err)
 	}
 
 	d.logger.Info("smtp: message enqueued",
-		"id", env.Id,
+		"ids", ids,
 		"from", from,
 		"recipients", recipients,
 		"blob_hash", blobHash,

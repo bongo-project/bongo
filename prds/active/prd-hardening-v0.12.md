@@ -437,3 +437,39 @@ From the Phase 23 batch 2 reviews (2026-10-24):
   - When the account state cannot be read, IMAP answers `NO [UNAVAILABLE]`,
     SMTP `451 4.3.0` and POP3 `-ERR [SYS/TEMP]` (and closes, keeping
     messages), where they used to allow the command. (23.7)
+
+From the Phase 23 batch 3 reviews (2026-10-24):
+
+- Claims are not cleaned up when an address record is removed by
+  `Agent.revokeIfUnchanged`, `bongo-go address repair` or DeleteAlias
+  (alias records are normally on hosted domains, where claims cannot
+  exist), and claims left behind before v0.12.0 are not swept. (23.6)
+- RemoveAddress does not check that the record belongs to the user in the
+  path. Pre-existing. (23.6)
+- The SubmitCode lock serialises SubmitCode only, per process; admin
+  AddAddress and CreateUser are not serialised against it, and multi-node
+  needs a composite compare-and-set Raft command. (23.6)
+- Run's early returns before ready (web, control and redirect bind
+  failures) and runAgent's web listen failure leave the protocol
+  listeners, workers, Raft and Pebble open; the process exits on the error,
+  so this matters for tests and embedded callers. `shutdownAgent` is not
+  idempotent. (23.8)
+- Per-recipient envelopes make the SRS bounce `reversed` map and the
+  forward gate dedupe per recipient: two SRS recipients in one null-sender
+  transaction that reverse to the same address now relay two bounces. The
+  agent deposit path has no recipient cap and now runs the pipeline once
+  per recipient (callers need an mTLS certificate). (24.1)
+- Release notes, batch 3:
+  - Admin removal of an address and domain deletion also delete pending
+    send-as claims; two concurrent correct codes for one address yield one
+    owner. (23.6)
+  - With `web.https_redirect = true`, a redirect port that cannot be bound
+    now stops startup instead of logging one error; the redirect server is
+    shut down with the others, and a web Serve error after ready shuts the
+    node down and clears ready. Production does not enable the redirect
+    (checked by the infra session, 2026-10-24). (23.8)
+  - SMTP writes one envelope per local recipient sharing one blob, so one
+    recipient's rules no longer file or drop another's copy; a failure
+    writing any copy rolls back the others and answers 4xx. Agent deposits
+    are split the same way, get fresh envelope ids, and a deposit with no
+    recipients is refused before its blob is stored. (24.1)
