@@ -1,5 +1,12 @@
 # Security review: norman secure
 
+> **Status: historical, all findings fixed.** Every H, M and L finding below
+> was fixed in Phase 18 (TASKS-archive rows 18.1 to 18.43) and shipped in
+> v0.7.1 to v0.8.2; later hardening releases (v0.9.0 to v0.12.0) are in
+> `prds/active/prd-hardening-v0.9.md` and `prd-hardening-v0.12.md`. File and
+> line references point at commit `78b6477` and are kept as a record. See
+> `SECURITY.md` for current limitations.
+
 **Date:** 2026-10-20
 **Commit reviewed:** `78b6477` (v0.7.0)
 **Scope:** both tracks, full.
