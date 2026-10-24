@@ -1,6 +1,6 @@
 From alice@example.com Mon Feb 23 09:15:00 2026
 From: Alice Chen <alice@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: Sprint 16 planning notes
 Message-ID: <msg001@example.com>
 Date: Mon, 23 Feb 2026 09:15:00 +0000
@@ -43,7 +43,7 @@ Content-Type: text/html; charset="UTF-8"
 
 From bob@example.com Mon Feb 23 10:42:00 2026
 From: Bob Martinez <bob@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: Re: Sprint 16 planning notes
 Message-ID: <msg002@example.com>
 In-Reply-To: <msg001@example.com>
@@ -64,7 +64,7 @@ I can take items 2 and 5 if nobody else has started.
 
 From charlie@example.com Mon Feb 23 11:05:00 2026
 From: Charlie Wu <charlie@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: Re: Sprint 16 planning notes
 Message-ID: <msg003@example.com>
 In-Reply-To: <msg002@example.com>
@@ -81,11 +81,11 @@ is particularly bad on dark backgrounds.
 
 - Charlie
 
-From newsletter@bongoproject.org Mon Feb 23 06:00:00 2026
-From: Bongo Project <newsletter@bongoproject.org>
-To: users@bongoproject.org
+From newsletter@example.org Mon Feb 23 06:00:00 2026
+From: Bongo Project <newsletter@example.org>
+To: users@example.org
 Subject: Bongo Weekly Digest -- February 23, 2026
-Message-ID: <digest-20260223@bongoproject.org>
+Message-ID: <digest-20260223@example.org>
 Date: Mon, 23 Feb 2026 06:00:00 +0000
 MIME-Version: 1.0
 Content-Type: multipart/alternative; boundary="boundary004"
@@ -114,7 +114,7 @@ Upcoming Events
 * Feb 28 -- Community call (15:00 UTC)
 * Mar 5 -- v0.9.1 release candidate
 
-Visit https://bongoproject.org for more.
+Visit https://example.org for more.
 
 --boundary004
 Content-Type: text/html; charset="UTF-8"
@@ -136,7 +136,7 @@ We closed 89 issues and merged 62 pull requests.</p>
 <li>Feb 28 &mdash; Community call (15:00 UTC)</li>
 <li>Mar 5 &mdash; v0.9.1 release candidate</li>
 </ul>
-<p>Visit <a href="https://bongoproject.org">bongoproject.org</a> for more.</p>
+<p>Visit <a href="https://example.org">example.org</a> for more.</p>
 </body></html>
 
 --boundary004--
@@ -208,7 +208,7 @@ I'll approve once #1 is addressed.
 
 From charlie@example.com Tue Feb 24 14:00:00 2026
 From: Charlie Wu <charlie@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: Accessibility audit results
 Message-ID: <msg007@example.com>
 Date: Tue, 24 Feb 2026 14:00:00 +0000
@@ -293,7 +293,7 @@ Page: /settings
 
 From alice@example.com Wed Feb 25 07:45:00 2026
 From: Alice Chen <alice@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: Pebble compaction benchmark results
 Message-ID: <msg008@example.com>
 Date: Wed, 18 Feb 2026 07:45:00 +0000
@@ -347,7 +347,7 @@ replication" flag?
 
 From charlie@example.com Wed Feb 25 13:30:00 2026
 From: Charlie Wu <charlie@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: Dark mode contrast fixes ready for review
 Message-ID: <msg010@example.com>
 Date: Wed, 19 Feb 2026 13:30:00 +0000
@@ -387,11 +387,11 @@ Content-Type: text/html; charset="UTF-8"
 
 --boundary010--
 
-From newsletter@bongoproject.org Thu Feb 26 06:00:00 2026
-From: Bongo Project <newsletter@bongoproject.org>
-To: users@bongoproject.org
+From newsletter@example.org Thu Feb 26 06:00:00 2026
+From: Bongo Project <newsletter@example.org>
+To: users@example.org
 Subject: Security Advisory: CVE-2026-1234
-Message-ID: <security-20260219@bongoproject.org>
+Message-ID: <security-20260219@example.org>
 Date: Thu, 19 Feb 2026 06:00:00 +0000
 MIME-Version: 1.0
 Content-Type: multipart/alternative; boundary="boundary011"
@@ -479,7 +479,7 @@ Calendar invite sent separately.
 
 From bob@example.com Thu Feb 26 15:30:00 2026
 From: Bob Martinez <bob@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: RFC: structured logging conventions
 Message-ID: <msg013@example.com>
 Date: Thu, 20 Feb 2026 15:30:00 +0000
@@ -514,7 +514,7 @@ we agree on the approach.
 
 From charlie@example.com Fri Feb 27 08:15:00 2026
 From: Charlie Wu <charlie@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: CalDAV sync issue with Apple Calendar
 Message-ID: <msg014@example.com>
 Date: Fri, 20 Feb 2026 08:15:00 +0000
@@ -567,7 +567,7 @@ quirks in the past.
 
 From bob@example.com Fri Feb 27 11:30:00 2026
 From: Bob Martinez <bob@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: Dependency update: go-imap v2.0.3
 Message-ID: <msg016@example.com>
 Date: Fri, 21 Feb 2026 11:30:00 +0000
@@ -585,11 +585,11 @@ drop-in replacement but I'll flag if anything breaks.
 
 - Bob
 
-From newsletter@bongoproject.org Sat Feb 28 06:00:00 2026
-From: Bongo Project <newsletter@bongoproject.org>
-To: users@bongoproject.org
+From newsletter@example.org Sat Feb 28 06:00:00 2026
+From: Bongo Project <newsletter@example.org>
+To: users@example.org
 Subject: Community Call Reminder -- Today at 15:00 UTC
-Message-ID: <reminder-20260221@bongoproject.org>
+Message-ID: <reminder-20260221@example.org>
 Date: Sat, 21 Feb 2026 06:00:00 +0000
 MIME-Version: 1.0
 Content-Type: multipart/alternative; boundary="boundary017"
@@ -608,7 +608,7 @@ Agenda:
 3. CalDAV compatibility update (Charlie Wu)
 4. Open floor
 
-Join: https://meet.bongoproject.org/community
+Join: https://meet.example.org/community
 
 Recording will be posted to the wiki afterwards.
 
@@ -625,7 +625,7 @@ Content-Type: text/html; charset="UTF-8"
 <li>CalDAV compatibility update (Charlie Wu)</li>
 <li>Open floor</li>
 </ol>
-<p>Join: <a href="https://meet.bongoproject.org/community">meet.bongoproject.org/community</a></p>
+<p>Join: <a href="https://meet.example.org/community">meet.example.org/community</a></p>
 <p>Recording will be posted to the wiki afterwards.</p>
 </body></html>
 
@@ -665,7 +665,7 @@ PR #253 is up. Tests are green.
 
 From alice@example.com Sat Feb 28 14:20:00 2026
 From: Alice Chen <alice@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: Weekend deploy: v0.9.1-rc1
 Message-ID: <msg019@example.com>
 Date: Sat, 22 Feb 2026 14:20:00 +0000
@@ -718,7 +718,7 @@ Ready for beta promotion whenever you give the word.
 
 From charlie@example.com Sun Feb 29 10:30:00 2026
 From: Charlie Wu <charlie@example.com>
-To: dev@bongoproject.org
+To: dev@example.org
 Subject: IMAP SEARCH benchmarks
 Message-ID: <msg021@example.com>
 Date: Sun, 23 Feb 2026 10:30:00 +0000
@@ -824,11 +824,11 @@ Want to discuss on tomorrow's call?
 
 - Bob
 
-From newsletter@bongoproject.org Tue Feb 24 12:00:00 2026
-From: Bongo Project <newsletter@bongoproject.org>
-To: contributors@bongoproject.org
+From newsletter@example.org Tue Feb 24 12:00:00 2026
+From: Bongo Project <newsletter@example.org>
+To: contributors@example.org
 Subject: Contributor Update: new CI pipeline
-Message-ID: <contrib-20260224@bongoproject.org>
+Message-ID: <contrib-20260224@example.org>
 Date: Tue, 24 Feb 2026 12:00:00 +0000
 MIME-Version: 1.0
 Content-Type: text/plain; charset="UTF-8"
