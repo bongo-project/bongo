@@ -1431,3 +1431,11 @@ PATTERN: [cluster] Check what a node advertises, not just what it binds: a wildc
 PATTERN: [smtp] go-smtp advertises CHUNKING and routes BDAT through the same Session.Data; a body guard there covers both, but test BDAT on the wire rather than assume it is off.
 PATTERN: [smtp] A client-declared size is an estimate; enforce it with slack, or legitimate mail from MTAs that count differently is refused.
 PATTERN: [testing] Pin a CLI flag default with Lookup(name).DefValue; nothing else notices a reverted default.
+
+## 2026-10-24: Phase 23 batch 2 (23.4, 23.5, 23.7)
+
+- 23.4 DAV body budget, 23.5 send-as claims off the request path and capped, 23.7 account checks fail closed. The workflow's reviews rejected 23.4 and 23.7 after one fix round, for surviving mutants only (production code was right); a second targeted round killed them and the orchestrator re-ran sample mutants. 23.6 and 23.8 remain.
+PATTERN: [testing] A comment that justifies a choice (cap rather than len) needs a test input where the two differ; a small input where they coincide hides the mutant.
+PATTERN: [testing] A shared guard called from many sites still needs a table test over every site with the failing input, or a per-site exemption survives.
+PATTERN: [shutdown] A background worker fed by HTTP handlers must take its context from Background and be cancelled after the HTTP drain, not from the signal context.
+PATTERN: [testing] Run timing-sensitive whole-package mutation checks one at a time; parallel runs produce load-induced failures that look like kills.
