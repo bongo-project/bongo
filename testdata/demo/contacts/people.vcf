@@ -1,0 +1,120 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Mara Lindqvist
+N:Lindqvist;Mara;;;
+EMAIL;TYPE=WORK:mara@example.com
+TEL;TYPE=WORK:+46-555-0101
+ORG:Lantern Labs
+TITLE:Designer
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Tomasz Wrobel
+N:Wrobel;Tomasz;;;
+EMAIL;TYPE=WORK:tomasz@example.net
+TEL;TYPE=WORK:+48-555-0102
+ORG:Noodle Works
+TITLE:Chef
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Priya Raman
+N:Raman;Priya;;;
+EMAIL;TYPE=WORK:priya@example.org
+TEL;TYPE=WORK:+91-555-0103
+ORG:Open Data Co
+TITLE:Analyst
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Jürgen Müller
+N:Müller;Jürgen;;;
+EMAIL;TYPE=WORK:juergen@example.com
+TEL;TYPE=WORK:+49-555-0104
+ORG:Beispiel GmbH
+TITLE:Manager
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Amélie Fontaine
+N:Fontaine;Amélie;;;
+EMAIL;TYPE=WORK:amelie@example.net
+TEL;TYPE=WORK:+33-555-0105
+ORG:Atelier Exemple
+TITLE:Illustrator
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Sven Halvorsen
+N:Halvorsen;Sven;;;
+EMAIL;TYPE=WORK:sven@example.org
+TEL;TYPE=WORK:+47-555-0106
+ORG:Garden Club
+TITLE:Chair
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Ngozi Adeyemi
+N:Adeyemi;Ngozi;;;
+EMAIL;TYPE=WORK:ngozi@example.com
+TEL;TYPE=WORK:+234-555-0107
+ORG:Riverside Library
+TITLE:Librarian
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Kenji Watanabe
+N:Watanabe;Kenji;;;
+EMAIL;TYPE=WORK:kenji@example.net
+TEL;TYPE=WORK:+81-555-0108
+ORG:Paper Crane Press
+TITLE:Editor
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Lucia Ferrari
+N:Ferrari;Lucia;;;
+EMAIL;TYPE=WORK:lucia@example.org
+TEL;TYPE=WORK:+39-555-0109
+ORG:Example Trattoria
+TITLE:Owner
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Oskar Nowak
+N:Nowak;Oskar;;;
+EMAIL;TYPE=WORK:oskar@example.com
+TEL;TYPE=WORK:+49-555-0110
+ORG:Beispiel GmbH
+TITLE:Engineer
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Hana Kovacs
+N:Kovacs;Hana;;;
+EMAIL;TYPE=WORK:hana@example.net
+TEL;TYPE=WORK:+36-555-0111
+ORG:Lantern Labs
+TITLE:Developer
+NOTE:Fictional contact for demo data.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Rafael Souza
+N:Souza;Rafael;;;
+EMAIL;TYPE=WORK:rafael@example.org
+TEL;TYPE=WORK:+55-555-0112
+ORG:Open Data Co
+TITLE:Engineer
+NOTE:Fictional contact for demo data.
+END:VCARD

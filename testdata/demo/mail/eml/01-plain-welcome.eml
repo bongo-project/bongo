@@ -1,0 +1,15 @@
+From: Mara Lindqvist <mara@example.com>
+To: Demo User <demo@example.com>
+Subject: Welcome to the demo mailbox
+Message-ID: <demo-001@example.com>
+Date: Mon, 05 Jan 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 7bit
+
+Hello,
+
+This is a plain text message from an invented sender. Everything in the
+demo data set is fictional.
+
+Mara
