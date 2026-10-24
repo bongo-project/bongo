@@ -50,6 +50,7 @@ const quotaEmail = "quota@example.com"
 type quotaEnv struct {
 	ps        *store.PebbleStore
 	blobs     *store.BlobStore
+	blobDir   string
 	mailboxes *store.MailboxStore
 	events    *store.EventStore
 	contacts  *store.ContactStore
@@ -70,7 +71,7 @@ func newQuotaEnv(t *testing.T) *quotaEnv {
 	}
 	a := &directApplierTags{ps: ps}
 	return &quotaEnv{
-		ps: ps, blobs: blobs,
+		ps: ps, blobs: blobs, blobDir: dir + "/blobs",
 		mailboxes: store.NewMailboxStore(ps, a),
 		events:    store.NewEventStore(ps, a),
 		contacts:  store.NewContactStore(ps, a),

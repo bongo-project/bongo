@@ -376,13 +376,20 @@ func TestComposeSendRichMode_OversizedInlineImage_PerCap(t *testing.T) {
 // Uses multipart/form-data to avoid URL-encoding 15 MB of base64 data, keeping
 // the test fast.
 func TestComposeSendRichMode_OversizedTotalInlineImages(t *testing.T) {
+	// Scale both caps down 16x, keeping the 1:10 ratio, so the 11 images are
+	// 64 KiB rather than 1 MiB each; under -race the full-size payload took
+	// over 20 s.
+	origPer, origTotal := perInlineImageCapBytes, totalInlineImageCapBytes
+	perInlineImageCapBytes, totalInlineImageCapBytes = 64<<10, 640<<10
+	t.Cleanup(func() { perInlineImageCapBytes, totalInlineImageCapBytes = origPer, origTotal })
+
 	env := newComposeRichTestEnv(t)
 	userID := "user-inline-totalcap-test"
 	email := "totalcap@example.com"
 	env.registerLocalUser(t, userID, email)
 
 	// 11 unique images each of perInlineImageCapBytes-1 bytes decoded.
-	// Total: 11 * (1<<20 - 1) = 11,534,325 > totalInlineImageCapBytes (10<<20 = 10,485,760).
+	// Total: 11 * (per - 1) exceeds totalInlineImageCapBytes (10 * per).
 	// Each individual image < perInlineImageCapBytes so the per-image check passes first.
 	const numImages = 11
 	var sb strings.Builder

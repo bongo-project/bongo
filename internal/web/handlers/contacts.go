@@ -280,6 +280,7 @@ func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request)
 	if !parseUploadForm(w, r, contactsImportMaxBytes, "/contacts") {
 		return
 	}
+	defer removeUploadTemp(r)
 	file, _, err := r.FormFile("vcf")
 	if err != nil {
 		http.Redirect(w, r, "/contacts?flash=No+file+uploaded", http.StatusSeeOther)

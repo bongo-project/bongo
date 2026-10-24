@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/testutil"
 )
 
 // readyTestConfig returns a config for role with every listener on a free
@@ -23,7 +24,6 @@ func readyTestConfig(t *testing.T, role string) *config.Config {
 	t.Helper()
 	cfg := config.Defaults()
 	cfg.Server.Role = role
-	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Server.Agents = nil
 	if role == "agent" {
 		// No agent types, so Run starts no gRPC client or processor.
@@ -31,15 +31,41 @@ func readyTestConfig(t *testing.T, role string) *config.Config {
 	} else {
 		cfg.Storage.DataDir = t.TempDir()
 	}
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.SMTP.Port = freePort(t)
-	cfg.SMTP.SubmissionPort = freePort(t)
-	cfg.IMAP.Port = freePort(t)
-	cfg.IMAP.PortTLS = freePort(t)
-	cfg.POP3.Port = freePort(t)
-	cfg.POP3.PortTLS = freePort(t)
-	cfg.Cluster.Gossip.Port = freePort(t)
+	isolatePorts(t, cfg)
+	return cfg
+}
+
+// readyEphemeralConfig is readyTestConfig for tests that need no contended
+// port: the web and control listeners bind port 0 and the test reads the
+// bound web address from webListenHook, so no port is released and then bound
+// again. SMTP, IMAP and POP3 are off because web readiness does not depend on
+// them (TestRunWebPortTakenNeverReady, TestRunControlPortTakenNeverReady and
+// the integration suite still cover their startup binding).
+//
+// Port 0 is only valid here because Run does not call Config.Validate, which
+// rejects it; if Run starts validating, these tests fail loudly.
+func readyEphemeralConfig(t *testing.T, role string) *config.Config {
+	t.Helper()
+	cfg := config.Defaults()
+	cfg.Server.Role = role
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.Server.Agents = nil
+	if role == "agent" {
+		cfg.AgentServer = &config.AgentConfig{ServerAddress: "127.0.0.1:1"}
+	} else {
+		cfg.Storage.DataDir = t.TempDir()
+	}
+	cfg.Web.Port = 0
+	cfg.Server.ControlAddr = "127.0.0.1:0"
+	cfg.Cluster.Gossip.Port = 0
+	// The server role binds the Raft transport in NewAgent and the peer
+	// listener in Run, so those leave their defaults too.
+	cluster := testutil.FreePorts(t, 2)
+	cfg.Cluster.Raft.Port = cluster[0]
+	cfg.Cluster.PeerPort = cluster[1]
+	cfg.SMTP.Enabled = false
+	cfg.IMAP.Enabled = false
+	cfg.POP3.Enabled = false
 	return cfg
 }
 
@@ -59,11 +85,14 @@ func TestRunWebPortTakenNeverReady(t *testing.T) {
 	for _, role := range []string{"dev", "agent"} {
 		t.Run(role, func(t *testing.T) {
 			cfg := readyTestConfig(t, role)
-			held, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Web.Port)))
+			// Hold a fresh listener and point the config at it, so the
+			// contended port is never released and re-bound.
+			held, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
 				t.Fatalf("hold web port: %v", err)
 			}
 			defer held.Close()
+			cfg.Web.Port = held.Addr().(*net.TCPAddr).Port
 
 			a := newReadyTestAgent(t, cfg)
 			t.Cleanup(func() { _ = a.Shutdown() })
@@ -117,8 +146,15 @@ func TestRunWebPortTakenNeverReady(t *testing.T) {
 // first returns true, and shuts it down.
 func dialAfterReady(t *testing.T, role string) {
 	t.Helper()
-	cfg := readyTestConfig(t, role)
+	cfg := readyEphemeralConfig(t, role)
 	a := newReadyTestAgent(t, cfg)
+	// The hook fires before Ready() is set, so the Ready poll below orders
+	// this read after the write.
+	var webAddr atomic.Pointer[string]
+	a.webListenHook = func(ln net.Listener) {
+		addr := ln.Addr().String()
+		webAddr.Store(&addr)
+	}
 	runDone := make(chan error, 1)
 	go func() { runDone <- a.Run(context.Background()) }()
 
@@ -135,7 +171,13 @@ func dialAfterReady(t *testing.T, role string) {
 		}
 		runtime.Gosched()
 	}
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Web.Port))
+	bound := webAddr.Load()
+	if bound == nil {
+		_ = a.Shutdown()
+		<-runDone
+		t.Fatal("agent ready but the web listener was never reported")
+	}
+	addr := *bound
 	conn, err := net.DialTimeout("tcp", addr, time.Second)
 	if err != nil {
 		_ = a.Shutdown()
@@ -175,11 +217,12 @@ func TestReadyImpliesWebBound(t *testing.T) {
 // port it had already bound.
 func TestRunControlPortTakenNeverReady(t *testing.T) {
 	cfg := readyTestConfig(t, "dev")
-	held, err := net.Listen("tcp", cfg.Server.ControlAddr)
+	held, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("hold control port: %v", err)
 	}
 	defer held.Close()
+	cfg.Server.ControlAddr = held.Addr().String()
 
 	a := newReadyTestAgent(t, cfg)
 	t.Cleanup(func() { _ = a.Shutdown() })
@@ -282,7 +325,6 @@ func redirectRunConfig(t *testing.T) *config.Config {
 	ca := newPeerTestCA(t, "web-ca")
 	cfg.Web.TLS.CertFile, cfg.Web.TLS.KeyFile, _ = ca.writeFiles(t, "127.0.0.1", false)
 	cfg.Web.HTTPSRedirect = true
-	cfg.Web.HTTPRedirectPort = freePort(t)
 	return cfg
 }
 

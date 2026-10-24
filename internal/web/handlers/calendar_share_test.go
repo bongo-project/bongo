@@ -354,7 +354,17 @@ func TestUnshareCalendar(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			time.Sleep(1100 * time.Millisecond) // UpdatedAt has one-second resolution
+			// UpdatedAt has one-second resolution, so a write made straight
+			// after the seed would not show. Age the stored stamp instead of
+			// sleeping past the second boundary.
+			before.UpdatedAt -= 3600
+			aged, err := proto.Marshal(before)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := e.ps.Set([]byte("/user/alice/calendar/"+e.calID), aged); err != nil {
+				t.Fatal(err)
+			}
 			rr := e.unshare("alice", e.calID, tt.entry)
 			if rr.Code != tt.status {
 				t.Fatalf("status = %d, want %d (%s)", rr.Code, tt.status, rr.Body.String())

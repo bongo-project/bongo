@@ -20,12 +20,13 @@ import (
 func peerRunConfig(t *testing.T, bind, advertise string) *config.Config {
 	t.Helper()
 	cfg := config.Defaults()
+	// Peers join each other's gossip, so gossip needs a real port; it and the
+	// redirect port come from the same batch as every other port.
+	extra := isolatePortsExtra(t, cfg, 2)
 	cfg.Server.Role = "server"
-	cfg.Server.Name = "node-" + strconv.Itoa(freePort(t))
+	cfg.Server.Name = "node-" + strconv.Itoa(cfg.Web.Port)
 	cfg.Server.BindAddr = bind
 	cfg.Server.AdvertiseAddr = advertise
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
 	cfg.Web.PlainHTTP = true
 	cfg.Web.SessionSecret = strings.Repeat("s", 40)
 	cfg.SMTP.Enabled = false
@@ -33,9 +34,8 @@ func peerRunConfig(t *testing.T, bind, advertise string) *config.Config {
 	cfg.POP3.Enabled = false
 	cfg.Storage.DataDir = t.TempDir()
 	cfg.Cluster.Raft.DataDir = t.TempDir()
-	cfg.Cluster.Raft.Port = freePort(t)
-	cfg.Cluster.Gossip.Port = freePort(t)
-	cfg.Cluster.PeerPort = freePort(t)
+	cfg.Cluster.Gossip.Port = extra[0]
+	cfg.Web.HTTPRedirectPort = extra[1]
 	cfg.Cluster.Gossip.EncryptionKey = "AAAAAAAAAAAAAAAAAAAAAA=="
 	return cfg
 }

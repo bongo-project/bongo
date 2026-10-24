@@ -21,17 +21,11 @@ import (
 // per-package unit test stays green; only this test exercises the wiring.
 func TestStorageQuotaWiredIntoProtocols(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
-	cfg.Cluster.Gossip.Port = freePort(t)
 	cfg.POP3.Enabled = false
 	cfg.IMAP.Enabled = true
-	cfg.IMAP.Port = freePort(t)
-	cfg.IMAP.PortTLS = freePort(t)
-
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)

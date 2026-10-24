@@ -553,3 +553,23 @@ From the Phase 25 batch 5 reviews (2026-10-24):
     (25.1)
   - `make check-image-pins` parses the compose file as YAML. (25.4)
 
+From the Phase 25 batch 6 reviews (2026-10-24):
+
+- The test-port guard checks that an isolating helper is called, not that a
+  later assignment overrides a port. test/e2e still draws ports one at a
+  time and runs dev agents on fixed ports (not run by make or CI). Fixed
+  500 ms Raft sleeps remain in the alias_delivery, antispam, filters and
+  account_revoke integration tests. (25.2)
+- The depfloor test ignores `replace` directives, and nothing checks that
+  the Dockerfile's base images stay digest-pinned (check-image-pins reads
+  only the compose file). depfloor's compose-tag and Go-floor assertions
+  need updating at every release. (25.3)
+- Compose keeps 32 MiB of form values in memory (inline images arrive as
+  data URIs in the body); a near-cap mbox message leaves a large buffer and
+  a full MIME parse for the rest of the import. Both are bounded. (25.5)
+- Release notes, batch 6:
+  - Built with Go 1.27.3; raft 1.8.0 and memberlist 0.7.0 (protocol
+    versions unchanged); chi updated past three advisories. (25.3)
+  - Mailbox, vCard and calendar imports spool uploads to disk and the
+    mailbox import streams messages and checks quota first. (25.5)
+

@@ -165,15 +165,11 @@ func TestInitInternalSecret(t *testing.T) {
 // returned, so the read is ordered after the write.
 func TestRunSetsInternalSecret(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
 	cfg.Web.SessionSecret = ""
-	port := freePort(t)
-	cfg.Web.Port = port
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
+	port := cfg.Web.Port
 	cfg.SMTP.Enabled = false
-	cfg.Cluster.Gossip.Port = freePort(t)
-
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
