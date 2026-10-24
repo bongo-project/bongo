@@ -18,6 +18,7 @@ import (
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/security"
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/testutil"
 )
 
 func peerTestSecret() []byte { return []byte("peer-listener-secret-0123456789abcdef") }
@@ -39,7 +40,7 @@ func newPeerTestAgent(t *testing.T, ca *peerTestCA) (*Agent, string) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "server"
 	cfg.Cluster.BindAddr = "127.0.0.1"
-	cfg.Cluster.PeerPort = freePort(t)
+	cfg.Cluster.PeerPort = testutil.FreePorts(t, 1)[0]
 	blobs, err := store.NewBlobStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

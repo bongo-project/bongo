@@ -107,24 +107,15 @@ func TestAgentLogProxyTrust(t *testing.T) {
 // the per-package tests cannot see that wiring.
 func TestRunWiresProxyTrustIntoEveryListener(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Cluster.Gossip.Port = freePort(t)
 	cfg.SMTP.Enabled = true
-	cfg.SMTP.Port = freePort(t)
-	cfg.SMTP.SubmissionPort = freePort(t)
 	cfg.SMTP.ProxyProtocol = true
 	cfg.SMTP.Limits.MaxConnectionsPerIP = 1
 	cfg.IMAP.Enabled = true
-	cfg.IMAP.Port = freePort(t)
-	cfg.IMAP.PortTLS = freePort(t)
 	cfg.IMAP.ProxyProtocol = true
 	cfg.IMAP.MaxConnectionsPerIP = 1
 	cfg.POP3.Enabled = true
-	cfg.POP3.Port = freePort(t)
-	cfg.POP3.PortTLS = freePort(t)
 	cfg.POP3.ProxyProtocol = true
 	cfg.POP3.MaxConnectionsPerIP = 1
 

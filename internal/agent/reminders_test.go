@@ -17,11 +17,8 @@ import (
 func reminderTestAgent(t *testing.T) *Agent {
 	t.Helper()
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Cluster.Gossip.Port = freePort(t)
 	cfg.SMTP.Enabled = false
 	cfg.POP3.Enabled = false
 	cfg.IMAP.Enabled = false

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/testutil"
 )
 
 type discardDeliverer struct{}
@@ -47,8 +48,9 @@ func agentSMTPRcpt(t *testing.T, secret string, logger *slog.Logger) func(from, 
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.SessionSecret = secret
 	cfg.SMTP.Enabled = true
-	cfg.SMTP.Port = freePort(t)
-	cfg.SMTP.SubmissionPort = freePort(t)
+	smtpPorts := testutil.FreePorts(t, 2)
+	cfg.SMTP.Port = smtpPorts[0]
+	cfg.SMTP.SubmissionPort = smtpPorts[1]
 	a := &Agent{Config: cfg, logger: logger}
 	backend, err := a.newAgentSMTPBackend(discardDeliverer{})
 	if err != nil {

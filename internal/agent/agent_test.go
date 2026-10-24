@@ -23,6 +23,7 @@ import (
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/testutil"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -30,23 +31,41 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
-// freePort returns an available TCP port.
-func freePort(t *testing.T) int {
+// isolatePorts moves every listener an agent binds off the defaults, onto
+// distinct free loopback ports drawn together, so no test binds gossip 8301,
+// the control port 8081, the Raft transport 8300, the peer port 8302 or one of
+// the fixed dev-mode IMAP, POP3 and SMTP ports (1143, 1993, 1110, 1995, 2525,
+// 2587, 8080) that dev mode substitutes while a port is still at its production
+// default.
+//
+// Gossip uses port 0: memberlist binds TCP and UDP to the same ephemeral port,
+// so nothing is released and re-bound. Nothing reads the configured gossip
+// port back after start. Raft.Port is bound by NewAgent itself in the server
+// role, so a test that never calls Run still needs it.
+func isolatePorts(t *testing.T, cfg *config.Config) {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("freePort: %v", err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	return port
+	isolatePortsExtra(t, cfg, 0)
 }
 
-// freeControlAddr returns a loopback host:port for server.control_addr that
-// was free a moment ago, so no test binds the default 8081.
-func freeControlAddr(t *testing.T) string {
+// isolatePortsExtra is isolatePorts for a config that needs further real ports
+// (a gossip port that peers dial, say). The extra ports come from the same
+// batch as the rest, so none can repeat one already assigned.
+func isolatePortsExtra(t *testing.T, cfg *config.Config, extra int) []int {
 	t.Helper()
-	return net.JoinHostPort("127.0.0.1", strconv.Itoa(freePort(t)))
+	ports := testutil.FreePorts(t, 10+extra)
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.Web.Port = ports[0]
+	cfg.Server.ControlAddr = net.JoinHostPort("127.0.0.1", strconv.Itoa(ports[1]))
+	cfg.SMTP.Port = ports[2]
+	cfg.SMTP.SubmissionPort = ports[3]
+	cfg.IMAP.Port = ports[4]
+	cfg.IMAP.PortTLS = ports[5]
+	cfg.POP3.Port = ports[6]
+	cfg.POP3.PortTLS = ports[7]
+	cfg.Cluster.Raft.Port = ports[8]
+	cfg.Cluster.PeerPort = ports[9]
+	cfg.Cluster.Gossip.Port = 0
+	return ports[10:]
 }
 
 func TestWebDAVMethodsRegistered(t *testing.T) {
@@ -107,10 +126,8 @@ func TestNewAgentDev(t *testing.T) {
 
 func TestAgentRunAndCancel(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 
 	a, err := NewAgent(cfg, testLogger())
@@ -183,10 +200,8 @@ func TestSweepOrphanedUsers(t *testing.T) {
 
 func TestEnsureConfiguredDomainSeedsOnStartup(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 	cfg.SMTP.DKIM.Domain = "example.test"
 
@@ -248,14 +263,10 @@ func TestEnsureConfiguredDomainSeedsOnStartup(t *testing.T) {
 
 func TestHealthEndpoints(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	port := freePort(t)
-	cfg.Web.Port = port
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
+	port := cfg.Web.Port
 	cfg.SMTP.Enabled = false
-	cfg.Cluster.Gossip.Port = freePort(t)
-
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -329,8 +340,8 @@ func TestHealthEndpoints(t *testing.T) {
 
 func TestNewAgentServerMode(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "server"
-	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Storage.DataDir = t.TempDir()
 
 	a, err := NewAgent(cfg, testLogger())
@@ -358,6 +369,7 @@ func TestNewAgentServerMode(t *testing.T) {
 
 func TestNewAgentAgentModeSkipsStorage(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "agent"
 	cfg.Server.Agents = []string{"antispam"}
 	cfg.AgentServer = &config.AgentConfig{
@@ -444,10 +456,8 @@ func waitForHTTPS(t *testing.T, client *http.Client, url string, timeout time.Du
 // writing fresh keys under a user nothing lists.
 func TestSweepGhostUserTrees(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 
 	a, err := NewAgent(cfg, testLogger())
@@ -679,8 +689,8 @@ func TestNewAgentReconcilesStaleUserEnabled(t *testing.T) {
 	dir := t.TempDir()
 	newCfg := func() *config.Config {
 		cfg := config.Defaults()
+		isolatePorts(t, cfg)
 		cfg.Server.Role = "server"
-		cfg.Server.BindAddr = "127.0.0.1"
 		cfg.Storage.DataDir = dir
 		return cfg
 	}
@@ -722,8 +732,8 @@ func TestNewAgentReconcilesOrphanUsers(t *testing.T) {
 	dir := t.TempDir()
 	newCfg := func() *config.Config {
 		cfg := config.Defaults()
+		isolatePorts(t, cfg)
 		cfg.Server.Role = "server"
-		cfg.Server.BindAddr = "127.0.0.1"
 		cfg.Storage.DataDir = dir
 		return cfg
 	}
