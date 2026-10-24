@@ -20,11 +20,15 @@ import (
 // in a rich send. Matches richeditor.js IMAGE_CAP_BYTES = 1 * 1024 * 1024.
 // The client cap (file size) and server cap (decoded bytes) are equivalent because
 // base64 decoding produces approximately the original binary size.
-const perInlineImageCapBytes = 1 << 20 // 1 MiB
+//
+// A var so tests can lower it and keep oversized-payload cases fast; nothing
+// else writes it.
+var perInlineImageCapBytes = 1 << 20 // 1 MiB
 
 // totalInlineImageCapBytes is the server-side cap for the sum of all decoded inline
 // image bytes in a single rich send.
-const totalInlineImageCapBytes = 10 << 20 // 10 MiB
+// A var for the same reason as perInlineImageCapBytes.
+var totalInlineImageCapBytes = 10 << 20 // 10 MiB
 
 // Sentinel errors returned by checkInlineImageCaps; used by buildRichMessage to
 // reject oversized inline images with a clear 400 before any user-visible writes.

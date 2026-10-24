@@ -38,11 +38,14 @@ generate:
 test:
 	go test ./...
 
+## An explicit -timeout rather than Go's 10 minute default: internal/web/handlers
+## alone takes minutes under -race, and a loaded machine or a slower CI runner
+## multiplies that. 20m leaves headroom without hiding a genuine hang.
 test-race:
-	go test -race ./...
+	go test -race -timeout 20m ./...
 
 test-cover:
-	go test -race -cover ./...
+	go test -race -cover -timeout 20m ./...
 
 ## The integration suite only. Slower (~6 min) and starts real servers.
 test-integration:

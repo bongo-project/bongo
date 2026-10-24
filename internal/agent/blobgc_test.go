@@ -797,10 +797,8 @@ func blobGCLeaderTestAgentWithLogger(t *testing.T, logger *slog.Logger) *Agent {
 func blobGCLeaderTestAgentSeeded(t *testing.T, logger *slog.Logger, seed func(a *Agent)) *Agent {
 	t.Helper()
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 
 	a, err := NewAgent(cfg, logger)

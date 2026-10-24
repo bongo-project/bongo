@@ -719,6 +719,7 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	if !parseUploadForm(w, r, calendarImportMaxBytes, "/calendar") {
 		return
 	}
+	defer removeUploadTemp(r)
 	file, hdr, err := r.FormFile("ics")
 	if err != nil {
 		http.Redirect(w, r, "/calendar?flash=No+file+uploaded", http.StatusSeeOther)

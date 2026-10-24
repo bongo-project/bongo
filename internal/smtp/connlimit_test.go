@@ -70,6 +70,21 @@ func (c *smtpTestConn) hello(t *testing.T) string {
 	}
 }
 
+// waitConnLimitDrained blocks until the backend's per-IP limiter holds no
+// slot. The server releases a slot asynchronously once it sees the client
+// close, so a test that reuses one server across subtests must wait for it
+// instead of assuming a closed connection is already uncounted.
+func waitConnLimitDrained(t *testing.T, srv *Server) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for srv.backend.connLimit.Len() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("per-IP limiter still holds %d source(s) 5s after the connections closed", srv.backend.connLimit.Len())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // TestSMTPPerIPConnectionCap proves Server wires config.Limits.MaxConnectionsPerIP
 // into the shared limiter, refuses the excess with 421, frees a slot on
 // Logout, and keys on the PROXY-derived client IP.
@@ -167,6 +182,10 @@ func TestSMTPPROXYHeaderFromUnlistedPeerIgnored(t *testing.T) {
 				{"submission", srv.SubmissionAddr()},
 			} {
 				t.Run(l.name, func(t *testing.T) {
+					// Registered before any dial so it runs after the dial
+					// cleanups have closed the connections: the next listener
+					// shares this limiter and must start from zero.
+					t.Cleanup(func() { waitConnLimitDrained(t, srv) })
 					for _, ip := range []string{smtpClientA, smtpClientB} {
 						c := dialSMTPAs(t, l.addr, ip)
 						if got := c.hello(t); !strings.HasPrefix(got, "250") {

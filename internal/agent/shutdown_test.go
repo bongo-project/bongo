@@ -198,6 +198,7 @@ func TestShutdownGraceExceededLeavesEnvelopeAndStoresOpen(t *testing.T) {
 
 func TestShutdownGraceErrorNamesRunningWorkers(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
 	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -229,6 +230,7 @@ func TestShutdownGraceErrorNamesRunningWorkers(t *testing.T) {
 
 func TestShutdownWaitsForBackgroundWorker(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
 	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -266,8 +268,8 @@ func TestShutdownWaitsForBackgroundWorker(t *testing.T) {
 // everything, which needs the orphan-GC and usage cancels and worker tracking.
 func TestShutdownStopsRealWorkersWithoutCtxCancel(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Server.ControlAddr = freeControlAddr(t)
 	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -329,8 +331,8 @@ func TestShutdownStopsRealWorkersWithoutCtxCancel(t *testing.T) {
 // second call used to close the POP3 server's channel again and panic.
 func TestShutdownIsIdempotent(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Server.ControlAddr = freeControlAddr(t)
 	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
@@ -370,6 +372,7 @@ func TestShutdownIsIdempotent(t *testing.T) {
 // tears the stores down.
 func TestShutdownGraceTimeoutIsNotTerminal(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
 	a, err := NewAgent(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {

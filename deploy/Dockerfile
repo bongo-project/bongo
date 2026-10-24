@@ -5,12 +5,12 @@ ARG COMMIT=unknown
 ARG DATE=unknown
 
 # ---- Build stage ------------------------------------------------------------
-# Pinned to the go directive in go.mod (go 1.26.x) and the templ version used
+# Pinned to the go directive in go.mod (go 1.27.x) and the templ version used
 # by the project. Pure-Go build (modernc sqlite, no cgo) -> fully static binary.
 # Both bases are pinned by digest as well as tag: the tag is for readability,
 # the digest is what is pulled. Refresh with
 # `docker buildx imagetools inspect <image:tag>` and review the diff.
-FROM golang:1.26.10-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af AS build
+FROM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
 ARG VERSION
 ARG COMMIT
 ARG DATE
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # 587, 143, 993) bind because the container sets
 # net.ipv4.ip_unprivileged_port_start=0 (see docker-compose.yml), which is
 # compatible with no-new-privileges and an empty capability set.
-FROM alpine:3.24@sha256:71e9b7bae160ba167fa17414401b94cbcdaf3c32feeab9298bd794a2a0614c35
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 ARG VERSION
 ARG COMMIT
 ARG DATE

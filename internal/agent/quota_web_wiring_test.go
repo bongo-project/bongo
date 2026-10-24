@@ -21,12 +21,9 @@ import (
 // handler unit test green; only this test notices.
 func TestWebWritePathsQuotaWired(t *testing.T) {
 	cfg := config.Defaults()
+	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
-	cfg.Web.Port = freePort(t)
-	cfg.Server.ControlAddr = freeControlAddr(t)
-	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
-	cfg.Cluster.Gossip.Port = freePort(t)
 	cfg.POP3.Enabled = false
 	cfg.IMAP.Enabled = false
 

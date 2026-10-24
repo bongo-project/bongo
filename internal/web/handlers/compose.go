@@ -32,6 +32,13 @@ import (
 
 const composeMultipartMaxBytes = 33 << 20
 
+// composeUploadMaxMemory is the maxMemory for compose forms. It stays large
+// rather than using uploadMaxMemory because net/http allows non-file values
+// only maxMemory plus 10 MiB in total, and the rich-text body field carries
+// inline images as data URIs well past that. The body cap above still bounds the
+// request; anything of the 33 MiB beyond this figure spools to disk.
+const composeUploadMaxMemory = 32 << 20
+
 // localRecipientResolver resolves an email address to a local user ID.
 // Defined at the consumer (ComposeHandler) to avoid an import cycle with
 // internal/smtp. Satisfied by *store.RecipientResolver.
@@ -313,7 +320,8 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 
 	r.Body = http.MaxBytesReader(w, r.Body, composeMultipartMaxBytes)
-	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
+	defer removeUploadTemp(r)
+	if err := r.ParseMultipartForm(composeUploadMaxMemory); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
 		if err2 := r.ParseForm(); err2 != nil {
 			composeError(w, r, "compose.errInvalidForm", http.StatusBadRequest)
 			return
@@ -829,7 +837,8 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 
 	r.Body = http.MaxBytesReader(w, r.Body, composeMultipartMaxBytes)
-	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
+	defer removeUploadTemp(r)
+	if err := r.ParseMultipartForm(composeUploadMaxMemory); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
 		_ = r.ParseForm()
 	}
 

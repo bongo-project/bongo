@@ -1459,3 +1459,9 @@ PATTERN: [idempotency] Fingerprint the submission, not the generated output (whi
 - 24.5 compose messages translated, 25.1 port and bind validation, 25.4 YAML image-pin check. All three reviews rejected once for test gaps and passed after a fix round; the orchestrator closed the last gaps (dev gossip collision, agent redirect exemption, a no-literal-text scan for compose.go, an image in a complex YAML key) and proved each with a mutant.
 PATTERN: [testing] Source-scanning tests are invisible to -overlay; mutate a scratch copy of the tree to prove them.
 PATTERN: [config] Validate collisions against the ports a node will actually bind (effective dev ports, role-dependent listeners), or it either misses real clashes or refuses valid configs.
+
+## 2026-10-24: Phase 25 batch 6 (25.2, 25.3, 25.5); v0.12.0 scope complete
+
+- 25.2 isolated test ports with an AST guard, 25.3 Go 1.27.3 and current actions and modules, 25.5 uploads spooled and the mbox import streamed. 25.2's guard needed two fix rounds (wrapper callers and config closures); 25.3 and 25.5 passed as MINOR.
+PATTERN: [testing] A source guard that exempts helper functions must also check the helpers' callers, transitively; otherwise every test that goes through the helper escapes.
+PATTERN: [testing] Draw all the free ports a test needs from listeners held open together; drawing them one at a time can return the same port twice.

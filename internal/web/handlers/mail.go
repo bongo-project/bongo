@@ -34,6 +34,15 @@ const defaultMessagesPerPage = 25
 const maxMessagePageLimit = int(^uint(0) >> 1)
 const importMboxMultipartMaxBytes = 501 << 20
 
+// importMboxMaxMessageBytes caps one message in an mbox import. It sits above
+// the compose (33 MiB) and SMTP (25 MiB default) limits so no message the
+// server could have sent or received is refused.
+var importMboxMaxMessageBytes = 50 << 20
+
+// importMboxReader wraps the uploaded file before scanning. It is the identity
+// in production and exists so tests can inject a mid-stream read failure.
+var importMboxReader = func(r io.Reader) io.Reader { return r }
+
 // trashMailbox is the folder deleted messages are moved to. Deleting a message
 // that is already in Trash removes it permanently.
 const trashMailbox = "Trash"
@@ -934,14 +943,22 @@ func (h *MailHandler) ImportPage(w http.ResponseWriter, r *http.Request) {
 func (h *MailHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 
 // ImportMbox processes an uploaded mbox file and imports messages.
+//
+// The upload is streamed: the multipart form spools anything over
+// uploadMaxMemory to a temporary file and messages are read from it one at a
+// time, so memory use does not grow with the file. Because of that the import is
+// not all or nothing once it has started: the quota check up front is all or
+// nothing, but a read error part-way leaves the messages already delivered in
+// place. The failure is logged and counted in the summary.
 func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
 	r.Body = http.MaxBytesReader(w, r.Body, importMboxMultipartMaxBytes)
-	if err := r.ParseMultipartForm(500 << 20); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
+	if err := r.ParseMultipartForm(uploadMaxMemory); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
 		http.Error(w, "File too large or invalid form", http.StatusBadRequest)
 		return
 	}
+	defer removeUploadTemp(r)
 
 	targetMailbox := r.FormValue("mailbox")
 	if newMb := r.FormValue("new_mailbox"); newMb != "" {
@@ -951,24 +968,18 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 		targetMailbox = "INBOX"
 	}
 
-	file, _, err := r.FormFile("mbox")
+	file, hdr, err := r.FormFile("mbox")
 	if err != nil {
 		http.Error(w, "No file uploaded", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "Failed to read file", http.StatusInternalServerError)
-		return
-	}
-
 	// Quota: all or nothing. Refuse up front when the whole upload would not
 	// fit, before the target mailbox, any blob or any MailMeta is written. The
 	// usage figure is the periodic recompute (up to ~10 minutes stale), so this
 	// is best effort: two imports running at once can both pass.
-	if quotaExceeded(h.quota, h.logger, userID, int64(len(data))) {
+	if quotaExceeded(h.quota, h.logger, userID, hdr.Size) {
 		refuseQuota(w, r)
 		return
 	}
@@ -981,28 +992,28 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Parse mbox: split on "\nFrom " lines.
-	messages := splitMbox(data)
-
 	imported := 0
 	failed := 0
-	for _, rawMsg := range messages {
-		if len(rawMsg) == 0 {
-			continue
+	// A message larger than importMboxMaxMessageBytes is skipped and counted as
+	// failed, so one huge message cannot exhaust memory.
+	scanErr := scanMbox(importMboxReader(file), importMboxMaxMessageBytes, func(rawMsg []byte, oversized bool) error {
+		if oversized {
+			failed++
+			return nil
 		}
 
 		// Store raw blob.
 		hash, err := h.blobs.Put(rawMsg)
 		if err != nil {
 			failed++
-			continue
+			return nil
 		}
 
 		// Parse headers for metadata.
 		env, _, err := mimesafe.ReadEnvelope(rawMsg)
 		if err != nil {
 			failed++
-			continue
+			return nil
 		}
 
 		guid := fmt.Sprintf("import-%d-%s", time.Now().UnixNano(), hash[:8])
@@ -1043,48 +1054,19 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 
 		if _, err := h.mailboxes.DeliverMessage(userID, targetMailbox, meta, 0); err != nil {
 			failed++
-			continue
+			return nil
 		}
 		imported++
+		return nil
+	})
+	if scanErr != nil {
+		failed++
+		h.logger.Error("web: mbox import read failed part-way", "mailbox", targetMailbox, "user", userID, "imported", imported, "error", scanErr)
 	}
 
 	h.logger.Info("web: mbox imported", "mailbox", targetMailbox, "user", userID, "imported", imported, "failed", failed)
 
 	templ.Handler(templates.ImportResult(imported, failed, targetMailbox)).ServeHTTP(w, r)
-}
-
-// splitMbox splits an mbox byte slice into individual RFC 5322 messages.
-// Each message starts with a "From " line at the beginning of a line.
-func splitMbox(data []byte) [][]byte {
-	var messages [][]byte
-	content := string(data)
-
-	// Ensure it starts with "From "
-	if !strings.HasPrefix(content, "From ") {
-		// Try to find the first "From " line.
-		idx := strings.Index(content, "\nFrom ")
-		if idx >= 0 {
-			content = content[idx+1:]
-		}
-	}
-
-	parts := strings.Split("\n"+content, "\nFrom ")
-	for i, part := range parts {
-		if i == 0 {
-			continue // empty before first split
-		}
-		// Find end of "From " line.
-		nlIdx := strings.Index(part, "\n")
-		if nlIdx < 0 {
-			continue
-		}
-		msgBody := part[nlIdx+1:]
-		if len(strings.TrimSpace(msgBody)) == 0 {
-			continue
-		}
-		messages = append(messages, []byte(msgBody))
-	}
-	return messages
 }
 
 // ExportEML downloads a message as a .eml file (raw RFC 5322).

@@ -24,6 +24,7 @@ import (
 	"github.com/bongo-project/bongo/internal/cluster"
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/testutil"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -228,28 +229,10 @@ func sharedAssignFreePorts(t *testing.T, cfg *config.Config) {
 	cfg.Server.ControlAddr = net.JoinHostPort("127.0.0.1", strconv.Itoa(ports[8]))
 }
 
-// sharedFreePorts returns n distinct free ports. All listeners are held open
-// until every port has been claimed, then closed together, so no two callers
-// within this batch can receive the same port.
+// sharedFreePorts returns n distinct free ports; see testutil.FreePorts.
 func sharedFreePorts(t *testing.T, n int) []int {
 	t.Helper()
-	listeners := make([]net.Listener, 0, n)
-	ports := make([]int, 0, n)
-	for i := 0; i < n; i++ {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			for _, held := range listeners {
-				held.Close()
-			}
-			t.Fatalf("freePorts: %v", err)
-		}
-		listeners = append(listeners, l)
-		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
-	}
-	for _, l := range listeners {
-		l.Close()
-	}
-	return ports
+	return testutil.FreePorts(t, n)
 }
 
 func sharedWaitForLeader(t *testing.T, nodes []*testNode, timeout time.Duration) int {

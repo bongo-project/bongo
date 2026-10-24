@@ -34,8 +34,20 @@ func TestSMTPFullMailFlow(t *testing.T) {
 	}
 	t.Logf("test user created: %s (id: %s)", "testuser@localhost", userID)
 
-	// Wait for Raft to propagate.
-	time.Sleep(500 * time.Millisecond)
+	// Wait until the address resolves through the same RecipientResolver the
+	// SMTP RCPT check and the deliver stage use, instead of sleeping.
+	resolver := store.NewRecipientResolver(a.AddressStore, a.Store, a.Metadata.System)
+	resolveDeadline := time.Now().Add(10 * time.Second)
+	for {
+		resolved, rerr := resolver.ResolveRecipient("testuser@localhost")
+		if rerr == nil && resolved == userID {
+			break
+		}
+		if time.Now().After(resolveDeadline) {
+			t.Fatalf("testuser@localhost did not resolve to %s within 10s (got %q, err %v)", userID, resolved, rerr)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 
 	// Send an email via net/smtp to port 2525.
 	smtpAddr := a.SMTP.MXAddr()
