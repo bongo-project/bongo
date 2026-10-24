@@ -136,6 +136,18 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 | 25.3 | US-016: Toolchain and pinned dependencies are current | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
 | 25.4 | US-017: The image-pin check reads YAML, not lines | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
 
+## Phase 26: Public release of the repository
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 26.1 | US-001: The repository is licensed AGPL-3.0 | [prd-public-release.md](active/prd-public-release.md) | TODO | |
+| 26.2 | US-002: Demo data is synthetic | [prd-public-release.md](active/prd-public-release.md) | TODO | |
+| 26.3 | US-003: Operational and personal details are scrubbed from the tree | [prd-public-release.md](active/prd-public-release.md) | TODO | |
+| 26.4 | US-004: History is rewritten | [prd-public-release.md](active/prd-public-release.md) | TODO | |
+| 26.5 | US-005: The open security items are reviewed before publishing | [prd-public-release.md](active/prd-public-release.md) | TODO | |
+| 26.6 | US-006: CI is safe on a public repository | [prd-public-release.md](active/prd-public-release.md) | TODO | |
+| 26.7 | US-007: The README reads as a public project page | [prd-public-release.md](active/prd-public-release.md) | TODO | |
+
 ## Backlog (unscheduled)
 
 | # | Task | Status | Notes |
