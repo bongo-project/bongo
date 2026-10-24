@@ -1,0 +1,6 @@
+services:
+  ok:
+    image: nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+? &a {image: nginx:1}
+: x
+x-y: {web: *a}

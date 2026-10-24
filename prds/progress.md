@@ -1453,3 +1453,9 @@ PATTERN: [logging] A log line built from a caller-sized list needs a bound, like
 PATTERN: [testing] Diff every mutant against the source before running it; a sed pattern that misses (e.g. on gofmt-aligned spacing) produces an identical file and a false "survived".
 PATTERN: [idempotency] Node-local or short-lived objects (spool files, delivered queue entries) cannot prove a step happened; a durable marker written after each step can.
 PATTERN: [idempotency] Fingerprint the submission, not the generated output (which carries a Date), and include identity fields such as From.
+
+## 2026-10-24: Phase 24/25 batch 5 (24.5, 25.1, 25.4)
+
+- 24.5 compose messages translated, 25.1 port and bind validation, 25.4 YAML image-pin check. All three reviews rejected once for test gaps and passed after a fix round; the orchestrator closed the last gaps (dev gossip collision, agent redirect exemption, a no-literal-text scan for compose.go, an image in a complex YAML key) and proved each with a mutant.
+PATTERN: [testing] Source-scanning tests are invisible to -overlay; mutate a scratch copy of the tree to prove them.
+PATTERN: [config] Validate collisions against the ports a node will actually bind (effective dev ports, role-dependent listeners), or it either misses real clashes or refuses valid configs.

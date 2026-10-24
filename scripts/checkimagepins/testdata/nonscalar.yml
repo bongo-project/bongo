@@ -1,0 +1,13 @@
+services:
+  web:
+    image: registry.example/app:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  a:
+    image:
+  b:
+    image: 42
+  c:
+    image: [nginx]
+  d:
+    image: {name: nginx}
+  e:
+    image: ""

@@ -1,0 +1,6 @@
+x-img: &img nginx:1
+services:
+  web:
+    image: registry.example/app:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  b:
+    image: *img

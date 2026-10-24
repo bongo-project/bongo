@@ -1,0 +1,7 @@
+x-bases:
+  - &a {image: nginx:1}
+services:
+  good:
+    image: nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  web:
+    <<: *a

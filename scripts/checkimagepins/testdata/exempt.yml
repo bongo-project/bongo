@@ -1,0 +1,9 @@
+services:
+  a:
+    image: ghcr.io/bongo-project/bongo:latest
+  b:
+    image: ghcr.io/bongo-project/bongo:0.6.20
+  c:
+    image: ghcr.io/bongo-project/bongo
+  d:
+    image: ghcr.io/bongo-project/bongo@sha256:short

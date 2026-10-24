@@ -1,0 +1,6 @@
+services:
+  web:
+    image: registry.example/app:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+x-foo:
+  nested:
+    image: nginx:1

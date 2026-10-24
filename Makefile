@@ -73,7 +73,7 @@ lint:
 	golangci-lint run
 
 check-image-pins:
-	sh scripts/check-image-pins.sh
+	go run ./scripts/checkimagepins deploy/docker-compose.yml
 
 sec:
 	GOCACHE=$(SEC_GOCACHE) govulncheck ./...

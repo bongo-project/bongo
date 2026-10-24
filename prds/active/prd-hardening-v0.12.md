@@ -532,3 +532,24 @@ From the Phase 24 batch 4 reviews (2026-10-24):
     zone; the month grid shows neighbouring months' all-day events in its
     leading and trailing cells. (24.4)
 
+From the Phase 25 batch 5 reviews (2026-10-24):
+
+- admin.go, calendar.go, preferences.go and address_verify.go still build
+  English flash strings; the flash is free text in the URL, so a crafted
+  link can show any text (escaped). Moving to message keys would fix both.
+  (24.5)
+- The handler-key scan tests read source files, so `-overlay` mutations do
+  not reach them; mutate a copy of the tree instead. (24.5)
+- The autoconfig handler advertises the raw IMAP and submission ports, not
+  the effective dev ports (1143, 1993, 2587); `ListenPorts` makes this a
+  one-line fix. (25.1)
+- The image-pin check accepts `${IMG}@sha256:<digest>` and
+  `ghcr.io/bongo-project/bongo:${TAG}`, as the shell script did. (25.4)
+- Release notes, batch 5:
+  - Compose messages are translated (de, es, fr). (24.5)
+  - Config validation (startup and hot reload) refuses colliding or
+    out-of-range listener ports and a server with a wildcard bind address
+    and no advertise or cluster bind address. Production's file passes.
+    (25.1)
+  - `make check-image-pins` parses the compose file as YAML. (25.4)
+
