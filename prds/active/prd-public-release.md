@@ -169,3 +169,18 @@ FR-1 to FR-7 are the acceptance criteria of US-001 to US-007.
 ### 8.2 Candidates for later
 
 Findings from reviews during this work go here.
+
+From the 26.x work (2026-10-24):
+
+- Order changed: v0.12.0 must be deployed to production before publishing,
+  because the repository documents fixes that are live on v0.11.0 (26.5).
+- vCard 2.1 `EMAIL;INTERNET:addr` loses the address on import: go-vcard keeps
+  it as a parameter key with an empty value, and `parseVCardBlock` reads only
+  the value. The existing unit test builds the card by hand and misses it.
+  (26.2)
+- The handlers test package takes about 240 s alone and hit Go's 10-minute
+  default timeout under load; GitHub's standard runners are slower than the
+  development machine. Handled in 25.2. (26.1)
+- The ComponentLib tokens in `internal/web/static/css/componentlib/` are the
+  operator's own design and out of date; refresh them with the website work.
+
