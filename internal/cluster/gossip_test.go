@@ -194,3 +194,48 @@ func TestGossipRejectsUnusableBind(t *testing.T) {
 		t.Fatal("hostname advertise without cluster.bind_addr must not start gossip")
 	}
 }
+
+// The peer address travels in gossip metadata, built from the advertise
+// address; a node without peers advertises none.
+func TestGossipAdvertisesPeerAddr(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("no peers advertises nothing", func(t *testing.T) {
+		cfg := config.Defaults()
+		cfg.Server.Role = "server"
+		cfg.Server.Name = "solo"
+		cfg.Server.BindAddr = "0.0.0.0"
+		cfg.Server.AdvertiseAddr = "127.0.0.1"
+		cfg.Cluster.Gossip.Port = freePort(t)
+		node, err := NewGossipNode(cfg, "0.0.0.0:443", "", logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer node.Shutdown()
+		if got := node.Members()[0].PeerAddr; got != "" {
+			t.Errorf("PeerAddr = %q, want empty", got)
+		}
+	})
+
+	t.Run("peered node advertises advertise address and peer port", func(t *testing.T) {
+		ext := nonLoopbackIPv4()
+		if ext == "" {
+			t.Skip("no non-loopback IPv4 interface")
+		}
+		cfg := config.Defaults()
+		cfg.Server.Role = "server"
+		cfg.Server.Name = "peered"
+		cfg.Server.AdvertiseAddr = ext
+		cfg.Cluster.PeerPort = 18302
+		cfg.Cluster.Gossip.Port = freePort(t)
+		node, err := NewGossipNode(cfg, "0.0.0.0:443", "", logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer node.Shutdown()
+		want := net.JoinHostPort(ext, "18302")
+		if got := node.Members()[0].PeerAddr; got != want {
+			t.Errorf("PeerAddr = %q, want %q", got, want)
+		}
+	})
+}

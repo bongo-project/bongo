@@ -488,3 +488,24 @@ func TestNewRaftNodeRoutableClusterBindNeverPlaintext(t *testing.T) {
 		t.Fatal("expected a start failure without cluster.tls")
 	}
 }
+
+// LoadPeerTLS must stay strict on its own, not rely on raft having
+// strict-loaded first: a certificate without ca_file is refused, and with
+// ca_file the CA is both trust anchors and client certificates are required.
+func TestLoadPeerTLSIsStrict(t *testing.T) {
+	ca := newTestCA(t, "CA")
+	cfg := peeredConfig(t, "127.0.0.1", 0)
+	cfg.Cluster.TLS.CertFile, cfg.Cluster.TLS.KeyFile, _ = ca.writeNodeFiles(t, "127.0.0.1")
+	if _, err := LoadPeerTLS(cfg); err == nil {
+		t.Fatal("LoadPeerTLS accepted a certificate without ca_file")
+	}
+
+	_, _, cfg.Cluster.TLS.CAFile = ca.writeNodeFiles(t, "127.0.0.1")
+	tc, err := LoadPeerTLS(cfg)
+	if err != nil {
+		t.Fatalf("LoadPeerTLS with ca_file: %v", err)
+	}
+	if tc.RootCAs == nil || tc.ClientCAs == nil || tc.ClientAuth != tls.RequireAndVerifyClientCert {
+		t.Fatalf("LoadPeerTLS: RootCAs set %v, ClientCAs set %v, ClientAuth %v", tc.RootCAs != nil, tc.ClientCAs != nil, tc.ClientAuth)
+	}
+}

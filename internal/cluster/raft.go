@@ -367,6 +367,15 @@ func loadStrictRaftTLS(cfg *config.Config) (*tls.Config, error) {
 	}, nil
 }
 
+// LoadPeerTLS returns the mutual-TLS configuration for the peer listener and
+// the clients that call it. It is the same strict definition raft uses for a
+// node with peers: cert, key and CA are all mandatory and the CA is both the
+// client and the server trust anchor. Callers must clone the result before
+// handing it to a server or transport.
+func LoadPeerTLS(cfg *config.Config) (*tls.Config, error) {
+	return loadStrictRaftTLS(cfg)
+}
+
 // loadRaftTLS builds a tls.Config from the cluster TLS configuration.
 func loadRaftTLS(cfg *config.Config) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(cfg.Cluster.TLS.CertFile, cfg.Cluster.TLS.KeyFile)

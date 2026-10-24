@@ -38,6 +38,7 @@ func startTestServer(t *testing.T) (*AgentServer, bongov1.AgentServiceClient, fu
 	pki := newTestPKI(t)
 	config := AgentServerConfig{
 		Port:         0,
+		BindHost:     "127.0.0.1",
 		AgentTTL:     DefaultAgentTTL,
 		ReapInterval: DefaultReapInterval,
 		TLS:          pki.server,
