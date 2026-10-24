@@ -173,6 +173,17 @@ type Agent struct {
 	SRS       *srs.Codec
 	BounceGen *mail.BounceGenerator
 
+	// internalSecret is the effective session secret chosen at startup (the
+	// generated one in dev mode when web.session_secret is empty). Everything
+	// that signs or verifies an internal request uses it; nothing reads
+	// Config.Web.SessionSecret for that, which is empty in dev.
+	internalSecret []byte
+
+	// dmarcEvaluator overrides the DMARC evaluator of the agent antispam
+	// processor. Nil in production (a live-DNS evaluator is built); tests set
+	// it to stay offline.
+	dmarcEvaluator *mail.DMARCEvaluator
+
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
 
@@ -615,6 +626,29 @@ func (a *Agent) initSRS(sessionSecret []byte) {
 	a.SRS = srs.New(security.DeriveKey(sessionSecret, srs.KeyPurpose), a.Config.SMTP.SRSMaxAgeDays)
 }
 
+// initInternalSecret selects the effective session secret at startup, stores it
+// on the Agent for every internal-request signer, and derives the SRS codec
+// from it. Every session/2FA/setup cookie is HMAC'd with a key derived from
+// this value; a weak secret is offline-guessable from a single observed
+// cookie, so a meaningful minimum length is required outside dev. In dev an
+// empty secret is replaced by a random one.
+func (a *Agent) initInternalSecret() ([]byte, error) {
+	if err := validateSessionSecret(a.Config.Server.Role, a.Config.Web.SessionSecret); err != nil {
+		return nil, err
+	}
+	sessionSecret := []byte(a.Config.Web.SessionSecret)
+	if len(sessionSecret) == 0 {
+		sessionSecret = make([]byte, 32)
+		if _, err := rand.Read(sessionSecret); err != nil {
+			return nil, fmt.Errorf("generating session secret: %w", err)
+		}
+		a.logger.Info("web: auto-generated session secret for dev mode")
+	}
+	a.internalSecret = sessionSecret
+	a.initSRS(sessionSecret)
+	return sessionSecret, nil
+}
+
 // validateSessionSecret applies the session-secret rules shared by startup
 // and reload. Every session/2FA/setup cookie is HMAC'd with a key derived from
 // this value; a weak secret is offline-guessable from a single observed
@@ -795,7 +829,29 @@ func (a *Agent) newAgentSMTPBackend(deliverer bongosmtp.Deliverer) (*bongosmtp.B
 	spfChecker := mail.NewSPFChecker()
 	backend.SetSPFChecker(spfChecker)
 	a.SPFChecker = spfChecker
+
+	// SRS bounces: an agent has no store, so it cannot tell a hosted domain
+	// from any other, and the HMAC check decides every SRS-shaped recipient
+	// instead. The key is derived from the configured secret exactly as the
+	// server role derives it, so the secret must match the servers'. This
+	// deliberately skips validateSessionSecret: an agent with no secret still
+	// starts, and fails closed on SRS recipients only.
+	a.initSRS([]byte(a.Config.Web.SessionSecret))
+	if a.SRS != nil {
+		backend.SetSRSAnyDomain(a.SRS)
+	} else {
+		a.logger.Warn("smtp agent: no web.session_secret; all SRS recipients refused")
+		backend.SetSRSAnyDomain(refuseAllSRS{})
+	}
 	return backend, nil
+}
+
+// refuseAllSRS is the SRS verifier of an agent with no session secret: no
+// address can be verified, so every SRS-shaped recipient is refused.
+type refuseAllSRS struct{}
+
+func (refuseAllSRS) Reverse(string) (string, error) {
+	return "", errors.New("no session secret to verify SRS addresses")
 }
 
 // reloadConsumers returns copies of the registered consumer lists.
@@ -854,22 +910,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	// code layer so exposure never depends on the reverse proxy's IP allow-list alone.
 	r.With(middleware.PrivateOnly(a.Config.Web.BehindTLSProxy)).Handle("/metrics", observability.Handler())
 
-	// Session secret. Every session/2FA/setup cookie is HMAC'd with a key
-	// derived from this value; a weak secret is offline-guessable from a single
-	// observed cookie, after which an attacker can forge any cookie. Require a
-	// meaningful minimum length outside dev.
-	if err := validateSessionSecret(a.Config.Server.Role, a.Config.Web.SessionSecret); err != nil {
+	sessionSecret, err := a.initInternalSecret()
+	if err != nil {
 		return err
 	}
-	sessionSecret := []byte(a.Config.Web.SessionSecret)
-	if len(sessionSecret) == 0 {
-		sessionSecret = make([]byte, 32)
-		if _, err := rand.Read(sessionSecret); err != nil {
-			return fmt.Errorf("generating session secret: %w", err)
-		}
-		a.logger.Info("web: auto-generated session secret for dev mode")
-	}
-	a.initSRS(sessionSecret)
 
 	// The outbound queue store and rate limiter must exist before any HTTP
 	// handlers are registered: compose and admin handlers capture them by
@@ -3296,6 +3340,24 @@ func (a *Agent) notify(userID, mailbox string, notif bongoimap.Notification) {
 	a.Notifier.Notify(userID, mailbox, notif)
 }
 
+// newJoinRequest builds the signed cluster join request for a peer's HTTP
+// address. It signs with the effective internal secret, so a node whose
+// configured session secret is empty (dev mode generates one) still passes the
+// peer's RequireInternalAuth.
+func (a *Agent) newJoinRequest(peerHTTPAddr, id, raftAddr string) (*http.Request, error) {
+	body, err := json.Marshal(map[string]string{"id": id, "addr": raftAddr})
+	if err != nil {
+		return nil, fmt.Errorf("marshal join request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, "http://"+peerHTTPAddr+"/internal/cluster/join", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build join request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	security.SignInternalRequest(req, a.internalSecret)
+	return req, nil
+}
+
 // autoJoinRaft finds the Raft leader via gossip metadata and sends a join request.
 func (a *Agent) autoJoinRaft() {
 	if a.Gossip == nil || a.Raft == nil {
@@ -3320,21 +3382,11 @@ func (a *Agent) autoJoinRaft() {
 			continue
 		}
 
-		raftAddr := string(a.Raft.Transport.LocalAddr())
-		joinReq := map[string]string{
-			"id":   a.Config.Server.Name,
-			"addr": raftAddr,
-		}
-		body, _ := json.Marshal(joinReq)
-
-		url := "http://" + m.HTTPAddr + "/internal/cluster/join"
-		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+		req, err := a.newJoinRequest(m.HTTPAddr, a.Config.Server.Name, string(a.Raft.Transport.LocalAddr()))
 		if err != nil {
 			a.logger.Debug("raft auto-join: failed to build request", "peer", m.Name, "error", err)
 			continue
 		}
-		req.Header.Set("Content-Type", "application/json")
-		security.SignInternalRequest(req, []byte(a.Config.Web.SessionSecret))
 		resp, err := http.DefaultClient.Do(req) //nolint:gosec // internal cluster endpoint
 		if err != nil {
 			a.logger.Debug("raft auto-join: failed to contact peer", "peer", m.Name, "error", err)
@@ -3526,7 +3578,11 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 	}
 
 	// Start a local gRPC server on a random port.
-	procSrv := agentgrpc.NewAgentProcessorServer(proc, a.logger)
+	procSrv := agentgrpc.NewAgentProcessorServer(proc, agentgrpc.TLSFiles{
+		CertFile: a.Config.AgentServer.TLS.CertFile,
+		KeyFile:  a.Config.AgentServer.TLS.KeyFile,
+		CAFile:   a.Config.AgentServer.TLS.CAFile,
+	}, a.logger)
 	if err := procSrv.Start(net.JoinHostPort(a.Config.Server.BindAddr, "0")); err != nil {
 		return fmt.Errorf("start processor server: %w", err)
 	}

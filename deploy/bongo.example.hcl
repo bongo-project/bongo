@@ -58,8 +58,9 @@ server {
   # talks to itself, so loopback is correct. Set to the node's routable IP only
   # if you later form a multi-node cluster. While this is loopback (or
   # "localhost"), raft and gossip listen on loopback only regardless of
-  # bind_addr; a routable value makes them follow bind_addr. A server with
-  # cluster.join set is refused if this is loopback.
+  # bind_addr. A routable value makes them listen on that address (or on
+  # cluster.bind_addr), never on bind_addr. It must be an IP literal. A server
+  # with cluster.join set is refused if this is loopback.
   advertise_addr = "127.0.0.1"
 
   # agents — ONLY for role = "agent". The list of protocol processors this agent
@@ -72,6 +73,12 @@ server {
 # cluster — Raft consensus, gossip membership, and inter-node TLS
 # -----------------------------------------------------------------------------
 cluster {
+  # bind_addr — IP literal raft and gossip listen on. Leave unset: they then
+  # bind the advertise address (loopback for a single node), and
+  # server.bind_addr is ignored. Set it when the advertise address is not on a
+  # local interface (NAT, Docker bridge), to this node's local interface IP.
+  # bind_addr = "10.0.0.5"
+
   # join — addresses of existing nodes to join to form a multi-node cluster.
   # Leave empty for a single node. NOTE: a "server" that sets join REQUIRES
   # gossip.encryption_key AND cluster.tls (cert+key+ca) or it will refuse to
@@ -100,7 +107,11 @@ cluster {
   tls {
     # cert_file = "/etc/bongo/certs/mail.example.com/fullchain.pem"
     # key_file  = "/etc/bongo/certs/mail.example.com/privkey.pem"
-    # ca_file   = "/etc/bongo/certs/ca.pem"   # only needed for multi-node mTLS
+    # ca_file   = "/etc/bongo/certs/ca.pem"   # MANDATORY once the node has peers
+    # (cluster.join set, or a non-loopback advertise_addr or cluster.bind_addr):
+    # cert_file, key_file and ca_file must all be readable or the node refuses
+    # to start. Peer certificates need an IP SAN for each node's advertise
+    # address.
   }
 }
 
@@ -646,6 +657,15 @@ telemetry {
 # -----------------------------------------------------------------------------
 # agent_server — ONLY for role = "agent": how this agent reaches its server.
 # -----------------------------------------------------------------------------
+#
+# The tls files are REQUIRED for role = "agent" (config validation and listener
+# start-up both refuse to proceed without all three). They secure the agent
+# gRPC listeners with mutual TLS: every client must present a certificate
+# signed by ca_file, and TLS 1.2 is the minimum. One cert/key pair is used in
+# both directions, so the certificate needs both serverAuth and clientAuth
+# extended key usage. Changing them needs a restart.
+# NOTE: outbound agent gRPC clients still dial plaintext until a later change
+# adds the client half; do not rely on this block for client-side TLS yet.
 # agent_server {
 #   address = "10.0.0.2:8400"
 #   tls {

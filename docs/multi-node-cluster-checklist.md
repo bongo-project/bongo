@@ -21,17 +21,21 @@ what that gate is guarding — work through it before forming a cluster.
   broadcast forged node metadata (attacker-controlled `HTTPAddr`), poisoning the
   peer list the blob syncer trusts.
 - **H4 — raft peer transport.** The raft TCP transport must not fall back to
-  plaintext, and the dialer must actually verify peer certificates (today it sets
-  `InsecureSkipVerify` when no CA is configured). A plaintext/unverified raft
-  port lets an attacker drive consensus and overwrite the FSM.
+  plaintext, and the dialer must actually verify peer certificates. Shipped: a
+  node with peers fails to start if `cluster.tls` cert, key or CA is missing or
+  unreadable (the error names the file), never opens a plaintext raft listener,
+  requires and verifies a client certificate against the cluster CA, and the
+  dialer never sets `InsecureSkipVerify`. A plaintext/unverified raft port
+  lets an attacker drive consensus and overwrite the FSM.
 - **M8 — blob-sync / join over HTTP.** Blob pulls and raft auto-join go over
   cleartext HTTP; on a real network that exposes user mail in transit.
-- **L6 — cluster bind address.** Raft and gossip share one `bind_addr` that
-  defaults to `0.0.0.0`. A node advertising a loopback address now binds both
-  transports to loopback (single node: addressed). For a multi-node cluster, set
-  `advertise_addr` to the node's private IP and keep `bind_addr` to that
-  interface where the protocol listeners allow it; a join with a loopback
-  advertise address is refused at startup.
+- **L6 — cluster bind address.** Raft and gossip no longer follow
+  `server.bind_addr` (the protocol listeners' wildcard). They bind
+  `cluster.bind_addr` when set, otherwise the advertise address: loopback for a
+  single node, the node's private IP for a cluster member. A join with a
+  loopback advertise address is refused at startup, and a hostname or wildcard
+  that cannot be turned into an interface IP is refused rather than binding
+  every interface.
 
 ## Checklist
 
@@ -56,17 +60,26 @@ what that gate is guarding — work through it before forming a cluster.
      }
    }
    ```
-   `ca_file` is what turns off `InsecureSkipVerify` — do not omit it.
+   `ca_file` is mandatory once the node has peers (`cluster.join` set, a
+   non-loopback `advertise_addr` or a non-loopback `cluster.bind_addr`); without it the node refuses to start.
+   The dialer verifies the server name against the IP it dials, so each node's
+   certificate must carry an **IP SAN** for that node's advertise address. The
+   old `InsecureSkipVerify` hid this requirement: a certificate without IP SANs
+   that formed a cluster before will now fail the handshake.
 
-3. **Bind cluster transports privately.** Set `bind_addr`/`advertise_addr` to the
-   node's private/routable IP (not `0.0.0.0`, not loopback) and ensure the raft
-   (8300) and gossip (8301) ports are reachable **only** between nodes — never
-   published to the internet or through Traefik.
+3. **Bind cluster transports privately.** Set `server.advertise_addr` to the
+   node's private IP (an IP literal, not a hostname, not `0.0.0.0`, not
+   loopback). Raft and gossip listen on that address by default; `server.bind_addr`
+   does not affect them. If the advertise address is not on a local interface
+   (NAT, Docker bridge), set `cluster.bind_addr` to the local interface IP
+   instead, otherwise the bind fails with "cannot assign requested address".
+   Ensure the raft (8300) and gossip (8301) ports are reachable **only**
+   between nodes, never published to the internet or through Traefik.
 
 4. **Verify the code-level hardening is in place** before rollout (these are the
    deferred fixes; confirm they were implemented, not just configured):
    - raft refuses to start clustered without mTLS instead of falling back to
-     plaintext; peer certs are verified against `ca_file`.
+     plaintext; peer certs are verified against `ca_file` (shipped).
    - blob-sync and raft join use `https://` (or tunnel over the raft TLS link).
    - agent gRPC (`internal/agent/grpc`, server and processor) uses mTLS from the
      cluster CA and rejects unauthenticated clients (TASKS.md B20); its logger
@@ -79,6 +92,10 @@ what that gate is guarding — work through it before forming a cluster.
    raft quorum + leader stay up throughout (see `zero-downtime-backup-plan`).
    Optionally front the cluster with a stateless `agent`/`edge` SMTP node so
    inbound mail is absorbed while a server node reboots for its backup.
+   An `agent` SMTP node must set the same `web.session_secret` as the servers:
+   SRS bounce addresses are keyed from it, and an agent with a different or no
+   secret refuses every SRS-shaped recipient with `550 5.1.1` (it logs one
+   warning at startup when none is set).
 
 ## Sanity check
 

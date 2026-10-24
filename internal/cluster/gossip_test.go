@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -140,5 +141,56 @@ func TestGossipLoopbackAdvertiseBindsLoopback(t *testing.T) {
 	}
 	if dialable(net.JoinHostPort(ext, fmt.Sprint(port))) {
 		t.Errorf("gossip reachable on %s although advertise address is loopback", ext)
+	}
+}
+
+func TestGossipBindsAdvertiseOrClusterBindAddr(t *testing.T) {
+	ext := nonLoopbackIPv4()
+	if ext == "" {
+		t.Skip("no non-loopback IPv4 interface")
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tests := []struct {
+		name        string
+		clusterBind string
+		onExt       bool
+		onLoopback  bool
+	}{
+		{"unset follows advertise, ignores server.bind_addr", "", true, false},
+		{"cluster.bind_addr wins", "127.0.0.1", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Defaults()
+			cfg.Server.Role = "server"
+			cfg.Server.Name = "gossip-bind"
+			cfg.Server.BindAddr = "0.0.0.0"
+			cfg.Server.AdvertiseAddr = ext
+			cfg.Cluster.BindAddr = tt.clusterBind
+			port := freePort(t)
+			cfg.Cluster.Gossip.Port = port
+			node, err := NewGossipNode(cfg, "127.0.0.1:8080", "", logger)
+			if err != nil {
+				t.Fatalf("NewGossipNode: %v", err)
+			}
+			defer node.Shutdown()
+			if got := dialable(net.JoinHostPort(ext, fmt.Sprint(port))); got != tt.onExt {
+				t.Errorf("reachable on %s = %v, want %v", ext, got, tt.onExt)
+			}
+			if got := dialable(net.JoinHostPort("127.0.0.1", fmt.Sprint(port))); got != tt.onLoopback {
+				t.Errorf("reachable on loopback = %v, want %v", got, tt.onLoopback)
+			}
+		})
+	}
+}
+
+func TestGossipRejectsUnusableBind(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "server"
+	cfg.Server.BindAddr = "0.0.0.0"
+	cfg.Server.AdvertiseAddr = "bongo-1"
+	cfg.Cluster.Gossip.Port = freePort(t)
+	if _, err := NewGossipNode(cfg, "127.0.0.1:8080", "", slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+		t.Fatal("hostname advertise without cluster.bind_addr must not start gossip")
 	}
 }

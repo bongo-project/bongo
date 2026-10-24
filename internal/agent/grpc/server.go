@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
@@ -164,6 +165,7 @@ type AgentServerConfig struct {
 	Port         int
 	AgentTTL     time.Duration
 	ReapInterval time.Duration
+	TLS          TLSFiles // mutual TLS material; Start fails when incomplete
 }
 
 // DefaultAgentServerConfig returns configuration with sensible defaults.
@@ -179,11 +181,12 @@ func DefaultAgentServerConfig() AgentServerConfig {
 type AgentServer struct {
 	bongov1.UnimplementedAgentServiceServer
 
-	registry *AgentRegistry
-	blobs    *store.BlobStore
-	spool    *pipeline.SpoolStore
-	logger   *slog.Logger
-	config   AgentServerConfig
+	registry   *AgentRegistry
+	blobs      *store.BlobStore
+	spool      *pipeline.SpoolStore
+	logger     *slog.Logger
+	config     AgentServerConfig
+	listenAddr string
 
 	grpcServer *grpc.Server
 	stopReaper chan struct{}
@@ -214,15 +217,25 @@ func (s *AgentServer) Registry() *AgentRegistry {
 	return s.registry
 }
 
+// ListenAddr returns the resolved address after a successful Start.
+func (s *AgentServer) ListenAddr() string { return s.listenAddr }
+
 // Start creates a gRPC server, registers the service, and starts listening.
 // It also starts the background reaper goroutine.
 func (s *AgentServer) Start() error {
+	// TLS first: a misconfigured server must not bind the port.
+	tlsCfg, err := serverTLSConfig(s.config.TLS)
+	if err != nil {
+		return fmt.Errorf("agent grpc: %w", err)
+	}
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.config.Port))
 	if err != nil {
 		return fmt.Errorf("agent grpc: listen on port %d: %w", s.config.Port, err)
 	}
 
-	s.grpcServer = grpc.NewServer()
+	s.listenAddr = lis.Addr().String()
+
+	s.grpcServer = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
 	bongov1.RegisterAgentServiceServer(s.grpcServer, s)
 
 	go s.reapLoop()

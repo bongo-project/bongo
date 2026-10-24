@@ -72,9 +72,6 @@ var noopKeys = []string{
 	"cluster.raft.data_dir",
 	// group 3
 	"server.datacenter",
-	"agent_server.tls.cert_file",
-	"agent_server.tls.key_file",
-	"agent_server.tls.ca_file",
 	"smtp.tls.ca_file",
 	"web.tls.ca_file",
 	"storage.pebble.wal_dir",
@@ -86,7 +83,7 @@ var noopKeys = []string{
 // even though docs/config-reload.md sections 4.1 and 4.2 still say NO-OP.
 var restartKeys = []string{
 	"server.role", "server.name", "server.trusted_proxies", "server.bind_addr", "server.advertise_addr", "server.agents",
-	"cluster.join", "cluster.raft.port", "cluster.raft.snapshot_threshold",
+	"cluster.bind_addr", "cluster.join", "cluster.raft.port", "cluster.raft.snapshot_threshold",
 	"cluster.raft.snapshot_interval", "cluster.raft.trailing_logs",
 	"cluster.gossip.port", "cluster.gossip.encryption_key",
 	"cluster.tls.cert_file", "cluster.tls.key_file", "cluster.tls.ca_file",
@@ -122,6 +119,7 @@ var restartKeys = []string{
 	"telemetry.log.format", "telemetry.log.file", "telemetry.log.max_size_mb",
 	"telemetry.log.max_backups", "telemetry.log.max_age_days", "telemetry.log.compress",
 	"agent_server.address",
+	"agent_server.tls.cert_file", "agent_server.tls.key_file", "agent_server.tls.ca_file",
 }
 
 // Secret-bearing keys. File paths (*_file) are not secret.

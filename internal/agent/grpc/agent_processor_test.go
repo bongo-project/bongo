@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/bongo-project/bongo/internal/pipeline"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -44,14 +43,15 @@ func startTestProcessorServer(t *testing.T, proc pipeline.Processor) (*AgentProc
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	srv := NewAgentProcessorServer(proc, logger)
-	if err := srv.Start(":0"); err != nil {
+	pki := newTestPKI(t)
+	srv := NewAgentProcessorServer(proc, pki.server, logger)
+	if err := srv.Start("127.0.0.1:0"); err != nil {
 		t.Fatalf("start processor server: %v", err)
 	}
 
 	conn, err := grpc.NewClient(
 		srv.ListenAddr(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(pki.goodClientCreds(t)),
 	)
 	if err != nil {
 		srv.Stop()
