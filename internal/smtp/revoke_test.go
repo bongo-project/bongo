@@ -1,11 +1,13 @@
 package smtp
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
 	"testing"
 
+	gosmtp "github.com/emersion/go-smtp"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/protobuf/proto"
 
@@ -200,4 +202,50 @@ func TestSMTPRcptRefusedAfterRevocation(t *testing.T) {
 	if code := smtpCode(s.Rcpt("local@example.com", nil)); code != 535 {
 		t.Fatalf("RCPT after disable = code %d, want 535", code)
 	}
+}
+
+// flakyState is a real LocalAuth whose AccountState errors, standing in for a
+// store outage after AUTH succeeded.
+type flakyState struct{ *auth.LocalAuth }
+
+func (flakyState) AccountState(string) (auth.AccountState, error) {
+	return auth.AccountState{}, errors.New("pebble unavailable")
+}
+
+func assertTempFail(t *testing.T, what string, err error) {
+	t.Helper()
+	var se *gosmtp.SMTPError
+	if !errors.As(err, &se) || se.Code != 451 || se.EnhancedCode != (gosmtp.EnhancedCode{4, 3, 0}) {
+		t.Fatalf("%s with store error = %v, want 451 4.3.0", what, err)
+	}
+}
+
+func TestSMTPStoreErrorRefusesCommands(t *testing.T) {
+	t.Run("MAIL", func(t *testing.T) {
+		b, ps := revokeBackend(t)
+		putSMTPProfile(t, ps, "pw", false)
+		b.senderPolicy = &fakePolicy{extra: map[string]bool{"u@example.com": true}}
+		s := newSessionForIP(b, "203.0.113.9")
+		if err := s.AuthPlain("u@example.com", "pw"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Mail("u@example.com", nil); err != nil {
+			t.Fatalf("positive control: Mail = %v", err)
+		}
+		b.auth = flakyState{b.auth.(*auth.LocalAuth)}
+		assertTempFail(t, "MAIL", s.Mail("u@example.com", nil))
+	})
+	t.Run("RCPT", func(t *testing.T) {
+		s, _, _ := revokeDataSession(t)
+		s.backend.auth = flakyState{s.backend.auth.(*auth.LocalAuth)}
+		assertTempFail(t, "RCPT", s.Rcpt("local@example.com", nil))
+	})
+	t.Run("DATA", func(t *testing.T) {
+		s, _, d := revokeDataSession(t)
+		s.backend.auth = flakyState{s.backend.auth.(*auth.LocalAuth)}
+		assertTempFail(t, "DATA", s.Data(strings.NewReader(revokeMsg)))
+		if len(d.localCalls) != 0 || d.stored != 0 {
+			t.Fatalf("DATA with store error queued %d, stored %d blobs; want 0 and 0", len(d.localCalls), d.stored)
+		}
+	})
 }

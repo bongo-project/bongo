@@ -2,9 +2,11 @@ package pop3
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -225,5 +227,97 @@ func TestPOP3QuitDoesNotApplyDeletionsForRevokedAccount(t *testing.T) {
 	}
 	if len(msgs) != 1 {
 		t.Fatalf("INBOX has %d messages after revoked QUIT, want 1 (deletion must not apply)", len(msgs))
+	}
+}
+
+// flakyState is a real LocalAuth whose AccountState errors, standing in for a
+// store outage after PASS succeeded.
+type flakyState struct{ *auth.LocalAuth }
+
+func (flakyState) AccountState(string) (auth.AccountState, error) {
+	return auth.AccountState{}, errors.New("pebble unavailable")
+}
+
+// A store error after login answers -ERR to every authenticated command,
+// closes the connection and does not apply pending DELE marks. Each command
+// runs on a fresh session so a guard narrowed to exempt one of them is caught.
+func TestPOP3StoreErrorRefusesAndKeepsMessages(t *testing.T) {
+	for _, command := range []string{"STAT", "LIST", "RETR 1", "TOP 1 0", "DELE 1", "RSET", "UIDL", "NOOP", "QUIT"} {
+		t.Run(command, func(t *testing.T) {
+			ps, err := store.NewPebbleStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { ps.Close() })
+			mm, err := store.NewMetadataManager(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { mm.Close() })
+			if _, err := mm.System.DB().Exec(
+				"INSERT INTO users (id, username, display_name, enabled, created_at) VALUES ('uid1', 'u@example.com', 'U', 1, 0)"); err != nil {
+				t.Fatal(err)
+			}
+			putProfile(t, ps, "pw", false)
+
+			ms := store.NewMailboxStore(ps, &pop3DirectApplier{ps: ps})
+			for _, mb := range []string{"INBOX", "Trash"} {
+				if err := ms.CreateMailbox("uid1", mb); err != nil {
+					t.Fatal(err)
+				}
+			}
+			meta := &bongov1.MailMeta{Guid: "g1", Subject: "s", ReceivedAt: time.Now().Unix(), RawMessage: &bongov1.BlobRef{Hash: "abc", Size: 10}}
+			if _, err := ms.DeliverMessage("uid1", "INBOX", meta, 0); err != nil {
+				t.Fatal(err)
+			}
+			data, err := proto.Marshal(meta)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ps.Set([]byte("/user/uid1/mail/g1"), data); err != nil {
+				t.Fatal(err)
+			}
+
+			serverConn, clientConn := net.Pipe()
+			s := newSession(serverConn, auth.NewLocalAuth(ps, mm), ms, ps, nil, nil, false, true, nil,
+				slog.New(slog.NewTextHandler(io.Discard, nil)))
+			done := make(chan struct{})
+			go func() { s.handle(); close(done) }()
+
+			// A deadline makes a server that keeps going fail fast instead of
+			// blocking on the unbuffered pipe until the test timeout.
+			_ = clientConn.SetDeadline(time.Now().Add(5 * time.Second))
+			t.Cleanup(func() { clientConn.Close() })
+
+			tc := &testPOP3{conn: clientConn, reader: bufio.NewReader(clientConn), t: t}
+			tc.expectOK()
+			tc.send("USER u@example.com")
+			tc.expectOK()
+			tc.send("PASS pw")
+			tc.expectOK()
+			tc.send("DELE 1")
+			tc.expectOK()
+
+			// The server reads the next command only after the client sends it.
+			s.auth = flakyState{s.auth.(*auth.LocalAuth)}
+
+			tc.send(command)
+			if line := tc.expectErr(); !strings.HasPrefix(line, "-ERR [SYS/TEMP]") {
+				t.Fatalf("%s with store error = %q, want -ERR [SYS/TEMP]", command, line)
+			}
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatalf("%s with store error: connection was not closed", command)
+			}
+
+			msgs, err := ms.ListMessages("uid1", "INBOX")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(msgs) != 1 {
+				t.Fatalf("INBOX has %d messages after store error, want 1", len(msgs))
+			}
+		})
 	}
 }

@@ -667,6 +667,7 @@
   "admin.dkimRecord": "DKIM",
   "admin.dmarcRecord": "DMARC",
   "settings.sendAsRequested": "Anfrage erhalten. Wenn die Adresse hinzugefügt werden kann, erscheint sie jetzt in Ihrer Liste.",
+  "settings.sendAsTooManyPending": "Zu viele Adressen warten auf Bestätigung. Bestätigen Sie zuerst eine.",
   "settings.sendAsVerificationFailed": "Verifizierung fehlgeschlagen. Fügen Sie die Adresse erneut hinzu, falls Sie sie noch benötigen.",
   "admin.tempPasswordLabel": "Temporäres Passwort",
   "admin.tempPasswordNotice": "Passwort zurückgesetzt. Dieses temporäre Passwort wird nur einmal angezeigt und kann nicht erneut abgerufen werden. Geben Sie es jetzt an den Benutzer weiter.",

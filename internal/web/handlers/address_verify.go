@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -12,6 +13,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/a-h/templ"
@@ -37,6 +39,14 @@ const (
 	// the challenge is invalidated (brute-force guard).
 	maxVerifyAttempts = 5
 
+	// maxPendingSendAsClaims caps a user's pending send-as claims (bare or
+	// with a live challenge). It bounds Pebble growth from the claim form.
+	maxPendingSendAsClaims = 20
+
+	// verifyQueueSize is the buffer of the background verification-mail
+	// sender. A full buffer drops the job; the handler never blocks on it.
+	verifyQueueSize = 64
+
 	// Code requests for the same (user, address) pair are rate-limited without a
 	// separate interval constant: if a challenge exists and has not expired, a
 	// new request is rejected. This prevents mail-bombing a claimed address.
@@ -49,13 +59,41 @@ const (
 type AddressVerifyHandler struct {
 	addresses   *store.AddressStore
 	verifyStore *store.AddressVerifyStore
-	blobs       *store.BlobStore
-	queueStore  *queue.QueueStore
+	blobs       verifyBlobPutter
+	queueStore  verifyEnqueuer
 	pebble      *store.PebbleStore
 	metadata    *store.MetadataManager
 	applier     store.RaftApplier
 	limiter     interface{ Allow(string) bool } // nil = unlimited; per-user verification-mail cap
 	logger      *slog.Logger
+
+	// jobs feeds the background sender (Run). It is never closed, so a late
+	// Submit cannot panic; pending counts jobs submitted but not yet finished.
+	jobs    chan verifyJob
+	pending atomic.Int64
+
+	// running is true while Run is consuming jobs. RequestVerification fails
+	// closed when it is false, so a code is never promised with no sender.
+	running atomic.Bool
+}
+
+// verifyBlobPutter and verifyEnqueuer are the slices of the blob and queue
+// stores the sender uses; tests substitute fakes.
+type verifyBlobPutter interface {
+	Put(data []byte) (string, error)
+}
+
+type verifyEnqueuer interface {
+	Enqueue(msg *bongov1.OutboundMessage) error
+}
+
+// verifyJob is one verification mail to build and queue. rawCode is the
+// plaintext one-time code: never log a job or put it in an error.
+type verifyJob struct {
+	userID       string
+	address      string
+	rawCode      []byte
+	senderDomain string
 }
 
 // Limiter returns the per-user verification-mail limiter, or nil.
@@ -66,7 +104,7 @@ func (h *AddressVerifyHandler) SetLimiter(l interface{ Allow(string) bool }) { h
 
 // NewAddressVerifyHandler creates an AddressVerifyHandler.
 func NewAddressVerifyHandler(logger *slog.Logger) *AddressVerifyHandler {
-	return &AddressVerifyHandler{logger: logger}
+	return &AddressVerifyHandler{logger: logger, jobs: make(chan verifyJob, verifyQueueSize)}
 }
 
 // SetAddressStore injects the address store.
@@ -91,13 +129,68 @@ func (h *AddressVerifyHandler) SetVerifyStore(vs *store.AddressVerifyStore) {
 
 // SetBlobStore injects the blob store for building verification emails.
 func (h *AddressVerifyHandler) SetBlobStore(bs *store.BlobStore) {
+	if bs == nil {
+		h.blobs = nil
+		return
+	}
 	h.blobs = bs
 }
 
 // SetQueueStore injects the outbound queue store.
 func (h *AddressVerifyHandler) SetQueueStore(qs *queue.QueueStore) {
+	if qs == nil {
+		h.queueStore = nil
+		return
+	}
 	h.queueStore = qs
 }
+
+// submit hands a job to the background sender without blocking. It reports
+// false when the buffer is full.
+func (h *AddressVerifyHandler) submit(j verifyJob) bool {
+	h.pending.Add(1)
+	select {
+	case h.jobs <- j:
+		return true
+	default:
+		h.pending.Add(-1)
+		return false
+	}
+}
+
+// Run sends queued verification mails until ctx is cancelled, then drains what
+// is still buffered and returns. The caller must cancel ctx only after the HTTP
+// server has shut down (and must not derive it from a context that is cancelled
+// earlier, such as the signal context), so every in-flight submit is already in
+// the buffer when the drain starts. While Run is not consuming, requests fail
+// closed.
+func (h *AddressVerifyHandler) Run(ctx context.Context) {
+	h.running.Store(true)
+	defer h.running.Store(false)
+	for {
+		select {
+		case <-ctx.Done():
+			for {
+				select {
+				case j := <-h.jobs:
+					h.process(j)
+				default:
+					return
+				}
+			}
+		case j := <-h.jobs:
+			h.process(j)
+		}
+	}
+}
+
+func (h *AddressVerifyHandler) process(j verifyJob) {
+	defer h.pending.Add(-1)
+	h.sendVerification(j)
+}
+
+// idle reports whether every submitted job has finished.
+func (h *AddressVerifyHandler) idle() bool { return h.pending.Load() == 0 }
 
 // ShowAddresses renders the self-serve address management page.
 //
@@ -218,6 +311,19 @@ func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.R
 		return
 	}
 	if !hasClaim {
+		// Cap the caller's own pending claims. The reply depends only on the
+		// caller's own state, so it is not an ownership oracle.
+		pending, err := h.pendingClaimCount(userID)
+		if err != nil {
+			h.logger.Error("address-verify: add: failed to count claims", "user_id", userID, "error", err)
+			http.Error(w, "failed to look up address", http.StatusInternalServerError)
+			return
+		}
+		if pending >= maxPendingSendAsClaims {
+			h.logger.Info("address-verify: add refused: too many pending claims", "user_id", userID)
+			http.Redirect(w, r, "/settings/addresses?error="+url.QueryEscape(fwdText(r, "settings.sendAsTooManyPending")), http.StatusSeeOther)
+			return
+		}
 		if err := h.verifyStore.Put(userID, address, &bongov1.AddressVerification{}); err != nil {
 			h.logger.Error("address-verify: add: failed to store claim", "user_id", userID, "address", address, "error", err)
 			http.Error(w, "failed to add address", http.StatusInternalServerError)
@@ -227,6 +333,31 @@ func (h *AddressVerifyHandler) AddSendAsAddress(w http.ResponseWriter, r *http.R
 	}
 
 	h.sendAsAddRedirect(w, r)
+}
+
+// pendingClaimCount counts the caller's own claims. A stale claim left behind
+// by a failed best-effort delete after verification, whose address the caller
+// already holds verified, is not pending and is not counted.
+func (h *AddressVerifyHandler) pendingClaimCount(userID string) (int, error) {
+	claims, err := h.verifyStore.ListByUser(userID)
+	if err != nil {
+		return 0, fmt.Errorf("listing claims: %w", err)
+	}
+	if len(claims) < maxPendingSendAsClaims {
+		return len(claims), nil
+	}
+	n := 0
+	for _, addr := range claims {
+		own, err := h.ownRecord(userID, addr)
+		if err != nil {
+			return 0, err
+		}
+		if own != nil && own.Verified {
+			continue
+		}
+		n++
+	}
+	return n, nil
 }
 
 // ownRecord returns the address record for address when it belongs to userID,
@@ -262,16 +393,18 @@ func (h *AddressVerifyHandler) sendAsAddRedirect(w http.ResponseWriter, r *http.
 //     depends on the caller's own state only.
 //   - Rate limiting: rejects if a valid (non-expired) challenge already exists,
 //     and counts every request against the per-user limiter.
-//   - Allocation: if an account, alias or other user's record already holds the
-//     address (or its domain is hosted here) the request still stores a
-//     challenge and returns the normal success redirect, but the code is a
-//     random value that is never sent and no mail is queued. A different
-//     reply, or no stored challenge, would let a second request tell a held
-//     address from a free one. The one remaining difference is timing: the
-//     held branch skips the blob write and the enqueue and is measurably
-//     faster; removing it would mean sending the mail, which must not happen.
+//   - Allocation: the request path does no work that depends on who holds the
+//     address. It always stores a challenge and returns the normal success
+//     redirect; the background sender (Run) then checks allocation and, for a
+//     held address (or a hosted domain), sends nothing and leaves the decoy
+//     challenge, whose code nobody holds. A different reply, or no stored
+//     challenge, would let a second request tell a held address from a free one.
+//     The send is best-effort and asynchronous: a failure is logged without the
+//     code and resets the claim so the user can request again.
 //   - Code security: generates via crypto/rand; stores only SHA-256 hash; NEVER logs the code.
 //   - The code is emailed to the claimed address via the outbound queue.
+//   - Fails closed (500) before any write if the ownership, blob or queue
+//     stores are missing or the background sender is not running.
 func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 	address := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "address")))
@@ -280,8 +413,19 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		http.Error(w, "address store not available", http.StatusInternalServerError)
 		return
 	}
+	// Fail closed, before any write, whatever the address: without the
+	// ownership stores, the blob and queue stores, or a running sender the
+	// reply would promise a code that is never sent.
+	if h.pebble == nil || h.metadata == nil || h.applier == nil {
+		http.Error(w, "address ownership check not available", http.StatusInternalServerError)
+		return
+	}
 	if h.blobs == nil || h.queueStore == nil {
-		http.Error(w, "outbound delivery not configured on this node", http.StatusServiceUnavailable)
+		http.Error(w, "outbound delivery not configured on this node", http.StatusInternalServerError)
+		return
+	}
+	if !h.running.Load() {
+		http.Error(w, "verification sender not running", http.StatusInternalServerError)
 		return
 	}
 
@@ -321,14 +465,8 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Allocation gate, after the limiter so a held address consumes the same
-	// budget as a free one. A failed read fails closed.
-	unavailable, err := h.addressUnavailable(userID, address)
-	if err != nil {
-		h.logger.Error("address-verify: request: ownership check failed", "address", address, "error", err)
-		http.Error(w, "failed to look up address", http.StatusInternalServerError)
-		return
-	}
+	// The held-or-free decision is made on the background sender, not here, so
+	// nothing on this path depends on who holds the address.
 
 	// Generate one-time code.
 	rawCode, err := generateVerificationCode()
@@ -337,11 +475,9 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		http.Error(w, "failed to generate verification code", http.StatusInternalServerError)
 		return
 	}
-	// Hash the code — only the hash is stored; the plaintext is only emailed.
-	codeHash := hashVerificationCode(rawCode)
-
+	// Hash the code; only the hash is stored, the plaintext is only emailed.
 	challenge := &bongov1.AddressVerification{
-		CodeHash:  codeHash,
+		CodeHash:  hashVerificationCode(rawCode),
 		ExpiresAt: time.Now().Add(verifyCodeExpiry).Unix(),
 		Attempts:  0,
 	}
@@ -351,48 +487,12 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if unavailable {
-		// The decoy challenge above has a random hash nobody holds the code
-		// for; the reply is the one a real send gets.
-		h.logger.Info("address-verify: verification not sent: address already allocated", "user_id", userID, "address", address)
-		http.Redirect(w, r, "/settings/addresses?flash=Verification+code+sent", http.StatusSeeOther)
-		return
+	// Hand the mail to the background sender. A full buffer drops the job and
+	// resets the claim so the user can ask again; the reply is the same.
+	if !h.submit(verifyJob{userID: userID, address: address, rawCode: rawCode, senderDomain: domainFromEmail(email)}) {
+		h.logger.Warn("address-verify: request: sender queue full, verification not sent", "user_id", userID, "address", address)
+		h.resetClaim(userID, address, "sender queue full")
 	}
-
-	// Build and enqueue the verification email.
-	// The plaintext code (rawCode) is embedded in the email body and sent to
-	// the claimed address. It is NEVER logged — only stored as a hash above.
-	domain := domainFromEmail(email) // use sender domain for postmaster From
-	rawMsg := buildVerificationEmail(address, rawCode, domain)
-
-	hash, err := h.blobs.Put(rawMsg)
-	if err != nil {
-		h.logger.Error("address-verify: request: failed to store email blob", "user_id", userID, "address", address, "error", err)
-		http.Error(w, "failed to store verification email", http.StatusInternalServerError)
-		return
-	}
-
-	// Unique per request (UnixNano) and panic-safe — never slice userID, which
-	// could be shorter than 8 chars, and avoid colliding IDs on repeat requests.
-	msgID := fmt.Sprintf("verify-%d", time.Now().UnixNano())
-	outMsg := &bongov1.OutboundMessage{
-		Id:          msgID,
-		SenderId:    userID,
-		SenderEmail: fmt.Sprintf("postmaster@%s", domain),
-		Recipients:  []string{address},
-		BlobHash:    hash,
-		MessageGuid: fmt.Sprintf("<addrverify-%d@%s>", time.Now().UnixNano(), domain),
-		Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
-	}
-	if err := h.queueStore.Enqueue(outMsg); err != nil {
-		h.logger.Error("address-verify: request: failed to enqueue verification email", "user_id", userID, "address", address, "error", err)
-		http.Error(w, "failed to send verification email", http.StatusInternalServerError)
-		return
-	}
-
-	// Log success WITHOUT the code. The address is logged so operators can
-	// identify issues, but the code itself is never included.
-	h.logger.Info("address-verify: verification code sent", "user_id", userID, "address", address)
 
 	http.Redirect(w, r, "/settings/addresses?flash=Verification+code+sent", http.StatusSeeOther)
 }
@@ -543,7 +643,7 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 // then fails the same check on the next submit.
 func (h *AddressVerifyHandler) resetClaim(userID, address, reason string) {
 	if err := h.verifyStore.Put(userID, address, &bongov1.AddressVerification{}); err != nil {
-		h.logger.Warn("address-verify: submit: failed to reset claim", "user_id", userID, "address", address, "reason", reason, "error", err)
+		h.logger.Warn("address-verify: failed to reset claim", "user_id", userID, "address", address, "reason", reason, "error", err)
 	}
 }
 
@@ -566,6 +666,53 @@ func (h *AddressVerifyHandler) addressUnavailable(userID, address string) (bool,
 		return false, err
 	}
 	return false, nil
+}
+
+// sendVerification runs on the background sender. It makes the allocation
+// decision and, for a free address, builds and queues the mail. None of this is
+// on the request path, so the reply cannot reveal whether the address is held.
+// Failures are logged with context but never the code, and reset the claim to
+// a bare one so the user can request again at once. A held address keeps its
+// decoy challenge and is not reset: a reset would let a second request tell
+// held from free.
+func (h *AddressVerifyHandler) sendVerification(j verifyJob) {
+	unavailable, err := h.addressUnavailable(j.userID, j.address)
+	if err != nil {
+		h.logger.Error("address-verify: verification not sent: ownership check failed", "user_id", j.userID, "address", j.address, "error", err)
+		h.resetClaim(j.userID, j.address, "ownership check failed")
+		return
+	}
+	if unavailable {
+		h.logger.Info("address-verify: verification not sent: address already allocated", "user_id", j.userID, "address", j.address)
+		return
+	}
+
+	rawMsg := buildVerificationEmail(j.address, j.rawCode, j.senderDomain)
+	hash, err := h.blobs.Put(rawMsg)
+	if err != nil {
+		h.logger.Error("address-verify: verification not sent: failed to store email blob", "user_id", j.userID, "address", j.address, "error", err)
+		h.resetClaim(j.userID, j.address, "blob write failed")
+		return
+	}
+
+	// Unique per request (UnixNano) and panic-safe: never slice userID, which
+	// could be shorter than 8 chars.
+	now := time.Now().UnixNano()
+	outMsg := &bongov1.OutboundMessage{
+		Id:          fmt.Sprintf("verify-%d", now),
+		SenderId:    j.userID,
+		SenderEmail: fmt.Sprintf("postmaster@%s", j.senderDomain),
+		Recipients:  []string{j.address},
+		BlobHash:    hash,
+		MessageGuid: fmt.Sprintf("<addrverify-%d@%s>", now, j.senderDomain),
+		Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
+	}
+	if err := h.queueStore.Enqueue(outMsg); err != nil {
+		h.logger.Error("address-verify: verification not sent: failed to enqueue email", "user_id", j.userID, "address", j.address, "error", err)
+		h.resetClaim(j.userID, j.address, "enqueue failed")
+		return
+	}
+	h.logger.Info("address-verify: verification code sent", "user_id", j.userID, "address", j.address)
 }
 
 // generateVerificationCode generates a cryptographically random code using
