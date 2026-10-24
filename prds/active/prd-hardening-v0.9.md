@@ -1218,6 +1218,9 @@ that raised them, unless the story's own change introduced them (those are
 fixed before merge). This list is the starting point for the v0.10 scope.
 Nothing goes from here into TASKS.md during v0.9.
 
+On 2026-10-24, 17 of these items became the v0.12.0 scope in
+`prd-hardening-v0.12.md` (rows 23.x to 25.x). The rest stay here.
+
 From the Phase 19 batch 1 reviews (2026-10-23):
 
 - `internal/web/handlers/auth.go:121-126`: web Login still falls back to
