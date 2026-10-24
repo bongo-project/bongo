@@ -157,6 +157,7 @@ func TestComposeSendRichMode_MultipartAlternative(t *testing.T) {
 	}
 
 	form := url.Values{
+		"send_id":   {sendID()},
 		"to":        {email},
 		"subject":   {"Test Rich"},
 		"body":      {"<p>hello</p>"},
@@ -246,6 +247,7 @@ func TestComposeSendPlainMode_SingleTextPlain(t *testing.T) {
 	env.registerLocalUser(t, userID, email)
 
 	form := url.Values{
+		"send_id":   {sendID()},
 		"to":        {email},
 		"subject":   {"Test Plain"},
 		"body":      {"hello"},
@@ -294,6 +296,7 @@ func TestComposeSendOmittedBodyMode_DefaultsToPlain(t *testing.T) {
 	env.registerLocalUser(t, userID, email)
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {email},
 		"subject": {"Test No Mode"},
 		"body":    {"hello"},
@@ -336,6 +339,7 @@ func TestComposeSendRichMode_OversizedInlineImage_PerCap(t *testing.T) {
 	body := `<p>Hi</p><img src="data:image/png;base64,` + base64.StdEncoding.EncodeToString(data) + `">`
 
 	form := url.Values{
+		"send_id":   {sendID()},
 		"to":        {email},
 		"subject":   {"Oversized per-image inline"},
 		"body":      {body},
@@ -395,6 +399,7 @@ func TestComposeSendRichMode_OversizedTotalInlineImages(t *testing.T) {
 	// keeping this test fast (URL-encoding base64 at this scale is very slow).
 	var bodyBuf bytes.Buffer
 	mw := multipart.NewWriter(&bodyBuf)
+	_ = mw.WriteField("send_id", sendID())
 	_ = mw.WriteField("to", email)
 	_ = mw.WriteField("subject", "Oversized total inline images")
 	_ = mw.WriteField("body", sb.String())
@@ -437,6 +442,7 @@ func TestComposeSendRichMode_InlineImageUnderCap_MultipartRelated(t *testing.T) 
 	body := `<p>Hi</p><img src="data:image/png;base64,` + samplePNGBase64 + `">`
 
 	form := url.Values{
+		"send_id":   {sendID()},
 		"to":        {email},
 		"subject":   {"Inline image under cap"},
 		"body":      {body},
@@ -520,6 +526,7 @@ func TestComposeSendPlainMode_EmptyHTMLSignature_PlainFallback(t *testing.T) {
 	// The plain Send handler emits this verbatim — it does not re-append the signature.
 	postBody := "hello\n\n-- \nRegards, Jane"
 	form := url.Values{
+		"send_id":   {sendID()},
 		"to":        {email},
 		"subject":   {"Test Plain Empty HTML Sig"},
 		"body":      {postBody},
@@ -588,6 +595,7 @@ func TestComposeSendRichMode_SignatureInlineImage_RoundTrips(t *testing.T) {
 	// POST body is TEXT-ONLY (no inline image) so the only inline image comes from
 	// the HTML signature that buildRichMessage appends before extractDataURIImages.
 	form := url.Values{
+		"send_id":   {sendID()},
 		"to":        {email},
 		"subject":   {"Test Sig Inline Image"},
 		"body":      {"<p>hello</p>"},
@@ -708,6 +716,7 @@ func TestComposeSendPlainMode_QuotedBodyPassedThrough(t *testing.T) {
 	// '>' quote markers and newlines must appear literally in the text/plain output.
 	quotedBody := "> some quoted text\n> second line\nnew reply here"
 	form := url.Values{
+		"send_id":   {sendID()},
 		"to":        {email},
 		"subject":   {"Test Plain Passthrough"},
 		"body":      {quotedBody},

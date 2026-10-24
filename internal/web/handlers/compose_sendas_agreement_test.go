@@ -31,6 +31,7 @@ func TestComposeSendAs_AgreesWithSharedTable(t *testing.T) {
 		}
 		t.Run(tc.Name, func(t *testing.T) {
 			form := url.Values{
+				"send_id": {sendID()},
 				"to":      {email},
 				"subject": {"Agreement"},
 				"body":    {"hello"},

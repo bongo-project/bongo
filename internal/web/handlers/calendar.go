@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/mail"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -99,13 +100,14 @@ func (h *CalendarHandler) MonthView(w http.ResponseWriter, r *http.Request) {
 
 	calendars, _ := h.calendars.List(userID)
 
-	// Calculate month boundaries.
+	// Load events for every visible cell, including the neighbouring months'
+	// days in the first and last weeks. The one-day widening each side is
+	// defensive: it only matters for a zero-length all-day event (DTEND ==
+	// DTSTART), whose end sits at its UTC midnight, before the local midnight
+	// of a cell in a zone west of UTC.
 	loc := time.Now().Location()
-	monthStart := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, loc)
-	monthEnd := monthStart.AddDate(0, 1, 0)
-
-	// Load events for this month.
-	events, err := h.events.ListByDateRange(userID, monthStart.Unix(), monthEnd.Unix(), "")
+	gridStart, gridEnd := monthGridRange(year, time.Month(month), loc)
+	events, err := h.events.ListByDateRange(userID, gridStart.AddDate(0, 0, -1).Unix(), gridEnd.AddDate(0, 0, 1).Unix(), "")
 	if err != nil {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
@@ -628,13 +630,44 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 	cal.Props.SetText(ical.PropVersion, "2.0")
 	cal.Props.SetText(ical.PropProductID, "-//Bongo-Go//Calendar//EN")
 
+	// Each VTIMEZONE a kept event references is written once, ahead of the
+	// events; the first definition of a TZID wins.
+	var zones, vevents []*ical.Component
+	seen := map[string]*ical.Component{}
+
 	for _, e := range events {
 		if len(e.IcalRaw) > 0 {
 			dec := ical.NewDecoder(bytes.NewReader(e.IcalRaw))
 			if rawCal, err := dec.Decode(); err == nil {
+				defs := map[string]*ical.Component{}
 				for _, child := range rawCal.Children {
-					if child.Name == "VEVENT" {
-						cal.Children = append(cal.Children, child)
+					if child.Name != ical.CompTimezone {
+						continue
+					}
+					if p := child.Props.Get(ical.PropTimezoneID); p != nil {
+						defs[p.Value] = child
+					}
+				}
+				for _, child := range rawCal.Children {
+					if child.Name != ical.CompEvent {
+						continue
+					}
+					vevents = append(vevents, child)
+					for _, tzid := range referencedTZIDs(child) {
+						def, ok := defs[tzid]
+						if !ok {
+							// Some CalDAV clients omit the VTIMEZONE; there is nothing to copy.
+							slog.Default().Debug("calendar export: TZID has no VTIMEZONE", "tzid", tzid)
+							continue
+						}
+						first, dup := seen[tzid]
+						switch {
+						case !dup:
+							seen[tzid] = def
+							zones = append(zones, def)
+						case !reflect.DeepEqual(first, def):
+							slog.Default().Debug("calendar export: conflicting VTIMEZONE, keeping first", "tzid", tzid)
+						}
 					}
 				}
 				continue
@@ -656,19 +689,15 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 			vevent.Props.SetDate(ical.PropDateTimeStart, icalevent.AllDayDate(e.StartTime))
 			vevent.Props.SetDate(ical.PropDateTimeEnd, icalevent.AllDayDate(e.EndTime))
 		} else {
-			loc := time.UTC
-			if e.Timezone != "" {
-				if l, err := time.LoadLocation(e.Timezone); err == nil {
-					loc = l
-				}
-			}
-			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).In(loc))
-			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).In(loc))
+			// UTC, so no TZID is written without a VTIMEZONE to define it.
+			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).UTC())
+			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).UTC())
 		}
 		vevent.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
 
-		cal.Children = append(cal.Children, vevent.Component)
+		vevents = append(vevents, vevent.Component)
 	}
+	cal.Children = append(zones, vevents...)
 
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
@@ -782,6 +811,18 @@ func groupEventsByUID(cal *ical.Calendar) [][]*ical.Component {
 	return groups
 }
 
+// referencedTZIDs lists the TZID parameter values on c's properties
+// (DTSTART, DTEND, EXDATE, RDATE, RECURRENCE-ID and so on), in map order.
+func referencedTZIDs(c *ical.Component) []string {
+	var out []string
+	for _, props := range c.Props {
+		for _, p := range props {
+			out = append(out, p.Params["TZID"]...)
+		}
+	}
+	return out
+}
+
 // encodeEventGroup builds a standalone calendar from one UID group plus the
 // VTIMEZONEs its TZID parameters reference, and encodes it. The error from the
 // encoder is returned: an event whose data cannot be encoded is not stored.
@@ -802,14 +843,10 @@ func encodeEventGroup(src *ical.Calendar, group []*ical.Component) ([]byte, erro
 
 	added := map[string]bool{}
 	for _, vevent := range group {
-		for _, props := range vevent.Props {
-			for _, p := range props {
-				for _, tzid := range p.Params["TZID"] {
-					if z, ok := zones[tzid]; ok && !added[tzid] {
-						added[tzid] = true
-						out.Children = append(out.Children, z)
-					}
-				}
+		for _, tzid := range referencedTZIDs(vevent) {
+			if z, ok := zones[tzid]; ok && !added[tzid] {
+				added[tzid] = true
+				out.Children = append(out.Children, z)
 			}
 		}
 	}
@@ -1123,17 +1160,25 @@ func eventDateKey(e *bongov1.Event, loc *time.Location) string {
 	return time.Unix(e.StartTime, 0).In(loc).Format("2006-01-02")
 }
 
-// buildMonthGrid builds a 6-week grid of day cells for the given month.
-func buildMonthGrid(year int, month time.Month, events []*bongov1.Event, loc *time.Location) []templates.DayCell {
+// monthGridRange returns the first instant of the first cell and the end of
+// the last possible cell (42 cells) of a month grid, which starts on the
+// Monday of the week containing the 1st. The query and the cells both use it
+// so they cannot drift apart.
+func monthGridRange(year int, month time.Month, loc *time.Location) (start, end time.Time) {
 	firstDay := time.Date(year, month, 1, 0, 0, 0, 0, loc)
-	lastDay := firstDay.AddDate(0, 1, -1)
-
-	// Start from Monday of the week containing the first day.
 	weekday := int(firstDay.Weekday())
 	if weekday == 0 {
 		weekday = 7 // Sunday = 7
 	}
-	gridStart := firstDay.AddDate(0, 0, -(weekday - 1))
+	start = firstDay.AddDate(0, 0, -(weekday - 1))
+	return start, start.AddDate(0, 0, 42)
+}
+
+// buildMonthGrid builds a 6-week grid of day cells for the given month.
+func buildMonthGrid(year int, month time.Month, events []*bongov1.Event, loc *time.Location) []templates.DayCell {
+	firstDay := time.Date(year, month, 1, 0, 0, 0, 0, loc)
+	lastDay := firstDay.AddDate(0, 1, -1)
+	gridStart, _ := monthGridRange(year, month, loc)
 
 	today := time.Now().In(loc)
 	todayDate := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)

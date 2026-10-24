@@ -2,6 +2,8 @@ package templates
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 
@@ -88,6 +90,20 @@ func csrfHeaders(ctx context.Context) string {
 // it without reading past the start of an upload.
 func csrfToken(ctx context.Context) string {
 	return middleware.CSRFTokenFromContext(ctx)
+}
+
+// newSendID returns a fresh compose send ID: 128 random bits as 32 lowercase
+// hex characters. It is generated each time the compose form renders, so one
+// rendering is one send; the server uses it to make a retried submission
+// idempotent. The format must match the check in handlers.Send.
+func newSendID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand does not fail on supported platforms. An empty ID makes
+		// Send refuse the form rather than accept a predictable one.
+		return ""
+	}
+	return hex.EncodeToString(b)
 }
 
 // pageWindow returns the page numbers to display in a truncated pagination

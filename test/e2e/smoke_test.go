@@ -195,6 +195,7 @@ func TestFullUserJourney(t *testing.T) {
 	subject := fmt.Sprintf("Smoke-%d", time.Now().UnixMilli())
 	t.Run("step04_compose_send", func(t *testing.T) {
 		status, _ := sc.post(t, "/compose/send", url.Values{
+			"send_id": {composeSendID()},
 			"to":      {"admin@localhost"},
 			"subject": {subject},
 			"body":    {"Hello from the E2E smoke test."},
@@ -243,6 +244,7 @@ func TestFullUserJourney(t *testing.T) {
 		// Submit the reply.
 		replySubject := "Re: " + subject
 		status2, _ := sc.post(t, "/compose/send", url.Values{
+			"send_id":     {composeSendID()},
 			"to":          {"admin@localhost"},
 			"subject":     {replySubject},
 			"body":        {"This is a reply."},

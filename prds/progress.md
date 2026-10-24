@@ -1446,3 +1446,10 @@ PATTERN: [testing] Run timing-sensitive whole-package mutation checks one at a t
 PATTERN: [process] Ask the deployment owner before a change that turns a logged failure into a startup failure; production may rely on the old behaviour.
 PATTERN: [api] Validate a request completely before the first side effect; a check after a content-addressed write leaves an orphan for GC.
 PATTERN: [logging] A log line built from a caller-sized list needs a bound, like the pipeline's maxLoggedRecipients.
+
+## 2026-10-24: Phase 24 batch 4 (24.2 to 24.4)
+
+- 24.2 idempotent web sends (send log), 24.3 export time zones, 24.4 all-day reminders and month grid edges. Reviews rejected 24.2 and 24.3 for untested guards (From in the fingerprint, unreferenced zones); a targeted fix round added tests and the orchestrator re-checked mutants. One of my own spot-check mutants (sed against an aligned struct field) silently changed nothing: always diff the mutant before trusting a green result.
+PATTERN: [testing] Diff every mutant against the source before running it; a sed pattern that misses (e.g. on gofmt-aligned spacing) produces an identical file and a false "survived".
+PATTERN: [idempotency] Node-local or short-lived objects (spool files, delivered queue entries) cannot prove a step happened; a durable marker written after each step can.
+PATTERN: [idempotency] Fingerprint the submission, not the generated output (which carries a Date), and include identity fields such as From.

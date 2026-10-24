@@ -221,7 +221,7 @@ func TestComposeLogs_NoSubjectAtInfo(t *testing.T) {
 		"/compose/send":  env.handler.Send,
 		"/compose/draft": env.handler.SaveDraft,
 	} {
-		form := url.Values{"to": {email}, "subject": {subject}, "body": {"hello"}, "body_mode": {"plain"}}
+		form := url.Values{"send_id": {sendID()}, "to": {email}, "subject": {subject}, "body": {"hello"}, "body_mode": {"plain"}}
 		req := httptest.NewRequest(http.MethodPost, name, strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req = withUserContext(req, userID, email)

@@ -16,7 +16,6 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/mail"
@@ -61,6 +60,9 @@ type ComposeHandler struct {
 	// dedupMinSize is the attachment-dedup threshold. > 0 stores sent mail as a
 	// skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
 	dedupMinSize int
+	// sendLocks serialises concurrent submissions of one send ID within this
+	// process (a double click).
+	sendLocks keyedMutex
 }
 
 // localSpooler is the slice of the inbound pipeline spool compose needs:
@@ -306,6 +308,17 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The send ID names this submission so a retry is idempotent. It is
+	// required: a form without one comes from a tab rendered before this field
+	// existed or from a non-browser client, and generating one here would give
+	// that request no idempotency while looking as if it had it. Refused before
+	// any write or rate-limit spend.
+	sendID := r.FormValue("send_id")
+	if !sendIDPattern.MatchString(sendID) {
+		http.Error(w, "This compose form is out of date. Please reload the compose page and try again.", http.StatusBadRequest)
+		return
+	}
+
 	to := r.FormValue("to")
 	cc := r.FormValue("cc")
 	subject := r.FormValue("subject")
@@ -423,7 +436,10 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// stays consistent. A non-FQDN Message-ID (the old "@bongo") is a negative
 	// deliverability signal. The host is derived from fromAddr (the chosen From)
 	// so that Message-ID host aligns with the From domain.
-	messageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(fromAddr))
+	//
+	// It is derived from the send ID so every attempt of one send, including a
+	// retry after a partial failure, gives all recipients the same Message-ID.
+	messageID := fmt.Sprintf("<%s@%s>", strings.ReplaceAll(derivedSendID(userID, sendID, "msgid").String(), "-", ""), senderDomain(fromAddr))
 
 	// Build RFC 5322 message. body_mode='rich' → multipart/alternative with
 	// sanitized HTML and derived plain text. Any other value (or absent) falls
@@ -486,14 +502,68 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialise submissions of this send ID in this process, then read which
+	// steps are already recorded. A record made for different content (the
+	// browser restored an old form, the user edited it and sent again) is
+	// refused before anything is written: silently replaying the old send
+	// would tell the user their edited message went out.
+	fp := sendFingerprint([]string{
+		fromAddr, to, cc, subject, body, r.FormValue("body_mode"),
+		mode, replyMailbox, replyUIDStr,
+	}, attachmentFiles)
+	unlockSend := h.sendLocks.lock(userID + "/" + sendID)
+	defer unlockSend()
+	lg := &sendLog{h: h, userID: userID, sendID: sendID, fingerprint: fp}
+	stepDone := make(map[string]bool)
+	steps := []string{"sent"}
+	if len(externalRecipients) > 0 {
+		steps = append(steps, "external")
+	}
+	for _, rcpt := range localRecipients {
+		steps = append(steps, store.SendLogLocalStep(rcpt))
+	}
+	// Any record of this send ID made for different content conflicts, even
+	// for a step this submission does not have (all local recipients changed,
+	// say), because the derived Message-ID is shared by every step.
+	if err := lg.checkAll(); err != nil {
+		if errors.Is(err, errSendConflict) {
+			http.Error(w, "This send was already started with different content. Open a new compose window to send another.", http.StatusConflict)
+			return
+		}
+		h.logger.Warn("web: reading send log failed", "user", userID, "error", err)
+		http.Error(w, "Failed to check send state", http.StatusInternalServerError)
+		return
+	}
+	for _, step := range steps {
+		done, err := lg.done(step)
+		if err != nil {
+			h.logger.Warn("web: reading send log failed", "user", userID, "error", err)
+			http.Error(w, "Failed to check send state", http.StatusInternalServerError)
+			return
+		}
+		stepDone[step] = done
+	}
+	pendingLocal := false
+	for _, rcpt := range localRecipients {
+		if !stepDone[store.SendLogLocalStep(rcpt)] {
+			pendingLocal = true
+		}
+	}
+
 	// The size the usage recompute counts for a stored message
 	// (MailMeta.RawMessage.Size), computed once. Every copy of this send, the
 	// sender's and each local recipient's, is the same size.
-	if quotaExceeded(h.quota, h.logger, userID, msgSize) {
+	// Steps already recorded done are not re-checked: their copies now count
+	// against quota, so a replay of a delivered send would be refused for a
+	// message that went out.
+	if !stepDone["sent"] && quotaExceeded(h.quota, h.logger, userID, msgSize) {
 		refuseQuota(w, r)
 		return
 	}
 	for _, rcpt := range localRecipients {
+		if stepDone[store.SendLogLocalStep(rcpt)] {
+			continue
+		}
 		if rid := h.resolveLocalUser(rcpt); rid != "" && quotaExceeded(h.quota, h.logger, rid, msgSize) {
 			refuseQuotaText(w, r, quotaRecipientText(r, rcpt))
 			return
@@ -510,6 +580,10 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// carries a large attachment, else the whole raw. StoreSplit self-checks
 	// byte-exact reconstruction; on any split error we fall back to whole-raw so
 	// a message is never stored in a form that cannot be reproduced.
+	//
+	// Blobs are content-addressed and the raw message carries a per-attempt
+	// Date, so a retry may store a second blob. The first is reclaimed by the
+	// blob GC when nothing references it; compose never deletes blobs.
 	rawHash := ""
 	metaAttachments := attachmentMeta
 	var layout []*bongov1.MessageSegment
@@ -535,7 +609,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		rawHash = wh
 	}
 
-	guid := fmt.Sprintf("%d-%s", time.Now().UnixNano(), rawHash[:8])
+	guid := derivedSendID(userID, sendID, "sent").String()
 
 	// Create MailMeta. meta.From is set to fromAddr (the chosen From address)
 	// so the stored copy reflects the actual sender identity.
@@ -562,13 +636,17 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// message limiter spends nothing. A message refused by the recipient budget
 	// has already used one message-limiter unit; that only makes the limits
 	// slightly stricter. A refusal here leaves an unreferenced blob for the GC.
-	if len(externalRecipients) > 0 && h.rateLimiter != nil && !h.rateLimiter.Allow(email) {
-		http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
-		return
-	}
-	if len(externalRecipients) > 0 && h.recipientRL != nil && !h.recipientRL.AllowN(userID, len(externalRecipients)) {
-		http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
-		return
+	// A retry whose external step is already recorded spends nothing: that
+	// budget was paid by the attempt that did the work.
+	if len(externalRecipients) > 0 && !stepDone["external"] {
+		if h.rateLimiter != nil && !h.rateLimiter.Allow(email) {
+			http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
+			return
+		}
+		if h.recipientRL != nil && !h.recipientRL.AllowN(userID, len(externalRecipients)) {
+			http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
+			return
+		}
 	}
 
 	// Hand local recipients to the inbound pipeline, the same path SMTP
@@ -587,12 +665,19 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// one delete verdict for a whole envelope, so a shared envelope would apply
 	// one recipient's filing or delete rule to every other recipient.
 	//
-	// The spool writes, the external enqueue and the Sent copy are separate
-	// writes and not atomic. A failure on a later write after earlier envelopes
-	// were written returns 500 with those recipients already queued, so a retry
-	// can duplicate their copies. The writes are local disk writes, so this is
-	// rare.
-	if len(localRecipients) > 0 {
+	// Partial failure. The spool writes, the external enqueue and the Sent copy
+	// are separate writes and not atomic. Each is followed by a send log marker
+	// (store.SendLogKey) and skipped on a retry of the same send ID, and every
+	// object ID is derived from the send ID, so a retry after a 500 completes
+	// the missing parts instead of repeating the finished ones. The guarantee
+	// is at-least-once, not exactly-once: a crash between an object write and
+	// its marker repeats that one write. The Sent copy and the external queue
+	// entry close that gap by also checking for the object itself; a local
+	// envelope cannot, because the spool is node-local and the envelope is
+	// consumed within moments. The per-send lock above covers concurrent
+	// submits on this node only; two nodes handling the same send ID at once
+	// can both pass the checks.
+	if pendingLocal {
 		// The envelope must name the whole RFC 5322 message: the pipeline
 		// reads BlobHash as the full message, but rawHash is a skeleton when
 		// the Sent copy was split.
@@ -606,8 +691,12 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			envHash = wh
 		}
 		for _, rcpt := range localRecipients {
+			step := store.SendLogLocalStep(rcpt)
+			if stepDone[step] {
+				continue
+			}
 			env := &bongov1.QueueEnvelope{
-				Id:         uuid.New().String(),
+				Id:         derivedSendID(userID, sendID, "local:"+strings.ToLower(rcpt)).String(),
 				Sender:     fromAddr, // already checked against send-as
 				Recipients: []string{rcpt},
 				ReceivedAt: time.Now().Unix(),
@@ -620,6 +709,12 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Failed to deliver local recipient copy", http.StatusInternalServerError)
 				return
 			}
+			if err := lg.mark(step); err != nil {
+				h.logger.Warn("web: failed to record local delivery", "recipient", rcpt, "guid", guid, "error", err)
+				http.Error(w, "Failed to deliver local recipient copy", http.StatusInternalServerError)
+				return
+			}
+			stepDone[step] = true
 		}
 	}
 
@@ -631,20 +726,30 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Outbound delivery is not available on this node", http.StatusServiceUnavailable)
 		return
 	}
-	if len(externalRecipients) > 0 && h.queueStore != nil {
-		outMsg := &bongov1.OutboundMessage{
-			Id:          guid,
-			SenderId:    userID,
-			SenderEmail: fromAddr, // envelope MAIL FROM / return-path follows the chosen From
-			Recipients:  externalRecipients,
-			BlobHash:    rawHash, // skeleton hash when split; the queue reconstructs before relaying
-			Layout:      layout,
-			Attachments: metaAttachments,
-			MessageGuid: meta.MessageId,
-			Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
+	if len(externalRecipients) > 0 && !stepDone["external"] {
+		outID := derivedSendID(userID, sendID, "external").String()
+		// The entry may already be queued by an attempt that died before
+		// recording the step.
+		if _, err := h.queueStore.Get(outID); err != nil {
+			outMsg := &bongov1.OutboundMessage{
+				Id:          outID,
+				SenderId:    userID,
+				SenderEmail: fromAddr, // envelope MAIL FROM / return-path follows the chosen From
+				Recipients:  externalRecipients,
+				BlobHash:    rawHash, // skeleton hash when split; the queue reconstructs before relaying
+				Layout:      layout,
+				Attachments: metaAttachments,
+				MessageGuid: meta.MessageId,
+				Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
+			}
+			if err := h.queueStore.Enqueue(outMsg); err != nil {
+				h.logger.Warn("web: failed to enqueue outbound delivery", "user", userID, "guid", guid, "error", err)
+				http.Error(w, "Failed to enqueue outbound delivery", http.StatusInternalServerError)
+				return
+			}
 		}
-		if err := h.queueStore.Enqueue(outMsg); err != nil {
-			h.logger.Warn("web: failed to enqueue outbound delivery", "user", userID, "guid", guid, "error", err)
+		if err := lg.mark("external"); err != nil {
+			h.logger.Warn("web: failed to record outbound enqueue", "user", userID, "guid", guid, "error", err)
 			http.Error(w, "Failed to enqueue outbound delivery", http.StatusInternalServerError)
 			return
 		}
@@ -652,26 +757,45 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Store sender copy only after recipient delivery work has succeeded.
 	// Mark it Seen: a message you sent is not "unread" and must not inflate
-	// unread counts.
-	if _, err := h.mailboxes.DeliverMessage(userID, "Sent", meta, store.FlagSeen); err != nil {
-		http.Error(w, "Failed to store message in Sent", http.StatusInternalServerError)
-		return
+	// unread counts. A retry skips it when the step is recorded or the message
+	// already exists under its derived GUID, and then also skips the search
+	// indexing and Answered flag below, which the finished attempt did.
+	sentSkipped := stepDone["sent"]
+	if !sentSkipped {
+		if _, err := h.pebble.Get([]byte("/user/" + userID + "/mail/" + guid)); err == nil {
+			sentSkipped = true
+		}
 	}
-
-	// If reply, set Answered flag on original.
-	if mode == "reply" && replyMailbox != "" && replyUIDStr != "" {
-		replyUID, _ := strconv.ParseUint(replyUIDStr, 10, 32)
-		if replyUID > 0 {
-			if err := h.mailboxes.AddFlags(userID, replyMailbox, uint32(replyUID), store.FlagAnswered); err != nil {
-				h.logger.Warn("web: failed to set answered flag", "mailbox", replyMailbox, "uid", replyUID, "user", userID, "error", err)
-			}
+	if !sentSkipped {
+		if _, err := h.mailboxes.DeliverMessage(userID, "Sent", meta, store.FlagSeen); err != nil {
+			http.Error(w, "Failed to store message in Sent", http.StatusInternalServerError)
+			return
+		}
+	}
+	if !stepDone["sent"] {
+		if err := lg.mark("sent"); err != nil {
+			h.logger.Warn("web: failed to record Sent copy", "user", userID, "guid", guid, "error", err)
+			http.Error(w, "Failed to store message in Sent", http.StatusInternalServerError)
+			return
 		}
 	}
 
-	// Index sender's copy. Use searchBody (derived plain text in rich mode).
-	if h.search != nil {
-		if err := h.search.IndexMail(userID, guid, subject, fromAddr, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
-			h.logger.Warn("web: failed to index sender copy", "guid", guid, "error", err)
+	if !sentSkipped {
+		// If reply, set Answered flag on original.
+		if mode == "reply" && replyMailbox != "" && replyUIDStr != "" {
+			replyUID, _ := strconv.ParseUint(replyUIDStr, 10, 32)
+			if replyUID > 0 {
+				if err := h.mailboxes.AddFlags(userID, replyMailbox, uint32(replyUID), store.FlagAnswered); err != nil {
+					h.logger.Warn("web: failed to set answered flag", "mailbox", replyMailbox, "uid", replyUID, "user", userID, "error", err)
+				}
+			}
+		}
+
+		// Index sender's copy. Use searchBody (derived plain text in rich mode).
+		if h.search != nil {
+			if err := h.search.IndexMail(userID, guid, subject, fromAddr, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
+				h.logger.Warn("web: failed to index sender copy", "guid", guid, "error", err)
+			}
 		}
 	}
 
