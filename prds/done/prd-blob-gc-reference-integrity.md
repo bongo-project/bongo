@@ -308,13 +308,13 @@ evidence independent of the GC's own reference scan:
 | Blob | Size | Identity | Index hits | In spool |
 |---|---|---|---|---|
 | `c2da4a14acea` | 620 B | "Alias routing verification after v0.6.23 repair" | 0 | no |
-| `016525675111` | 811 B | "Your Havencast sign-in link" | 0 | no |
-| `e4ea32b06da9` | 811 B | "Your Havencast sign-in link" | 0 | no |
+| `<blob-hash-1>` | 811 B | "Your sign-in link" | 0 | no |
+| `<blob-hash-2>` | 811 B | "Your sign-in link" | 0 | no |
 | `f334b2863970` | 581 B | "Delivery check after v0.6.24 deploy" | 0 | no |
 | `38410862b62a` | 600 B | "Delivery check after blob_gc dryrun" | 0 | no |
 
 Three are test probes sent during the alias investigation. Two are genuine
-Havencast sign-in links that were delivered into deleted user `6ccf299f` during
+sign-in links from a hosted application that were delivered into deleted user `<user-id>` during
 the alias incident and were never reachable by anyone. All five are the tail of
 that incident, not new loss.
 

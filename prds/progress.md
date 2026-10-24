@@ -843,7 +843,7 @@ dangling metadata at all.
 only reclaims `MailMeta` that NO mailbox entry references. It reclaimed these, so by
 construction none of the eight sat in anyone's mailbox. They were unreachable ghost deliveries
 from the alias incident -- the same category as the five blob candidates inspected separately,
-two of which were real Havencast sign-in links delivered into a deleted account.
+two of which were real sign-in links from a hosted application delivered into a deleted account.
 
 **So nothing a user could open was lost by the GC.** The bodies are gone, but they were already
 unreachable before the sweep ran.
@@ -874,8 +874,8 @@ with itself, and instead uses three independent paths: the derived per-user SQLi
 (looked up by Message-ID read from the blob itself), the on-disk spool, and the blob's own
 headers for identification. All five candidates clean on every path.
 
-Identity: three are test probes I sent during the alias investigation; two are genuine Havencast
-sign-in links delivered into deleted user `6ccf299f` and never reachable by anyone. All five are
+Identity: three are test probes I sent during the alias investigation; two are genuine sign-in links
+from a hosted application delivered into deleted user `<user-id>` and never reachable by anyone. All five are
 the tail of the alias incident, not new loss.
 
 **Flip not performed.** Deliberately left to the operator, and the PRD records why in plain
@@ -887,7 +887,7 @@ a judgement, not a test result.
 Access note: SSH on the public IP stopped responding partway through this work (port 22 timing
 out while HTTPS answered normally), most likely an SSH rate-limiter reacting to the volume of
 connections made during the deploy and investigation. Resolved by the operator connecting
-Tailscale; the host is `wander-prod` and the login is root. Worth using fewer, batched SSH
+a private network. Worth using fewer, batched SSH
 invocations in future rather than many small ones.
 
 ### Config drift found while closing 14.9
@@ -985,8 +985,8 @@ common fault is sampling a system while it is converging and reporting the sampl
 When inspecting a store copy, wait for replay to finish first, and cross-check against an
 independent reading -- `queue status` disagreed with me and was right.
 
-**What is real:** `c22cdaa4` (`login@havencast.eu` -> `lnhaig@gmail.com`, enqueued 2026-08-30)
-references blob `0382dca98c5b...`, destroyed by the incident sweep. Every attempt fails
+**What is real:** `<message-id>` (`noreply@app.example.com` -> `user@example.com`, enqueued 2026-08-30)
+references blob `<blob-hash>...`, destroyed by the incident sweep. Every attempt fails
 identically. It is bounded at `maxAttempts = 10`, so it bounces at attempt 9 and self-resolves,
 but it burns nine attempts over days and the eventual DSN blames delivery rather than saying the
 body is gone.
