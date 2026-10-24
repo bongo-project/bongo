@@ -1,8 +1,17 @@
-# Bongo-Go
+# Bongo
 
-A mail and calendar server — IMAP, SMTP, POP3, CalDAV and CardDAV — with an HTMX
+A mail and calendar server: IMAP, SMTP, POP3, CalDAV and CardDAV, with an HTMX
 web UI, embedded storage (no standalone database) and Raft-based clustering,
 shipped as a single Go binary.
+
+Bongo is a reimplementation in Go of the [Bongo project](https://bongo-project.org),
+a mail and calendar server from the Hula and Novell days. The server binary is
+`bongo-go` and the import tool is `bongo-import`.
+
+**Status:** pre-1.0. A single-node deployment runs in production and has had
+several security reviews (see [SECURITY.md](SECURITY.md)). Multi-node clustering
+and the remote agent role are implemented but less tested. Only the latest
+release receives fixes.
 
 - **Protocols:** SMTP (25/587), IMAP (143/993), POP3 (110/995), CalDAV/CardDAV,
   plus client autoconfig (Thunderbird/Outlook/Apple).
@@ -13,6 +22,9 @@ shipped as a single Go binary.
 - **Deliverability built in:** per-domain DKIM signing, SPF and DMARC evaluation,
   a built-in spam scorer with an optional Bayesian filter.
 - **Web UI:** HTMX + Alpine.js + templ, no JavaScript build step.
+
+Releases are published as container images at `ghcr.io/bongo-project/bongo` and
+as tagged releases in this repository.
 
 ## Quick start (development)
 
@@ -128,6 +140,7 @@ mTLS configured.
 | [`docs/importing.md`](docs/importing.md) | Importing existing mail |
 | [`docs/multi-node-cluster-checklist.md`](docs/multi-node-cluster-checklist.md) | Hardening before multi-node |
 | [`CLAUDE.md`](CLAUDE.md) | Architecture overview and conventions |
+| [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, supported versions, known limitations |
 
 ## Architecture at a glance
 
@@ -136,6 +149,13 @@ bodies and attachments are content-addressed blobs on disk, deduplicated and
 synced between nodes; per-user SQLite and Bleve indexes are derived and
 rebuildable. A backup is the Pebble keyspace plus referenced blobs. See
 [`CLAUDE.md`](CLAUDE.md) for the full picture.
+
+## Contributing and security
+
+Bug reports and pull requests are welcome. Report security problems privately,
+as described in [SECURITY.md](SECURITY.md), not in a public issue. The project
+plans its work in `prds/` (requirements and task list) and is developed with the
+workflow in `.claude/` (see `AGENTS.md` for other assistants).
 
 ## Licence
 
