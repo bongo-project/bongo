@@ -22,7 +22,7 @@ test: make test-all
 # golangci-lint fails its typecheck and gosec silently loads nothing and exits
 # 0 (found 2026-10-22, when CI's gosec caught G118 that "clean" local runs had
 # missed).
-lint: GOTOOLCHAIN=go1.26.10 make lint && GOTOOLCHAIN=go1.26.10 gosec -quiet -exclude-generated -severity=medium ./...
+lint: GOTOOLCHAIN=go1.27.3 make lint && GOTOOLCHAIN=go1.27.3 gosec -quiet -exclude-generated -severity=medium ./...
 # Not a canonical norman key — kept deliberately. templ compiles .templ files to
 # Go, so a build after touching any template fails without it.
 generate: templ generate
