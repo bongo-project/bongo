@@ -16,7 +16,7 @@ for **example.com** on a single Docker host, behind an existing Traefik.
 | `Dockerfile` | Multi-stage build (templ generate + static Go binary → Alpine runtime) |
 | `docker-compose.yml` | Bongo service + a certs-dumper sidecar; Traefik HTTP router (web) and TCP routers (mail) |
 | `certs-hook.sh` | certs-dumper post-hook: publishes only the mail host's cert and key to `./certs`; must sit beside `docker-compose.yml` |
-| `bongo.prod.hcl` | Production config (mounted at `/etc/bongo/bongo.hcl`) |
+| `bongo.prod.hcl` | Configuration template for this compose deployment (mounted at `/etc/bongo/bongo.hcl`); not any particular live server |
 | `.env.example` | Copy to `.env`; holds the session secret + Traefik names |
 | `ship-logs.sh` | Pull the JSON log file from the server to your laptop |
 

@@ -22,7 +22,7 @@ func TestBuildDNSGuide(t *testing.T) {
 		domain   = "example.net"
 		mailHost = "mail.example.com"
 		v4       = "192.0.2.1"
-		v6       = "2a01:4f8:1c1f:a958::1"
+		v6       = "2001:db8:4f8:a958::1"
 		dkimTXT  = `mail._domainkey.example.net TXT "v=DKIM1; k=rsa; p=MIIBIjANBgkq"`
 	)
 
