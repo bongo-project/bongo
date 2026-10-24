@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -121,10 +122,10 @@ func newRevokeSession(t *testing.T, e *revokeEnv) *session {
 	return s
 }
 
-// Every authenticated session method must refuse after revocation. A method
-// missing its checkAccount call is a bypass, so this enumerates all of them.
-func TestSessionMethodsRefuseAfterRevocation(t *testing.T) {
-	methods := map[string]func(s *session) error{
+// authenticatedSessionMethods lists every session method that must call
+// checkAccount, so revocation and store-error tests enumerate the same set.
+func authenticatedSessionMethods() map[string]func(s *session) error {
+	return map[string]func(s *session) error{
 		"Select": func(s *session) error { _, err := s.Select("INBOX", nil); return err },
 		"Create": func(s *session) error { return s.Create("X", nil) },
 		"Delete": func(s *session) error { return s.Delete("INBOX") },
@@ -149,6 +150,12 @@ func TestSessionMethodsRefuseAfterRevocation(t *testing.T) {
 		"Copy":     func(s *session) error { _, err := s.Copy(imap.SeqSetNum(1), "INBOX"); return err },
 		"Move":     func(s *session) error { return s.Move(nil, imap.SeqSetNum(1), "INBOX") },
 	}
+}
+
+// Every authenticated session method must refuse after revocation. A method
+// missing its checkAccount call is a bypass, so this enumerates all of them.
+func TestSessionMethodsRefuseAfterRevocation(t *testing.T) {
+	methods := authenticatedSessionMethods()
 
 	for _, rv := range revocations {
 		for name, call := range methods {
@@ -173,13 +180,146 @@ func TestSessionMethodsRefuseAfterRevocation(t *testing.T) {
 	}
 }
 
-// A store read error must not drop sessions (fail open), unlike a missing profile.
-func TestCheckAccountStoreErrorFailsOpen(t *testing.T) {
+// A store read error refuses the command with a temporary failure rather than
+// granting access on state it could not verify.
+func TestCheckAccountStoreErrorFailsClosed(t *testing.T) {
 	e := newRevokeEnv(t)
 	s := newRevokeSession(t, e)
 	s.auth = errState{}
-	if err := s.checkAccount(); err != nil {
-		t.Fatalf("checkAccount with store error = %v, want nil", err)
+	err := s.checkAccount()
+	var ie *imap.Error
+	if !errors.As(err, &ie) || ie.Type != imap.StatusResponseTypeNo || ie.Code != imap.ResponseCodeUnavailable {
+		t.Fatalf("checkAccount with store error = %v, want NO [UNAVAILABLE]", err)
+	}
+}
+
+// flakyState is a real LocalAuth whose AccountState fails while fail is set.
+type flakyState struct {
+	*auth.LocalAuth
+	fail atomic.Bool
+}
+
+func (f *flakyState) AccountState(userID string) (auth.AccountState, error) {
+	if f.fail.Load() {
+		return auth.AccountState{}, errors.New("pebble unavailable")
+	}
+	return f.LocalAuth.AccountState(userID)
+}
+
+// Through a real client: while the store errors every authenticated command
+// gets NO [UNAVAILABLE], and the connection survives (no BYE) and recovers.
+func TestIMAPStoreErrorRefusesCommandsThroughRealSession(t *testing.T) {
+	commands := map[string]func(c *imapclient.Client) error{
+		"STATUS": func(c *imapclient.Client) error {
+			_, err := c.Status("INBOX", &imap.StatusOptions{NumMessages: true}).Wait()
+			return err
+		},
+		"FETCH": func(c *imapclient.Client) error {
+			_, err := c.Fetch(imap.SeqSetNum(1), &imap.FetchOptions{UID: true}).Collect()
+			return err
+		},
+		"LIST":   func(c *imapclient.Client) error { _, err := c.List("", "*", nil).Collect(); return err },
+		"SEARCH": func(c *imapclient.Client) error { _, err := c.Search(&imap.SearchCriteria{}, nil).Wait(); return err },
+	}
+	for name, cmd := range commands {
+		t.Run(name, func(t *testing.T) {
+			e := newRevokeEnv(t)
+			flaky := &flakyState{LocalAuth: e.auth}
+			addr := startRevokeServerWithAuth(t, e, flaky)
+			c := dialPollTestClient(t, addr, nil)
+			if _, err := c.Select("INBOX", nil).Wait(); err != nil {
+				t.Fatalf("SELECT: %v", err)
+			}
+			if err := cmd(c); err != nil {
+				t.Fatalf("%s while healthy: %v", name, err)
+			}
+
+			flaky.fail.Store(true)
+			err := cmd(c)
+			var ie *imap.Error
+			if !errors.As(err, &ie) || ie.Type != imap.StatusResponseTypeNo || ie.Code != imap.ResponseCodeUnavailable {
+				t.Fatalf("%s with store error = %v, want NO [UNAVAILABLE]", name, err)
+			}
+
+			flaky.fail.Store(false)
+			if err := cmd(c); err != nil {
+				t.Fatalf("%s after store recovery: %v (connection should have survived)", name, err)
+			}
+		})
+	}
+}
+
+// NOOP has no handler, only the post-command Poll. During a store error it
+// must send no mailbox updates and must not drop the connection.
+func TestIMAPNoopDuringStoreErrorSendsNoUpdates(t *testing.T) {
+	e := newRevokeEnv(t)
+	flaky := &flakyState{LocalAuth: e.auth}
+	addr := startRevokeServerWithAuth(t, e, flaky)
+	c := dialPollTestClient(t, addr, nil)
+	sel, err := c.Select("INBOX", nil).Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := sel.NumMessages
+
+	flaky.fail.Store(true)
+	deliverPollTestMessage(t, e.ms, "INBOX", "guid-2")
+	if err := c.Noop().Wait(); err != nil {
+		t.Fatalf("NOOP during store error: %v", err)
+	}
+	if got := c.Mailbox().NumMessages; got != before {
+		t.Fatalf("NumMessages = %d during store error, want %d (no updates)", got, before)
+	}
+
+	flaky.fail.Store(false)
+	if err := c.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Mailbox().NumMessages; got != before+1 {
+		t.Fatalf("NumMessages = %d after recovery, want %d", got, before+1)
+	}
+}
+
+// IDLE issued during a store error is refused by the entry check rather than
+// pushing mailbox counts on state it could not verify, and the connection
+// survives.
+func TestIMAPIdleDuringStoreErrorRefused(t *testing.T) {
+	e := newRevokeEnv(t)
+	flaky := &flakyState{LocalAuth: e.auth}
+	addr := startRevokeServerWithAuth(t, e, flaky)
+	c := dialPollTestClient(t, addr, nil)
+	if _, err := c.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	flaky.fail.Store(true)
+	idle, err := c.Idle()
+	if err == nil {
+		// go-imap reports the handler's error only after the client ends
+		// the IDLE with DONE; an accepted IDLE would still be idling here.
+		time.Sleep(200 * time.Millisecond)
+		done := make(chan error, 1)
+		go func() {
+			_ = idle.Close()
+			done <- idle.Wait()
+		}()
+		select {
+		case err = <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("IDLE did not end")
+		}
+	}
+	if err == nil {
+		t.Fatal("IDLE ended without an error during a store error")
+	}
+	var ie *imap.Error
+	if !errors.As(err, &ie) || ie.Type != imap.StatusResponseTypeNo || ie.Code != imap.ResponseCodeUnavailable {
+		t.Fatalf("IDLE with store error = %v, want NO [UNAVAILABLE]", err)
+	}
+
+	flaky.fail.Store(false)
+	if err := c.Noop().Wait(); err != nil {
+		t.Fatalf("connection should survive: %v", err)
 	}
 }
 
@@ -192,13 +332,18 @@ func (errState) AccountState(string) (auth.AccountState, error) {
 
 func startRevokeServer(t *testing.T, e *revokeEnv) string {
 	t.Helper()
+	return startRevokeServerWithAuth(t, e, e.auth)
+}
+
+func startRevokeServerWithAuth(t *testing.T, e *revokeEnv, a profileAuthenticator) string {
+	t.Helper()
 	blobs, err := store.NewBlobStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	notifier := NewNotifier()
 	e.ms.SetNotifier(NewStoreNotifier(notifier))
-	srv := NewServer(e.auth, e.ps, blobs, e.ms, nil, nil, nil, notifier, nil, true,
+	srv := NewServer(a, e.ps, blobs, e.ms, nil, nil, nil, notifier, nil, true,
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err := srv.Listen("127.0.0.1:0", "", nil, false, nil); err != nil {
 		t.Fatal(err)
@@ -370,4 +515,79 @@ func (e errState) AuthenticateProfile(username, password string) (string, *bongo
 		return "", nil, err
 	}
 	return id, &bongov1.UserProfile{}, nil
+}
+
+// Every authenticated method must answer a store error with the temporary
+// NO [UNAVAILABLE], never success and never the permanent revoked error.
+func TestSessionMethodsRefuseOnStoreError(t *testing.T) {
+	for name, call := range authenticatedSessionMethods() {
+		if name == "Poll" {
+			// Poll deliberately returns nil on a store error (a non-nil
+			// return would kill the connection); that is covered by
+			// TestIMAPNoopDuringStoreErrorSendsNoUpdates.
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			e := newRevokeEnv(t)
+			s := newRevokeSession(t, e)
+			s.auth = errState{}
+
+			err := call(s)
+			var ie *imap.Error
+			if !errors.As(err, &ie) || ie.Type != imap.StatusResponseTypeNo ||
+				ie.Code != imap.ResponseCodeUnavailable || ie.Text != errAccountStateUnavailable.Text {
+				t.Fatalf("%s with store error = %v, want NO [UNAVAILABLE]", name, err)
+			}
+		})
+	}
+}
+
+// IDLE started while the store is healthy must end with the temporary failure
+// once the store starts erroring. Both recheck loops have their own ticker.
+func TestIMAPIdleEndsWhenStoreStartsErroring(t *testing.T) {
+	old := idleRecheckInterval
+	idleRecheckInterval = 50 * time.Millisecond
+	t.Cleanup(func() { idleRecheckInterval = old })
+
+	for _, tc := range []struct {
+		name     string
+		selected bool
+	}{
+		{"no mailbox selected", false},
+		{"mailbox selected", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newRevokeEnv(t)
+			s := newRevokeSession(t, e)
+			flaky := &flakyState{LocalAuth: e.auth}
+			s.auth = flaky
+			if tc.selected {
+				s.selectedMailbox = "INBOX"
+				s.notifier = NewNotifier()
+			}
+			stop := make(chan struct{})
+			defer close(stop)
+
+			done := make(chan error, 1)
+			go func() { done <- s.Idle(nil, stop) }()
+
+			select {
+			case err := <-done:
+				t.Fatalf("IDLE ended while store healthy: %v", err)
+			case <-time.After(300 * time.Millisecond):
+			}
+
+			flaky.fail.Store(true)
+
+			select {
+			case err := <-done:
+				var ie *imap.Error
+				if !errors.As(err, &ie) || ie.Code != imap.ResponseCodeUnavailable {
+					t.Fatalf("IDLE ended with %v, want NO [UNAVAILABLE]", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("IDLE did not end after the store started erroring")
+			}
+		})
+	}
 }

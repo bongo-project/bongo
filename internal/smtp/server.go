@@ -309,9 +309,11 @@ func (s *Session) accountReader() accountStateReader {
 
 // checkAccountLive rejects further mail on an authenticated session whose
 // account was disabled or deleted, or had its password reset, since AUTH, so a
-// submission connection held open cannot keep relaying. A missing profile fails
-// closed; a store read error fails open so an outage does not stop submission
-// (AUTH itself fails closed on any error).
+// submission connection held open cannot keep relaying. The check fails closed:
+// a missing profile is a permanent 535, a store read error a temporary 451 so
+// the client retries once the store recovers (AUTH also fails closed on any
+// error). An authenticator that cannot report account state is not checked;
+// the only production authenticator (auth.LocalAuth) can.
 func (s *Session) checkAccountLive(cmd string) error {
 	reader := s.accountReader()
 	if reader == nil {
@@ -319,8 +321,8 @@ func (s *Session) checkAccountLive(cmd string) error {
 	}
 	st, err := reader.AccountState(s.userID)
 	if err != nil {
-		s.logger.Warn("smtp: account state check failed, allowing command", "command", cmd, "user", s.userID, "error", err)
-		return nil
+		s.logger.Warn("smtp: account state check failed, refusing command", "command", cmd, "user", s.userID, "error", err)
+		return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Temporary local error, please try again later"}
 	}
 	if st.Live(s.epoch) {
 		return nil

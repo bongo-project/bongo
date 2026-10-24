@@ -401,3 +401,39 @@ From the Phase 23 batch 1 reviews (2026-10-24):
     until they drain or the SRS window expires. (23.2)
   - A message more than a tenth plus 1 KiB over its declared SIZE gets
     `552 5.3.4`. (23.3)
+  - `verify-restore.sh` on the production host (not in the infra repo)
+    starts a second bongo on the host network; it should move
+    `server.control_addr` to a free loopback port as it does the web port.
+    It also runs host binary v0.6.19 and polls `http://` while production
+    has `plain_http = false` (operator, via the infra session). (23.1)
+- `TestSMTPPROXYHeaderFromUnlistedPeerIgnored` failed once in CI (PR #67):
+  the submission subtest got 421 on its first connection, apparently while
+  the mx subtest's connections still counted against the shared per-IP cap.
+  Passed 60 local runs and the CI rerun. (flake, belongs with US-015)
+
+From the Phase 23 batch 2 reviews (2026-10-24):
+
+- Each authenticated chunked DAV upload reserves the full 10 MiB until its
+  body is read, so seven slow chunked uploads can hold the 64 MiB budget and
+  get other users' DAV writes 503 for up to the read timeout. A per-user
+  sub-cap would close it. (23.4)
+- Other authenticated body buffering in `internal/web` has no global
+  budget. (23.4)
+- There is no route to delete a pending send-as claim, so a user at the
+  20-claim cap with unverifiable claims cannot recover without an admin.
+  The cap is check-then-write, so concurrent requests from one user can
+  overshoot it slightly. (23.5)
+- The `addr-verify-mail` worker context is derived from
+  `context.Background()` so it outlives the HTTP drain; no test would catch
+  a revert to the Run context. (23.5)
+- The web session middleware lets ordinary routes through when the account
+  state read errors (reported by the 23.7 worker; not checked). (23.7)
+- Release notes, batch 2:
+  - CalDAV and CardDAV share a 64 MiB budget for request bodies in flight;
+    beyond it a write gets 503 with `Retry-After`. (23.4)
+  - A send-as verification mail is sent in the background; the response no
+    longer depends on whether the address is taken. A user may hold at most
+    20 pending claims. (23.5)
+  - When the account state cannot be read, IMAP answers `NO [UNAVAILABLE]`,
+    SMTP `451 4.3.0` and POP3 `-ERR [SYS/TEMP]` (and closes, keeping
+    messages), where they used to allow the command. (23.7)

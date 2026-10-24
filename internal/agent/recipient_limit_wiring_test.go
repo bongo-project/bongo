@@ -112,6 +112,12 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	if got := rl.Remaining("u1"); got != 9 {
 		t.Errorf("compose recipient budget = %d, want 9", got)
 	}
+	a.bgMu.Lock()
+	sender := a.bgLive["addr-verify-mail"]
+	a.bgMu.Unlock()
+	if sender != 1 {
+		t.Errorf("addr-verify-mail workers live = %d, want 1: verification mail would never be sent", sender)
+	}
 	vl := a.addrVerifyHandler.Limiter()
 	if vl == nil {
 		t.Fatal("address-verify handler has no limiter after Run")
