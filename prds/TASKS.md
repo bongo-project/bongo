@@ -135,6 +135,7 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 | 25.2 | US-015: The known flaky tests are fixed at the cause | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
 | 25.3 | US-016: Toolchain and pinned dependencies are current | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
 | 25.4 | US-017: The image-pin check reads YAML, not lines | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
+| 25.5 | US-018: Uploads do not hold whole files in memory | [prd-hardening-v0.12.md](active/prd-hardening-v0.12.md) | TODO | |
 
 ## Phase 26: Public release of the repository
 
