@@ -760,6 +760,7 @@ func newSizedQuotaCompose(t *testing.T, senderUsage, bobUsage int64) (*composeSe
 func sendSized(t *testing.T, env *composeSendAsEnv, to []string, bodyBytes int) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {strings.Join(to, ", ")},
 		"subject": {"sized"},
 		"body":    {strings.Repeat("abcdefghi\n", bodyBytes/10)},
@@ -891,7 +892,7 @@ var quotaRefusalCases = []struct {
 }{
 	{"compose sender", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
 		env, uid, email := newQuotaCompose(t, &fakeQuota{headroom: map[string]int64{quotaUser: 0}})
-		form := url.Values{"to": {"bob@example.com"}, "subject": {"s"}, "body": {"b"}}
+		form := url.Values{"send_id": {sendID()}, "to": {"bob@example.com"}, "subject": {"s"}, "body": {"b"}}
 		req := quotaReqFor(withUserContext(formReq(http.MethodPost, "/compose/send", form), uid, email), locale, hx)
 		w := httptest.NewRecorder()
 		env.handler.Send(w, req)
@@ -899,7 +900,7 @@ var quotaRefusalCases = []struct {
 	}},
 	{"compose recipient", func(t *testing.T, locale string, hx bool) (*httptest.ResponseRecorder, string) {
 		env, uid, email := newQuotaCompose(t, &fakeQuota{headroom: map[string]int64{"u-bob": 0}})
-		form := url.Values{"to": {"bob@example.com"}, "subject": {"s"}, "body": {"b"}}
+		form := url.Values{"send_id": {sendID()}, "to": {"bob@example.com"}, "subject": {"s"}, "body": {"b"}}
 		req := quotaReqFor(withUserContext(formReq(http.MethodPost, "/compose/send", form), uid, email), locale, hx)
 		w := httptest.NewRecorder()
 		env.handler.Send(w, req)

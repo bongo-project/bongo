@@ -117,3 +117,49 @@ func TestPreferenceStore_UpdatedAtSet(t *testing.T) {
 		t.Errorf("updated_at %d not in range [%d, %d]", got.UpdatedAt, before, after)
 	}
 }
+
+func TestResolveZone(t *testing.T) {
+	// A non-UTC server zone, so "Local" would be visible if it leaked through.
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Skipf("zone unavailable: %v", err)
+	}
+	prev := time.Local
+	time.Local = tokyo
+	t.Cleanup(func() { time.Local = prev })
+
+	for _, tt := range []struct {
+		name   string
+		in     string
+		offset int // seconds east of UTC on 2026-11-05 12:00 UTC
+	}{
+		{"valid", "America/New_York", -5 * 3600},
+		{"far east", "Pacific/Kiritimati", 14 * 3600},
+		{"posix inverted sign", "Etc/GMT+12", -12 * 3600},
+		{"empty", "", 0},
+		{"Local is not the server zone", "Local", 0},
+		{"unknown", "Not/AZone", 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, off := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC).In(ResolveZone(tt.in)).Zone()
+			if off != tt.offset {
+				t.Errorf("offset = %d, want %d", off, tt.offset)
+			}
+		})
+	}
+}
+
+func TestPreferenceStore_Location(t *testing.T) {
+	s := newPrefTestEnv(t)
+	if got := s.Location("nobody"); got != time.UTC {
+		t.Errorf("unset user zone = %v, want UTC", got)
+	}
+	prefs := DefaultPreferences()
+	prefs.Timezone = "Pacific/Kiritimati"
+	if err := s.Set("u1", prefs); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Location("u1").String(); got != "Pacific/Kiritimati" {
+		t.Errorf("zone = %q", got)
+	}
+}

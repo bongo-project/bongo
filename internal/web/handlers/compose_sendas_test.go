@@ -277,6 +277,7 @@ func TestComposeSendAs_DomainAligned(t *testing.T) {
 	externalRecipient := "recipient@external.example"
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {externalRecipient},
 		"subject": {"Send-as test"},
 		"body":    {"hello from b@d2.com"},
@@ -351,6 +352,7 @@ func TestComposeSendAs_DomainAligned_RawFromHeaderDrivesDKIM(t *testing.T) {
 	localRecipient := "alice@example.com"
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {localRecipient},
 		"subject": {"DKIM domain test"},
 		"body":    {"checking from domain"},
@@ -392,6 +394,7 @@ func TestComposeSendAs_DefaultFrom_NoAddressStoreInHandler(t *testing.T) {
 	env.handler.addresses = nil
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {email},
 		"subject": {"Default from test"},
 		"body":    {"hello"},
@@ -427,6 +430,7 @@ func TestComposeSendAs_TamperedFrom_UnownedAddress(t *testing.T) {
 	env.seedAddress(t, "evil@evil.com", "other-user", "evil.com", true, true)
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {email},
 		"subject": {"Tampered from"},
 		"body":    {"attack"},
@@ -466,6 +470,7 @@ func TestComposeSendAs_TamperedFrom_OwnedButNotVerified(t *testing.T) {
 	env.seedAddress(t, "alias@notverified.com", userID, "notverified.com", false, false)
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {email},
 		"subject": {"Tampered not-verified from"},
 		"body":    {"attack"},
@@ -502,6 +507,7 @@ func TestComposeSendAs_TamperedFrom_NotFoundInStore(t *testing.T) {
 	env.seedAddress(t, email, userID, "example.com", true, true)
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {email},
 		"subject": {"From not in store"},
 		"body":    {"attack"},
@@ -530,6 +536,7 @@ func TestComposeSendAs_DefaultFrom_SameAsSession(t *testing.T) {
 	// The handler should still accept from=<session-email>.
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {email},
 		"subject": {"Same-as-session from"},
 		"body":    {"hello"},
@@ -557,6 +564,7 @@ func TestComposeSendAs_Rejection_LeavesNoPartialState(t *testing.T) {
 	env.seedAddress(t, email, userID, "example.com", true, true)
 
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {email},
 		"subject": {"No partial state"},
 		"body":    {"attack body"},
@@ -604,6 +612,7 @@ func TestComposeSendAs_RichMode_FromAligned(t *testing.T) {
 	env.seedAddress(t, sendAsEmail, userID, "d2.com", true, true)
 
 	form := url.Values{
+		"send_id":   {sendID()},
 		"to":        {primaryEmail},
 		"subject":   {"Rich send-as test"},
 		"body":      {"<p>hello</p>"},
@@ -649,6 +658,7 @@ func TestComposeSendAs_CaseInsensitive(t *testing.T) {
 
 	// Submit with uppercase FROM.
 	form := url.Values{
+		"send_id": {sendID()},
 		"to":      {primaryEmail},
 		"subject": {"Case-insensitive test"},
 		"body":    {"hello"},

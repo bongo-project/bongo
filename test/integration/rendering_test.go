@@ -69,6 +69,7 @@ func TestComposeWithAttachments(t *testing.T) {
 	// Build multipart form with text body + 2 file attachments.
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
+	writer.WriteField("send_id", composeSendID())
 	writer.WriteField("to", "admin@localhost")
 	writer.WriteField("subject", "Attachment Test")
 	writer.WriteField("body", "Message with attachments")
@@ -138,6 +139,7 @@ func TestInlineAttachmentPreview(t *testing.T) {
 	// Send a message with an image attachment via compose.
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
+	writer.WriteField("send_id", composeSendID())
 	writer.WriteField("to", "admin@localhost")
 	writer.WriteField("subject", "Inline Preview Test")
 	writer.WriteField("body", "Check inline preview")

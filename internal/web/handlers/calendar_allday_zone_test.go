@@ -419,3 +419,96 @@ func TestAllDaySearchResultsShowEventDate(t *testing.T) {
 		})
 	}
 }
+
+// assertOnlyInCell checks title is rendered in the labelled cell and nowhere
+// else in the grid. A cell renders an event's title more than once, so the
+// count in the cell is the baseline for the whole page.
+func assertOnlyInCell(t *testing.T, html, label, title string) {
+	t.Helper()
+	n := strings.Count(dayCell(t, html, label), title)
+	if n == 0 {
+		t.Errorf("%s missing from cell %q", title, label)
+	} else if total := strings.Count(html, title); total != n {
+		t.Errorf("%s appears %d times in the page, %d of them in cell %q", title, total, n, label)
+	}
+}
+
+// monthEdgeZones are the process zones for the month-grid edge cases: the
+// furthest east, UTC and the furthest west.
+var monthEdgeZones = []string{"Pacific/Kiritimati", "UTC", "Etc/GMT+12"}
+
+// All-day events on the first and last day of a month, and on the neighbouring
+// months' edge days shown in the grid's leading and trailing cells, sit in
+// their own cell and no other, whatever the server zone.
+func TestMonthViewAllDayEdges(t *testing.T) {
+	// November 2026: 1 November is a Sunday, so the grid starts Monday 26
+	// October and ends Sunday 6 December (6 weeks). 30 October is a Friday.
+	cases := []struct{ title, date, label string }{
+		{"Prevmonth", "2026-10-31", "Saturday, October 31"},
+		{"Firstday", "2026-11-01", "Sunday, November 1"},
+		{"Lastday", "2026-11-30", "Monday, November 30"},
+		{"Nextmonth", "2026-12-01", "Tuesday, December 1"},
+	}
+	for _, zone := range monthEdgeZones {
+		t.Run(zone, func(t *testing.T) {
+			setLocalZone(t, zone)
+			e := newAllDayEnv(t)
+			for _, c := range cases {
+				form := url.Values{
+					"title": {c.title}, "calendar_id": {"default"}, "all_day": {"on"},
+					"start_date": {c.date}, "end_date": {c.date}, "reminder_minutes": {"0"},
+				}
+				w := httptest.NewRecorder()
+				e.h.CreateEvent(w, formReq(http.MethodPost, "/calendar/event", form))
+				if w.Code != http.StatusSeeOther {
+					t.Fatalf("create %s: %d %s", c.title, w.Code, w.Body.String())
+				}
+			}
+			html := e.view(t, e.h.MonthView, "/calendar/2026/11", map[string]string{"year": "2026", "month": "11"})
+			for _, c := range cases {
+				assertOnlyInCell(t, html, c.label, c.title)
+			}
+		})
+	}
+}
+
+// A timed event near local midnight stays on the server-zone date.
+func TestMonthViewTimedNearMidnightStaysInServerZone(t *testing.T) {
+	for _, zone := range monthEdgeZones {
+		t.Run(zone, func(t *testing.T) {
+			setLocalZone(t, zone)
+			e := newAllDayEnv(t)
+			for title, hm := range map[string][2]int{"Latenight": {23, 37}, "Earlybird": {0, 23}} {
+				start := time.Date(2026, 11, 10, hm[0], hm[1], 0, 0, time.Local)
+				if _, err := e.events.Create(quotaUser, &bongov1.Event{
+					Title: title, CalendarId: "default",
+					StartTime: start.Unix(), EndTime: start.Add(20 * time.Minute).Unix(),
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			html := e.view(t, e.h.MonthView, "/calendar/2026/11", map[string]string{"year": "2026", "month": "11"})
+			for _, title := range []string{"Latenight", "Earlybird"} {
+				assertOnlyInCell(t, html, "Tuesday, November 10", title)
+			}
+		})
+	}
+}
+
+// A zero-length all-day event ends at its own UTC midnight. On the grid's first
+// cell in a zone west of UTC that is before the cell's local midnight, so the
+// month query must reach a day before the grid to find it.
+func TestMonthViewZeroLengthAllDayAtGridEdge(t *testing.T) {
+	setLocalZone(t, "Etc/GMT+12")
+	e := newAllDayEnv(t)
+	// The November 2026 grid starts Monday 26 October.
+	d := time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)
+	if _, err := e.events.Create(quotaUser, &bongov1.Event{
+		Title: "Zerolen", CalendarId: "default", AllDay: true,
+		StartTime: d.Unix(), EndTime: d.Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	html := e.view(t, e.h.MonthView, "/calendar/2026/11", map[string]string{"year": "2026", "month": "11"})
+	assertOnlyInCell(t, html, "Monday, October 26", "Zerolen")
+}

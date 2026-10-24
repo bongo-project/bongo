@@ -178,6 +178,7 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 
 	t.Run("compose and send", func(t *testing.T) {
 		resp, err := client.PostForm(baseURL+"/compose/send", url.Values{
+			"send_id": {composeSendID()},
 			"to":      {"admin@localhost"},
 			"subject": {"Composed via Web UI"},
 			"body":    {"This message was composed in the web UI."},

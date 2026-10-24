@@ -115,7 +115,8 @@ func TestComposeLocalMailRunsRecipientPipeline(t *testing.T) {
 	send := func(subject string, to ...string) {
 		t.Helper()
 		resp, err := client.PostForm(base+"/compose/send", url.Values{
-			"to": {to[0]}, "cc": {strings.Join(to[1:], ", ")}, "subject": {subject}, "body": {"please pay"},
+			"send_id": {composeSendID()},
+			"to":      {to[0]}, "cc": {strings.Join(to[1:], ", ")}, "subject": {subject}, "body": {"please pay"},
 		})
 		if err != nil {
 			t.Fatalf("POST /compose/send: %v", err)
