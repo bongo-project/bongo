@@ -100,10 +100,12 @@ still gets an SRS0 sender and bounces reach a forged MAIL FROM.
 with it, so a client can declare 1 KB and send up to the message cap.
 
 **Acceptance Criteria:**
-- [ ] A message larger than its declared SIZE is refused with
-      `552 5.3.4` and nothing is enqueued.
-- [ ] A message at or under its declared SIZE, and a message with no SIZE,
-      behave as today.
+- [ ] A message larger than its declared SIZE plus a slack of a tenth and
+      1 KiB is refused with `552 5.3.4` and nothing is enqueued. The slack
+      (decided 2026-10-24, see 8.1) keeps clients whose estimate is a little
+      low working; it still stops a 1 KB declaration carrying a 50 MB body.
+- [ ] A message within the allowance, and a message with no SIZE, behave as
+      today. BDAT is checked the same way as DATA.
 - [ ] Applies to the MX and submission servers.
 
 ### US-004: A global budget for DAV request bodies in flight
@@ -370,7 +372,32 @@ at the web port. No other story changes a config key production sets.
 
 1. Scope: the 17 items in section 3, all three phases, one release.
 2. Multi-node items stay deferred until a multi-node cluster is planned.
+3. US-003 allows SIZE to be underestimated by a tenth plus 1 KiB. RFC 1870
+   calls SIZE an estimate and Postfix does not enforce it in DATA, so a
+   strict limit risked refusing legitimate mail.
 
 ### 8.2 Candidates for the next release
 
 Findings from reviews during this release go here.
+
+From the Phase 23 batch 1 reviews (2026-10-24):
+
+- The plaintext `HTTPAddr` fallbacks in `joinTarget` (`internal/agent/
+  agent.go`) and `BlobSyncer.endpoint` (`internal/cluster/blobsync.go`) now
+  reach a 404 on the web port; they carry a comment and can be deleted. (23.1)
+- The CLI does not read `server.control_addr`; an operator who changes it
+  must pass `--http-addr`. (23.1)
+- `fakeSplitDeliverer.StoreBlob` (`internal/smtp/relay_policy_test.go`)
+  discards the `io.Copy` error, so a test built on it hides read-side
+  refusals. (23.3)
+- Rate-limit units are spent before a SIZE overrun is refused. (23.3)
+- Release notes for v0.12.0:
+  - The `/internal/*` control routes are served only on
+    `server.control_addr` (default `127.0.0.1:8081`); the web port answers
+    404. The `bongo-go` CLI defaults to that address; anything calling it
+    with `--http-addr` set to the web port must change. (23.1)
+  - Forwards of mail with SPF fail and DMARC pass get the no-relay sender
+    and no bounce. Forwards queued before the upgrade keep their SRS0 sender
+    until they drain or the SRS window expires. (23.2)
+  - A message more than a tenth plus 1 KiB over its declared SIZE gets
+    `552 5.3.4`. (23.3)

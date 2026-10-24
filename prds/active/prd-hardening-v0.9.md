@@ -1421,7 +1421,8 @@ From the Phase 22 batch 2 reviews (2026-10-24):
   `cluster.bind_addr` alone: with a loopback advertise the peer listener
   binds the routable address but advertises 127.0.0.1. Fails closed. (22.8)
 - Other `/internal/*` routes still sit on the public web router behind HMAC;
-  the design note lists them as a follow-up. (22.8)
+  the design note lists them as a follow-up. (22.8) Fixed in v0.12.0 by
+  23.1 (control listener).
 - Release notes for v0.11.0, in addition to batch 1: a node with peers opens
   the peer listener on `cluster.peer_port` (8302) and no longer serves blob
   sync or join on the web port, so every node must be upgraded together; an
