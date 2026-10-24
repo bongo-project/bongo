@@ -1,8 +1,8 @@
-From dev@bongoproject.org Mon Feb 23 09:20:00 2026
-From: Dev User <dev@bongoproject.org>
+From dev@example.org Mon Feb 23 09:20:00 2026
+From: Dev User <dev@example.org>
 To: alice@example.com
 Subject: Re: Sprint 16 planning notes
-Message-ID: <sent001@bongoproject.org>
+Message-ID: <sent001@example.org>
 In-Reply-To: <msg001@example.com>
 References: <msg001@example.com>
 Date: Mon, 23 Feb 2026 09:20:00 +0000
@@ -18,11 +18,11 @@ integration is new and we should validate it under load.
 Best,
 Dev
 
-From dev@bongoproject.org Tue Feb 24 10:00:00 2026
-From: Dev User <dev@bongoproject.org>
+From dev@example.org Tue Feb 24 10:00:00 2026
+From: Dev User <dev@example.org>
 To: bob@example.com
 Subject: Logging RFC feedback
-Message-ID: <sent002@bongoproject.org>
+Message-ID: <sent002@example.org>
 Date: Tue, 24 Feb 2026 10:00:00 +0000
 MIME-Version: 1.0
 Content-Type: text/plain; charset="UTF-8"
@@ -40,11 +40,11 @@ and web layers when a single user action touches multiple components.
 
 - Dev
 
-From dev@bongoproject.org Wed Feb 25 08:00:00 2026
-From: Dev User <dev@bongoproject.org>
+From dev@example.org Wed Feb 25 08:00:00 2026
+From: Dev User <dev@example.org>
 To: charlie@example.com
 Subject: Re: Accessibility audit results
-Message-ID: <sent003@bongoproject.org>
+Message-ID: <sent003@example.org>
 In-Reply-To: <msg007@example.com>
 References: <msg007@example.com>
 Date: Wed, 25 Feb 2026 08:00:00 +0000
@@ -63,11 +63,11 @@ the text is also available to browser translation tools.
 
 - Dev
 
-From dev@bongoproject.org Thu Feb 26 09:30:00 2026
-From: Dev User <dev@bongoproject.org>
+From dev@example.org Thu Feb 26 09:30:00 2026
+From: Dev User <dev@example.org>
 To: alice@example.com, bob@example.com, charlie@example.com
 Subject: Architecture review prep
-Message-ID: <sent004@bongoproject.org>
+Message-ID: <sent004@example.org>
 Date: Thu, 26 Feb 2026 09:30:00 +0000
 MIME-Version: 1.0
 Content-Type: text/plain; charset="UTF-8"
@@ -89,11 +89,11 @@ I'll bring a diagram to the meeting.
 
 - Dev
 
-From dev@bongoproject.org Fri Feb 27 14:00:00 2026
-From: Dev User <dev@bongoproject.org>
+From dev@example.org Fri Feb 27 14:00:00 2026
+From: Dev User <dev@example.org>
 To: bob@example.com
 Subject: Re: Quick question about blob GC
-Message-ID: <sent005@bongoproject.org>
+Message-ID: <sent005@example.org>
 In-Reply-To: <msg009@example.com>
 References: <msg009@example.com>
 Date: Fri, 27 Feb 2026 14:00:00 +0000
@@ -114,11 +114,11 @@ and add option 2 to the backlog.
 
 - Dev
 
-From dev@bongoproject.org Sat Feb 28 16:00:00 2026
-From: Dev User <dev@bongoproject.org>
+From dev@example.org Sat Feb 28 16:00:00 2026
+From: Dev User <dev@example.org>
 To: alice@example.com
 Subject: Re: Weekend deploy: v0.9.1-rc1
-Message-ID: <sent006@bongoproject.org>
+Message-ID: <sent006@example.org>
 In-Reply-To: <msg019@example.com>
 References: <msg019@example.com>
 Date: Sat, 28 Feb 2026 16:00:00 +0000

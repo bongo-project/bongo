@@ -1,0 +1,35 @@
+From: Priya Raman <priya@example.org>
+To: Demo User <demo@example.com>
+Subject: Meeting notes and logo
+Message-ID: <demo-004@example.org>
+Date: Thu, 08 Jan 2026 16:45:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix-demo-004"
+
+--mix-demo-004
+Content-Type: text/plain; charset="UTF-8"
+
+Hi,
+
+Notes from today are attached as a text file, plus the placeholder logo
+(a small generated PNG).
+
+Priya
+
+--mix-demo-004
+Content-Type: text/plain; charset="UTF-8"; name="notes.txt"
+Content-Disposition: attachment; filename="notes.txt"
+Content-Transfer-Encoding: base64
+
+TWVldGluZyBub3RlcyAoZmljdGlvbmFsKVxuLSBBZ3JlZSB0aGUgbGF1bmNoIGRhdGVcbi0gUmV2
+aWV3IHRoZSBkZW1vIGRhdGFcbg==
+
+--mix-demo-004
+Content-Type: image/png; name="logo.png"
+Content-Disposition: attachment; filename="logo.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGPQqDiBFTEMLQkAAtVa
+AcSRe60AAAAASUVORK5CYII=
+
+--mix-demo-004--

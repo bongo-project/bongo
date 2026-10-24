@@ -1,0 +1,21 @@
+From: Tomasz Wrobel <tomasz@example.net>
+To: Demo User <demo@example.com>
+Subject: Lunch on Friday?
+Message-ID: <demo-003@example.net>
+Date: Wed, 07 Jan 2026 11:12:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt-demo-003"
+
+--alt-demo-003
+Content-Type: text/plain; charset="UTF-8"
+
+Are you free for lunch on Friday? The new noodle place opens at noon.
+
+Tomasz
+
+--alt-demo-003
+Content-Type: text/html; charset="UTF-8"
+
+<html><body><p>Are you free for lunch on <b>Friday</b>? The new noodle place opens at noon.</p><p>Tomasz</p></body></html>
+
+--alt-demo-003--

@@ -1,0 +1,15 @@
+From: Orchard Books <hello@orchard-books.example.org>
+To: Demo User <demo@example.com>
+Subject: Your order has shipped
+Message-ID: <demo-002@orchard-books.example.org>
+Date: Tue, 06 Jan 2026 14:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: 7bit
+
+<html><body>
+<h1>Order #10042 is on its way</h1>
+<p>Your copy of <em>A Field Guide to Imaginary Birds</em> has shipped.</p>
+<ul><li>Carrier: Example Post</li><li>Estimated delivery: 9 January</li></ul>
+<p><a href="https://orchard-books.example.org/orders/10042">Track your parcel</a></p>
+</body></html>
