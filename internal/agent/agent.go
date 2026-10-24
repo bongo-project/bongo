@@ -78,23 +78,6 @@ func init() {
 	}
 }
 
-// Production defaults and their dev-mode replacements for the mail protocol
-// listeners. Dev substitutes only when the configured value is still the
-// production default, so an explicitly configured port is always honoured --
-// which is also what lets each in-process test agent bind its own ports
-// instead of every agent contending for one fixed set.
-const (
-	defaultIMAPPort    = 143
-	defaultIMAPTLSPort = 993
-	devIMAPPort        = 1143
-	devIMAPTLSPort     = 1993
-
-	defaultPOP3Port    = 110
-	defaultPOP3TLSPort = 995
-	devPOP3Port        = 1110
-	devPOP3TLSPort     = 1995
-)
-
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
 	// blobSweepBeforeDelete, when set, runs between the sweep plan and the
@@ -1496,10 +1479,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	})
 
-	port := a.Config.Web.Port
-	if a.Config.Server.Role == "dev" && port == 443 {
-		port = 8080
-	}
+	port := a.Config.Web.ListenPort(a.Config.Server.Role == "dev")
 
 	addr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
 	a.httpServer = newHTTPServer(addr, r, a.logger)
@@ -1837,18 +1817,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			tlsCfg, isDev, a.logger,
 		)
 
-		imapPort := a.Config.IMAP.Port
-		imapTLSPort := a.Config.IMAP.PortTLS
 		// Dev supplies non-privileged defaults but never overrides an explicit
-		// port (same rule as SMTP in internal/smtp/server.go).
-		if isDev {
-			if imapPort == defaultIMAPPort {
-				imapPort = devIMAPPort
-			}
-			if imapTLSPort == defaultIMAPTLSPort {
-				imapTLSPort = devIMAPTLSPort
-			}
-		}
+		// port (config.IMAPConfig.ListenPorts, shared with Validate).
+		imapPort, imapTLSPort := a.Config.IMAP.ListenPorts(isDev)
 
 		plainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapPort))
 		tlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapTLSPort))
@@ -1886,16 +1857,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		a.POP3 = bongopop3.NewServer(a.Auth, a.Mailboxes, a.Store, a.Blobs, pop3TLSCfg, isDev, a.logger)
 
-		pop3Port := a.Config.POP3.Port
-		pop3TLSPort := a.Config.POP3.PortTLS
-		if isDev {
-			if pop3Port == defaultPOP3Port {
-				pop3Port = devPOP3Port
-			}
-			if pop3TLSPort == defaultPOP3TLSPort {
-				pop3TLSPort = devPOP3TLSPort
-			}
-		}
+		pop3Port, pop3TLSPort := a.Config.POP3.ListenPorts(isDev)
 
 		pop3PlainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(pop3Port))
 		pop3TlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(pop3TLSPort))
@@ -2004,10 +1966,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	var redirectLn net.Listener
 	var redirectHandler http.Handler
 	if a.Config.Web.HTTPSRedirect && webTLSCfg != nil && a.Config.Server.Role != "dev" {
-		redirectPort := a.Config.Web.HTTPRedirectPort
-		if redirectPort == 0 {
-			redirectPort = 80
-		}
+		redirectPort := a.Config.Web.RedirectPort()
 		redirectAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(redirectPort))
 		httpsHost := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
 		redirectHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

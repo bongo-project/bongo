@@ -1,0 +1,5 @@
+services:
+  ok:
+    image: nginx@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+  b:
+    image: nginx@sha256:EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE

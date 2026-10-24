@@ -899,15 +899,17 @@ func (c *Config) Validate() error {
 	}
 
 	// Reject a cluster bind address that could never work before anything
-	// listens. A bare wildcard server.bind_addr with no advertise address is
-	// left to NewRaftNode and NewGossipNode, which refuse it at startup;
-	// Validate has always accepted it so that config shape checks stay usable
-	// without a full node setup.
+	// listens. For the server role a bare wildcard server.bind_addr with no
+	// advertise_addr and no cluster.bind_addr fails here, as NewRaftNode and
+	// NewGossipNode would at startup. Dev maps the wildcard to loopback.
 	if c.Server.Role == "server" || c.Server.Role == "dev" {
-		if _, err := c.ClusterBindHost(); err != nil &&
-			(c.Cluster.BindAddr != "" || c.Server.AdvertiseAddr != "" || !isUnspecifiedHost(c.Server.BindAddr)) {
+		if _, err := c.ClusterBindHost(); err != nil {
 			return err
 		}
+	}
+
+	if err := c.validateListenerPorts(); err != nil {
+		return err
 	}
 
 	if err := c.Cluster.Raft.Validate(); err != nil {
@@ -1488,7 +1490,7 @@ func (c *Config) ClusterBindHost() (string, error) {
 		return "", fmt.Errorf("cluster: cannot derive a raft/gossip bind address from %q (not an IP address); set cluster.bind_addr to this node's local interface IP or use an IP literal for server.advertise_addr", host)
 	}
 	if ip.IsUnspecified() && c.Server.Role != "dev" {
-		return "", fmt.Errorf("cluster: raft/gossip would bind the wildcard address %q; set cluster.bind_addr to this node's local interface IP or set server.advertise_addr", host)
+		return "", fmt.Errorf("cluster: server.bind_addr %q is a wildcard and neither server.advertise_addr nor cluster.bind_addr is set; raft/gossip would bind every interface. Set server.advertise_addr (127.0.0.1 for a single node) or cluster.bind_addr to this node's local interface IP", host)
 	}
 	return host, nil
 }

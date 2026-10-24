@@ -1,0 +1,1 @@
+services: {web: {image: nginx:1}, ok: {image: registry.example/app:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}}

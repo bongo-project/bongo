@@ -29,6 +29,7 @@ func TestValidateControlAddr(t *testing.T) {
 			t.Run(role+"/"+tt.name, func(t *testing.T) {
 				cfg := Defaults()
 				cfg.Server.Role = role
+				cfg.Server.AdvertiseAddr = "127.0.0.1"
 				cfg.Server.ControlAddr = tt.addr
 				err := cfg.Validate()
 				if (err != nil) != tt.wantErr {
