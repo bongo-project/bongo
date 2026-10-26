@@ -1465,3 +1465,10 @@ PATTERN: [config] Validate collisions against the ports a node will actually bin
 - 25.2 isolated test ports with an AST guard, 25.3 Go 1.27.3 and current actions and modules, 25.5 uploads spooled and the mbox import streamed. 25.2's guard needed two fix rounds (wrapper callers and config closures); 25.3 and 25.5 passed as MINOR.
 PATTERN: [testing] A source guard that exempts helper functions must also check the helpers' callers, transitively; otherwise every test that goes through the helper escapes.
 PATTERN: [testing] Draw all the free ports a test needs from listeners held open together; drawing them one at a time can return the same port twice.
+
+## 2026-10-26: Phase 27 batch 1 (27.1, 27.3, 27.4)
+
+- UI foundation: static Geist 1.8.2 fonts, tokens and icons; preview and attachment data with a backfill; the ui-shots visual check. 27.1 and 27.3 were rejected once (dark-mode contrast from a light-only token, restyles outside scope; an untested backfill loop and rebuild guard) and fixed with tests. The harness's first run found real production bugs (tags page CSP errors, login dark mode).
+PATTERN: [css] An alias must point at a token defined in every theme; test both blocks.
+PATTERN: [ui] Foundation work must not restyle screens; keep fallback-only properties undefined with an owner-tagged allowlist until their screen story.
+PATTERN: [workers] A background loop needs its interval as a field so a test can prove it stops on cancel and repeats.
