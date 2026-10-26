@@ -627,6 +627,14 @@ builds on the grant key space from US-003.
 1. (operator, 2026-10-26) Scope as listed in section 3.
 2. (operator, 2026-10-26) SMS reminders and natural-language entry with
    mail-to-calendar commands (#70 SMS part, #71) are dropped.
+3. (operator, 2026-10-27) CalDAV server-side scheduling (RFC 6638) is
+   wanted, so Apple Calendar and other CalDAV clients can send and answer
+   invitations through Bongo. Add it as a story after iTIP/iMIP (US for
+   #68); its release (v0.15.0 or v0.15.1) is settled at import.
+4. (operator, 2026-10-27) The Summary page becomes the default start page
+   after login, with a user preference to start in the inbox instead.
+5. (operator, 2026-10-27) The mail views (v0.14 US-016) and DSN relay
+   (v0.14 US-011) move into this release, per the v0.14 split.
 
 ### 8.2 Candidates for the next release
 

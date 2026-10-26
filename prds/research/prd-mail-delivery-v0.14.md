@@ -714,6 +714,22 @@ checked against production's free space before deploying.
    `bongo-go sendmail` subcommand with the common sendmail and LSB flags.
 2. (operator, 2026-10-26) POP3 SASL (#19) and IMAP PROXYAUTH (#16) are
    dropped; neither is in this or any planned release.
+3. (operator, 2026-10-27) `bongo-go sendmail` authenticates as a mail
+   client over submission, reading its credentials from a file only it can
+   read (mode 0600). The signed control route is rejected.
+4. (operator, 2026-10-27) Port 465 (implicit TLS) is on by default.
+   Production must publish it through the infra repository before the
+   release is deployed.
+5. (operator, 2026-10-27) The outbound queue lifetime is 5 days, replacing
+   the accidental ~17 hours.
+6. (operator, 2026-10-27) New rules continue after a match by default;
+   existing rules keep first-match behaviour through a one-time migration.
+7. (operator, 2026-10-27) `abuse@` resolves per domain the same way as
+   `postmaster@`.
+8. (operator, 2026-10-27) The proposed split is accepted: US-016 (views)
+   and US-011 (DSN relay) move to v0.15, and US-013 (custom over-quota
+   text) is deferred. The defects in rules, queue lifetime and greylisting
+   found by this PRD are fixed first.
 
 ### 8.2 Candidates for the next release
 

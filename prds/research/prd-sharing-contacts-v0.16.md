@@ -575,6 +575,11 @@ must cover it.
 1. (operator, 2026-10-26) Scope as listed in section 3.
 2. (operator, 2026-10-26) IMAP PROXYAUTH (#16) and POP3 SASL (#19) are
    dropped.
+3. (operator, 2026-10-27) ACL (RFC 4314) and QUOTA (RFC 9208) server
+   support comes from a fork of go-imap v2 under the bongo-project
+   organisation, pinned with a `replace` directive. Each change is offered
+   upstream to emersion/go-imap as its own pull request, kept small and
+   independent of Bongo; the fork is dropped once upstream releases them.
 
 ### 8.2 Candidates for the next release
 
