@@ -160,7 +160,7 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 | 27.5 | US-005: Mailbox list (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
 | 27.6 | US-006: Message and thread view (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
 | 27.7 | US-007: Compose (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
-| 27.8 | US-008: Junk (quarantine) (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.8 | US-008: Junk (quarantine) (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | DONE (2026-10-27) | Page header with the count, Rescan and Empty junk (danger); a note banner; a table card with mono red spam scores and per-row Restore and Delete; "Restore" wording throughout. Shared .page-head, .data-table and .banner rules in a "Shared page components (US-008)" section of bongo.css for the Phase C screens to reuse. Bulk actions and confirmations unchanged. |
 | 27.9 | US-009: Calendar (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
 | 27.10 | US-010: Contacts (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
 | 27.11 | US-011: Rules (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
