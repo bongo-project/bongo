@@ -335,3 +335,16 @@ From the 27.2 shell review (2026-10-26):
 - A per-user storage meter needs usage data the sidebar does not have; the
   mockup's meter waits for a cheap per-user usage figure. (27.2)
 
+From the 27.8 junk review (2026-10-27):
+
+- Phase C screens (rules, settings, admin) should reuse the shared
+  `.page-head`, `.data-table` and `.banner` rules rather than add their own;
+  the section sits before the responsive blocks so the mobile rules win.
+  (27.8)
+- The dev seed has no quarantined messages, so ui-shots only captures the
+  empty Junk page; the populated state was checked by rendering the template
+  with fixture data. Seed a few quarantined messages for ui-shots. (27.8)
+- `confirmEmpty` and other small Alpine methods have no JS test runner; they
+  were checked with a throwaway Node script. A minimal headless JS check in
+  scripts/ui-shots would guard them. (27.8)
+

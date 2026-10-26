@@ -23,8 +23,34 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<h1 class="admin-title">{ t(ctx, "quarantine.title") }</h1>
-			<p class="admin-subtitle">{ t(ctx, "quarantine.subtitle") }</p>
+			<div class="page-head">
+				<h1>{ t(ctx, "quarantine.title") }</h1>
+				if len(msgs) > 0 {
+					<span class="meta">{ fmt.Sprint(len(msgs)) } { t(ctx, "quarantine.messagesInQuarantine") }</span>
+				}
+				<div class="spacer"></div>
+				if len(msgs) > 0 {
+					<form method="post" action="/admin/quarantine/bulk" class="u-m0">
+						<input type="hidden" name="action" value="rescan"/>
+						for _, m := range msgs {
+							<input type="hidden" name="ids" value={ m.ID }/>
+						}
+						<button type="submit" class="btn-outline">{ t(ctx, "quarantine.rescan") }</button>
+					</form>
+					<form method="post" action="/admin/quarantine/bulk" class="u-m0" @submit="confirmEmpty" data-confirm={ t(ctx, "quarantine.emptyConfirm") }>
+						<input type="hidden" name="action" value="delete"/>
+						for _, m := range msgs {
+							<input type="hidden" name="ids" value={ m.ID }/>
+						}
+						<button type="submit" class="btn-flush">{ t(ctx, "quarantine.emptyJunk") }</button>
+					</form>
+				}
+			</div>
+			<div class="banner warn" role="note">
+				@Icon("alert", "icon")
+				<span>{ t(ctx, "quarantine.banner") }</span>
+			</div>
+			<p class="admin-subtitle quarantine-subtitle">{ t(ctx, "quarantine.subtitle") }</p>
 			<!-- Bulk action toolbar -->
 			<div class="bulk-bar" x-bind:hidden="selected.length === 0" x-cloak>
 				<span class="bulk-label" x-text="selected.length + ' selected'"></span>
@@ -44,8 +70,9 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 					<button type="submit" class="btn-flush">{ t(ctx, "quarantine.deleteSelected") }</button>
 				</form>
 			</div>
-			<div class="admin-table-card">
-				<table class="admin-table" aria-label={ t(ctx, "quarantine.tableLabel") }>
+			<div class="card">
+				<div class="card-body flush">
+				<table class="admin-table data-table" aria-label={ t(ctx, "quarantine.tableLabel") }>
 					<thead>
 						<tr>
 							<th class="u-width-36px">
@@ -88,9 +115,7 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 									{ truncate(m.Reason, 80) }
 								</td>
 								<td>
-									<span class={ quarantineScoreClass(m.Score) }>
-										{ fmt.Sprintf("%.2f", m.Score) }
-									</span>
+									<span class="quarantine-spamscore">{ quarantineScorePct(m.Score) }</span>
 								</td>
 								<td>
 									<div class="row-actions">
@@ -113,25 +138,9 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 						}
 					</tbody>
 				</table>
+				</div>
 			</div>
-			if len(msgs) > 0 {
-				<p class="u-font-082 u-text-muted u-mt-05">
-					{ fmt.Sprint(len(msgs)) } { t(ctx, "quarantine.messagesInQuarantine") }
-				</p>
-			}
 		</div>
-	}
-}
-
-// quarantineScoreClass returns a CSS class based on the spam score.
-func quarantineScoreClass(score float32) string {
-	switch {
-	case score >= 0.8:
-		return "badge badge-disabled"
-	case score >= 0.5:
-		return "badge badge-pending"
-	default:
-		return "badge"
 	}
 }
 
