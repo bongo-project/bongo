@@ -151,7 +151,9 @@ func TestAgentRunAndCancel(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run returned error: %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	// The budget covers a full shutdown under -race on a shared CI runner
+	// (PR #86 needed more than 5 s once); a real hang still fails.
+	case <-time.After(20 * time.Second):
 		t.Fatal("Run did not return after context cancellation")
 	}
 }
