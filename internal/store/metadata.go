@@ -104,7 +104,9 @@ func (u *UserIndex) createSchema() error {
 		message_id TEXT,
 		parent_message_id TEXT,
 		list_id TEXT,
-		received_at INTEGER
+		received_at INTEGER,
+		preview TEXT,
+		has_attachments INTEGER NOT NULL DEFAULT 0
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_maildocument_conversation
@@ -146,8 +148,125 @@ func (u *UserIndex) createSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_message_tags_tag
 		ON message_tags(tag);
 	`
-	_, err := u.db.Exec(schema)
-	return err
+	if _, err := u.db.Exec(schema); err != nil {
+		return err
+	}
+	// Databases created before the preview columns existed. preview stays
+	// NULL-able: NULL means not yet computed, '' means computed and empty.
+	return ensureColumns(u.db, "maildocument", [][2]string{
+		{"preview", "TEXT"},
+		{"has_attachments", "INTEGER NOT NULL DEFAULT 0"},
+	})
+}
+
+// ensureColumns adds any missing column to table. Table, column names and
+// definitions must be constants: they are interpolated into DDL.
+func ensureColumns(db *sql.DB, table string, cols [][2]string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return fmt.Errorf("reading table_info(%s): %w", table, err)
+	}
+	have := map[string]bool{}
+	for rows.Next() {
+		var (
+			cid       int
+			name, typ string
+			notnull   int
+			dflt      sql.NullString
+			pk        int
+		)
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return errors.Join(fmt.Errorf("scanning table_info(%s): %w", table, err), rows.Close())
+		}
+		have[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return errors.Join(err, rows.Close())
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, c := range cols {
+		if have[c[0]] {
+			continue
+		}
+		if _, err := db.Exec("ALTER TABLE " + table + " ADD COLUMN " + c[0] + " " + c[1]); err != nil {
+			return fmt.Errorf("adding %s.%s: %w", table, c[0], err)
+		}
+	}
+	return nil
+}
+
+// MailPreviewRow is the list-view data derived from a message body.
+type MailPreviewRow struct {
+	Preview        string
+	HasAttachments bool
+}
+
+// SetMailPreview records the computed preview for an indexed mail. It is a
+// separate UPDATE so IndexMail (re-run on every flag or tag change) never
+// resets it.
+func (u *UserIndex) SetMailPreview(guid, preview string, hasAttachments bool) error {
+	att := 0
+	if hasAttachments {
+		att = 1
+	}
+	if _, err := u.db.Exec(`UPDATE maildocument SET preview = ?, has_attachments = ? WHERE guid = ?`,
+		preview, att, guid); err != nil {
+		return fmt.Errorf("setting mail preview: %w", err)
+	}
+	return nil
+}
+
+// MailPreviews returns the stored previews for guids. Rows whose preview has
+// not been computed yet (NULL) are omitted.
+func (u *UserIndex) MailPreviews(guids []string) (map[string]MailPreviewRow, error) {
+	out := make(map[string]MailPreviewRow, len(guids))
+	if len(guids) == 0 {
+		return out, nil
+	}
+	// One prepared point lookup per guid: callers pass a page of results, and
+	// this keeps the statement constant rather than building an IN list.
+	stmt, err := u.db.Prepare(`SELECT preview, has_attachments FROM maildocument WHERE guid = ? AND preview IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("preparing mail preview query: %w", err)
+	}
+	defer stmt.Close()
+	for _, guid := range guids {
+		var (
+			r   MailPreviewRow
+			att int
+		)
+		switch err := stmt.QueryRow(guid).Scan(&r.Preview, &att); {
+		case errors.Is(err, sql.ErrNoRows):
+			continue
+		case err != nil:
+			return nil, fmt.Errorf("reading mail preview: %w", err)
+		}
+		r.HasAttachments = att != 0
+		out[guid] = r
+	}
+	return out, nil
+}
+
+// PendingPreviews returns up to limit guids with no computed preview whose
+// guid sorts after afterGUID.
+func (u *UserIndex) PendingPreviews(afterGUID string, limit int) ([]string, error) {
+	rows, err := u.db.Query(`SELECT guid FROM maildocument WHERE preview IS NULL AND guid > ? ORDER BY guid LIMIT ?`,
+		afterGUID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("querying pending previews: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
 }
 
 // IndexMail transactionally inserts a mail into storeobject and maildocument tables.
@@ -611,6 +730,33 @@ func (m *MetadataManager) IndexMail(userID, guid, subject, sender string, receiv
 		return err
 	}
 	return idx.IndexMail(guid, subject, sender, receivedAt, size)
+}
+
+// SetMailPreview opens the user's database and records a mail's preview.
+func (m *MetadataManager) SetMailPreview(userID, guid, preview string, hasAttachments bool) error {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return err
+	}
+	return idx.SetMailPreview(guid, preview, hasAttachments)
+}
+
+// MailPreviews opens the user's database and reads previews for guids.
+func (m *MetadataManager) MailPreviews(userID string, guids []string) (map[string]MailPreviewRow, error) {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return idx.MailPreviews(guids)
+}
+
+// PendingPreviews opens the user's database and lists mail awaiting a preview.
+func (m *MetadataManager) PendingPreviews(userID, afterGUID string, limit int) ([]string, error) {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return idx.PendingPreviews(afterGUID, limit)
 }
 
 // IndexMailTags opens the user's database and replaces all tags for a mail message.

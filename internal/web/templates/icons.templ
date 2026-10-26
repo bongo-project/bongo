@@ -1,0 +1,18 @@
+package templates
+
+// Icon renders an inline decorative SVG from the fixed icon set. Unknown
+// names render nothing. The name is never written to the output.
+templ Icon(name string, class string) {
+	if def, ok := iconSet[name]; ok {
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox={ def.viewBox }
+			class={ iconClass(name, class) }
+			aria-hidden="true"
+			focusable="false"
+			{ iconAttrs(def)... }
+		>
+			@templ.Raw(def.inner)
+		</svg>
+	}
+}

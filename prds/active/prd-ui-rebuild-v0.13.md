@@ -50,10 +50,8 @@ handoff's data script.
 **Acceptance Criteria:**
 - [ ] The token file is updated from the handoff, with font URLs rewritten to
       `/static/fonts/` and `@font-face` rules only for font files that ship
-      (every Geist weight comes from the shipped variable font; the
-      handoff's rules for Thin, ExtraLight, Light and Black, whose static
-      files are not supplied, are dropped, 8.1 item 2). No 404 for any
-      font.
+      (static WOFF2 files for every weight of Geist and Geist Mono 1.8.2,
+      8.1 item 2). No 404 for any font.
 - [ ] A templ icon component renders each icon the screens use by name, as
       inline SVG with `aria-hidden` and `currentColor`, plus the logo glyph.
       No icon is loaded from a CDN or an inline style.
@@ -292,12 +290,29 @@ story:
 
 1. (operator, 2026-10-24) The handoff stays out of the repository and its
    history.
-2. (operator, 2026-10-26) Fonts stay Geist. Every weight from 100 to 900
-   comes from the variable font already shipped; the handoff's static
-   `@font-face` rules for Thin, ExtraLight, Light and Black, whose files are
-   not supplied, are dropped (US-001).
+2. (operator, 2026-10-26) Fonts stay Geist, hosted as static files: the
+   official Geist and Geist Mono 1.8.2 release, nine WOFF2 weights each
+   (100 to 900), replace the older TTF files and the variable font (US-001).
 3. (operator, 2026-10-26) The calendar gets an Agenda view (US-009).
 
 ### 8.2 Candidates for the next release
 
 Findings from reviews during this release go here.
+
+From the Phase A batch 1 reviews (2026-10-26):
+
+- The Settings > Tags page throws 16 console errors on load in production
+  today: Alpine's CSP build cannot parse a template literal there, so parts
+  of the page may not work. Fix it in US-012, not only restyle it. (27.4)
+- The login page stays on `data-theme="auto"` under a dark colour-scheme
+  preference, so it never renders dark. Fix in US-014. (27.4)
+- On mobile the message view's tag popover renders open over the sender
+  line. Fix in US-006. (27.4)
+- `--status-red` (and six other fallback-only properties) stay undefined on
+  purpose until their screen stories restyle them; `.log-line-error` and
+  `.u-text-status-red` therefore inherit colour today. The token test lists
+  them with the owning story. (27.1)
+- The `docs/dev-quickstart.md` section for `make ui-shots` waits for the
+  documentation work after the UI rebuild; usage is in the package doc.
+  (27.4)
+

@@ -20,7 +20,7 @@ func TestMailBodyTextDeepMIMEIsFast(t *testing.T) {
 	meta := &bongov1.MailMeta{Guid: "deep", RawMessage: &bongov1.BlobRef{Hash: hash, Size: int64(len(raw))}}
 
 	start := time.Now()
-	_ = mailBodyText(env.fsm.blobs, meta, testLogger())
+	_, _, _, _ = mailContent(env.fsm.blobs, meta, testLogger())
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Errorf("mailBodyText took %v on a deeply nested message, want < 1s", elapsed)
 	}

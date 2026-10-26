@@ -1,4 +1,4 @@
-.PHONY: all build dist generate test test-race test-integration test-all fmt fmt-check lint check-image-pins sec clean run dev ui-test ui-test-headed ui-test-setup validate seed
+.PHONY: all build dist generate test test-race test-integration test-all fmt fmt-check lint check-image-pins sec clean run dev ui-test ui-test-headed ui-test-setup ui-shots validate seed
 
 BINARY     := bongo-go
 IMPORT_BIN := bongo-import
@@ -113,6 +113,16 @@ ui-test-setup: build
 	sleep 3
 	go run ./scripts/validate-server/...
 	go run ./scripts/validate-server/... --seed-only
+
+# Visual verification harness: builds into a temp dir, starts a dev server on
+# free ports, seeds it, and screenshots every route (light, dark, mobile).
+# Not part of test-all or CI. OUT must be outside the repository.
+#   make ui-shots OUT=~/shots
+# Any failure (UI findings or a setup error) surfaces as make's exit status 2
+# (go run collapses the program's 1 and 2 to 1); the program's own 0/1/2 codes
+# are only visible via go run ./scripts/ui-shots.
+ui-shots:
+	go run ./scripts/ui-shots $(if $(OUT),-out $(OUT))
 
 validate:
 	go run ./scripts/validate-server/...

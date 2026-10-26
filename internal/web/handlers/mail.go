@@ -176,18 +176,7 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allSummaries := h.buildMessageSummaries(userID, msgs)
-	total := len(allSummaries)
-	totalPages := (total + perPage - 1) / perPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-
-	offset := (page - 1) * perPage
-	summaries := paginateMessageSummaries(allSummaries, offset, perPage)
+	summaries, page, totalPages := h.pageSummaries(userID, msgs, page, perPage)
 
 	// Load user preferences for infinite scroll setting.
 	infiniteScroll := false
@@ -268,17 +257,7 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	allSummaries := h.buildMessageSummaries(userID, msgs)
-	total := len(allSummaries)
-	totalPages := (total + perPage - 1) / perPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-	offset := (page - 1) * perPage
-	summaries := paginateMessageSummaries(allSummaries, offset, perPage)
+	summaries, page, totalPages := h.pageSummaries(userID, msgs, page, perPage)
 
 	infiniteScroll := false
 	if h.prefs != nil {
@@ -2133,6 +2112,47 @@ func (h *MailHandler) findOwnedBlob(userID, hash string) *ownedBlob {
 		}
 	}
 	return found
+}
+
+// pageSummaries builds the summaries for msgs, clamps page into range and
+// returns that page with previews filled from the index. Both list views share
+// it so neither can skip the preview step.
+func (h *MailHandler) pageSummaries(userID string, msgs []*bongov1.MailboxMessage, page, perPage int) ([]templates.MessageSummary, int, int) {
+	all := h.buildMessageSummaries(userID, msgs)
+	totalPages := (len(all) + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	summaries := paginateMessageSummaries(all, (page-1)*perPage, perPage)
+	h.fillPreviews(userID, summaries)
+	return summaries, page, totalPages
+}
+
+// fillPreviews copies the stored preview and attachment flag from the user's
+// SQLite index onto one page of summaries. It never reads message blobs; rows
+// without a computed preview are left blank until the backfill reaches them.
+func (h *MailHandler) fillPreviews(userID string, summaries []templates.MessageSummary) {
+	if h.metadata == nil || len(summaries) == 0 {
+		return
+	}
+	guids := make([]string, 0, len(summaries))
+	for _, s := range summaries {
+		guids = append(guids, s.MailGUID)
+	}
+	rows, err := h.metadata.MailPreviews(userID, guids)
+	if err != nil {
+		h.logger.Debug("mail list: previews unavailable", "user", userID, "error", err)
+		return
+	}
+	for i := range summaries {
+		if r, ok := rows[summaries[i].MailGUID]; ok {
+			summaries[i].Preview = r.Preview
+			summaries[i].HasAttachments = r.HasAttachments
+		}
+	}
 }
 
 func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {

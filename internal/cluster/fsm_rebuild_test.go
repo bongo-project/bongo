@@ -11,6 +11,7 @@ import (
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
+	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
 )
 
@@ -247,10 +248,80 @@ func TestMailBodyTextDegradesToEmpty(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := mailBodyText(env.fsm.blobs, tt.meta, testLogger()); got != "" {
+			if got, _, _, _ := mailContent(env.fsm.blobs, tt.meta, testLogger()); got != "" {
 				t.Errorf("body = %q, want empty", got)
 			}
 		})
+	}
+}
+
+// A blob that reads but cannot be parsed records an empty preview (ok=true):
+// retrying a parse failure would never succeed, so the backfill must not
+// revisit it forever.
+func TestMailContentParseFailureRecordsEmptyPreview(t *testing.T) {
+	env := newFSMTestEnv(t)
+	hash, err := env.blobs.Put([]byte("\x00\x01 not a mail message at all"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := &bongov1.MailMeta{Guid: "m1", RawMessage: &bongov1.BlobRef{Hash: hash, Size: 30}}
+	if _, _, err := mimesafe.ReadEnvelope([]byte("\x00\x01 not a mail message at all")); err == nil {
+		t.Fatal("fixture must fail to parse for this test to mean anything")
+	}
+	body, preview, has, ok := mailContent(env.fsm.blobs, meta, testLogger())
+	if !ok || body != "" || preview != "" || has {
+		t.Fatalf("got body=%q preview=%q has=%v ok=%v, want empty with ok=true", body, preview, has, ok)
+	}
+}
+
+// mailContent with no blob store is retryable (ok=false); a message with no
+// raw-message hash can never become readable, so it records an empty preview
+// (ok=true) rather than staying pending forever.
+func TestMailContentNilBlobsAndEmptyHash(t *testing.T) {
+	env := newFSMTestEnv(t)
+	hash, err := env.blobs.Put([]byte(rawTestMessage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	withBlob := &bongov1.MailMeta{Guid: "m1", RawMessage: &bongov1.BlobRef{Hash: hash}}
+	noHash := &bongov1.MailMeta{Guid: "m2"}
+	emptyHash := &bongov1.MailMeta{Guid: "m3", RawMessage: &bongov1.BlobRef{}}
+
+	if _, _, _, ok := mailContent(nil, withBlob, testLogger()); ok {
+		t.Error("nil blob store: ok = true, want false so the backfill retries")
+	}
+	if _, _, _, ok := mailContent(nil, noHash, testLogger()); ok {
+		t.Error("nil blob store, no hash: ok = true, want false")
+	}
+	for _, m := range []*bongov1.MailMeta{noHash, emptyHash} {
+		body, preview, has, ok := mailContent(env.fsm.blobs, m, testLogger())
+		if !ok || body != "" || preview != "" || has {
+			t.Errorf("%s: got body=%q preview=%q has=%v ok=%v, want empty with ok=true", m.Guid, body, preview, has, ok)
+		}
+	}
+}
+
+// A rebuild must leave a message whose blob is absent pending (NULL preview)
+// so the backfill retries it, while still filling a readable one.
+func TestRebuildLeavesUnreadableBlobPending(t *testing.T) {
+	env := newFSMTestEnv(t)
+	hashes := seedUnfilledMail(t, env, "u1", 2)
+	if err := env.blobs.Delete(hashes["m001"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := rebuildDerivedIndexes(env.fsm.store, env.fsm.blobs, env.fsm.metadata, nil, testLogger()); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := env.metadata.PendingPreviews("u1", "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0] != "m001" {
+		t.Fatalf("pending = %v, want [m001]", pending)
+	}
+	rows, _ := env.metadata.MailPreviews("u1", []string{"m000"})
+	if rows["m000"].Preview != "body number 0" {
+		t.Fatalf("readable message preview = %+v", rows["m000"])
 	}
 }
 

@@ -4,26 +4,27 @@
    Source: _source/components.css (verbatim brand tokens)
    ========================================================= */
 
-/* -------- Fonts: Geist Sans + Geist Mono (both self-hosted)
-   Variable files load in modern browsers; statics are per-weight fallbacks.
--------- */
+/* -------- Fonts: Geist Sans + Geist Mono 1.8.2, self-hosted static woff2, one file per weight -------- */
 
-/* Geist Sans */
-@font-face {
-    font-family: "Geist";
-    src: url("/static/fonts/Geist-VariableFont_wght.ttf") format("truetype-variations"),
-         url("/static/fonts/Geist-VariableFont_wght.ttf") format("truetype");
-    font-weight: 100 900; font-style: normal; font-display: swap;
-}
-@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Regular.ttf")    format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Medium.ttf")     format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-SemiBold.ttf")   format("truetype"); font-weight: 600; font-style: normal; font-display: swap; }
-@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Bold.ttf")       format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
-@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-ExtraBold.ttf")  format("truetype"); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Thin.woff2") format("woff2"); font-weight: 100; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-ExtraLight.woff2") format("woff2"); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Light.woff2") format("woff2"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-ExtraBold.woff2") format("woff2"); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Black.woff2") format("woff2"); font-weight: 900; font-style: normal; font-display: swap; }
 
-/* Geist Mono (statics only — no variable file uploaded) */
-@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Regular.ttf")    format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Medium.ttf")     format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Thin.woff2") format("woff2"); font-weight: 100; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-ExtraLight.woff2") format("woff2"); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Light.woff2") format("woff2"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-ExtraBold.woff2") format("woff2"); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Black.woff2") format("woff2"); font-weight: 900; font-style: normal; font-display: swap; }
 
 :root {
     /* -------- Radius -------- */
@@ -179,6 +180,7 @@
                     0 1px 3px color-mix(in srgb, var(--accent) 16%, transparent);
 
     --success:#4ADE80; --warning:#FBBF24; --error:#F87171; --info: var(--accent);
+    --warning-text:#FBBF24; --warning-text-strong:#FCD34D;
 
     --neutral: var(--n-7);
 }

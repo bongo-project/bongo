@@ -153,10 +153,10 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 27.1 | US-001: Design tokens, fonts and the icon set (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.1 | US-001: Design tokens, fonts and the icon set (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | DONE (2026-10-26) | Geist and Geist Mono 1.8.2 as 18 static WOFF2 files (served as font/woff2, one @font-face per weight); ComponentLib tokens updated from the handoff, with a dark --warning-text added; a token test that every var() in bongo.css resolves (allowlist for fallback-only properties owned by later stories) and that aliases are defined in both themes; templ Icon component with the 32 Lucide icons and the logo, golden-file tested; data-density on <html>; Lucide credited. |
 | 27.2 | US-002: The shell: top bar, sidebar and layouts (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
-| 27.3 | US-003: Message list preview and attachment data (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
-| 27.4 | US-004: Visual verification harness (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.3 | US-003: Message list preview and attachment data (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | DONE (2026-10-26) | Per-user index gains preview and has_attachments, computed at indexing and on rebuild (left pending when the blob is unreadable); a per-node background backfill (cancellable, repeats for late blobs, one warning per pass for unreadable ones); listings fill MessageSummary.Preview and HasAttachments without reading blobs. |
+| 27.4 | US-004: Visual verification harness (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | DONE (2026-10-26) | scripts/ui-shots and make ui-shots: builds and starts a dev server with seeded and demo data, captures 16 routes at 1440 light, 1440 dark and 390 mobile, reports console, CSP and asset failures, writes outside the repository, tears down on signals. First run found the tags-page CSP errors and the login dark-mode gap (PRD 8.2). |
 | 27.5 | US-005: Mailbox list (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
 | 27.6 | US-006: Message and thread view (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
 | 27.7 | US-007: Compose (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |

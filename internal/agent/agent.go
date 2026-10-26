@@ -224,6 +224,7 @@ type Agent struct {
 	quarantinePurgeCancel context.CancelFunc
 	orphanGCCancel        context.CancelFunc
 	usageCancel           context.CancelFunc
+	previewCancel         context.CancelFunc
 	addrVerifyCancel      context.CancelFunc
 
 	// pipelineDone is closed by startPipelineRunner once Runner.Run has
@@ -1579,6 +1580,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.fsmIndexerCancel = indexerCancel
 		a.Raft.FSM.StartIndexer(indexerCtx)
 		a.logger.Info("fsm: derived index worker started")
+
+		// Per-node, not leader-only: the SQLite indexes are node-local and
+		// the job writes no Raft state.
+		if a.Store != nil && a.Metadata != nil {
+			previewCtx, previewCancel := context.WithCancel(ctx)
+			a.previewCancel = previewCancel
+			backfill := cluster.NewPreviewBackfill(a.Store, a.Blobs, a.Metadata, a.logger)
+			a.goWorker("preview-backfill", func() { backfill.Run(previewCtx) })
+		}
 
 		a.goWorker("blob-sync", func() { a.BlobSync.Run(blobSyncCtx) })
 		a.logger.Info("blob syncer started")
@@ -4027,6 +4037,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	}
 	if a.usageCancel != nil {
 		a.usageCancel()
+	}
+	if a.previewCancel != nil {
+		a.previewCancel()
 	}
 	if a.addrVerifyCancel != nil {
 		a.addrVerifyCancel()
