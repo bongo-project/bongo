@@ -316,3 +316,15 @@ func rightClick(page *rod.Page, selector string) error {
 	_, err = e.Eval(`() => this.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: 100, clientY: 100}))`)
 	return err
 }
+
+// openAccountMenu opens the top bar account menu if it is closed.
+func openAccountMenu(page *rod.Page) error {
+	if isVisible(page, ".account-dropdown:not([hidden])") {
+		return nil
+	}
+	if err := click(page, ".avatar-chip"); err != nil {
+		return err
+	}
+	waitStable(page)
+	return nil
+}

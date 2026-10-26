@@ -47,23 +47,23 @@ func LoadSidebarTags(ts *store.TagStore, userID, selected string) []templates.Si
 	return result
 }
 
-// MailboxIcon returns a Unicode HTML entity for the given mailbox name.
+// MailboxIcon returns the templates.Icon name for the given mailbox name.
 func MailboxIcon(name string) string {
 	switch name {
 	case "INBOX":
-		return "&#128229;" // inbox tray
+		return "inbox"
 	case "Sent":
-		return "&#9992;" // airplane
+		return "send"
 	case "Drafts":
-		return "&#9998;" // pencil
+		return "draft"
 	case "Trash":
-		return "&#128465;" // wastebasket
+		return "trash"
 	case "Junk":
-		return "&#9888;" // warning
+		return "shield"
 	case "Archive":
-		return "&#128451;" // file cabinet
+		return "archive"
 	default:
-		return "&#128193;" // folder
+		return "folder"
 	}
 }
 

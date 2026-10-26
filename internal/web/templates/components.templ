@@ -15,7 +15,7 @@ type MailboxInfo struct {
 	Selected    bool
 	Children    []MailboxInfo
 	HasChildren bool
-	Icon        string // HTML entity for folder-specific icon
+	Icon        string // Icon() set name for the folder-specific icon
 }
 
 // SidebarTagInfo holds display data for a single tag in the sidebar.
@@ -26,19 +26,100 @@ type SidebarTagInfo struct {
 	Selected    bool   // True when the current view is this tag
 }
 
+// isSystemMailbox reports whether a top-level mailbox belongs in the Mail
+// group of the sidebar rather than the Folders group.
+func isSystemMailbox(name string) bool {
+	switch name {
+	case "INBOX", "Sent", "Drafts", "Trash", "Junk", "Archive":
+		return true
+	}
+	return false
+}
+
+func hasCustomFolders(mailboxes []MailboxInfo) bool {
+	for _, mb := range mailboxes {
+		if !isSystemMailbox(mb.Name) {
+			return true
+		}
+	}
+	return false
+}
+
 templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
-	<a href="/compose" class="compose-btn" hx-get="/compose" hx-target="#main-content" hx-push-url="true">+ { t(ctx, "mail.compose") }</a>
-	<nav aria-label={ t(ctx, "nav.mailboxes") }>
-		<div class="sidebar-group">
-			<div class="sidebar-label">{ t(ctx, "nav.mailboxes") }</div>
-			<ul class="nav-list" id="mailbox-drop-targets">
+	<div class="sidebar-top">
+		<a href="/compose" class="compose-btn" hx-get="/compose" hx-target="#main-content" hx-push-url="true">
+			@Icon("plus_sm", "")
+			<span>{ t(ctx, "mail.compose") }</span>
+		</a>
+	</div>
+	<nav class="sidebar-scroll" aria-label={ t(ctx, "nav.mailboxes") }>
+		<div class="sidebar-group" data-group="mail">
+			<div class="sidebar-label">{ t(ctx, "nav.mail") }</div>
+			<ul class="nav-list" id="mailbox-drop-targets" aria-label={ t(ctx, "nav.views") }>
 				for _, mb := range mailboxes {
-					@MailboxTreeNode(mb, selected)
+					if isSystemMailbox(mb.Name) {
+						@MailboxTreeNode(mb, selected)
+					}
 				}
+				<li class="nav-item">
+					<a
+						href="/mail/unread"
+						if selected == "unread" {
+							class="active"
+						}
+						hx-get="/mail/unread"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span>
+						<span>{ t(ctx, "nav.unread") }</span>
+						<span id="unread-badge" class="unread-badge"></span>
+					</a>
+				</li>
+				<li class="nav-item">
+					<a
+						href="/mail/starred"
+						if selected == "starred" {
+							class="active"
+						}
+						hx-get="/mail/starred"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span class="nav-icon" aria-hidden="true">@Icon("star", "")</span>
+						<span>{ t(ctx, "nav.starred") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
+					<a
+						href="/mail/all-mail"
+						if selected == "all-mail" {
+							class="active"
+						}
+						hx-get="/mail/all-mail"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span class="nav-icon" aria-hidden="true">@Icon("archive", "")</span>
+						<span>{ t(ctx, "nav.allMail") }</span>
+					</a>
+				</li>
 			</ul>
 		</div>
+		if hasCustomFolders(mailboxes) {
+			<div class="sidebar-group" data-group="folders">
+				<div class="sidebar-label">{ t(ctx, "nav.folders") }</div>
+				<ul class="nav-list">
+					for _, mb := range mailboxes {
+						if !isSystemMailbox(mb.Name) {
+							@MailboxTreeNode(mb, selected)
+						}
+					}
+				</ul>
+			</div>
+		}
 		if len(tags) > 0 {
-			<div class="sidebar-group" x-data="sidebarSection('tags')">
+			<div class="sidebar-group" data-group="tags" x-data="sidebarSection('tags')">
 				<div class="sidebar-label sidebar-label-toggle" x-on:click="toggle()">
 					<span>{ t(ctx, "nav.tags") }</span>
 					<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
@@ -59,7 +140,7 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 									<span class={ "nav-tag-dot", tagPaletteBGClass(tag.ColourIndex) } aria-hidden="true"></span>
 									<span>{ tag.Name }</span>
 									if tag.Count > 0 {
-										<span class="nav-badge" aria-label={ fmt.Sprintf("%d messages", tag.Count) }>{ fmt.Sprint(tag.Count) }</span>
+										<span class="count" aria-label={ fmt.Sprintf("%d messages", tag.Count) }>{ fmt.Sprint(tag.Count) }</span>
 									}
 								</a>
 							</li>
@@ -76,79 +157,37 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				</ul>
 			</div>
 		}
-		<div class="sidebar-group" x-data="sidebarSection('views')">
-			<div class="sidebar-label sidebar-label-toggle" x-on:click="toggle()">
-				<span>{ t(ctx, "nav.views") }</span>
-				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
-			</div>
-			<ul class="nav-list" x-bind:hidden="!open">
+		<div class="sidebar-group" data-group="workspace">
+			<div class="sidebar-label">{ t(ctx, "nav.workspace") }</div>
+			<ul class="nav-list" aria-label={ t(ctx, "nav.applications") }>
 				<li class="nav-item">
-					<a
-						href="/mail/unread"
-						if selected == "unread" {
-							class="active"
-						}
-						hx-get="/mail/unread"
-						hx-target="#main-content"
-						hx-push-url="true"
-					>
-						<span class="nav-icon" aria-hidden="true">&#9993;</span>
-						<span>{ t(ctx, "nav.unread") }</span>
-						<span id="unread-badge" class="nav-badge"></span>
+					<a href="/calendar">
+						<span class="nav-icon" aria-hidden="true">@Icon("calendar", "")</span>
+						<span>{ t(ctx, "nav.calendar") }</span>
 					</a>
 				</li>
-				<li class="nav-item">
-					<a
-						href="/mail/starred"
-						if selected == "starred" {
-							class="active"
-						}
-						hx-get="/mail/starred"
-						hx-target="#main-content"
-						hx-push-url="true"
-					>
-						<span class="nav-icon" aria-hidden="true">&#9733;</span>
-						<span>{ t(ctx, "nav.starred") }</span>
-					</a>
-				</li>
-				<li class="nav-item">
-					<a
-						href="/mail/all-mail"
-						if selected == "all-mail" {
-							class="active"
-						}
-						hx-get="/mail/all-mail"
-						hx-target="#main-content"
-						hx-push-url="true"
-					>
-						<span class="nav-icon" aria-hidden="true">&#128229;</span>
-						<span>{ t(ctx, "nav.allMail") }</span>
-					</a>
-				</li>
-			</ul>
-		</div>
-		<div class="sidebar-group" x-data="sidebarSection('quicklinks')">
-			<div class="sidebar-label sidebar-label-toggle" x-on:click="toggle()">
-				<span>{ t(ctx, "nav.quickLinks") }</span>
-				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
-			</div>
-			<ul class="nav-list" x-bind:hidden="!open" aria-label={ t(ctx, "nav.applications") }>
 				<li class="nav-item">
 					<a href="/contacts">
-						<span class="nav-icon" aria-hidden="true">&#128101;</span>
+						<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
 						<span>{ t(ctx, "nav.contacts") }</span>
 					</a>
 				</li>
 				<li class="nav-item">
-					<a href="/calendar">
-						<span class="nav-icon" aria-hidden="true">&#128197;</span>
-						<span>{ t(ctx, "nav.calendar") }</span>
+					<a href="/settings/rules">
+						<span class="nav-icon" aria-hidden="true">@Icon("sliders", "")</span>
+						<span>{ t(ctx, "nav.filterRules") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
+					<a href="/settings">
+						<span class="nav-icon" aria-hidden="true">@Icon("settings", "")</span>
+						<span>{ t(ctx, "nav.settings") }</span>
 					</a>
 				</li>
 				if middleware.AdminFromContext(ctx) {
 					<li class="nav-item">
 						<a href="/admin">
-							<span class="nav-icon" aria-hidden="true">&#9881;</span>
+							<span class="nav-icon" aria-hidden="true">@Icon("shield", "")</span>
 							<span>{ t(ctx, "nav.admin") }</span>
 						</a>
 					</li>
@@ -156,6 +195,16 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 			</ul>
 		</div>
 	</nav>
+}
+
+templ mailboxCount(mb MailboxInfo) {
+	if mb.Unread > 0 {
+		if mb.Name == "INBOX" {
+			<span class="unread" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
+		} else {
+			<span class="count" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
+		}
+	}
 }
 
 templ MailboxTreeNode(mb MailboxInfo, selected string) {
@@ -181,11 +230,9 @@ templ MailboxTreeNode(mb MailboxInfo, selected string) {
 					hx-push-url="true"
 					data-folder={ mb.Name }
 				>
-					<span class="nav-icon" aria-hidden="true">@templ.Raw(mb.Icon)</span>
+					<span class="nav-icon" aria-hidden="true">@Icon(mb.Icon, "")</span>
 					<span>{ mb.Label }</span>
-					if mb.Unread > 0 {
-						<span class="nav-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
-					}
+					@mailboxCount(mb)
 				</a>
 			</div>
 			<ul class="nav-list nav-children">
@@ -206,11 +253,9 @@ templ MailboxTreeNode(mb MailboxInfo, selected string) {
 				hx-push-url="true"
 				data-folder={ mb.Name }
 			>
-				<span class="nav-icon" aria-hidden="true">@templ.Raw(mb.Icon)</span>
+				<span class="nav-icon" aria-hidden="true">@Icon(mb.Icon, "")</span>
 				<span>{ mb.Label }</span>
-				if mb.Unread > 0 {
-					<span class="nav-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
-				}
+				@mailboxCount(mb)
 			</a>
 		</li>
 	}

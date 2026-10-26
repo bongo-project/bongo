@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/input"
 )
 
 func phase2Navigation(c *checker, browser *rod.Browser) *rod.Page {
@@ -33,6 +34,8 @@ func phase2Navigation(c *checker, browser *rod.Browser) *rod.Page {
 	c.check("Navigation", "Search box", boolErr(hasAny(page, "input[name='q']", "input[type='search']")))
 	c.check("Navigation", "Logout form", boolErr(has(page, "form[action='/logout']")))
 
+	phaseShell(c, page)
+
 	// Admin link should NOT be visible for alice (non-admin).
 	c.check("Navigation", "No admin link for non-admin",
 		boolErr(!has(page, "a[href='/admin']")))
@@ -58,4 +61,44 @@ func phase2Navigation(c *checker, browser *rod.Browser) *rod.Page {
 	waitStable(page)
 
 	return page
+}
+
+// phaseShell checks the keyboard behaviour of the top bar: Ctrl-K focuses
+// search, is ignored while typing, and the account menu opens and closes by
+// keyboard and by an outside click.
+func phaseShell(c *checker, page *rod.Page) {
+	active := func() string {
+		return evalPage(page, `document.activeElement ? document.activeElement.id || document.activeElement.tagName : ""`)
+	}
+	ctrlK := `document.dispatchEvent(new KeyboardEvent('keydown', {key: 'k', ctrlKey: true, bubbles: true, cancelable: true}))`
+	ctrlKOn := func(sel string) string {
+		return `document.querySelector("` + sel + `").dispatchEvent(new KeyboardEvent('keydown', {key: 'k', ctrlKey: true, bubbles: true, cancelable: true}))`
+	}
+
+	evalPage(page, `document.activeElement && document.activeElement.blur()`)
+	evalPage(page, ctrlK)
+	c.check("Shell", "Ctrl-K focuses search", boolErr(active() == "global-search"))
+
+	// Ctrl-K inside another field must leave focus where it is.
+	if has(page, "#main-content input, #main-content textarea") {
+		evalPage(page, `(document.querySelector("#main-content input:not([type=hidden]), #main-content textarea")).focus()`)
+		before := active()
+		evalPage(page, ctrlKOn("#main-content input:not([type=hidden]), #main-content textarea"))
+		c.check("Shell", "Ctrl-K ignored while typing", boolErr(active() == before && before != "global-search"))
+	}
+
+	// Account menu by keyboard.
+	evalPage(page, `document.querySelector(".avatar-chip").focus()`)
+	_ = page.Keyboard.Type(input.Enter)
+	waitStable(page)
+	c.check("Shell", "Enter opens account menu", boolErr(isVisible(page, ".account-dropdown:not([hidden])")))
+	_ = page.Keyboard.Type(input.Escape)
+	waitStable(page)
+	c.check("Shell", "Escape closes account menu", boolErr(!isVisible(page, ".account-dropdown:not([hidden])")))
+	c.check("Shell", "Escape returns focus to button", boolErr(evalPage(page, `document.activeElement.classList.contains("avatar-chip")`) == "true"))
+
+	_ = openAccountMenu(page)
+	evalPage(page, `document.querySelector("#main-content").click()`)
+	waitStable(page)
+	c.check("Shell", "Outside click closes account menu", boolErr(!isVisible(page, ".account-dropdown:not([hidden])")))
 }

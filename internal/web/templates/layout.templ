@@ -1,5 +1,72 @@
 package templates
 
+// Topbar is the three-column application header shared by Layout and
+// LayoutWithContent: brand, search pill, and theme toggle plus account menu.
+templ Topbar(email string) {
+	<header class="topbar" role="banner">
+		<div class="topbar-left">
+			<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+			<a href="/mail/INBOX" class="brand" aria-label="BongoMail">
+				@Icon("logo", "brand-glyph")
+				<span class="wordmark">Bongo<em>&middot;</em>mail</span>
+			</a>
+		</div>
+		<div class="topbar-center">
+			<div class="search-box" role="search">
+				@Icon("search", "search-icon")
+				<input
+					id="global-search"
+					type="search"
+					name="q"
+					placeholder={ t(ctx, "nav.searchPlaceholder") }
+					aria-label={ t(ctx, "nav.searchPlaceholder") }
+					hx-get="/search"
+					hx-trigger="keyup changed delay:300ms"
+					hx-target="#main-content"
+					hx-push-url="true"
+				/>
+				<kbd class="search-hint" aria-hidden="true" x-text="searchHint">&#8984;K</kbd>
+			</div>
+		</div>
+		<div class="topbar-right">
+			<button
+				type="button"
+				class="icon-btn"
+				x-on:click="toggleTheme()"
+				x-text="themeIcon"
+				aria-label={ t(ctx, "nav.toggleTheme") }
+				title={ t(ctx, "nav.toggleTheme") }
+			></button>
+			<div class="account-menu" x-data="accountMenu" x-on:keydown.escape="close()" x-on:click.outside="dismiss()">
+				<button
+					type="button"
+					class="avatar-chip"
+					x-ref="button"
+					aria-haspopup="true"
+					aria-expanded="false"
+					x-bind:aria-expanded="open"
+					aria-controls="account-dropdown"
+					aria-label={ accountMenuLabel(ctx, email) }
+					x-on:click="toggle()"
+				>
+					<span class="avatar" aria-hidden="true">{ accountInitials(email) }</span>
+					<span class="name">{ email }</span>
+				</button>
+				<div class="account-dropdown" id="account-dropdown" hidden x-bind:hidden="!open" x-cloak="">
+					if email != "" {
+						<div class="account-dropdown-head"><span class="sr-only">{ t(ctx, "nav.loggedInAs") }</span> { email }</div>
+					}
+					<a href="/settings" class="account-item">{ t(ctx, "nav.settings") }</a>
+					<a href={ sourceURL(ctx) } class="account-item" rel="noopener">{ t(ctx, "nav.sourceCode") }</a>
+					<form method="post" action="/logout" class="u-m0">
+						<button type="submit" class="account-item">{ t(ctx, "auth.logout") }</button>
+					</form>
+				</div>
+			</div>
+		</div>
+	</header>
+}
+
 templ Layout(title string, email string) {
 	<!DOCTYPE html>
 	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-accent="bongo" data-sidebar="dark">
@@ -22,43 +89,7 @@ templ Layout(title string, email string) {
 			hx-headers on <body> makes every HTMX mutation send the CSRF token. -->
 			<span id="i18n-data" hidden data-messages={ i18nJSON(ctx) }></span>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
-			<header class="topbar" role="banner">
-				<div class="topbar-left">
-					<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" aria-controls="sidebar">&#9776;</button>
-					<a href="/mail/INBOX" class="brand" aria-label="BongoMail">Bongo<span>Mail</span></a>
-				</div>
-				<div class="topbar-center">
-					<div class="search-box" role="search">
-						<span class="search-icon" aria-hidden="true">&#128269;</span>
-						<input
-							type="search"
-							name="q"
-							placeholder={ t(ctx, "nav.searchPlaceholder") }
-							aria-label={ t(ctx, "nav.searchPlaceholder") }
-							hx-get="/search"
-							hx-trigger="keyup changed delay:300ms"
-							hx-target="#main-content"
-							hx-push-url="true"
-						/>
-					</div>
-				</div>
-				<div class="topbar-right">
-					<button
-						type="button"
-						class="topbar-btn"
-						x-on:click="toggleTheme()"
-						x-text="themeIcon"
-						aria-label={ t(ctx, "nav.toggleTheme") }
-						title={ t(ctx, "nav.toggleTheme") }
-					></button>
-					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
-					<a href={ sourceURL(ctx) } class="topbar-link" rel="noopener">{ t(ctx, "nav.sourceCode") }</a>
-					<span class="user-email" aria-label={ t(ctx, "nav.loggedInAs") + " " + email }>{ email }</span>
-					<form method="post" action="/logout" class="u-m0">
-						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
-					</form>
-				</div>
-			</header>
+			@Topbar(email)
 			if require2FAFromCtx(ctx) {
 				<div class="flash flash-warning banner-2fa" role="alert">
 					<div class="flash-icon">&#9888;</div>
@@ -119,43 +150,7 @@ templ LayoutWithContent(title string, email string) {
 			hx-headers on <body> makes every HTMX mutation send the CSRF token. -->
 			<span id="i18n-data" hidden data-messages={ i18nJSON(ctx) }></span>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
-			<header class="topbar" role="banner">
-				<div class="topbar-left">
-					<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" aria-controls="sidebar">&#9776;</button>
-					<a href="/mail/INBOX" class="brand" aria-label="BongoMail">Bongo<span>Mail</span></a>
-				</div>
-				<div class="topbar-center">
-					<div class="search-box" role="search">
-						<span class="search-icon" aria-hidden="true">&#128269;</span>
-						<input
-							type="search"
-							name="q"
-							placeholder={ t(ctx, "nav.searchPlaceholder") }
-							aria-label={ t(ctx, "nav.searchPlaceholder") }
-							hx-get="/search"
-							hx-trigger="keyup changed delay:300ms"
-							hx-target="#main-content"
-							hx-push-url="true"
-						/>
-					</div>
-				</div>
-				<div class="topbar-right">
-					<button
-						type="button"
-						class="topbar-btn"
-						x-on:click="toggleTheme()"
-						x-text="themeIcon"
-						aria-label={ t(ctx, "nav.toggleTheme") }
-						title={ t(ctx, "nav.toggleTheme") }
-					></button>
-					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
-					<a href={ sourceURL(ctx) } class="topbar-link" rel="noopener">{ t(ctx, "nav.sourceCode") }</a>
-					<span class="user-email" aria-label={ t(ctx, "nav.loggedInAs") + " " + email }>{ email }</span>
-					<form method="post" action="/logout" class="u-m0">
-						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
-					</form>
-				</div>
-			</header>
+			@Topbar(email)
 			if require2FAFromCtx(ctx) {
 				<div class="flash flash-warning banner-2fa" role="alert">
 					<div class="flash-icon">&#9888;</div>

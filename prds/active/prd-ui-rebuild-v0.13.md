@@ -316,3 +316,22 @@ From the Phase A batch 1 reviews (2026-10-26):
   documentation work after the UI rebuild; usage is in the package doc.
   (27.4)
 
+From the 27.2 shell review (2026-10-26):
+
+- `scripts/ui-test` only runs against an https server, so `make ui-test`
+  fails against `make dev`, and the new shell checks in it (Ctrl-K, "/",
+  account menu, search hint) are not run anywhere automatically. Make the
+  harness work against the dev server, or move these checks into ui-shots.
+  (27.2)
+- The search pill is hidden at 390 px (as before), so Ctrl-K and "/" have
+  nothing to focus on mobile. Decide in US-015 whether mobile gets a search
+  entry point. (27.2)
+- The collapsible Views and Quick links sidebar groups are gone (their items
+  moved into Mail and Workspace), so stored collapse state for those two
+  groups is ignored. (27.2)
+- The validation seed returns 409 for alice, bob and charlie when the dev
+  server's storage already holds them; reseeding should be idempotent.
+  (27.2)
+- A per-user storage meter needs usage data the sidebar does not have; the
+  mockup's meter waits for a cheap per-user usage figure. (27.2)
+
