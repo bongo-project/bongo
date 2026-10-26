@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -298,13 +300,13 @@ func TestBuildMailboxTree(t *testing.T) {
 			selected: "",
 			want: func(t *testing.T, r []templates.MailboxInfo) {
 				icons := map[string]string{
-					"INBOX":   "&#128229;",
-					"Sent":    "&#9992;",
-					"Drafts":  "&#9998;",
-					"Trash":   "&#128465;",
-					"Junk":    "&#9888;",
-					"Archive": "&#128451;",
-					"Custom":  "&#128193;",
+					"INBOX":   "inbox",
+					"Sent":    "send",
+					"Drafts":  "draft",
+					"Trash":   "trash",
+					"Junk":    "shield",
+					"Archive": "archive",
+					"Custom":  "folder",
 				}
 				for _, mb := range r {
 					want, ok := icons[mb.Name]
@@ -329,7 +331,7 @@ func TestBuildMailboxTree(t *testing.T) {
 					t.Fatalf("want 1 top-level, got %d", len(r))
 				}
 				// INBOX child gets INBOX icon (topLevelName).
-				if r[0].Children[0].Icon != "&#128229;" {
+				if r[0].Children[0].Icon != "inbox" {
 					t.Errorf("want INBOX icon for child, got %s", r[0].Children[0].Icon)
 				}
 			},
@@ -424,19 +426,28 @@ func newSidebarMailboxStore(t *testing.T) *store.MailboxStore {
 	return store.NewMailboxStore(ps, &sidebarDirectApplier{store: ps})
 }
 
+func TestMailboxIconsRender(t *testing.T) {
+	for _, n := range []string{"INBOX", "Sent", "Drafts", "Trash", "Junk", "Archive", "x"} {
+		var b strings.Builder
+		if err := templates.Icon(MailboxIcon(n), "").Render(context.Background(), &b); err != nil || b.Len() == 0 {
+			t.Errorf("icon for %s renders empty (err=%v)", n, err)
+		}
+	}
+}
+
 func TestMailboxIcon(t *testing.T) {
 	tests := []struct {
 		name string
 		want string
 	}{
-		{"INBOX", "&#128229;"},
-		{"Sent", "&#9992;"},
-		{"Drafts", "&#9998;"},
-		{"Trash", "&#128465;"},
-		{"Junk", "&#9888;"},
-		{"Archive", "&#128451;"},
-		{"Random", "&#128193;"},
-		{"", "&#128193;"},
+		{"INBOX", "inbox"},
+		{"Sent", "send"},
+		{"Drafts", "draft"},
+		{"Trash", "trash"},
+		{"Junk", "shield"},
+		{"Archive", "archive"},
+		{"Random", "folder"},
+		{"", "folder"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

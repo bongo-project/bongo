@@ -59,6 +59,7 @@ func phase1Login(c *checker, browser *rod.Browser) {
 	if err := login(page4, "alice@localhost", "alice123"); err == nil {
 		// POST /logout via the form.
 		if has(page4, "form[action='/logout']") {
+			_ = openAccountMenu(page4)
 			_ = click(page4, "form[action='/logout'] button")
 			waitStable(page4)
 			url4 := currentURL(page4)

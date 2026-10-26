@@ -231,6 +231,30 @@ document.addEventListener('alpine:init', () => {
 
     toggleSidebar() {
       this.sidebarOpen = !this.sidebarOpen;
+    },
+
+    // Label for the search shortcut hint: the command key on Apple platforms,
+    // Ctrl elsewhere.
+    get searchHint() {
+      const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || '';
+      return /mac|iphone|ipad|ipod/i.test(p) ? '\u2318K' : 'Ctrl K';
+    }
+  }));
+
+  // Account menu (top bar). dismiss() closes without moving focus, for
+  // outside clicks; close() returns focus to the button, for Escape.
+  Alpine.data('accountMenu', () => ({
+    open: false,
+    toggle() {
+      this.open = !this.open;
+    },
+    dismiss() {
+      this.open = false;
+    },
+    close() {
+      if (!this.open) return;
+      this.open = false;
+      this.$refs.button.focus();
     }
   }));
 
@@ -1433,6 +1457,7 @@ function toggleShortcutModal() {
           '<dt><kbd>d</kbd></dt><dd>' + i18n('js.shortcutDelete') + '</dd>' +
           '<dt><kbd>s</kbd></dt><dd>' + i18n('js.shortcutToggleStar') + '</dd>' +
           '<dt><kbd>/</kbd></dt><dd>' + i18n('js.shortcutFocusSearch') + '</dd>' +
+          '<dt><kbd>Ctrl/\u2318 K</kbd></dt><dd>' + i18n('js.shortcutFocusSearchK') + '</dd>' +
           '<dt><kbd>c</kbd></dt><dd>' + i18n('js.shortcutCompose') + '</dd>' +
           '<dt><kbd>Esc</kbd></dt><dd>' + i18n('js.shortcutCloseModal') + '</dd>' +
           '<dt><kbd>?</kbd></dt><dd>' + i18n('js.shortcutShowHelp') + '</dd>' +
@@ -1486,6 +1511,34 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
+// focusGlobalSearch moves focus to the top bar search input. It reports
+// whether an input was found.
+function focusGlobalSearch() {
+  var input = document.getElementById('global-search');
+  if (!input) return false;
+  input.focus();
+  input.select();
+  return true;
+}
+
+// isTypingTarget reports whether keystrokes on el belong to a text field.
+function isTypingTarget(el) {
+  if (!el) return false;
+  var tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el.isContentEditable;
+}
+
+// Ctrl-K / Cmd-K focuses search. Registered separately because the shortcut
+// listener below bails out on any modifier. It is ignored while typing so the
+// composer and browser bindings keep their own meaning for the combination.
+document.addEventListener('keydown', function(e) {
+  if (shortcutModalOpen) return;
+  if (e.altKey || e.shiftKey || e.ctrlKey === e.metaKey) return;
+  if (String(e.key).toLowerCase() !== 'k') return;
+  if (isTypingTarget(e.target)) return;
+  if (focusGlobalSearch()) e.preventDefault();
+});
+
 // Keyboard shortcuts (only when not in an input/textarea)
 document.addEventListener('keydown', (e) => {
   if (shortcutModalOpen) return;
@@ -1511,6 +1564,11 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'c') {
     e.preventDefault();
     window.location.href = '/compose';
+    return;
+  }
+
+  if (e.key === '/') {
+    if (focusGlobalSearch()) e.preventDefault();
     return;
   }
 
@@ -1574,11 +1632,6 @@ document.addEventListener('keydown', (e) => {
       }
       break;
 
-    case '/': // Focus search
-      e.preventDefault();
-      const searchInput = document.querySelector('.search-input input, .search-input');
-      if (searchInput) searchInput.focus();
-      break;
   }
 });
 
