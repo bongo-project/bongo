@@ -425,11 +425,13 @@ From the Phase 23 batch 1 reviews (2026-10-24):
     until they drain or the SRS window expires. (23.2)
   - A message more than a tenth plus 1 KiB over its declared SIZE gets
     `552 5.3.4`. (23.3)
-  - `verify-restore.sh` on the production host (not in the infra repo)
-    starts a second bongo on the host network; it should move
-    `server.control_addr` to a free loopback port as it does the web port.
-    It also runs host binary v0.6.19 and polls `http://` while production
-    has `plain_http = false` (operator, via the infra session). (23.1)
+  - A restore test that starts a second instance in the host network
+    namespace must move `server.control_addr` as well as the web port. The
+    project's production deployment needs nothing: its restore test runs
+    the image with no network (deployment repository, 2026-10-24). (23.1)
+  - Uploads larger than 8 MiB spool to the process temp directory
+    (`$TMPDIR`, else `/tmp`), which must be writable by the bongo user.
+    (25.5)
 - `TestSMTPPROXYHeaderFromUnlistedPeerIgnored` failed once in CI (PR #67):
   the submission subtest got 421 on its first connection, apparently while
   the mx subtest's connections still counted against the shared per-IP cap.
