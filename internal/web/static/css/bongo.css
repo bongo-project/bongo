@@ -57,6 +57,7 @@ html[data-theme="dark"]:not([data-accent]) {
   --bongo-green:         var(--success);
   --bongo-red:           var(--error);
   --bongo-yellow:        #F59E0B;
+  --bongo-amber:         var(--warning-text);
 
   /* ---- Surfaces (map to ComponentLib ramp) ---- */
   --bg:        var(--surface-0);
@@ -3967,3 +3968,9 @@ a.admin-nav-item.active,
   margin: 0; text-align: center; font-size: 0.8rem;
 }
 .login-source a { color: var(--text-muted); }
+
+/* ---- Icons (templ Icon component) ---- */
+.icon { width: 16px; height: 16px; flex-shrink: 0; }
+.icon-sm { width: 14px; height: 14px; flex-shrink: 0; }
+.icon-lg { width: 20px; height: 20px; flex-shrink: 0; }
+.logo-glyph svg { width: 100%; height: 100%; }

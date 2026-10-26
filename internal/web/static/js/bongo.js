@@ -217,6 +217,7 @@ document.addEventListener('alpine:init', () => {
     applyDensity() {
       document.body.classList.remove('density-compact', 'density-comfortable', 'density-spacious');
       document.body.classList.add('density-' + this.density);
+      document.documentElement.setAttribute('data-density', this.density);
     },
 
     setDensity(d) {

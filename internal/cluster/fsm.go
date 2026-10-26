@@ -588,19 +588,39 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 			f.logger.Warn("fsm: failed to index mail in sqlite", "error", err, "user", userID, "guid", guid)
 		}
 
-		if search := f.searchIndexer(); search != nil {
-			hasAttachment := len(meta.Attachments) > 0
-			// Body text lives only in the blob, so indexing it costs a read
-			// and a MIME parse. That is affordable here and nowhere else:
-			// runDerivedIndexes is the background indexer, off the Raft apply
-			// path (see StartIndexer), so this cannot stall delivery.
-			body := mailBodyText(f.blobs, &meta, f.logger)
-			if err := search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, body, meta.ReceivedAt, hasAttachment, meta.Tags, float64(meta.SpamScore)); err != nil {
-				f.logger.Warn("fsm: failed to index mail in bleve", "error", err, "user", userID, "guid", guid)
+		search := f.searchIndexer()
+		if search == nil {
+			f.indexMailPreview(userID, guid, &meta)
+			return
+		}
+		hasAttachment := len(meta.Attachments) > 0
+		// Body text lives only in the blob, so indexing it costs a read
+		// and a MIME parse. That is affordable here and nowhere else:
+		// runDerivedIndexes is the background indexer, off the Raft apply
+		// path (see StartIndexer), so this cannot stall delivery.
+		body, preview, hasAtt, ok := mailContent(f.blobs, &meta, f.logger)
+		if ok {
+			if err := f.metadata.SetMailPreview(userID, guid, preview, hasAtt); err != nil {
+				f.logger.Warn("fsm: failed to store mail preview", "error", err, "user", userID, "guid", guid)
 			}
+		}
+		if err := search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, body, meta.ReceivedAt, hasAttachment, meta.Tags, float64(meta.SpamScore)); err != nil {
+			f.logger.Warn("fsm: failed to index mail in bleve", "error", err, "user", userID, "guid", guid)
 		}
 	} else {
 		f.logger.Debug("fsm: derived index update deferred for non-mail type", "user", userID, "guid", guid, "type", docType)
+	}
+}
+
+// indexMailPreview stores the list preview for a mail when no search indexer is
+// wired. A blob that cannot be read leaves the preview unset for the backfill.
+func (f *FSM) indexMailPreview(userID, guid string, meta *bongov1.MailMeta) {
+	_, preview, hasAtt, ok := mailContent(f.blobs, meta, f.logger)
+	if !ok {
+		return
+	}
+	if err := f.metadata.SetMailPreview(userID, guid, preview, hasAtt); err != nil {
+		f.logger.Warn("fsm: failed to store mail preview", "error", err, "user", userID, "guid", guid)
 	}
 }
 

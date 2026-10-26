@@ -56,6 +56,9 @@ type MessageSummary struct {
 	SpamScore    float32
 	Tags         []TagDot // up to 3 visible dots
 	OverflowTags int      // number of tags beyond the first 3
+	// Preview is plain text; templ escapes it, never render it as HTML.
+	Preview        string
+	HasAttachments bool
 }
 
 // ThreadChild holds data for a child message in a thread expansion.

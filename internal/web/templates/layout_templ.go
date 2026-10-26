@@ -401,7 +401,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\" x-data=\"appState()\" x-bind:data-theme=\"resolvedTheme()\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. --><meta name=\"htmx-config\" content='{\"includeIndicatorStyles\":false}'><title>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\" x-data=\"appState()\" x-bind:data-theme=\"resolvedTheme()\" data-accent=\"bongo\" data-sidebar=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. --><meta name=\"htmx-config\" content='{\"includeIndicatorStyles\":false}'><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -734,7 +734,7 @@ func LoginLayout(title string) templ.Component {
 			templ_7745c5c3_Var50 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<!doctype html><html lang=\"en\" data-theme=\"auto\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. --><meta name=\"htmx-config\" content='{\"includeIndicatorStyles\":false}'><title>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<!doctype html><html lang=\"en\" data-theme=\"auto\" data-accent=\"bongo\" data-sidebar=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. --><meta name=\"htmx-config\" content='{\"includeIndicatorStyles\":false}'><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

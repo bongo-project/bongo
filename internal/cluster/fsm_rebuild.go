@@ -171,13 +171,27 @@ func rebuildMail(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.
 			}
 		}
 
+		// Same content extraction as the live indexer, so a rebuilt index is
+		// equivalent to one built incrementally. Without the body a restore
+		// silently produced an index that could not answer body searches.
+		var body string
+		if metadata != nil || search != nil {
+			var (
+				preview string
+				hasAtt  bool
+				ok      bool
+			)
+			body, preview, hasAtt, ok = mailContent(blobs, &meta, logger)
+			if ok && metadata != nil {
+				if err := metadata.SetMailPreview(userID, guid, preview, hasAtt); err != nil {
+					logger.Warn("fsm rebuild: failed to store mail preview", "user", userID, "guid", guid, "error", err)
+				}
+			}
+		}
+
 		// Index into Bleve.
 		if search != nil {
 			hasAttachment := len(meta.Attachments) > 0
-			// Same body extraction as the live indexer, so a rebuilt index is
-			// equivalent to one built incrementally. Without this a restore
-			// silently produced an index that could not answer body searches.
-			body := mailBodyText(blobs, &meta, logger)
 			if err := search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, body, meta.ReceivedAt, hasAttachment, meta.Tags); err != nil {
 				logger.Warn("fsm rebuild: failed to index mail in bleve", "user", userID, "guid", guid, "error", err)
 			}

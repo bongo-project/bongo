@@ -17,15 +17,22 @@ copies.
 | Alpine.js | `js/alpine.min.js` | 3.14.8 | MIT | © 2019-2021 Caleb Porzio and contributors |
 | Alpine.js (CSP build) | `js/alpine-csp.min.js` | 3.15.11 | MIT | © 2019-2025 Caleb Porzio and contributors |
 | Sortable | `js/sortable.min.js` | 1.15.6 | MIT | (c) 2019 All contributors to Sortable |
-| Geist | `fonts/Geist-*.ttf` | 1.401 | SIL OFL-1.1 | 2024 The Geist Project Authors |
-| Geist Mono | `fonts/GeistMono-*.ttf` | 1.401 | SIL OFL-1.1 | 2024 The Geist Project Authors |
+| Geist | `fonts/Geist-*.woff2` | 1.8.2 | SIL OFL-1.1 | 2024 The Geist Project Authors |
+| Geist Mono | `fonts/GeistMono-*.woff2` | 1.8.2 | SIL OFL-1.1 | 2024 The Geist Project Authors |
+| Lucide icons | inline SVG paths in `internal/web/templates/icons.go` | main (2026-10) | ISC, with MIT for Feather-derived icons | 2026 Lucide Icons and Contributors; 2013-present Cole Bemis |
 
-Licence texts and copyright lines were taken from the upstream repositories at
-the vendored tags (fetched from raw.githubusercontent.com): bigskysoftware/htmx
-v2.0.4 `LICENSE`, alpinejs/alpine v3.14.8 and v3.15.11 `LICENSE.md`,
-SortableJS/Sortable 1.15.6 `LICENSE`, vercel/geist-font 1.4.01 `OFL.txt`. The
-Geist copyright line is also embedded in the font files themselves. The font
-files carry version 1.401; upstream tags that release 1.4.01.
+Licence texts and copyright lines were taken from the upstream repositories
+(fetched from raw.githubusercontent.com): bigskysoftware/htmx v2.0.4 `LICENSE`,
+alpinejs/alpine v3.14.8 and v3.15.11 `LICENSE.md`, SortableJS/Sortable 1.15.6
+`LICENSE`, the vercel/geist-font v1.8.2 release zip `OFL.txt`, and
+lucide-icons/lucide `LICENSE` on the main branch. The Geist copyright line is
+also embedded in the font files themselves.
+
+The font files are the eighteen static woff2 files from the vercel/geist-font
+v1.8.2 release, one per weight 100 to 900:
+`Geist-{Thin,ExtraLight,Light,Regular,Medium,SemiBold,Bold,ExtraBold,Black}.woff2`
+and `GeistMono-{Thin,ExtraLight,Light,Regular,Medium,SemiBold,Bold,ExtraBold,Black}.woff2`,
+with the licence in `fonts/OFL.txt`.
 
 ### 0BSD (htmx)
 
@@ -162,6 +169,57 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+
+### ISC and MIT (Lucide icons)
+
+The icon paths are taken from Lucide, whose licence file is reproduced in full
+below. It covers Lucide under ISC and the Feather-derived icons under MIT.
+
+```
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+---
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## 2. Go modules shipping an Apache-2.0 NOTICE file
 

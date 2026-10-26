@@ -99,7 +99,7 @@ templ Layout(title string, email string) {
 
 templ LayoutWithContent(title string, email string) {
 	<!DOCTYPE html>
-	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()">
+	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-accent="bongo" data-sidebar="dark">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -192,7 +192,7 @@ templ LayoutWithContent(title string, email string) {
 
 templ LoginLayout(title string) {
 	<!DOCTYPE html>
-	<html lang="en" data-theme="auto">
+	<html lang="en" data-theme="auto" data-accent="bongo" data-sidebar="dark">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
