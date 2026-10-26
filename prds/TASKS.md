@@ -149,6 +149,26 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 | 26.6 | US-006: CI is safe on a public repository | [prd-public-release.md](active/prd-public-release.md) | PARTIAL (2026-10-24) | No pull_request_target; pull requests get read-only permissions and no secrets; only publish-image writes (packages), on push to main or tags. CI_RUNNER stays unset. Operator: require approval for outside contributors' workflows, enable private vulnerability reporting, decide GHCR package visibility. |
 | 26.7 | US-007: The README reads as a public project page | [prd-public-release.md](active/prd-public-release.md) | DONE (2026-10-24) | README titled Bongo with the project's origin, status, release locations, a contributing and security section and a SECURITY.md link; binaries keep their names. Root tidied: the v2 HTML prototype (prototype/, superseded by the operator's design handoff, with vendored copies of Pico, Open Props, htmx and Alpine) removed; the two old PRDs in tasks/ moved to prds/done/. |
 
+## Phase 27: Web UI rebuild v0.13.0
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 27.1 | US-001: Design tokens, fonts and the icon set (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.2 | US-002: The shell: top bar, sidebar and layouts (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.3 | US-003: Message list preview and attachment data (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.4 | US-004: Visual verification harness (Phase A: foundation) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.5 | US-005: Mailbox list (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.6 | US-006: Message and thread view (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.7 | US-007: Compose (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.8 | US-008: Junk (quarantine) (Phase B: mail screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.9 | US-009: Calendar (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.10 | US-010: Contacts (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.11 | US-011: Rules (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.12 | US-012: Settings, security and tags (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.13 | US-013: Admin (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.14 | US-014: Login and the other public pages (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+| 27.15 | US-015: Remaining templates and emoji removal (Phase C: other screens) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | TODO | |
+
 ## Backlog (unscheduled)
 
 | # | Task | Status | Notes |
