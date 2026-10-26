@@ -62,8 +62,8 @@ func phase11Quarantine(c *checker, browser *rod.Browser) {
 			boolErr(has(page, `form[action*="/release"] button`)))
 		c.check("Quarantine", "Delete button exists",
 			boolErr(has(page, `form[action*="/delete"] button`)))
-		c.check("Quarantine", "Score badge",
-			boolErr(has(page, ".badge")))
+		c.check("Quarantine", "Score in mono",
+			boolErr(has(page, ".quarantine-spamscore")))
 	} else {
 		c.check("Quarantine", "Empty state message",
 			boolErr(pageContains(page, "No quarantined messages")))

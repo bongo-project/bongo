@@ -1095,6 +1095,11 @@ document.addEventListener('alpine:init', () => {
       return this.allIds.length > 0 && this.selected.length === this.allIds.length;
     },
 
+    // Empty junk deletes every listed message in one click, so ask first.
+    confirmEmpty(event) {
+      if (!window.confirm(event.target.dataset.confirm)) event.preventDefault();
+    },
+
     appendIds(event) {
       var form = event.target;
       var container = form.querySelector('div[id^="bulk-ids"]');
