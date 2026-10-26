@@ -50,9 +50,10 @@ handoff's data script.
 **Acceptance Criteria:**
 - [ ] The token file is updated from the handoff, with font URLs rewritten to
       `/static/fonts/` and `@font-face` rules only for font files that ship
-      (the handoff declares Thin, ExtraLight, Light and Black, which are not
-      supplied; either add those files with their OFL notice or drop the
-      rules). No 404 for any font.
+      (every Geist weight comes from the shipped variable font; the
+      handoff's rules for Thin, ExtraLight, Light and Black, whose static
+      files are not supplied, are dropped, 8.1 item 2). No 404 for any
+      font.
 - [ ] A templ icon component renders each icon the screens use by name, as
       inline SVG with `aria-hidden` and `currentColor`, plus the logo glyph.
       No icon is loaded from a CDN or an inline style.
@@ -179,9 +180,17 @@ attachment flag for messages that were not split.
 - [ ] The month grid as one card; today as an accent circle; event chips
       with a left colour bar and a tinted background, keeping per-calendar
       colours; all-day placement by UTC date as today.
-- [ ] Week and day views take the same chrome. There is no Agenda view
-      today: the segment is omitted unless the operator decides to add one
-      (8.1 item 3).
+- [ ] Week and day views take the same chrome.
+- [ ] A new Agenda view (operator decision, 8.1 item 3): a chronological
+      list of upcoming events from today, grouped by day with a sticky day
+      heading, each row showing time (or "All day"), the calendar colour
+      bar, title and location; recurring events expanded within the range;
+      Prev/Next move by the visible range (default 30 days) and Today
+      returns to now; reachable as `/calendar/agenda` with the same HTMX
+      navigation as the other views; empty state translated. Times use the
+      user's preference time zone, all-day events their UTC date, as the
+      month grid does. A handler test covers ordering, grouping, recurrence
+      expansion and the time-zone edge at midnight.
 
 ### US-010: Contacts
 **Acceptance Criteria:**
@@ -283,9 +292,11 @@ story:
 
 1. (operator, 2026-10-24) The handoff stays out of the repository and its
    history.
-2. Open: whether to ship the extra Geist weights (Thin to Black) or drop
-   their `@font-face` rules (US-001).
-3. Open: whether the calendar gets an Agenda view (US-009).
+2. (operator, 2026-10-26) Fonts stay Geist. Every weight from 100 to 900
+   comes from the variable font already shipped; the handoff's static
+   `@font-face` rules for Thin, ExtraLight, Light and Black, whose files are
+   not supplied, are dropped (US-001).
+3. (operator, 2026-10-26) The calendar gets an Agenda view (US-009).
 
 ### 8.2 Candidates for the next release
 
