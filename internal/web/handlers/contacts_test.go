@@ -454,7 +454,7 @@ func TestParseVCardBlock_EvolutionFormat(t *testing.T) {
 	input := "BEGIN:VCARD\r\nVERSION:3.0\r\n" +
 		"FN:Dave Camp\r\n" +
 		"N:Camp;Dave;;;\r\n" +
-		"EMAIL;TYPE=WORK;X-EVOLUTION-UI-SLOT=1:dave@novell.com\r\n" +
+		"EMAIL;TYPE=WORK;X-EVOLUTION-UI-SLOT=1:dave@example.com\r\n" +
 		"EMAIL;TYPE=HOME;X-EVOLUTION-UI-SLOT=3:dave.camp@gmail.com\r\n" +
 		"TEL;TYPE=WORK;TYPE=VOICE;X-EVOLUTION-UI-SLOT=1:617-555-1234\r\n" +
 		"TEL;TYPE=CELL;X-EVOLUTION-UI-SLOT=3:617-555-2345\r\n" +
