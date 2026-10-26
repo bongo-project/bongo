@@ -1,0 +1,292 @@
+# PRD: Web UI rebuild v0.13.0
+
+## 1. Introduction / Overview
+
+The operator supplied a design handoff on 2026-10-24: a static mockup of the
+whole web app ("Bongo Mail", reference HTML with its own CSS and icon set)
+and a gap list, screen by screen. The live app should look like the mockup.
+An earlier CSS-only reskin was not enough, because the mockup contains
+markup the templates do not render, so this is a markup and CSS rebuild of
+the templ templates.
+
+The handoff files stay outside the repository (they are kept locally and
+excluded from git). This PRD describes the work without copying them: where a
+story says "the mockup", it means the matching screen of the reference HTML,
+and "the reference stylesheet" means the handoff's skin CSS. Implementers get
+the handoff path from the orchestrator.
+
+**The scope rule.** The in-scope list is section 3. Review findings outside
+a story go into section 8.2, not into TASKS.md, unless the story's own change
+introduced them.
+
+| Phase | Theme | Stories | TASKS rows |
+|-------|-------|---------|------------|
+| A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
+| B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
+| C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
+
+One PR per story or small group of stories; Phase A merges first, because
+every screen builds on the shell, tokens and icons.
+
+## 2. Goals
+
+- Each live route matches its mockup screen at 1440 px in light mode and is
+  coherent in dark mode.
+- Every behaviour survives: HTMX swaps, Alpine bindings, forms, CSRF, keyboard
+  shortcuts, mobile navigation and swipe, translations.
+- No CSP violation, no console error, no 404 for an asset.
+- No emoji in the UI (the theme-toggle glyph excepted); icons are inline SVG.
+
+## 3. User Stories
+
+### Phase A: Foundation
+
+### US-001: Design tokens, fonts and the icon set
+**Description:** the handoff's ComponentLib token file is newer than the copy
+in `internal/web/static/css/componentlib/colors_and_type.css`. The mockup's
+icons are Lucide SVGs (1.8 stroke) and a drum logo glyph, defined in the
+handoff's data script.
+
+**Acceptance Criteria:**
+- [ ] The token file is updated from the handoff, with font URLs rewritten to
+      `/static/fonts/` and `@font-face` rules only for font files that ship
+      (the handoff declares Thin, ExtraLight, Light and Black, which are not
+      supplied; either add those files with their OFL notice or drop the
+      rules). No 404 for any font.
+- [ ] A templ icon component renders each icon the screens use by name, as
+      inline SVG with `aria-hidden` and `currentColor`, plus the logo glyph.
+      No icon is loaded from a CDN or an inline style.
+- [ ] Accent, theme, sidebar and density variants are driven by `data-*`
+      attributes on `<html>`, as the mockup does; the mockup's Tweaks panel
+      itself (a design tool) is not shipped.
+- [ ] `THIRD_PARTY_NOTICES.md` records Lucide (ISC) for the icon paths.
+
+### US-002: The shell: top bar, sidebar and layouts
+**Description:** `layout.templ` and the sidebar in `components.templ`.
+
+**Acceptance Criteria:**
+- [ ] Top bar: a three-column grid that lines up with the sidebar width; the
+      brand is the drum glyph in the accent colour and the "Bongo·mail"
+      wordmark; a search pill with an icon and a `⌘K` hint, with Ctrl-K /
+      ⌘K added to `bongo.js` to focus it (no such shortcut exists today, and
+      it must not fire while typing in a field); icon buttons for theme and
+      notifications; an avatar chip (initials and address) opening an
+      account menu with Settings, Source code and Logout (Alpine dropdown,
+      keyboard accessible, closes on Escape and outside click).
+- [ ] Sidebar (charcoal in both themes): an accent Compose button; groups
+      Mail, Folders, Tags and Workspace with uppercase labels; SVG icons; an
+      unread pill on Inbox and muted counts elsewhere; the active item has a
+      3 px accent bar and a tinted background; a storage meter at the bottom
+      from the user's quota where it is known, hidden otherwise.
+- [ ] `data-accent="bongo" data-sidebar="dark"` on `<html>` in all three
+      layouts.
+- [ ] The source-code link (AGPL) stays reachable from every page.
+- [ ] Mobile (at most 768 px): the existing mobile nav, overflow menu and
+      swipe still work.
+
+### US-003: Message list preview and attachment data
+**Description:** the mockup's message row shows a preview line and a
+paperclip for attachments. Neither is stored today: `MessageSummary` has no
+preview, the per-user SQLite index has no snippet column, and there is no
+attachment flag for messages that were not split.
+
+**Acceptance Criteria:**
+- [ ] The derived index gains a short plain-text preview (about 160
+      characters, from the first text part, HTML stripped, whitespace
+      collapsed) and a has-attachments flag, written when a message is
+      indexed. The schema change follows the existing pattern (idempotent
+      `CREATE ... IF NOT EXISTS`, plus an idempotent column addition for
+      existing databases).
+- [ ] Existing messages are backfilled by a background job that is
+      resumable, rate-limited and safe to run on a live node, or the preview
+      is filled lazily on first listing; the choice is justified. Rows
+      without a preview render without line 3.
+- [ ] `MessageSummary` carries `Preview` and `HasAttachments`; listing does
+      not read message blobs.
+- [ ] The preview never includes content from a message the user cannot
+      read, and HTML is never rendered (text only, escaped by templ).
+
+### US-004: Visual verification harness
+**Description:** "visually indistinguishable" needs a repeatable check.
+
+**Acceptance Criteria:**
+- [ ] A script (under `scripts/`, run locally, not in CI) starts a dev
+      server with seeded data (the synthetic demo data), captures each route
+      at 1440 px light, 1440 px dark and 390 px light with a headless
+      browser, and writes the screenshots to a directory outside the
+      repository, alongside the matching mockup screens.
+- [ ] It also records console errors, CSP violation reports and failed
+      asset requests per route, and exits non-zero on any.
+- [ ] Each later story's PR attaches (or links) its before and after
+      screenshots in the PR description, not in the repository.
+
+### Phase B: Mail screens
+
+### US-005: Mailbox list
+**Acceptance Criteria:**
+- [ ] A page header replaces the flat toolbar: mailbox name, muted "· N
+      unread · N total", a segmented layout toggle (SVG icons, the same
+      `setLayout()` calls), and quiet Refresh and Scan for spam buttons. The
+      bulk toolbar keeps its logic, restyled as an accent-subtle bar.
+- [ ] Message row as a grid: checkbox, star, main. Main line 1 is the sender
+      (bold if unread) with the date on the right; line 2 the subject, a
+      thread-count pill and a paperclip if attachments; line 3 the preview
+      (US-003); line 4 tag pills (colour dot and name). The selected row is
+      accent-subtle with a 3 px accent bar.
+- [ ] Compact density hides the preview line.
+- [ ] The empty reading pane shows a centred icon, "Select a message" and a
+      keyboard hint, all translated.
+- [ ] `layout_test.go` selectors still exist; `#message-list`,
+      `#reading-pane`, `thread-*` ids and every `hx-*`/`data-*` hook survive.
+
+### US-006: Message and thread view
+**Acceptance Criteria:**
+- [ ] A header block with a large subject and a tag-chip row with a dashed
+      "+ Add tag".
+- [ ] A sender bar: tinted initials avatar, name, `<address>`, "to …" and
+      date; icon buttons for Reply, Reply all and Forward, then Archive and
+      Delete, and a More menu holding Export, Print and Move.
+- [ ] Body max-width 760 px and line-height 1.7; attachments in a card of
+      typed tiles (extension badge, name, size); a quick-reply card with Send
+      (accent) and attach, and 1.75 rem of space below it.
+- [ ] The sanitised HTML body rendering, remote-content blocking and the
+      View Original link are unchanged.
+
+### US-007: Compose
+**Acceptance Criteria:**
+- [ ] A centred card (max 760 px): title and close; To, Cc, Bcc and Subject
+      as borderless rows with muted labels; recipient pills (avatar and name)
+      for parsed addresses, editable as text; the rich editor or textarea;
+      a footer with Send (accent, SVG icon), Save draft (outline), an attach
+      button and a "Draft saved · just now" status.
+- [ ] The hidden `send_id`, CSRF token, From selector, attachment and inline
+      image handling, and every translated message are unchanged.
+
+### US-008: Junk (quarantine)
+**Acceptance Criteria:**
+- [ ] A header with Rescan and Empty junk (danger); a warning banner; a
+      table card with the spam score in mono red and Restore (outline) and
+      Delete (danger) per row.
+- [ ] Bulk actions and confirmation behaviour are unchanged.
+
+### Phase C: Other screens
+
+### US-009: Calendar
+**Acceptance Criteria:**
+- [ ] A page header with a Month / Week / Day / Agenda segmented control and
+      an accent "New event"; Prev, Today and Next outline buttons and a large
+      month title.
+- [ ] The month grid as one card; today as an accent circle; event chips
+      with a left colour bar and a tinted background, keeping per-calendar
+      colours; all-day placement by UTC date as today.
+- [ ] Week and day views take the same chrome. There is no Agenda view
+      today: the segment is omitted unless the operator decides to add one
+      (8.1 item 3).
+
+### US-010: Contacts
+**Acceptance Criteria:**
+- [ ] A header with Import vCard and Export (outline) and New contact
+      (accent); a list pane with avatar, name and address rows (selected is
+      accent-subtle); a detail card with a large avatar, name, company, Edit
+      and Email buttons and a `dt`/`dd` field grid.
+- [ ] `#contact-detail` swaps and the import and export flows are unchanged.
+
+### US-011: Rules
+**Acceptance Criteria:**
+- [ ] An intro paragraph; a card listing rules as rows with a toggle, "When"
+      and a mono condition chip, an arrow, the accent action text and a more
+      menu.
+- [ ] Rule ordering (Sortable), enable/disable and editing are unchanged.
+
+### US-012: Settings, security and tags
+**Acceptance Criteria:**
+- [ ] Tabs with an accent underline; each section a card with a two-column
+      label/control grid; ComponentLib toggles; a primary Save button.
+- [ ] Every settings form, 2FA flow, recovery code display, app-specific
+      pages and tag management keep their behaviour and CSRF protection.
+
+### US-013: Admin
+**Acceptance Criteria:**
+- [ ] A KPI row of four stat cards (uppercase label, big number, delta in the
+      success or error colour) from data the admin pages already have; a
+      KPI without a data source is omitted rather than invented.
+- [ ] Table cards with uppercase muted headers, row hover and status pills
+      (dot and label, semantic tints). The slate admin sidebar stays, with
+      the new nav item styling. The log viewer stays dark.
+- [ ] Domain-admin scoping and every admin action are unchanged.
+
+### US-014: Login and the other public pages
+**Acceptance Criteria:**
+- [ ] A centred card (radius-xl, shadow-lg) with the drum logo and wordmark,
+      "Welcome back", a subtitle, labelled inputs with an accent focus ring,
+      a Remember me row, and a full-width accent Sign in. There is no
+      self-service password reset (only an admin reset), so the mockup's
+      Forgot link is omitted rather than pointing nowhere.
+- [ ] The 2FA prompt, the address-verification and error pages use the same
+      card. The login page keeps its source-code link.
+
+### US-015: Remaining templates and emoji removal
+**Acceptance Criteria:**
+- [ ] Search results, import, quota, address verification and source views
+      adopt the shell and card styles.
+- [ ] A test fails if any `.templ` file contains an emoji character outside
+      the allowed theme-toggle glyph.
+
+## 4. Functional Requirements
+
+FR-1 to FR-15 are the acceptance criteria of US-001 to US-015. In every
+story:
+
+- Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF
+  token, `id` used as an HTMX target, `data-*` hook read by `bongo.js`, and
+  `t(ctx, …)` call. Restructure around them.
+- No inline `<script>`, inline event handler or new inline `style`; geometry
+  goes in `generated_geometry.css` or `bongo.css`.
+- Use ComponentLib variables (`--surface-*`, `--text-*`, `--border-*`,
+  `--accent*`, `--shadow-*`, `--radius-*`), not hex; never override
+  `--success`, `--warning` or `--error`.
+- New user-facing text goes through `t(ctx, …)` with en, de, es and fr.
+- Template tests may change only where they assert presentation, never
+  where they assert security (CSRF, escaping, authorisation).
+
+## 5. Non-Goals (Out of Scope)
+
+- New features the mockup only implies (snooze, scheduling, notifications
+  beyond what exists), except the preview and attachment data in US-003.
+- The mockup's Tweaks panel.
+- The website and help documentation (separate scope).
+- Any change to protocols, storage semantics or authentication.
+
+## 6. Technical Considerations
+
+- The reference stylesheet is the visual spec. Its rules may be reused with
+  selectors renamed to the classes the templates keep; it is not copied
+  wholesale (it targets the mockup's markup).
+- US-003 adds derived data only (the SQLite index is rebuildable); Pebble
+  and Raft are untouched.
+- Screens share the shell, so Phase A merges before any Phase B or C story
+  starts; B and C stories can then run in parallel worktrees, one screen
+  each.
+- The process per screen: open the mockup screen and the live route side by
+  side, change templates and CSS, `templ generate`, compare, run
+  `go test ./internal/web/...`, check light, dark and 390 px.
+
+## 7. Success Metrics
+
+- Every route passes the US-004 harness (no console, CSP or asset errors) and
+  its screenshots are signed off by the operator against the mockup.
+- `make test-all` and CI stay green; no `hx-*`, CSRF or i18n regression.
+
+## 8. Open Questions
+
+### 8.1 Decisions
+
+1. (operator, 2026-10-24) The handoff stays out of the repository and its
+   history.
+2. Open: whether to ship the extra Geist weights (Thin to Black) or drop
+   their `@font-face` rules (US-001).
+3. Open: whether the calendar gets an Agenda view (US-009).
+
+### 8.2 Candidates for the next release
+
+Findings from reviews during this release go here.
