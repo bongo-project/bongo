@@ -3570,6 +3570,9 @@ func (a *Agent) runAgent(ctx context.Context) error {
 		switch agentType {
 		case "antispam", "antivirus":
 			if err := a.startProcessorAgent(ctx, agentType); err != nil {
+				if ctx.Err() != nil {
+					return a.shutdownDuringStartup()
+				}
 				return fmt.Errorf("agent: %s startup: %w", agentType, err)
 			}
 		default:
@@ -3585,6 +3588,9 @@ func (a *Agent) runAgent(ctx context.Context) error {
 			return err
 		}
 		if err := client.Start(ctx); err != nil {
+			if ctx.Err() != nil {
+				return a.shutdownDuringStartup()
+			}
 			return fmt.Errorf("agent grpc client: %w", err)
 		}
 		a.agentClients = append(a.agentClients, client)
@@ -3777,6 +3783,15 @@ func (a *Agent) newAgentClient(agentID string, roles []string, listenAddr string
 }
 
 // shutdownAgent performs graceful shutdown for agent-role nodes.
+// shutdownDuringStartup handles a cancellation that arrives while the agent
+// is still registering. The RPC in flight then fails with "context
+// canceled", which is a requested shutdown, not a startup failure, so
+// whatever has started is stopped and no error is reported.
+func (a *Agent) shutdownDuringStartup() error {
+	a.logger.Info("agent shutting down during startup")
+	return a.shutdownAgent()
+}
+
 func (a *Agent) shutdownAgent() error {
 	var errs []error
 
