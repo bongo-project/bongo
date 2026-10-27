@@ -1327,6 +1327,11 @@ func normalizeRecipient(rcpt string) string {
 	return rcpt
 }
 
+// splitRecipients splits a To/Cc field into one entry per recipient. A comma
+// inside a quoted display name ("Doe, Jane" <j@x>) does not separate
+// recipients. Lists that parse as RFC 5322 and contain no such comma are
+// returned exactly as the plain comma split would return them, so existing
+// input is unchanged; a list that does not parse falls back to the comma split.
 func splitRecipients(s string) []string {
 	if s == "" {
 		return nil
@@ -1338,5 +1343,17 @@ func splitRecipients(s string) []string {
 			result = append(result, r)
 		}
 	}
-	return result
+	parsed, err := netmail.ParseAddressList(s)
+	if err != nil || len(parsed) == len(result) {
+		return result
+	}
+	quoted := make([]string, 0, len(parsed))
+	for _, a := range parsed {
+		if a.Name == "" {
+			quoted = append(quoted, a.Address)
+		} else {
+			quoted = append(quoted, a.String())
+		}
+	}
+	return quoted
 }

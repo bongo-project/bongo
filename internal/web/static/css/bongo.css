@@ -3813,6 +3813,8 @@ a.admin-nav-item.active, .admin-nav-item.active {
 
 /* -------- Compose -------- */
 .compose-card { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+/* A file is being dragged over the card: dashed accent outline and tint. */
+.compose-card.drop-active { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-subtle); }
 .compose-header { border-bottom: 1px solid var(--border-subtle); }
 .compose-header-title, .compose-header span { font-weight: 600; }
 .compose-close { color: var(--text-muted); border-radius: var(--radius-sm); transition: all var(--duration) var(--ease-out); }
@@ -4179,6 +4181,200 @@ select.settings-select {
   .compose-body .field-content input[type="email"] {
     min-height: 34px;
   }
+}
+
+/* ==== compose (US-007) ==== */
+/* Centred card, borderless rows with muted labels, recipient pills, footer.
+   Everything is scoped under .compose-card so the shared .btn-send (contacts)
+   and the rich editor (settings signature) are untouched. */
+.compose-card {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+.compose-card .compose-header {
+  padding: 0.85rem 1.25rem;
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.compose-card .compose-header-title { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+.compose-card .compose-close .icon { width: 16px; height: 16px; }
+.compose-card .compose-body {
+  gap: 0;
+  padding: 0;
+}
+.compose-card .compose-body .field-row {
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 0;
+  padding: 0.4rem 1.25rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  box-shadow: none;
+}
+.compose-card .compose-body .field-row:focus-within {
+  border-color: var(--border-subtle);
+  box-shadow: none;
+}
+.compose-card .compose-body .field-label {
+  width: 70px;
+  padding: 0;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-align: left;
+}
+.compose-card .compose-body .field-content input[type="text"],
+.compose-card .compose-body .field-content input[type="email"] {
+  min-height: 0;
+  padding: 0.25rem 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+}
+.compose-card .compose-body .field-content input[type="text"]:focus,
+.compose-card .compose-body .field-content input[type="email"]:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+.compose-card .compose-body .field-content select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  padding: 0.25rem 0;
+}
+.compose-card .compose-mode-toggle { padding: 0.5rem 1.25rem 0; }
+.compose-card .compose-body > div > .compose-plain-body,
+.compose-card .compose-body > div > .rich-editor {
+  margin: 0.5rem 1.25rem 0;
+  width: calc(100% - 2.5rem);
+}
+.compose-card .compose-plain-body {
+  min-height: 320px;
+  background: transparent;
+  border-color: var(--border-subtle);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+/* Recipient pills: a read-only view of the input. While the input holds
+   parsed text and is blurred, it is hidden with a class (still focusable, so
+   form validation and Tab order work) and the pills show in its place. */
+.compose-card .recipient-field { position: relative; }
+.compose-card .recipient-pills { display: none; flex-wrap: wrap; gap: 0.3rem; align-items: center; cursor: text; border-radius: var(--radius-sm); }
+.compose-card .recipient-field.has-pills .recipient-pills { display: flex; }
+.compose-card .recipient-field.has-pills input[type="text"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.compose-card .recipient-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 2px 8px 2px 4px;
+  background: var(--accent-subtle);
+  color: var(--accent-accessible);
+  border-radius: 100px;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.compose-card .recipient-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: var(--brand-text);
+  font-size: 0.6rem;
+  font-weight: 600;
+}
+.compose-card .recipient-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Attachments: the file input is visually hidden and driven by the footer
+   label; the box only appears once files are chosen. */
+.compose-card .compose-body .drop-zone {
+  margin: 0;
+  padding: 0 1.25rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+.compose-card .compose-body .drop-zone:hover { background: transparent; }
+.compose-card .compose-body .drop-zone > div { padding-bottom: 0.75rem; }
+
+.compose-card .compose-footer {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--surface-0);
+  border-top: 1px solid var(--border-subtle);
+}
+.compose-card .btn-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+}
+.compose-card .btn-secondary {
+  background: transparent;
+  border-color: var(--border-default);
+  text-decoration: none;
+}
+.compose-card .compose-attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.compose-card .compose-attach:hover { background: var(--surface-2); color: var(--text-primary); }
+.compose-card .compose-attach:focus-within,
+.compose-card:has(#attachments:focus-visible) .compose-attach { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 600px) {
+  .compose-card .compose-body .field-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 0.4rem 0.9rem;
+  }
+  .compose-card .compose-body .field-label { width: 52px; }
+  .compose-card .compose-header,
+  .compose-card .compose-footer { padding-left: 0.9rem; padding-right: 0.9rem; }
+  .compose-card .compose-mode-toggle { padding-left: 0.9rem; padding-right: 0.9rem; }
+  .compose-card .compose-body > div > .compose-plain-body,
+  .compose-card .compose-body > div > .rich-editor {
+    margin-left: 0.9rem;
+    margin-right: 0.9rem;
+    width: calc(100% - 1.8rem);
+  }
+  .compose-card .compose-body .drop-zone { padding: 0 0.9rem; }
+  .compose-card .compose-footer .reply-spacer { display: none; }
 }
 
 /* -------- Calendar box visibility -------- */

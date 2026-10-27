@@ -368,3 +368,11 @@ From the 27.6 message view review (2026-10-27):
   should be per message. (27.6)
 - `scripts/ui-shots/message_more_e2e_test.go` (More menu, quick reply) runs
   only under the `uishots` build tag, which no CI job sets. (27.6)
+
+From the 27.7 compose review (2026-10-27):
+
+- The drag-and-drop test drives the drop zone with synthetic drag events;
+  a real file drag from the desktop has not been exercised by a test.
+  (27.7)
+- `scripts/ui-shots/recipient_pills_e2e_test.go` runs only under the
+  `uishots` build tag, which no CI job sets. (27.7)

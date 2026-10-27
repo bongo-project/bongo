@@ -285,6 +285,13 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    // onInput is the input handler. The Alpine CSP build cannot parse
+    // "query = $el.value; search()", so the two steps live here.
+    onInput(el) {
+      this.query = el.value;
+      this.search();
+    },
+
     async search() {
       if (this.query.length < 2) {
         this.results = [];
@@ -324,6 +331,124 @@ document.addEventListener('alpine:init', () => {
       } else if (event.key === 'Escape') {
         this.show = false;
       }
+    }
+  }));
+
+  // Recipient pills for the compose To/Cc/Bcc rows. The pills are a read-only
+  // view of the text input inside the wrapper: this component never writes the
+  // input's value, so the posted field is exactly what the user typed (and
+  // galAutocomplete's own :value binding is untouched). While the input is
+  // blurred, non-empty and every address parses, the pills are shown in its
+  // place; focusing the pills, or the input itself, shows the raw text again.
+  Alpine.data('recipientPills', () => ({
+    pills: [],
+    showPills: false,
+    input: null,
+
+    init() {
+      this.input = this.$el.querySelector('input[name]');
+      if (!this.input) return;
+      const self = this;
+      this.input.addEventListener('focus', function() { self.showPills = false; });
+      this.input.addEventListener('blur', function() { self.commit(); });
+      this.$nextTick(function() { self.commit(); });
+    },
+
+    // Split a recipient list on commas that sit outside double quotes. Returns
+    // {name, email} items, skipping empty tokens, or null when any token is
+    // not an address. A comma inside <...> needs no tracking of its own: the
+    // address pattern below rejects it, so such a list is null either way.
+    parse(str) {
+      const tokens = [];
+      let cur = '';
+      let inQuote = false;
+      for (let i = 0; i < str.length; i++) {
+        const c = str[i];
+        if (inQuote && c === '\\' && i + 1 < str.length) {
+          cur += c + str[i + 1];
+          i++;
+          continue;
+        }
+        if (c === '"') inQuote = !inQuote;
+        if (c === ',' && !inQuote) {
+          tokens.push(cur);
+          cur = '';
+          continue;
+        }
+        cur += c;
+      }
+      tokens.push(cur);
+
+      const addr = /^[^\s@<>,"]+@[^\s@<>,"]+$/;
+      const out = [];
+      for (const raw of tokens) {
+        const tok = raw.trim();
+        if (tok === '') continue;
+        const m = tok.match(/^(.*)<([^<>]*)>$/);
+        let name = '';
+        let email = tok;
+        if (m) {
+          name = m[1].trim();
+          email = m[2].trim();
+          if (name.length >= 2 && name[0] === '"' && name[name.length - 1] === '"') {
+            name = name.slice(1, -1).replace(/\\(.)/g, '$1');
+          }
+        }
+        if (!addr.test(email)) return null;
+        out.push({ name: name, email: email, label: name || email });
+      }
+      return out;
+    },
+
+    // Mirrors avatarInitials in the Go templates, except that lengths and
+    // slices count code points here, so a non-ASCII name is never cut inside
+    // a character. The Go helper is being made rune-safe separately.
+    initials(name, email) {
+      if (name) {
+        const parts = name.split(/\s+/).filter(Boolean).map(function(p) { return Array.from(p); });
+        if (parts.length >= 2) {
+          return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+        if (parts.length === 1 && parts[0].length >= 2) {
+          return parts[0].slice(0, 2).join('').toUpperCase();
+        }
+      }
+      const e = Array.from(email);
+      if (e.length >= 2) return e.slice(0, 2).join('').toUpperCase();
+      return '??';
+    },
+
+    // Same hash as avatarClass in the Go templates (uint32 wrap, mod 7).
+    colourClass(name, email) {
+      let hash = 0;
+      for (const ch of name + email) {
+        hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+      }
+      return 'avatar-colour-' + (hash % 7);
+    },
+
+    commit() {
+      const v = this.input ? this.input.value : '';
+      const parsed = v.trim() === '' ? null : this.parse(v);
+      if (!parsed || parsed.length === 0) {
+        this.pills = [];
+        this.showPills = false;
+        return;
+      }
+      const self = this;
+      this.pills = parsed.map(function(p) {
+        return {
+          label: p.label,
+          initials: self.initials(p.name, p.email),
+          colour: self.colourClass(p.name, p.email)
+        };
+      });
+      this.showPills = true;
+    },
+
+    edit() {
+      this.showPills = false;
+      if (this.input) this.input.focus();
     }
   }));
 
@@ -597,14 +722,54 @@ document.addEventListener('alpine:init', () => {
   }));
 
   // Attachment drop-zone for the compose form.
+  // The component sits on the compose card so a file can be dropped anywhere
+  // on it; the file input itself is visually hidden.
   Alpine.data('dropZone', () => ({
     files: [],
     totalSize: 0,
+    dragging: false,
+
+    hasFiles(event) {
+      const types = event.dataTransfer ? Array.from(event.dataTransfer.types || []) : [];
+      return types.indexOf('Files') !== -1;
+    },
+
+    dragOver(event) {
+      if (!this.hasFiles(event)) return;
+      event.preventDefault();
+      this.dragging = true;
+    },
+
+    dragLeave(event) {
+      if (event.relatedTarget && this.$root.contains(event.relatedTarget)) return;
+      this.dragging = false;
+    },
+
+    // Adds the dropped files to the ones already chosen and fires the input's
+    // change event, so updateFiles() and the form post see them as usual.
+    drop(event) {
+      this.dragging = false;
+      if (!this.hasFiles(event)) return;
+      event.preventDefault();
+      const input = this.$root.querySelector('input[type="file"][name="attachments"]');
+      if (!input) return;
+      const dt = new DataTransfer();
+      Array.from(input.files).forEach(function(f) { dt.items.add(f); });
+      Array.from(event.dataTransfer.files).forEach(function(f) { dt.items.add(f); });
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    },
 
     formatBytes(b) {
       if (b < 1024) return b + ' B';
       if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
       return (b / 1048576).toFixed(1) + ' MB';
+    },
+
+    // "N file(s), total: SIZE" from the translated template on the root.
+    summary() {
+      const tpl = this.$root.dataset.filesSummary || '{n} / {size}';
+      return tpl.replace('{n}', this.files.length).replace('{size}', this.formatBytes(this.totalSize));
     },
 
     updateFiles(el) {

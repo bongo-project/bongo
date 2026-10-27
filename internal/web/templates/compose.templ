@@ -15,9 +15,17 @@ templ ComposePageFull(mode string, to string, cc string, subject string, body st
 
 templ ComposePage(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, fromOptions []string, selectedFrom string, htmlBody string) {
 	<div class="compose-area">
-		<div class="compose-card">
+		<div
+			class="compose-card"
+			x-data="dropZone"
+			x-bind:class="{'drop-active': dragging}"
+			data-files-summary={ t(ctx, "compose.filesSummary") }
+			x-on:dragover="dragOver($event)"
+			x-on:dragleave="dragLeave($event)"
+			x-on:drop="drop($event)"
+		>
 			<div class="compose-header">
-				<span>
+				<span class="compose-header-title">
 					switch mode {
 						case "reply":
 							{ t(ctx, "compose.reply") }
@@ -29,7 +37,9 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 							{ t(ctx, "compose.newMessage") }
 					}
 				</span>
-				<a href="/mail/INBOX" class="compose-close" title={ t(ctx, "compose.discard") }>&times;</a>
+				<a href="/mail/INBOX" class="compose-close" title={ t(ctx, "compose.discard") } aria-label={ t(ctx, "compose.discard") }>
+					@Icon("x", "")
+				</a>
 			</div>
 			<form method="post" action="/compose/send" enctype="multipart/form-data" class="compose-form">
 				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
@@ -58,7 +68,7 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 					}
 					<div class="field-row">
 						<span class="field-label">{ t(ctx, "compose.to") }</span>
-						<div class="field-content">
+						<div class="field-content recipient-field" x-data="recipientPills" x-bind:class="{'has-pills': showPills}">
 							<input
 								type="text"
 								id="to"
@@ -68,15 +78,16 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								placeholder="recipient@example.com"
 								x-data="galAutocomplete"
 								:value="query"
-								@input.debounce.300ms="query = $el.value; search()"
+								@input.debounce.300ms="onInput($el)"
 								@keydown="onKeydown($event)"
 								aria-label={ t(ctx, "compose.to") }
 							/>
+							@recipientPillList()
 						</div>
 					</div>
 					<div class="field-row" x-data="{ showCc: false, showBcc: false }">
 						<span class="field-label">{ t(ctx, "compose.cc") }</span>
-						<div class="field-content">
+						<div class="field-content recipient-field" x-data="recipientPills" x-bind:class="{'has-pills': showPills}">
 							<input
 								type="text"
 								id="cc"
@@ -85,15 +96,16 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								placeholder="cc@example.com"
 								x-data="galAutocomplete"
 								:value="query"
-								@input.debounce.300ms="query = $el.value; search()"
+								@input.debounce.300ms="onInput($el)"
 								@keydown="onKeydown($event)"
 								aria-label={ t(ctx, "compose.cc") }
 							/>
+							@recipientPillList()
 						</div>
 					</div>
 					<div class="field-row">
 						<span class="field-label">{ t(ctx, "compose.bcc") }</span>
-						<div class="field-content">
+						<div class="field-content recipient-field" x-data="recipientPills" x-bind:class="{'has-pills': showPills}">
 							<input
 								type="text"
 								id="bcc"
@@ -101,10 +113,11 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								placeholder="bcc@example.com"
 								x-data="galAutocomplete"
 								:value="query"
-								@input.debounce.300ms="query = $el.value; search()"
+								@input.debounce.300ms="onInput($el)"
 								@keydown="onKeydown($event)"
 								aria-label={ t(ctx, "compose.bcc") }
 							/>
+							@recipientPillList()
 						</div>
 					</div>
 					<div class="field-row">
@@ -160,15 +173,13 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 							@RichEditorField("body", htmlBody, "compose")
 						</template>
 					</div>
-					<div
-						class="drop-zone"
-						x-data="dropZone"
-					>
+					<div class="drop-zone">
 						<input
 							type="file"
 							id="attachments"
 							name="attachments"
 							multiple
+							class="sr-only"
 							aria-label={ t(ctx, "compose.attachments") }
 							x-on:change="updateFiles($el)"
 						/>
@@ -181,20 +192,48 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 									</div>
 								</template>
 								<div class="u-mt-025 u-text-muted">
-									<span x-text="files.length + ' file(s), total: ' + formatBytes(totalSize)"></span>
+									<span x-text="summary()"></span>
 								</div>
 							</div>
 						</template>
 					</div>
 				</div>
 				<div class="compose-footer">
-					<button type="submit" class="btn-send">{ t(ctx, "compose.send") }</button>
+					<button type="submit" class="btn-send">
+						@Icon("send", "")
+						{ t(ctx, "compose.send") }
+					</button>
 					<button type="submit" formaction="/compose/draft" class="btn-secondary">{ t(ctx, "compose.saveDraft") }</button>
+					<label for="attachments" class="compose-attach" title={ t(ctx, "compose.attach") } aria-label={ t(ctx, "compose.attach") }>
+						@Icon("paperclip", "")
+					</label>
 					<span class="reply-spacer"></span>
 					<a href="/mail/INBOX" class="btn-secondary">{ t(ctx, "compose.discard") }</a>
 				</div>
 			</form>
 		</div>
+	</div>
+}
+
+// recipientPillList renders the read-only pill view of the recipient input
+// next to it. It is filled by the recipientPills Alpine component (bongo.js)
+// and shown only while the input is blurred and every address parses.
+templ recipientPillList() {
+	<div
+		class="recipient-pills"
+		tabindex="0"
+		role="button"
+		aria-label={ t(ctx, "compose.editRecipients") }
+		x-on:click="edit()"
+		x-on:keydown.enter.prevent="edit()"
+		x-on:keydown.backspace.prevent="edit()"
+	>
+		<template x-for="(p, i) in pills" :key="i">
+			<span class="recipient-pill">
+				<span class="recipient-avatar" x-bind:class="p.colour" x-text="p.initials" aria-hidden="true"></span>
+				<span class="recipient-label" x-text="p.label"></span>
+			</span>
+		</template>
 	</div>
 }
 
