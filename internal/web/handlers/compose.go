@@ -208,6 +208,22 @@ func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
+// maxQuickReplyRunes caps the quick reply text carried by the quick reply form.
+const maxQuickReplyRunes = 2000
+
+// quickReplyBodyMaxBytes bounds the quick reply POST body: the capped text at
+// four bytes a rune, plus the CSRF field, with headroom.
+const quickReplyBodyMaxBytes = 64 << 10
+
+// truncateRunes returns s cut to at most n runes without splitting a rune.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
 // Reply renders the reply form with pre-filled fields.
 func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
@@ -233,27 +249,40 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 
 	body := h.signatureBody(userID) + h.loadQuotedBody(userID, meta)
 
-	// Determine reply recipients based on default_reply preference.
+	// Reply-all is used when the request asks for it (?all=1, the message
+	// view's Reply all button) or when the default_reply preference says so.
 	replyTo := meta.From
 	var replyCc string
-	if h.prefs != nil {
+	replyAll := r.URL.Query().Get("all") == "1"
+	if !replyAll && h.prefs != nil {
 		up := h.prefs.Get(userID)
-		if up.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL {
-			// Cc = original To + original Cc minus the current user.
-			_, currentEmail := middleware.UserFromContext(r.Context())
-			var ccAddrs []string
-			for _, addr := range meta.To {
-				if !strings.EqualFold(strings.TrimSpace(addr), currentEmail) {
-					ccAddrs = append(ccAddrs, strings.TrimSpace(addr))
-				}
+		replyAll = up.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL
+	}
+	if replyAll {
+		// Cc = original To + original Cc minus the current user.
+		_, currentEmail := middleware.UserFromContext(r.Context())
+		var ccAddrs []string
+		for _, addr := range meta.To {
+			if !strings.EqualFold(strings.TrimSpace(addr), currentEmail) {
+				ccAddrs = append(ccAddrs, strings.TrimSpace(addr))
 			}
-			for _, addr := range meta.Cc {
-				if !strings.EqualFold(strings.TrimSpace(addr), currentEmail) {
-					ccAddrs = append(ccAddrs, strings.TrimSpace(addr))
-				}
-			}
-			replyCc = strings.Join(ccAddrs, ", ")
 		}
+		for _, addr := range meta.Cc {
+			if !strings.EqualFold(strings.TrimSpace(addr), currentEmail) {
+				ccAddrs = append(ccAddrs, strings.TrimSpace(addr))
+			}
+		}
+		replyCc = strings.Join(ccAddrs, ", ")
+	}
+
+	// Text typed into the message view's quick reply card seeds the body. It
+	// arrives in a POST body, never the URL, so it stays out of history and
+	// Referer. It is plain text; the composer template escapes it.
+	if r.Method == http.MethodPost {
+		r.Body = http.MaxBytesReader(w, r.Body, quickReplyBodyMaxBytes)
+	}
+	if quick := strings.TrimSpace(r.PostFormValue("quick")); quick != "" {
+		body = truncateRunes(quick, maxQuickReplyRunes) + "\n" + body
 	}
 
 	_, replyEmail := middleware.UserFromContext(r.Context())

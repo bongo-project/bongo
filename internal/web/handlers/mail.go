@@ -463,12 +463,12 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 	detail.Thread = h.loadThreadMessageDetails(userID, msg.MailGuid, realMailbox)
 
 	// Pane mode: return just the message content without layout wrapper.
+	mailboxInfos := h.loadMailboxInfos(userID, mailbox)
+
 	if r.URL.Query().Get("pane") == "1" {
-		templ.Handler(templates.MessagePaneContent(detail)).ServeHTTP(w, r)
+		templ.Handler(templates.MessagePaneContent(detail, mailboxInfos)).ServeHTTP(w, r)
 		return
 	}
-
-	mailboxInfos := h.loadMailboxInfos(userID, mailbox)
 
 	// HTMX click: return just the content, swapped into the existing
 	// #main-content. Direct navigation / refresh: return the full document

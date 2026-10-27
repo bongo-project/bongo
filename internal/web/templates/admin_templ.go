@@ -6177,18 +6177,22 @@ func isLeader(role string) bool {
 	return strings.ToLower(role) == "leader"
 }
 
+// avatarInitials returns up to two upper-case initials. It slices by rune so
+// a multi-byte name is never cut inside a character.
 func avatarInitials(name, email string) string {
 	if name != "" {
 		parts := strings.Fields(name)
 		if len(parts) >= 2 {
 			return strings.ToUpper(string([]rune(parts[0])[0:1]) + string([]rune(parts[len(parts)-1])[0:1]))
 		}
-		if len(parts) == 1 && len(parts[0]) >= 2 {
-			return strings.ToUpper(parts[0][0:2])
+		if len(parts) == 1 {
+			if r := []rune(parts[0]); len(r) >= 2 {
+				return strings.ToUpper(string(r[0:2]))
+			}
 		}
 	}
-	if len(email) >= 2 {
-		return strings.ToUpper(email[0:2])
+	if r := []rune(email); len(r) >= 2 {
+		return strings.ToUpper(string(r[0:2]))
 	}
 	return "??"
 }
