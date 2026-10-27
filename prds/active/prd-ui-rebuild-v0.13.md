@@ -376,3 +376,8 @@ From the 27.7 compose review (2026-10-27):
   (27.7)
 - `scripts/ui-shots/recipient_pills_e2e_test.go` runs only under the
   `uishots` build tag, which no CI job sets. (27.7)
+
+From the 27.11 rules review (2026-10-28):
+
+- At 390 px the arrow between the conditions and the action stays at the
+  end of the chip line when the action wraps to its own line. (27.11)
