@@ -672,6 +672,34 @@ by govulncheck.
    security flag.
 3. (operator, 2026-10-26) IMAP PROXYAUTH (#16) and POP3 SASL (#19) are
    dropped.
+4. (operator, 2026-10-27) Open question 1: the update endpoint is served
+   from `update.bongo-project.org` by a Cloudflare Worker; that is the
+   default `server.update_check_url`.
+5. (operator, 2026-10-27) Open question 2: the Worker source lives in this
+   repository under `deploy/update-worker/`.
+6. (operator, 2026-10-27) Open question 3: per-day aggregate counts are
+   kept for 13 months and then deleted; the privacy notes say so.
+7. (operator, 2026-10-27) Open question 5: pt-BR ships marked beta, with a
+   public issue asking a native speaker to review it; it loses the beta
+   label after review.
+8. (operator, 2026-10-27) Open question 4: an LDAPv3 listener for mail
+   clients is wanted, in addition to the CardDAV address book. Proposed
+   constraints, to be confirmed in the design: read-only; off by default;
+   no anonymous bind (users authenticate as themselves); LDAPS or StartTLS
+   only; results scoped to the bound user's domain with a size limit;
+   per-connection rate limits. It is a new internet-facing protocol, so it
+   becomes its own story in Phase E with a security review.
+9. (operator, 2026-10-27) Open question 6: domain admins may configure
+   journaling for their own domain. Proposed constraint: a domain admin may
+   set only a local account in that domain as the journal address; an
+   external journal address still needs a global admin, so a delegated
+   admin cannot copy all of a domain's mail off the server. Every change is
+   audit-logged.
+10. (operator, 2026-10-27) Open question 7: greylisting state is shared
+   across MX nodes. It must not go through Raft, because unauthenticated
+   senders would then drive cluster writes (section 6); the proposal is a
+   bounded table exchanged over gossip (memberlist), capped in size and
+   rate, losing at worst a retry window when a node restarts.
 
 ### 8.2 Candidates for the next release
 
