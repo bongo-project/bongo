@@ -428,6 +428,12 @@ document.addEventListener('alpine:init', () => {
       this.count = Object.keys(this.selected).length;
     },
 
+    // Translated "N selected" text; the format arrives as data-selected-format.
+    selectedLabel() {
+      const format = this.$root.dataset.selectedFormat || '%d';
+      return format.replace('%d', this.count);
+    },
+
     toggle(uid, event) {
       if (event && event.shiftKey && this.lastClicked !== null) {
         const rows = messageRowsWithUIDs();
@@ -1438,7 +1444,20 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
   htmx.ajax('GET', link.dataset.paneUrl, '#reading-pane');
+  markOpenRow(link.closest('.msg-row'));
 });
+
+// Highlight the row whose message is open in the reading pane.
+function markOpenRow(row) {
+  document.querySelectorAll('.msg-row.is-open').forEach(function(r) {
+    r.classList.remove('is-open');
+    r.removeAttribute('aria-current');
+  });
+  if (row) {
+    row.classList.add('is-open');
+    row.setAttribute('aria-current', 'true');
+  }
+}
 
 // Keyboard shortcut help modal
 var shortcutModalOpen = false;

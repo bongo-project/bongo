@@ -176,6 +176,7 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	counts := countListMessages(msgs)
 	summaries, page, totalPages := h.pageSummaries(userID, msgs, page, perPage)
 
 	// Load user preferences for infinite scroll setting.
@@ -200,11 +201,11 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 
 	// HTMX partial vs full page.
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.MailboxContent(mailbox, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
+		templ.Handler(templates.MailboxContent(mailbox, counts, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, sidebarTags, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
 }
 
 // ListTagMessages renders the message list for a tag virtual view.
@@ -257,6 +258,7 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	counts := countListMessages(msgs)
 	summaries, page, totalPages := h.pageSummaries(userID, msgs, page, perPage)
 
 	infiniteScroll := false
@@ -276,11 +278,11 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	flash := r.URL.Query().Get("flash")
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.MailboxContent(virtualMailbox, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
+		templ.Handler(templates.MailboxContent(virtualMailbox, counts, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
 }
 
 func (h *MailHandler) listDisplayCandidates(userID, mailbox string) ([]*bongov1.MailboxMessage, error) {
@@ -2112,6 +2114,19 @@ func (h *MailHandler) findOwnedBlob(userID, hash string) *ownedBlob {
 		}
 	}
 	return found
+}
+
+// countListMessages totals the unread and all messages in a candidate list. It
+// runs on the raw list so the header counts messages, not thread-collapsed rows
+// or the rows of one page.
+func countListMessages(msgs []*bongov1.MailboxMessage) templates.ListCounts {
+	counts := templates.ListCounts{Total: len(msgs)}
+	for _, m := range msgs {
+		if m.GetFlags()&store.FlagSeen == 0 {
+			counts.Unread++
+		}
+	}
+	return counts
 }
 
 // pageSummaries builds the summaries for msgs, clamps page into range and

@@ -348,3 +348,15 @@ From the 27.8 junk review (2026-10-27):
   were checked with a throwaway Node script. A minimal headless JS check in
   scripts/ui-shots would guard them. (27.8)
 
+From the 27.5 mailbox review (2026-10-27):
+
+- Search results (`search.templ`) use their own row markup, not the
+  mailbox rows, so they keep the old look. Restyle them with the same row
+  grid in US-015 or a follow-up. (27.5)
+- ui-shots cannot select a row or move keyboard focus, so the bulk bar and
+  the keyboard-focus outline were checked with a temporary harness patch.
+  Add an interaction step to ui-shots. (27.5)
+- The sidebar INBOX count includes unread mail in INBOX subfolders, while
+  the list header counts INBOX itself, so the two can differ. Decide which
+  the sidebar should show. (27.5)
+

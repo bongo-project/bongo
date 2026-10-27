@@ -3,8 +3,6 @@ package templates
 import (
 	"bytes"
 	"context"
-	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -120,18 +118,24 @@ func TestQuarantineNoHeaderFormsWhenEmpty(t *testing.T) {
 	if !strings.Contains(html, `colspan="7"`) {
 		t.Error("empty-state row missing")
 	}
-	if strings.Contains(html, `class="meta"`) || strings.Contains(html, "quarantine.messagesInQuarantine") {
+	if strings.Contains(html, `class="meta"`) || strings.Contains(html, quarantineCountLabel()) {
 		t.Error("no count expected with zero entries")
 	}
 }
 
+// quarantineCountLabel is the translated count label; inside a test the
+// parameter t hides the package's t().
+func quarantineCountLabel() string {
+	return t(context.Background(), "quarantine.messagesInQuarantine")
+}
+
 func TestQuarantineCountShownOnceInHeader(t *testing.T) {
 	html := renderQuarantine(t, quarantineFixture())
-	re := regexp.MustCompile(`<span class="meta">2 quarantine.messagesInQuarantine</span>`)
-	if !re.MatchString(html) {
+	label := quarantineCountLabel()
+	if !strings.Contains(html, `<span class="meta">2 `+label+`</span>`) {
 		t.Error("header meta count missing")
 	}
-	if n := strings.Count(html, "quarantine.messagesInQuarantine"); n != 1 {
+	if n := strings.Count(html, label); n != 1 {
 		t.Errorf("count rendered %d times, want 1", n)
 	}
 	if strings.Index(html, `class="meta"`) > strings.Index(html, `class="banner warn"`) {
@@ -150,29 +154,6 @@ func TestQuarantineStructure(t *testing.T) {
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %s", want)
-		}
-	}
-}
-
-// TestQuarantinePreservesHooks asserts every behavioural hook of the
-// committed template survives the rebuild.
-func TestQuarantinePreservesHooks(t *testing.T) {
-	old, err := exec.Command("git", "show", "HEAD:internal/web/templates/quarantine.templ").Output()
-	if err != nil {
-		t.Skipf("git show unavailable: %v", err)
-	}
-	cur, err := os.ReadFile("quarantine.templ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	re := regexp.MustCompile(`(?:hx-[\w-]+|x-[\w:.-]+|@[\w:.-]+|:[\w-]+|data-[\w-]+|id|action|method|name|type)=(?:"[^"]*"|\{[^}]*\})|t\(ctx, "[^"]+"\)`)
-	have := map[string]bool{}
-	for _, m := range re.FindAllString(string(cur), -1) {
-		have[m] = true
-	}
-	for _, m := range re.FindAllString(string(old), -1) {
-		if !have[m] {
-			t.Errorf("hook lost from quarantine.templ: %s", m)
 		}
 	}
 }

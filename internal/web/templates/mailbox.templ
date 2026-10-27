@@ -1,7 +1,9 @@
 package templates
 
 import (
+	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -61,6 +63,13 @@ type MessageSummary struct {
 	HasAttachments bool
 }
 
+// ListCounts holds the mailbox-wide totals shown in the page header. They are
+// counted over every message in the mailbox, not over the rows on this page.
+type ListCounts struct {
+	Unread int
+	Total  int
+}
+
 // ThreadChild holds data for a child message in a thread expansion.
 type ThreadChild struct {
 	GUID    string
@@ -71,36 +80,39 @@ type ThreadChild struct {
 	Mailbox string
 }
 
-templ MailboxPage(mailbox string, mailboxes []MailboxInfo, tags []SidebarTagInfo, messages []MessageSummary, page, totalPages int, email string, flash string, infiniteScroll bool) {
+templ MailboxPage(mailbox string, mailboxes []MailboxInfo, tags []SidebarTagInfo, counts ListCounts, messages []MessageSummary, page, totalPages int, email string, flash string, infiniteScroll bool) {
 	@LayoutWithContent(mailbox, email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, mailbox)
 		</aside>
 		<main class="content" id="main-content" data-selected-mailbox={ mailbox }>
-			@MailboxContent(mailbox, messages, page, totalPages, flash, infiniteScroll)
+			@MailboxContent(mailbox, counts, messages, page, totalPages, flash, infiniteScroll)
 		</main>
 	}
 }
 
-templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages int, flash string, infiniteScroll bool) {
+templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummary, page, totalPages int, flash string, infiniteScroll bool) {
 	if flash != "" {
 		@FlashMessage(flash, "success")
 	}
-	<div x-data="messageList">
-		<div class="toolbar" role="toolbar" aria-label={ t(ctx, "mail.messageActions") }>
+	<div x-data="messageList" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
+		<div class="mail-head">
 			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
-			<a href="/compose" class="tool-btn">{ t(ctx, "mail.compose") }</a>
-			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
-			if mailbox == "Trash" {
-				<button
-					type="button"
-					class="tool-btn danger"
-					hx-post="/mail/Trash/empty-trash"
-					hx-confirm={ t(ctx, "mail.emptyTrashConfirm") }
-				>
-					{ t(ctx, "mail.emptyTrash") }
-				</button>
-			}
+			<h1 class="mail-head-title">{ mailboxTitle(mailbox) }</h1>
+			<span class="mail-head-meta">{ listCountsText(ctx, counts) }</span>
+			<div class="tool-spacer"></div>
+			<div class="mail-head-tools" role="toolbar" aria-label={ t(ctx, "mail.messageActions") }>
+			<span class="page-info">
+				if page > 0 && totalPages > 0 {
+					{ fmt.Sprintf(t(ctx, "mailbox.pageOf"), page, totalPages) }
+				}
+			</span>
+			<span class="layout-toggle">
+				<button type="button" class="layout-opt" x-on:click="setLayout('list')" x-bind:class="{'active': layoutMode === 'list'}" title={ t(ctx, "mail.listView") } aria-label={ t(ctx, "mail.listView") }>@layoutIcon("list")</button>
+				<button type="button" class="layout-opt" x-on:click="setLayout('two-pane')" x-bind:class="{'active': layoutMode === 'two-pane'}" title={ t(ctx, "mail.twoPaneView") } aria-label={ t(ctx, "mail.twoPaneView") }>@layoutIcon("two-pane")</button>
+				<button type="button" class="layout-opt" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title={ t(ctx, "mail.threePaneView") } aria-label={ t(ctx, "mail.threePaneView") }>@layoutIcon("three-pane")</button>
+			</span>
+			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">@Icon("refresh", "")<span>{ t(ctx, "mail.refresh") }</span></button>
 			<div
 				x-data={ fmt.Sprintf("spamScan('%s')", mailbox) }
 				class="u-inline-flex u-items-center u-gap-05"
@@ -112,6 +124,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 					x-bind:disabled="scanning"
 					title={ t(ctx, "mailbox.scanTitle") }
 				>
+					@Icon("shield", "")
 					<span x-bind:hidden="scanning">{ t(ctx, "mailbox.scanForSpam") }</span>
 					<span x-bind:hidden="!scanning" x-cloak>{ t(ctx, "mailbox.scanning") }</span>
 				</button>
@@ -126,23 +139,24 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 					class="u-font-082 u-text-muted"
 				></span>
 			</div>
-			<div class="tool-spacer"></div>
-			<span class="page-info">
-				if page > 0 && totalPages > 0 {
-					{ fmt.Sprintf("%d of %d", page, totalPages) }
-				}
-			</span>
-			<span class="layout-toggle">
-				<button type="button" class="layout-opt" x-on:click="setLayout('list')" x-bind:class="{'active': layoutMode === 'list'}" title={ t(ctx, "mail.listView") }>&#9776;</button>
-				<button type="button" class="layout-opt" x-on:click="setLayout('two-pane')" x-bind:class="{'active': layoutMode === 'two-pane'}" title={ t(ctx, "mail.twoPaneView") }>&#9707;</button>
-				<button type="button" class="layout-opt" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title={ t(ctx, "mail.threePaneView") }>&#9701;</button>
-			</span>
+			if mailbox == "Trash" {
+				<button
+					type="button"
+					class="tool-btn danger"
+					hx-post="/mail/Trash/empty-trash"
+					hx-confirm={ t(ctx, "mail.emptyTrashConfirm") }
+				>
+					{ t(ctx, "mail.emptyTrash") }
+				</button>
+			}
+			<a href="/compose" class="tool-btn">@Icon("plus", "")<span>{ t(ctx, "mail.compose") }</span></a>
+			</div>
 		</div>
 		<div class="mail-layout" x-bind:class="'layout-' + layoutMode">
 		<div class="message-list-pane">
 		<div id="message-list">
 			<div class="bulk-toolbar" x-bind:hidden="count === 0" x-cloak="" aria-live="polite">
-				<span x-text="count + ' selected'"></span>
+				<span x-text="selectedLabel()"></span>
 				<button type="button" class="tool-btn" x-on:click="selectAll()">{ t(ctx, "mail.selectAll") }</button>
 				<button type="button" class="tool-btn" x-on:click="deselectAll()">{ t(ctx, "mail.deselect") }</button>
 				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'mark-read')" }>{ t(ctx, "mail.markRead") }</button>
@@ -207,8 +221,10 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 		</div>
 		</div>
 		<div class="reading-pane" id="reading-pane" x-bind:hidden="layoutMode === 'list'">
-			<div class="empty-state">
-				<p>{ t(ctx, "mail.selectToRead") }</p>
+			<div class="reading-empty">
+				<span class="reading-empty-glyph">@Icon("inbox", "")</span>
+				<h3>{ t(ctx, "mail.selectAMessage") }</h3>
+				<p>{ t(ctx, "mail.readingKeyboardHint") }</p>
 			</div>
 		</div>
 		</div>
@@ -220,7 +236,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 templ MessageRows(messages []MessageSummary, mailbox string) {
 	for _, msg := range messages {
 		<div
-			class={ "msg-row", templ.KV("unread", !msg.Seen) }
+			class={ "msg-row", "msg-row-grid", templ.KV("unread", !msg.Seen) }
 			role="listitem"
 			tabindex="0"
 			data-uid={ fmt.Sprint(msg.UID) }
@@ -254,42 +270,51 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 					&#9734;
 				}
 			</button>
-			<span class="msg-from">
-				@msgRowLink(mailbox, msg.UID) {
-					{ msg.From }
-				}
-			</span>
-			<span class="msg-subject">
-				@msgRowLink(mailbox, msg.UID) {
-					{ msg.Subject }
-				}
-				if mailbox == "Junk" && msg.SpamScore > 0 {
-					<span class="spam-badge" title={ t(ctx, "mail.spamScore") }>{ fmt.Sprintf("%.0f%%", msg.SpamScore*100) }</span>
-				}
-				if msg.ThreadCount > 1 {
-					<span
-						class="msg-thread-count"
-						hx-get={ fmt.Sprintf("/mail/%s/thread/%s", encMailbox(mailbox), msg.ThreadRoot) }
-						hx-target={ fmt.Sprintf("#thread-%s", msg.ThreadRoot) }
-						hx-swap="innerHTML"
-					>
-						{ fmt.Sprint(msg.ThreadCount) }
+			<div class="msg-main">
+				<div class="msg-line">
+					<span class="msg-from">
+						@msgRowLink(mailbox, msg.UID) {
+							{ msg.From }
+						}
 					</span>
+					<span class="msg-date">{ formatDate(msg.Date) }</span>
+				</div>
+				<div class="msg-line">
+					<span class="msg-subject">
+						@msgRowLink(mailbox, msg.UID) {
+							{ msg.Subject }
+						}
+					</span>
+					if mailbox == "Junk" && msg.SpamScore > 0 {
+						<span class="spam-badge" title={ t(ctx, "mail.spamScore") }>{ fmt.Sprintf("%.0f%%", msg.SpamScore*100) }</span>
+					}
+					if msg.ThreadCount > 1 {
+						<span
+							class="msg-thread-count"
+							hx-get={ fmt.Sprintf("/mail/%s/thread/%s", encMailbox(mailbox), msg.ThreadRoot) }
+							hx-target={ fmt.Sprintf("#thread-%s", msg.ThreadRoot) }
+							hx-swap="innerHTML"
+						>
+							{ fmt.Sprint(msg.ThreadCount) }
+						</span>
+					}
+					if msg.HasAttachments {
+						<span class="msg-attach" role="img" aria-label={ t(ctx, "mail.hasAttachments") } title={ t(ctx, "mail.hasAttachments") }>@Icon("paperclip", "")</span>
+					}
+				</div>
+				if msg.Preview != "" {
+					<div class="msg-preview">{ msg.Preview }</div>
 				}
 				if len(msg.Tags) > 0 {
-					<span class="tag-dots" aria-hidden="true">
+					<div class="msg-tags">
 						for _, dot := range msg.Tags {
-							<span class={ "tag-dot", tagPaletteBGClass(dot.ColourIndex) } title={ dot.Name }></span>
+							<span class="tag-pill"><span class={ "tag-dot", tagPaletteBGClass(dot.ColourIndex) }></span>{ dot.Name }</span>
 						}
 						if msg.OverflowTags > 0 {
-							<span class="tag-dot-overflow" title={ fmt.Sprintf("+%d more tags", msg.OverflowTags) }>+{ fmt.Sprint(msg.OverflowTags) }</span>
+							<span class="tag-pill tag-pill-more" title={ fmt.Sprintf(t(ctx, "mail.moreTags"), msg.OverflowTags) } aria-label={ fmt.Sprintf(t(ctx, "mail.moreTags"), msg.OverflowTags) }>+{ fmt.Sprint(msg.OverflowTags) }</span>
 						}
-					</span>
+					</div>
 				}
-			</span>
-			<span class="msg-date">{ formatDate(msg.Date) }</span>
-			<div class="msg-mobile-row2">
-				{ msg.Subject }
 			</div>
 		</div>
 		if msg.ThreadCount > 1 {
@@ -333,6 +358,38 @@ templ ThreadChildren(children []ThreadChild, mailbox string) {
 			<span class="msg-date">{ formatDate(child.Date) }</span>
 		</div>
 	}
+}
+
+// mailboxTitle is the page heading for a mailbox. A tag view is the virtual
+// mailbox "tag:<name>", headed by the tag name alone.
+func mailboxTitle(mailbox string) string {
+	return strings.TrimPrefix(mailbox, "tag:")
+}
+
+// listCountsText renders the muted "· N unread · N total" header text.
+func listCountsText(ctx context.Context, c ListCounts) string {
+	return "· " + fmt.Sprintf(t(ctx, "mailbox.unreadCount"), c.Unread) + " · " + fmt.Sprintf(t(ctx, "mailbox.totalCount"), c.Total)
+}
+
+// layoutIcon draws one segment of the reading-pane layout toggle. These three
+// glyphs are not part of the shared icon set, which is pinned to the handoff
+// ICONS map, so they live with the control that uses them.
+templ layoutIcon(kind string) {
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="icon" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+		switch kind {
+			case "two-pane":
+				<rect x="3" y="4" width="8" height="16" rx="1"></rect>
+				<rect x="13" y="4" width="8" height="16" rx="1"></rect>
+			case "three-pane":
+				<rect x="3" y="4" width="5" height="16" rx="1"></rect>
+				<rect x="10" y="4" width="5" height="16" rx="1"></rect>
+				<rect x="17" y="4" width="4" height="16" rx="1"></rect>
+			default:
+				<line x1="3" y1="6" x2="21" y2="6"></line>
+				<line x1="3" y1="12" x2="21" y2="12"></line>
+				<line x1="3" y1="18" x2="21" y2="18"></line>
+		}
+	</svg>
 }
 
 func formatDate(t time.Time) string {

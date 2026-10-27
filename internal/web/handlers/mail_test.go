@@ -637,6 +637,10 @@ func TestListMessagesPaginatesAfterThreadGrouping(t *testing.T) {
 	if got := strings.Count(body, `class="msg-row`); got != 1 {
 		t.Fatalf("rendered message rows = %d, want 1", got)
 	}
+	// The header counts messages, not the one thread-collapsed row.
+	if !strings.Contains(body, "62 total") || !strings.Contains(body, "62 unread") {
+		t.Fatalf("header should count 62 raw messages; body: %s", body)
+	}
 
 	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/Sent/%d", newestUID), nil)
 	w = httptest.NewRecorder()
@@ -1187,5 +1191,127 @@ func TestAttachmentIndexOrderRegularBeforeInline(t *testing.T) {
 		if !bytes.Equal(rec.Body.Bytes(), want) {
 			t.Errorf("attachment/%d served %d bytes, want %d (order changed)", i, rec.Body.Len(), len(want))
 		}
+	}
+}
+
+func TestCountListMessages(t *testing.T) {
+	msg := func(flags uint32) *bongov1.MailboxMessage { return &bongov1.MailboxMessage{Flags: flags} }
+	tests := []struct {
+		name string
+		in   []*bongov1.MailboxMessage
+		want templates.ListCounts
+	}{
+		{"empty", nil, templates.ListCounts{}},
+		{"all unread", []*bongov1.MailboxMessage{msg(0), msg(store.FlagFlagged)}, templates.ListCounts{Unread: 2, Total: 2}},
+		{"mixed", []*bongov1.MailboxMessage{msg(store.FlagSeen), msg(0), msg(store.FlagSeen | store.FlagFlagged), msg(store.FlagFlagged), msg(store.FlagSeen)}, templates.ListCounts{Unread: 2, Total: 5}},
+		{"all read", []*bongov1.MailboxMessage{msg(store.FlagSeen)}, templates.ListCounts{Unread: 0, Total: 1}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := countListMessages(tc.in); got != tc.want {
+				t.Errorf("countListMessages = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// listCountsFixture delivers five INBOX messages (two seen) and tags four of
+// them (one seen) so the plain and tag views expect different, non-round counts.
+func listCountsFixture(t *testing.T) *chi.Mux {
+	t.Helper()
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	meta, err := store.NewMetadataManager(dir + "/meta")
+	if err != nil {
+		t.Fatalf("NewMetadataManager: %v", err)
+	}
+	t.Cleanup(func() { meta.Close() })
+
+	mailboxes := store.NewMailboxStore(ps, &directApplierTags{ps: ps})
+	if err := mailboxes.CreateMailbox("user1", "INBOX"); err != nil {
+		t.Fatalf("CreateMailbox: %v", err)
+	}
+	// guid, seen, tagged
+	fixture := []struct {
+		seen, tagged bool
+	}{{true, true}, {false, true}, {false, true}, {true, false}, {false, true}}
+	for i, f := range fixture {
+		guid := fmt.Sprintf("counts-%d", i)
+		var flags uint32
+		if f.seen {
+			flags = store.FlagSeen
+		}
+		m := &bongov1.MailMeta{
+			Guid:       guid,
+			Subject:    fmt.Sprintf("subject %d", i),
+			From:       "a@example.com",
+			MessageId:  fmt.Sprintf("<counts-%d@example.test>", i),
+			ReceivedAt: time.Unix(1_700_000_000+int64(i), 0).Unix(),
+		}
+		if _, err := mailboxes.DeliverMessage("user1", "INBOX", m, flags); err != nil {
+			t.Fatalf("DeliverMessage %d: %v", i, err)
+		}
+		if f.tagged {
+			if err := meta.IndexMailTags("user1", guid, []string{"work"}); err != nil {
+				t.Fatalf("IndexMailTags: %v", err)
+			}
+		}
+	}
+
+	h := NewMailHandler(ps, nil, mailboxes, discardLogger())
+	h.SetMetadata(meta)
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := middleware.WithUserContext(req.Context(), "user1", "admin@example.com")
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Get("/mail/tag/{name}", h.ListTagMessages)
+	r.Get("/mail/{mailbox}", h.ListMessages)
+	return r
+}
+
+// TestListHeaderCountsOnEveryRenderPath covers the full page and the HTMX
+// fragment for both the plain mailbox and the tag view, since each has its own
+// call site that builds the header counts.
+func TestListHeaderCountsOnEveryRenderPath(t *testing.T) {
+	r := listCountsFixture(t)
+	tests := []struct {
+		name, path string
+		hx         bool
+		want       []string
+		notWant    string
+	}{
+		{"mailbox full page", "/mail/INBOX", false, []string{"3 unread", "5 total"}, ""},
+		{"mailbox htmx", "/mail/INBOX", true, []string{"3 unread", "5 total"}, "<html"},
+		{"tag full page", "/mail/tag/work", false, []string{"3 unread", "4 total", ">work</h1>"}, "tag:work</h1>"},
+		{"tag htmx", "/mail/tag/work", true, []string{"3 unread", "4 total", ">work</h1>"}, "<html"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			if tt.hx {
+				req.Header.Set("HX-Request", "true")
+			}
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+			}
+			body := w.Body.String()
+			for _, s := range tt.want {
+				if !strings.Contains(body, s) {
+					t.Errorf("body missing %q", s)
+				}
+			}
+			if tt.notWant != "" && strings.Contains(body, tt.notWant) {
+				t.Errorf("body contains %q", tt.notWant)
+			}
+		})
 	}
 }
