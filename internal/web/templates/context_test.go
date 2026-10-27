@@ -52,7 +52,7 @@ func TestLayoutWithContentLoadsSharedDesignTokens(t *testing.T) {
 
 func TestMailboxContentExposesRealResponsivePaneTargets(t *testing.T) {
 	var buf bytes.Buffer
-	if err := MailboxContent("INBOX", nil, 1, 1, "", false).Render(context.Background(), &buf); err != nil {
+	if err := MailboxContent("INBOX", ListCounts{}, nil, 1, 1, "", false).Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render MailboxContent: %v", err)
 	}
 
