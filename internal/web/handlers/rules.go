@@ -373,19 +373,6 @@ func ruleToInfo(rule *bongov1.FilterRule) templates.RuleInfo {
 		}
 	}
 
-	// Build summary strings.
-	var condParts []string
-	for _, c := range info.Conditions {
-		condParts = append(condParts, fmt.Sprintf("%s %s '%s'", c.Field, c.Operator, c.Value))
-	}
-	info.ConditionSummary = strings.Join(condParts, " AND ")
-
-	if info.Action.Type == "tag" {
-		info.ActionSummary = fmt.Sprintf("tag: %s", strings.Join(info.Action.Tags, ", "))
-	} else if info.Action.Type != "" {
-		info.ActionSummary = fmt.Sprintf("%s: %s", info.Action.Type, info.Action.Target)
-	}
-
 	return info
 }
 

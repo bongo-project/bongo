@@ -1966,7 +1966,7 @@ function initRulesSortable() {
     handle: '.drag-handle',
     animation: 150,
     onEnd: function() {
-      var ids = Array.from(el.querySelectorAll('tr[data-id]')).map(function(r) { return r.dataset.id; });
+      var ids = Array.from(el.querySelectorAll(':scope > [data-id]')).map(function(r) { return r.dataset.id; });
       fetch('/settings/rules/reorder', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -2208,7 +2208,7 @@ document.addEventListener('htmx:afterSettle', initEventDrag);
 document.addEventListener('click', function(e) {
   var btn = e.target.closest('[data-move-dir]');
   if (!btn) return;
-  var row = btn.closest('tr[data-id]');
+  var row = btn.closest('#sortable-rules > [data-id]');
   if (!row) return;
   var dir = btn.dataset.moveDir;
   var sibling = dir === 'up' ? row.previousElementSibling : row.nextElementSibling;
@@ -2218,7 +2218,7 @@ document.addEventListener('click', function(e) {
   } else {
     row.parentNode.insertBefore(sibling, row);
   }
-  var ids = Array.from(row.closest('tbody').querySelectorAll('tr[data-id]')).map(function(r) { return r.dataset.id; });
+  var ids = Array.from(row.parentNode.querySelectorAll(':scope > [data-id]')).map(function(r) { return r.dataset.id; });
   fetch('/settings/rules/reorder', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(ids)});
   // Re-focus the button after DOM move.
   btn.focus();
