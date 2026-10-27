@@ -176,6 +176,9 @@ func TestEditorI18nKeysResolveInAllLocales(t *testing.T) {
 		"editor.sourceLabel",
 		"compose.bodyModePlain",
 		"compose.bodyModeRich",
+		"compose.attach",
+		"compose.editRecipients",
+		"compose.filesSummary",
 	}
 	locales := []string{"en", "de", "es", "fr"}
 
