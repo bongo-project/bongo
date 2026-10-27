@@ -3548,11 +3548,53 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .rule-move-btn:hover { color: var(--text); }
 .rule-name { font-weight: 600; color: var(--bongo-blue); text-decoration: none; cursor: pointer; transition: color 0.2s; }
 .rule-name:hover { color: var(--bongo-blue-dark); text-decoration: underline; }
-.rule-summary { font-size: 12px; color: var(--text-muted); line-height: 1.4; max-width: 300px; }
-.rule-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--radius); font-size: 13px; font-weight: 500; }
-.rule-status.active { color: var(--bongo-green); }
-.rule-status.inactive { color: var(--text-muted); }
-.rule-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.rules-intro { max-width: 560px; margin: 0 0 1.25rem; color: var(--text-secondary); font-size: .9rem; line-height: 1.5; }
+
+/* ==== Rules (US-011) ==== */
+/* The card must not clip the more menu, so it overrides the shared overflow. */
+.rules-card, .rules-card > .card-body.flush { overflow: visible; }
+.rules-card > .card-head {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex; align-items: center; gap: .75rem;
+}
+.rules-card > .card-head h3 { font-size: 1rem; font-weight: 600; margin: 0; }
+.rules-card > .card-head .spacer { flex: 1; }
+.rules-card > .card-head .muted { color: var(--text-muted); }
+.rule-item { border-bottom: 1px solid var(--border-subtle); }
+.rule-item:last-child { border-bottom: none; }
+.rule-item:hover { background: var(--surface-2); }
+.rule {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem;
+  padding: .75rem 1rem;
+  font-size: .9rem;
+}
+.rule-handle { display: inline-flex; align-items: center; gap: .15rem; color: var(--text-muted); font-size: 1.1rem; }
+.rule-move { display: inline-flex; }
+.rule-state {
+  flex: none; width: 10px; height: 10px; border-radius: 50%;
+  background: transparent; border: 2px solid var(--border-strong);
+}
+.rule-state.on { background: var(--accent-accessible); border-color: var(--accent-accessible); }
+.rule-when, .rule .arrow, .rule-and { color: var(--text-muted); }
+.rule .condition {
+  font-family: var(--font-mono); font-size: .82rem; color: var(--text-secondary);
+  background: var(--surface-2); padding: 2px 8px; border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  max-width: 100%; overflow-wrap: anywhere;
+}
+.rule .action { font-weight: 600; color: var(--accent-accessible); overflow-wrap: anywhere; }
+.rule .spacer { flex: 1; }
+.rule-more { position: relative; }
+.rule-more-menu { min-width: 160px; }
+.rule-more-menu[hidden] { display: none; }
+.rule-delete { color: var(--error); }
+.rule-results { padding: .75rem 1rem 1rem; background: var(--surface-2); font-size: .88rem; }
+.rule-results[hidden] { display: none; }
+@media (max-width: 640px) {
+  .rule .spacer { display: none; }
+  .rule-more { margin-left: auto; }
+}
 .condition-row {
   display: grid; grid-template-columns: 150px 150px 1fr 40px; gap: 12px;
   align-items: end; margin-bottom: 12px; padding: 12px;

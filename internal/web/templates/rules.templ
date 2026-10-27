@@ -13,8 +13,6 @@ type RuleInfo struct {
 	StopProcessing   bool
 	Conditions       []ConditionInfo
 	Action           ActionInfo
-	ConditionSummary string
-	ActionSummary    string
 }
 
 // ConditionInfo is the template data for a rule condition.
@@ -54,72 +52,92 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<div class="page-header page-header-row">
-				<h2 class="u-m0">{ t(ctx, "nav.filterRules") }</h2>
+			<div class="page-head">
+				<h1>{ t(ctx, "nav.filterRules") }</h1>
+				<div class="spacer"></div>
 				<a href="/settings/rules/new" class="btn-outline">{ t(ctx, "rules.newRule") }</a>
 			</div>
+			<p class="rules-intro">{ t(ctx, "rules.intro") }</p>
 			if len(rules) == 0 {
 				<p class="secondary-text">{ t(ctx, "rules.noRulesYet") }</p>
 			} else {
-				<div id="rules-list">
-					<table role="grid">
-						<thead>
-							<tr>
-								<th class="u-width-2rem"></th>
-								<th class="u-width-2rem">#</th>
-								<th>{ t(ctx, "rules.colName") }</th>
-								<th>{ t(ctx, "rules.colConditions") }</th>
-								<th>{ t(ctx, "rules.colAction") }</th>
-								<th class="u-width-4rem">{ t(ctx, "rules.colActive") }</th>
-								<th class="u-width-10rem">{ t(ctx, "rules.colActions") }</th>
-							</tr>
-						</thead>
-						<tbody id="sortable-rules">
+				<div class="card rules-card">
+					<div class="card-head">
+						<h3>{ t(ctx, "rules.cardTitle") }</h3>
+						<div class="spacer"></div>
+						<small class="muted">{ t(ctx, "rules.dragHint") }</small>
+					</div>
+					<div class="card-body flush" id="rules-list">
+						<div id="sortable-rules">
 							for i, rule := range rules {
-								<tr data-id={ rule.ID }>
-									<td class="drag-handle u-flex u-items-center u-gap-015 u-cursor-grab">
-										&#x2801;
-										<span class="u-flex u-flex-col">
-											if i > 0 {
-												<button type="button" class="rule-move-btn" aria-label={ t(ctx, "rules.moveUp") } data-move-dir="up" data-move-id={ rule.ID }>&#x25B2;</button>
-											}
-											if i < len(rules)-1 {
-												<button type="button" class="rule-move-btn" aria-label={ t(ctx, "rules.moveDown") } data-move-dir="down" data-move-id={ rule.ID }>&#x25BC;</button>
-											}
+								<div class="rule-item" data-id={ rule.ID }>
+									<div class="rule">
+										<span class="drag-handle rule-handle u-cursor-grab">
+											<span aria-hidden="true">&#x2630;</span>
+											<span class="rule-move">
+												if i > 0 {
+													<button type="button" class="rule-move-btn" aria-label={ t(ctx, "rules.moveUp") } data-move-dir="up" data-move-id={ rule.ID }>&#x25B2;</button>
+												}
+												if i < len(rules)-1 {
+													<button type="button" class="rule-move-btn" aria-label={ t(ctx, "rules.moveDown") } data-move-dir="down" data-move-id={ rule.ID }>&#x25BC;</button>
+												}
+											</span>
 										</span>
-									</td>
-									<td>{ fmt.Sprintf("%d", rule.Priority) }</td>
-									<td><a href={ templ.SafeURL("/settings/rules/" + rule.ID) } class="rule-name">{ rule.Name }</a></td>
-									<td><div class="rule-summary">{ rule.ConditionSummary }</div></td>
-									<td><div class="rule-summary">{ rule.ActionSummary }</div></td>
-									<td>
 										if rule.Enabled {
-											<span class="rule-status active">&#10003; { t(ctx, "common.yes") }</span>
+											<span class="rule-state on" title={ t(ctx, "common.enabled") }><span class="sr-only">{ t(ctx, "common.enabled") }</span></span>
 										} else {
-											<span class="rule-status inactive">&#9675; { t(ctx, "common.no") }</span>
+											<span class="rule-state" title={ t(ctx, "rules.stateDisabled") }><span class="sr-only">{ t(ctx, "rules.stateDisabled") }</span></span>
 										}
-									</td>
-									<td>
-										<div class="rule-actions">
-											<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } class="btn-outline btn-sm">{ t(ctx, "common.edit") }</a>
+										<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } class="rule-name">{ rule.Name }</a>
+										<span class="rule-when">{ t(ctx, "rules.when") }</span>
+										for j, cond := range rule.Conditions {
+											if j > 0 {
+												<span class="rule-and">{ t(ctx, "rules.and") }</span>
+											}
+											<span class="condition">{ ruleConditionText(ctx, cond) }</span>
+										}
+										<span class="arrow" aria-hidden="true">&rarr;</span>
+										<span class="action">{ ruleActionText(ctx, rule.Action) }</span>
+										<span class="spacer"></span>
+										<div class="rule-more" x-data="messageMore" x-on:keydown.escape="close()" x-on:click.outside="dismiss()">
 											<button
-												hx-post={ "/settings/rules/" + rule.ID + "/test" }
-												hx-target={ "#test-results-" + rule.ID }
-												hx-swap="outerHTML"
-												class="btn-outline btn-sm">{ t(ctx, "rules.test") }</button>
-											<button
-												hx-delete={ "/settings/rules/" + rule.ID }
-												hx-target="closest tr"
-												hx-swap="outerHTML"
-												hx-confirm={ t(ctx, "rules.deleteConfirm") }
-												class="btn-flush btn-sm">{ t(ctx, "rules.deleteShort") }</button>
+												type="button"
+												class="msg-act"
+												x-ref="button"
+												aria-haspopup="true"
+												aria-expanded="false"
+												x-bind:aria-expanded="open"
+												aria-controls={ "rule-menu-" + rule.ID }
+												aria-label={ t(ctx, "rules.more") }
+												title={ t(ctx, "rules.more") }
+												x-on:click="toggle()"
+											>
+												@Icon("more", "")
+											</button>
+											<div class="msg-more-menu rule-more-menu" id={ "rule-menu-" + rule.ID } hidden x-bind:hidden="!open" x-cloak="">
+												<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } class="msg-more-item">{ t(ctx, "common.edit") }</a>
+												<button
+													type="button"
+													hx-post={ "/settings/rules/" + rule.ID + "/test" }
+													hx-target={ "#test-results-" + rule.ID }
+													hx-swap="outerHTML"
+													x-on:click="dismiss()"
+													class="msg-more-item">{ t(ctx, "rules.test") }</button>
+												<button
+													type="button"
+													hx-delete={ "/settings/rules/" + rule.ID }
+													hx-target="closest .rule-item"
+													hx-swap="outerHTML"
+													hx-confirm={ t(ctx, "rules.deleteConfirm") }
+													class="msg-more-item rule-delete">{ t(ctx, "common.delete") }</button>
+											</div>
 										</div>
-									</td>
-								</tr>
-								<tr id={ "test-results-" + rule.ID } class="u-hidden"></tr>
+									</div>
+									<div id={ "test-results-" + rule.ID } hidden></div>
+								</div>
 							}
-						</tbody>
-					</table>
+						</div>
+					</div>
 				</div>
 			}
 				</div>
@@ -280,20 +298,18 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 }
 
 templ RuleTestResults(ruleID string, matches int, total int, samples []MailSample) {
-	<tr id={ "test-results-" + ruleID }>
-		<td colspan="7" class="u-bg-subtle u-p-18">
-			<p class="u-mb-05">
-				<strong>{ fmt.Sprintf("%d / %d", matches, total) }</strong> { t(ctx, "rules.recentMessagesMatched") }
-			</p>
-			if len(samples) > 0 {
-				<ul class="u-m0 u-font-085 u-pl-15">
-					for _, s := range samples {
-						<li>{ s.Date } - { s.From } - { s.Subject }</li>
-					}
-				</ul>
-			}
-		</td>
-	</tr>
+	<div id={ "test-results-" + ruleID } class="rule-results">
+		<p class="u-mb-05">
+			<strong>{ fmt.Sprintf("%d / %d", matches, total) }</strong> { t(ctx, "rules.recentMessagesMatched") }
+		</p>
+		if len(samples) > 0 {
+			<ul class="u-m0 u-font-085 u-pl-15">
+				for _, s := range samples {
+					<li>{ s.Date } - { s.From } - { s.Subject }</li>
+				}
+			</ul>
+		}
+	</div>
 }
 
 func ruleFormTitle(ctx context.Context, isNew bool) string {
