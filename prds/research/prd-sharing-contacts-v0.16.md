@@ -580,6 +580,20 @@ must cover it.
    organisation, pinned with a `replace` directive. Each change is offered
    upstream to emersion/go-imap as its own pull request, kept small and
    independent of Bongo; the fork is dropped once upstream releases them.
+4. (operator, 2026-10-27) Open question 2: flags, including `\Seen`, stay
+   shared by everyone with access in v0.16. Per-user `\Seen` remains a
+   candidate for a later release.
+5. (operator, 2026-10-27) Open question 3: the shared namespace prefixes are
+   configurable, defaulting to "Shared" and "Other Users". Existing user
+   folders are never renamed; if a prefix clashes with an existing folder,
+   the server reports it at startup and the admin picks another prefix.
+6. (operator, 2026-10-27) Open question 4: `quota_bytes` is enforced from
+   the release that ships US-004, with no warning-only period. The upgrade
+   notes must say so prominently.
+7. (operator, 2026-10-27) Open question 5: scheduled fetch may store
+   third-party passwords, encrypted at rest with a dedicated key, never
+   logged and deletable by the user. It ships after its own security
+   review; OAuth2 for the large providers can follow later.
 
 ### 8.2 Candidates for the next release
 

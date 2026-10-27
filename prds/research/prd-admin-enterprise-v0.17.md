@@ -672,6 +672,16 @@ by govulncheck.
    security flag.
 3. (operator, 2026-10-26) IMAP PROXYAUTH (#16) and POP3 SASL (#19) are
    dropped.
+4. (operator, 2026-10-27) Open question 1: the update endpoint is served
+   from `update.bongo-project.org` by a Cloudflare Worker; that is the
+   default `server.update_check_url`.
+5. (operator, 2026-10-27) Open question 2: the Worker source lives in this
+   repository under `deploy/update-worker/`.
+6. (operator, 2026-10-27) Open question 3: per-day aggregate counts are
+   kept for 13 months and then deleted; the privacy notes say so.
+7. (operator, 2026-10-27) Open question 5: pt-BR ships marked beta, with a
+   public issue asking a native speaker to review it; it loses the beta
+   label after review.
 
 ### 8.2 Candidates for the next release
 
