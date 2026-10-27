@@ -181,6 +181,32 @@ func TestRunAgentRegistersOverMutualTLS(t *testing.T) {
 	}
 }
 
+// TestRunAgentCancelledDuringRegistrationIsCleanShutdown pins the shutdown
+// race behind a CI flake: a cancellation that lands while Register is in
+// flight must stop the agent without reporting a startup error.
+func TestRunAgentCancelledDuringRegistrationIsCleanShutdown(t *testing.T) {
+	fx := newAgentTLSFixture(t)
+	cfg := fx.agentConfig("imap")
+	cfg.Server.BindAddr = "127.0.0.1"
+	isolatePorts(t, cfg)
+	a, err := NewAgent(cfg, testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan error, 1)
+	go func() { done <- a.runAgent(ctx) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("runAgent after cancellation = %v, want nil", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("runAgent did not return")
+	}
+}
+
 func TestRunAgentMissingTLSFailsNamingKey(t *testing.T) {
 	fx := newAgentTLSFixture(t)
 	cfg := fx.agentConfig("imap")
