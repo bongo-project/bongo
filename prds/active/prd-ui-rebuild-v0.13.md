@@ -360,3 +360,11 @@ From the 27.5 mailbox review (2026-10-27):
   the list header counts INBOX itself, so the two can differ. Decide which
   the sidebar should show. (27.5)
 
+From the 27.6 message view review (2026-10-27):
+
+- "Load remote images" applies to the whole message pane; the CSP `img-src`
+  cannot be narrowed to one message, so a thread with several messages
+  loads images for all of them once allowed. Decide whether the setting
+  should be per message. (27.6)
+- `scripts/ui-shots/message_more_e2e_test.go` (More menu, quick reply) runs
+  only under the `uishots` build tag, which no CI job sets. (27.6)
