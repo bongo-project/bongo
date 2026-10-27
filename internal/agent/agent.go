@@ -1351,6 +1351,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			r.Get("/compose", composeH.NewMessage)
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)
+			// POST carries the quick reply text from the message view.
+			r.Post("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
 			r.Get("/compose/draft/{mailbox}/{uid}", composeH.EditDraft)
 			r.Post("/compose/send", composeH.Send)

@@ -982,6 +982,8 @@ document.addEventListener('alpine:init', () => {
     allTags: allTags,           // [{name, colourIndex}, ...]  all user-defined tags
     openDropdown: false,
     newTagName: '',
+    viewTagLabel: '',
+    removeTagLabel: '',
 
     messageTagBGClass(index) {
       return 'message-tag-bg-' + (Number.isInteger(index) ? index : 0);
@@ -989,6 +991,21 @@ document.addEventListener('alpine:init', () => {
 
     messageTagColourClass(index) {
       return 'message-tag-colour-' + (Number.isInteger(index) ? index : 0);
+    },
+
+    // The Alpine CSP build cannot parse template literals, so chip links and
+    // labels are built here. The label templates ("View tag %s") are translated
+    // server-side and carried on the root element.
+    tagHref(tag) {
+      return '/mail/tag/' + encodeURIComponent(tag.name);
+    },
+
+    viewLabel(tag) {
+      return (this.viewTagLabel || '%s').replace('%s', tag.name);
+    },
+
+    removeLabel(tag) {
+      return (this.removeTagLabel || '%s').replace('%s', tag.name);
     },
 
     get filteredAllTags() {
@@ -1075,9 +1092,47 @@ document.addEventListener('alpine:init', () => {
     },
 
     init() {
+      this.viewTagLabel = this.$el.dataset.viewTagLabel || '';
+      this.removeTagLabel = this.$el.dataset.removeTagLabel || '';
       this.$watch('openDropdown', (val) => {
         if (val) this.$nextTick(() => this.$refs.tagInput && this.$refs.tagInput.focus());
       });
+    }
+  }));
+
+  // Message view "More" menu. dismiss() closes without moving focus, for
+  // outside clicks; close() returns focus to the button, for Escape.
+  Alpine.data('messageMore', () => ({
+    open: false,
+    toggle() {
+      this.open = !this.open;
+    },
+    dismiss() {
+      this.open = false;
+    },
+    close() {
+      if (!this.open) return;
+      this.open = false;
+      this.$refs.button.focus();
+    }
+  }));
+
+  // "Load remote images" banner. Only the blocked placeholders inside the
+  // article that holds the clicked banner are loaded; other messages in a
+  // thread keep their own banners. Only http(s) sources are fetched.
+  Alpine.data('remoteImages', () => ({
+    load() {
+      const banner = this.$root;
+      const article = banner.closest('article') || banner.parentElement;
+      article.querySelectorAll('.blocked-image[data-src]').forEach(function (el) {
+        const src = el.dataset.src || '';
+        if (!/^https?:\/\//i.test(src)) return;
+        const img = document.createElement('img');
+        img.src = src;
+        img.className = 'loaded-remote-image';
+        el.replaceWith(img);
+      });
+      banner.remove();
     }
   }));
 

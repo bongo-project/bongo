@@ -1,8 +1,10 @@
 package templates
 
 import (
+	"context"
 	"fmt"
 	"html"
+	"net/mail"
 	"strings"
 	"time"
 )
@@ -107,206 +109,67 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 		>
 			&larr; { t(ctx, "mail.back") }
 		</a>
-		<div class="tool-separator" aria-hidden="true"></div>
-		<a href={ templ.SafeURL(fmt.Sprintf("/compose/reply/%s/%d", msg.Mailbox, msg.UID)) } class="tool-btn primary">{ t(ctx, "mail.reply") }</a>
-		<a href={ templ.SafeURL(fmt.Sprintf("/compose/forward/%s/%d", msg.Mailbox, msg.UID)) } class="tool-btn">{ t(ctx, "mail.forward") }</a>
-		<div class="tool-separator" aria-hidden="true"></div>
-		<button
-			class="tool-btn danger"
-			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", encMailbox(msg.Mailbox), msg.UID) }
-			hx-target="#main-content"
-			hx-confirm={ t(ctx, "mail.confirmDelete") }
-		>
-			{ t(ctx, "mail.delete") }
-		</button>
-		<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", encMailbox(msg.Mailbox), msg.UID)) } class="tool-btn">{ t(ctx, "mail.export") }</a>
-		<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/source", encMailbox(msg.Mailbox), msg.UID)) } class="tool-btn">{ t(ctx, "mail.viewSource") }</a>
-		<button type="button" class="tool-btn" data-print-page="true">{ t(ctx, "mail.print") }</button>
-		<select
-			class="move-select"
-			name="destination"
-			hx-post={ fmt.Sprintf("/mail/%s/%d/move", encMailbox(msg.Mailbox), msg.UID) }
-			hx-target="#main-content"
-			hx-trigger="change"
-			aria-label={ t(ctx, "mail.moveToFolder") }
-		>
-			<option value="">{ t(ctx, "mail.moveTo") }</option>
-			for _, mb := range mailboxes {
-				if mb.Name != msg.Mailbox {
-					<option value={ mb.Name }>{ mb.Name }</option>
-				}
-			}
-		</select>
 	</div>
-	<div class="thread-header u-pt-12 u-pb-8 u-px-16">
-		<h1 class="thread-subject">{ msg.Subject }</h1>
-		@messageTags(msg)
-	</div>
-	<div class="thread-messages u-py-10 u-px-16">
-		<article class="message">
-			<div class="msg-card">
-				<div class="msg-head">
-					<span class="msg-sender">{ msg.From }</span>
-					if !msg.IsContact {
-						<form method="post" action="/contacts/quick-add" class="u-inline-block u-m0">
-							<input type="hidden" name="from_email" value={ msg.From }/>
-							<input type="hidden" name="from_name" value={ msg.From }/>
-							<input type="hidden" name="return_to" value={ fmt.Sprintf("/mail/%s/%d", encMailbox(msg.Mailbox), msg.UID) }/>
-							<button type="submit" class="msg-action-btn">{ t(ctx, "mail.addToContacts") }</button>
-						</form>
-					}
-					<span class="msg-recipients">{ t(ctx, "mail.to") }: { joinStrings(msg.To) }</span>
-					if len(msg.Cc) > 0 {
-						<span class="msg-recipients">{ t(ctx, "mail.cc") }: { joinStrings(msg.Cc) }</span>
-					}
-					<span class="msg-head-spacer"></span>
-					<span class="msg-date">{ msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</span>
-				</div>
-				if msg.HasBlockedImages {
-					<div class="blocked-banner" role="alert">
-						<span>&#9888; { t(ctx, "mail.remoteImagesBlocked") }</span>
-						<button
-							type="button"
-								@click="
-									document.querySelectorAll('.blocked-image').forEach(el => {
-										const img = document.createElement('img');
-										img.src = el.dataset.src;
-										img.className = 'loaded-remote-image';
-										el.replaceWith(img);
-									});
-									$el.closest('.blocked-banner').remove();
-							"
-							aria-label={ t(ctx, "mail.loadRemoteImages") }
-						>
-							{ t(ctx, "mail.loadRemoteImages") }
-						</button>
-					</div>
-				}
-				<div class="msg-body">
-					if msg.MIMETooComplex {
-						<p><em>{ t(ctx, "mail.tooComplex") }</em></p>
-					}
-					if msg.HTMLBody != "" {
-						<div class="email-body">
-							@templ.Raw(msg.HTMLBody)
-						</div>
-					} else {
-						<pre class="text-body u-white-space-prewrap u-font-inherit">
-							@templ.Raw(formatQuotedText(msg.TextBody))
-						</pre>
-					}
-				</div>
-				if len(msg.Attachments) > 0 {
-					@attachmentList(msg.Attachments)
-				}
-			</div>
-		</article>
-		for _, threadMsg := range msg.Thread {
-			@ThreadMessageArticle(threadMsg, false)
-		}
-	</div>
-}
-
-templ MessagePaneContent(msg MessageDetail) {
-	<div class="toolbar pane-toolbar u-py-6 u-px-12">
-		<a href={ templ.SafeURL(fmt.Sprintf("/compose/reply/%s/%d", msg.Mailbox, msg.UID)) } class="tool-btn">{ t(ctx, "mail.reply") }</a>
-		<a href={ templ.SafeURL(fmt.Sprintf("/compose/forward/%s/%d", msg.Mailbox, msg.UID)) } class="tool-btn">{ t(ctx, "mail.forward") }</a>
-		<button
-			class="tool-btn danger"
-			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", encMailbox(msg.Mailbox), msg.UID) }
-			hx-target="#main-content"
-			hx-confirm={ t(ctx, "mail.confirmDelete") }
-		>
-			{ t(ctx, "mail.delete") }
-		</button>
-	</div>
-	<div class="thread-header">
-		<h3 class="thread-subject u-font-11">{ msg.Subject }</h3>
-		@messageTags(msg)
-	</div>
+	@messageHeader(msg, "h1")
 	<div class="thread-messages">
-		<article class="message">
-			<div class="msg-card u-border-none">
-				<div class="msg-head">
-					<span class="msg-sender">{ msg.From }</span>
-					<span class="msg-recipients">{ t(ctx, "mail.to") }: { joinStrings(msg.To) }</span>
-					if len(msg.Cc) > 0 {
-						<span class="msg-recipients">{ t(ctx, "mail.cc") }: { joinStrings(msg.Cc) }</span>
-					}
-					<span class="msg-head-spacer"></span>
-					<span class="msg-date">{ msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</span>
-				</div>
-				if msg.HasBlockedImages {
-					<div class="blocked-banner" role="alert">
-						<span>&#9888; { t(ctx, "mail.remoteImagesBlocked") }</span>
-						<button
-							type="button"
-								@click="
-									document.querySelectorAll('.blocked-image').forEach(el => {
-										const img = document.createElement('img');
-										img.src = el.dataset.src;
-										img.className = 'loaded-remote-image';
-										el.replaceWith(img);
-									});
-									$el.closest('.blocked-banner').remove();
-							"
-							aria-label={ t(ctx, "mail.loadRemoteImages") }
-						>
-							{ t(ctx, "mail.loadRemoteImages") }
-						</button>
-					</div>
-				}
-				<div class="msg-body">
-					if msg.MIMETooComplex {
-						<p><em>{ t(ctx, "mail.tooComplex") }</em></p>
-					}
-					if msg.HTMLBody != "" {
-						<div class="email-body">
-							@templ.Raw(msg.HTMLBody)
-						</div>
-					} else {
-						<pre class="text-body u-white-space-prewrap u-font-inherit">
-							@templ.Raw(formatQuotedText(msg.TextBody))
-						</pre>
-					}
-				</div>
-				if len(msg.Attachments) > 0 {
-					@attachmentList(msg.Attachments)
-				}
-			</div>
-		</article>
+		@messageView(msg, mailboxes, viewOpts{Top: true})
 		for _, threadMsg := range msg.Thread {
-			@ThreadMessageArticle(threadMsg, true)
+			@ThreadMessageArticle(threadMsg, mailboxes, false)
 		}
+		@quickReply(msg)
 	</div>
 }
 
-templ ThreadMessageArticle(msg MessageDetail, borderless bool) {
+templ MessagePaneContent(msg MessageDetail, mailboxes []MailboxInfo) {
+	@messageHeader(msg, "h2")
+	<div class="thread-messages">
+		@messageView(msg, mailboxes, viewOpts{Top: true, Pane: true, Borderless: true})
+		for _, threadMsg := range msg.Thread {
+			@ThreadMessageArticle(threadMsg, mailboxes, true)
+		}
+		@quickReply(msg)
+	</div>
+}
+
+templ ThreadMessageArticle(msg MessageDetail, mailboxes []MailboxInfo, borderless bool) {
+	@messageView(msg, mailboxes, viewOpts{Borderless: borderless})
+}
+
+// viewOpts selects the variant of messageView. Top is the message the page was
+// opened on (it alone offers Add to contacts); Pane is the compact reading
+// pane variant.
+type viewOpts struct {
+	Top        bool
+	Pane       bool
+	Borderless bool
+}
+
+// messageHeader is the large subject and the tag chip row, shown once above
+// the messages. level is the heading element ("h1" on the full page, "h2" in
+// the reading pane).
+templ messageHeader(msg MessageDetail, level string) {
+	<div class="thread-header">
+		if level == "h1" {
+			<h1 class="thread-subject">{ msg.Subject }</h1>
+		} else {
+			<h2 class="thread-subject">{ msg.Subject }</h2>
+		}
+		@messageTags(msg)
+	</div>
+}
+
+// messageView renders one message: sender bar, remote-image banner, body and
+// attachments. The full page, the reading pane and every thread entry use it.
+templ messageView(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
 	<article class="message">
-		<div class={ "msg-card", templ.KV("u-border-none", borderless) }>
-			<div class="msg-head">
-				<span class="msg-sender">{ msg.From }</span>
-				<span class="msg-recipients">{ t(ctx, "mail.to") }: { joinStrings(msg.To) }</span>
-				if len(msg.Cc) > 0 {
-					<span class="msg-recipients">{ t(ctx, "mail.cc") }: { joinStrings(msg.Cc) }</span>
-				}
-				<span class="msg-head-spacer"></span>
-				<span class="msg-date">{ msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</span>
-			</div>
+		<div class={ "msg-card", templ.KV("u-border-none", opts.Borderless) }>
+			@senderBar(msg, mailboxes, opts)
 			if msg.HasBlockedImages {
-				<div class="blocked-banner" role="alert">
+				<div class="blocked-banner" role="alert" x-data="remoteImages">
 					<span>&#9888; { t(ctx, "mail.remoteImagesBlocked") }</span>
 					<button
 						type="button"
-							@click="
-								document.querySelectorAll('.blocked-image').forEach(el => {
-									const img = document.createElement('img');
-									img.src = el.dataset.src;
-									img.className = 'loaded-remote-image';
-									el.replaceWith(img);
-								});
-								$el.closest('.blocked-banner').remove();
-						"
+						@click="load()"
 						aria-label={ t(ctx, "mail.loadRemoteImages") }
 					>
 						{ t(ctx, "mail.loadRemoteImages") }
@@ -334,6 +197,204 @@ templ ThreadMessageArticle(msg MessageDetail, borderless bool) {
 	</article>
 }
 
+// senderBar is the tinted avatar, name, address, recipients and date, with the
+// icon actions and the More menu on the right.
+templ senderBar(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
+	{{ name, addr := senderParts(msg.From) }}
+	{{ replyURL := fmt.Sprintf("/compose/reply/%s/%d", encMailbox(msg.Mailbox), msg.UID) }}
+	<div class="msg-sender-bar">
+		<span class={ "msg-avatar", "avatar-tint", avatarClass(name, addr) } aria-hidden="true">{ avatarInitials(name, addr) }</span>
+		<div class="msg-sender-id">
+			<div class="msg-sender-line">
+				<span class="msg-sender">{ name }</span>
+				if addr != "" && addr != name {
+					<span class="msg-sender-email">&lt;{ addr }&gt;</span>
+				}
+			</div>
+			<div class="msg-recipients">
+				{ t(ctx, "mail.to") }: { joinStrings(msg.To) }
+				if len(msg.Cc) > 0 {
+					<span class="msg-recipients-cc">{ t(ctx, "mail.cc") }: { joinStrings(msg.Cc) }</span>
+				}
+			</div>
+		</div>
+		<div class={ "msg-sender-actions", templ.KV("pane-toolbar", opts.Pane) }>
+			<span class="msg-date">{ msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</span>
+			<a href={ templ.SafeURL(replyURL) } class="msg-act msg-act-text" aria-label={ t(ctx, "mail.reply") } title={ t(ctx, "mail.reply") }>
+				@Icon("reply", "")
+				<span class="msg-act-label">{ t(ctx, "mail.reply") }</span>
+			</a>
+			<a href={ templ.SafeURL(replyURL + "?all=1") } class="msg-act" aria-label={ t(ctx, "mail.replyAll") } title={ t(ctx, "mail.replyAll") }>
+				@Icon("reply_all", "")
+			</a>
+			<a href={ templ.SafeURL(fmt.Sprintf("/compose/forward/%s/%d", encMailbox(msg.Mailbox), msg.UID)) } class="msg-act" aria-label={ t(ctx, "mail.forward") } title={ t(ctx, "mail.forward") }>
+				@Icon("forward", "")
+			</a>
+			<span class="msg-act-sep" aria-hidden="true"></span>
+			if hasArchiveTarget(msg.Mailbox, mailboxes) {
+				<button
+					type="button"
+					class="msg-act"
+					hx-post={ fmt.Sprintf("/mail/%s/%d/move", encMailbox(msg.Mailbox), msg.UID) }
+					hx-vals={ `{"destination":"Archive"}` }
+					hx-target="#main-content"
+					aria-label={ t(ctx, "mail.archive") }
+					title={ t(ctx, "mail.archive") }
+				>
+					@Icon("archive", "")
+				</button>
+			}
+			<button
+				type="button"
+				class="msg-act msg-act-danger"
+				hx-post={ fmt.Sprintf("/mail/%s/%d/delete", encMailbox(msg.Mailbox), msg.UID) }
+				hx-target="#main-content"
+				hx-confirm={ t(ctx, "mail.confirmDelete") }
+				aria-label={ t(ctx, "mail.delete") }
+				title={ t(ctx, "mail.delete") }
+			>
+				@Icon("trash", "")
+			</button>
+			@moreMenu(msg, mailboxes, opts)
+		</div>
+	</div>
+}
+
+// moreMenu holds the less common actions. Keyboard: Enter and Space open it
+// (native button), Escape closes it and returns focus, an outside click closes
+// it. The panel id carries the mailbox and UID because a thread renders one
+// menu per message.
+templ moreMenu(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
+	{{ menuID := moreMenuID(msg) }}
+	<div class="msg-more" x-data="messageMore" x-on:keydown.escape="close()" x-on:click.outside="dismiss()">
+		<button
+			type="button"
+			class="msg-act"
+			x-ref="button"
+			aria-haspopup="true"
+			aria-expanded="false"
+			x-bind:aria-expanded="open"
+			aria-controls={ menuID }
+			aria-label={ t(ctx, "mail.more") }
+			title={ t(ctx, "mail.more") }
+			x-on:click="toggle()"
+		>
+			@Icon("more", "")
+		</button>
+		<div class="msg-more-menu" id={ menuID } hidden x-bind:hidden="!open" x-cloak="">
+			<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", encMailbox(msg.Mailbox), msg.UID)) } class="msg-more-item">{ t(ctx, "mail.export") }</a>
+			<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/source", encMailbox(msg.Mailbox), msg.UID)) } class="msg-more-item">{ t(ctx, "mail.viewSource") }</a>
+			<button type="button" class="msg-more-item" data-print-page="true">{ t(ctx, "mail.print") }</button>
+			if opts.Top && !msg.IsContact {
+				<form method="post" action="/contacts/quick-add" class="msg-more-form">
+					<input type="hidden" name="from_email" value={ msg.From }/>
+					<input type="hidden" name="from_name" value={ msg.From }/>
+					<input type="hidden" name="return_to" value={ fmt.Sprintf("/mail/%s/%d", encMailbox(msg.Mailbox), msg.UID) }/>
+					<button type="submit" class="msg-more-item">{ t(ctx, "mail.addToContacts") }</button>
+				</form>
+			}
+			<select
+				class="move-select"
+				name="destination"
+				hx-post={ fmt.Sprintf("/mail/%s/%d/move", encMailbox(msg.Mailbox), msg.UID) }
+				hx-target="#main-content"
+				hx-trigger="change"
+				aria-label={ t(ctx, "mail.moveToFolder") }
+			>
+				<option value="">{ t(ctx, "mail.moveTo") }</option>
+				for _, mb := range mailboxes {
+					if mb.Name != msg.Mailbox {
+						<option value={ mb.Name }>{ mb.Name }</option>
+					}
+				}
+			</select>
+		</div>
+	</div>
+}
+
+// quickReply is a hand-off to the composer, not an inline send: the form POSTs
+// to the reply route (so the text never lands in a URL) and the typed text
+// seeds the composer body. One card
+// per thread, replying to the message the page was opened on.
+templ quickReply(msg MessageDetail) {
+	{{ replyURL := fmt.Sprintf("/compose/reply/%s/%d", encMailbox(msg.Mailbox), msg.UID) }}
+	<form class="quick-reply" method="post" action={ replyURL }>
+		<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+		<textarea
+			class="quick-reply-textarea"
+			name="quick"
+			rows="3"
+			maxlength="2000"
+			placeholder={ fmt.Sprintf(t(ctx, "mail.quickReplyPlaceholder"), senderFirstName(msg.From)) }
+			aria-label={ fmt.Sprintf(t(ctx, "mail.quickReplyPlaceholder"), senderFirstName(msg.From)) }
+		></textarea>
+		<div class="quick-reply-footer">
+			<button type="submit" class="quick-reply-send">
+				@Icon("send", "")
+				{ t(ctx, "mail.quickReplyContinue") }
+			</button>
+			<span class="reply-spacer"></span>
+			<a href={ templ.SafeURL(replyURL) } class="reply-attach-btn" aria-label={ t(ctx, "mail.attachFiles") } title={ t(ctx, "mail.attachFiles") }>
+				@Icon("paperclip", "")
+			</a>
+		</div>
+	</form>
+}
+
+// senderParts splits a From header into display name and address. When the
+// header does not parse, the raw text is the name and the address is empty.
+func senderParts(from string) (name, addr string) {
+	if strings.TrimSpace(from) == "" {
+		return "", ""
+	}
+	a, err := mail.ParseAddress(from)
+	if err != nil {
+		return from, ""
+	}
+	if a.Name == "" {
+		return a.Address, a.Address
+	}
+	return a.Name, a.Address
+}
+
+// senderFirstName is the first word of the sender's name, for the quick reply
+// placeholder.
+func senderFirstName(from string) string {
+	name, _ := senderParts(from)
+	if f := strings.Fields(name); len(f) > 0 {
+		return f[0]
+	}
+	return name
+}
+
+// hasArchiveTarget reports whether an Archive mailbox exists and the message
+// is not already in it. Archive is not a default mailbox, so the button must
+// not be offered to users who do not have one.
+func hasArchiveTarget(current string, mailboxes []MailboxInfo) bool {
+	if current == "Archive" {
+		return false
+	}
+	for _, mb := range mailboxes {
+		if mb.Name == "Archive" {
+			return true
+		}
+	}
+	return false
+}
+
+// moreMenuID returns a DOM id unique per message within a thread. The mailbox
+// is reduced to id-safe characters; the UID keeps messages apart.
+func moreMenuID(msg MessageDetail) string {
+	safe := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			return r
+		}
+		return '_'
+	}, msg.Mailbox)
+	return fmt.Sprintf("msg-more-%s-%d", safe, msg.UID)
+}
+
 // messageTags renders the tag chips row with add/remove controls.
 // The Alpine.js component "messageTags" (registered in bongo.js) manages state.
 templ messageTags(msg MessageDetail) {
@@ -345,6 +406,8 @@ templ messageTags(msg MessageDetail) {
 			encMailbox(msg.Mailbox),
 			msg.UID,
 		) }
+		data-view-tag-label={ t(ctx, "mail.viewTag") }
+		data-remove-tag-label={ t(ctx, "mail.removeTag") }
 	>
 		<div class="msg-tags-chips" role="list" aria-label={ t(ctx, "mail.messageTags") }>
 			<template x-for="tag in tags" :key="tag.name">
@@ -354,17 +417,17 @@ templ messageTags(msg MessageDetail) {
 					role="listitem"
 				>
 					<a
-						:href="`/mail/tag/${encodeURIComponent(tag.name)}`"
+						:href="tagHref(tag)"
 						class="tag-chip-name"
-						:aria-label="`View tag ${tag.name}`"
+						:aria-label="viewLabel(tag)"
 						x-text="tag.name"
 					></a>
 					<button
 						type="button"
 						class="tag-chip-remove"
 						@click="removeTag(tag.name)"
-						:aria-label="`Remove tag ${tag.name}`"
-					>&#215;</button>
+						:aria-label="removeLabel(tag)"
+					>@Icon("x", "")</button>
 				</span>
 			</template>
 		</div>
@@ -464,90 +527,141 @@ func tagPaletteSafeIndexMessage(index int32) int32 {
 
 templ attachmentList(attachments []Attachment) {
 	<div class="msg-attachments" x-data="{ showImages: false }">
-		<strong>{ t(ctx, "mail.attachments") }:</strong>
-		if hasDisplayableImages(attachments) {
-			<button
-				type="button"
-				class="attachment-reveal"
-				x-show="!showImages"
-				@click="showImages = true"
-			>
-				&#128065; { t(ctx, "mail.showImages") }
-			</button>
-		}
-		for _, att := range attachments {
-			if isImageType(att.ContentType) {
-				<!-- Image attachments are not auto-loaded: a tracker or malformed
-				     image should not be fetched until the user opts in. The <img>
-				     only enters the DOM once showImages is set, via x-if. -->
-				<template x-if="showImages">
-					<div class="attachment-preview" x-data="{ expanded: false }">
-						<img
-							class="attachment-thumbnail"
-							src={ attachmentInlineURL(att) }
-							alt={ att.Filename }
-							loading="lazy"
-							@click="expanded = true"
-						/>
-						<div x-bind:hidden="!expanded" x-cloak class="lightbox" @click.self="expanded = false" @keydown.escape.window="expanded = false">
-							<div class="lightbox-content">
-								<img src={ attachmentInlineURL(att) } alt={ att.Filename }/>
-								<button class="lightbox-close" @click="expanded = false" type="button">X</button>
-							</div>
-						</div>
-						<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
-							<span class="attachment-icon" aria-hidden="true">&#128196;</span>
-							{ att.Filename }
-							<span class="attachment-size">{ formatSize(att.Size) }</span>
-						</a>
-					</div>
-				</template>
-				<template x-if="!showImages">
-					<span class="attachment-chip attachment-chip-hidden" title={ t(ctx, "mail.imageHidden") }>
-						<span class="attachment-icon" aria-hidden="true">&#128247;</span>
-						{ att.Filename }
-						<span class="attachment-size">{ formatSize(att.Size) }</span>
-					</span>
-				</template>
-			} else if att.ContentType == "application/pdf" {
-				<div class="attachment-preview">
-					<iframe
-						src={ attachmentInlineURL(att) }
-						class="pdf-preview"
-						sandbox=""
-						title={ att.Filename }
-					></iframe>
-					<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
-						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
-						{ att.Filename }
-						<span class="attachment-size">{ formatSize(att.Size) }</span>
-					</a>
-				</div>
-			} else if isTextType(att.ContentType) && att.Hash != "" {
-				<div class="attachment-preview">
-					<div
-						class="text-preview"
-						hx-get={ fmt.Sprintf("/mail/blob/%s?inline=1&ct=%s", att.Hash, att.ContentType) }
-						hx-trigger="load"
-						hx-swap="innerHTML"
-					>
-						{ t(ctx, "common.loading") }...
-					</div>
-					<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
-						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
-						{ att.Filename }
-						<span class="attachment-size">{ formatSize(att.Size) }</span>
-					</a>
-				</div>
-			} else {
-				<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
-					<span class="attachment-icon" aria-hidden="true">&#128196;</span>
-					{ att.Filename }
-					<span class="attachment-size">{ formatSize(att.Size) }</span>
-				</a>
+		<div class="att-label">
+			{ attachmentsHeading(ctx, attachments) }
+			if hasDisplayableImages(attachments) {
+				<button
+					type="button"
+					class="attachment-reveal"
+					x-show="!showImages"
+					@click="showImages = true"
+				>
+					{ t(ctx, "mail.showImages") }
+				</button>
 			}
-		}
+		</div>
+		<div class="att-list">
+			for _, att := range attachments {
+				if isImageType(att.ContentType) {
+					<!-- Image attachments are not auto-loaded: a tracker or malformed
+					     image should not be fetched until the user opts in. The <img>
+					     only enters the DOM once showImages is set, via x-if. -->
+					<template x-if="showImages">
+						<div class="attachment-preview" x-data="{ expanded: false }">
+							<img
+								class="attachment-thumbnail"
+								src={ attachmentInlineURL(att) }
+								alt={ att.Filename }
+								loading="lazy"
+								@click="expanded = true"
+							/>
+							<div x-bind:hidden="!expanded" x-cloak class="lightbox" @click.self="expanded = false" @keydown.escape.window="expanded = false">
+								<div class="lightbox-content">
+									<img src={ attachmentInlineURL(att) } alt={ att.Filename }/>
+									<button class="lightbox-close" @click="expanded = false" type="button" aria-label={ t(ctx, "common.close") }>@Icon("x", "")</button>
+								</div>
+							</div>
+							@attachmentTile(att)
+						</div>
+					</template>
+					<template x-if="!showImages">
+						<span class="attachment-chip attachment-chip-hidden" title={ t(ctx, "mail.imageHidden") }>
+							@attachmentTileBody(att)
+						</span>
+					</template>
+				} else if att.ContentType == "application/pdf" {
+					<div class="attachment-preview">
+						<iframe
+							src={ attachmentInlineURL(att) }
+							class="pdf-preview"
+							sandbox=""
+							title={ att.Filename }
+						></iframe>
+						@attachmentTile(att)
+					</div>
+				} else if isTextType(att.ContentType) && att.Hash != "" {
+					<div class="attachment-preview">
+						<div
+							class="text-preview"
+							hx-get={ fmt.Sprintf("/mail/blob/%s?inline=1&ct=%s", att.Hash, att.ContentType) }
+							hx-trigger="load"
+							hx-swap="innerHTML"
+						>
+							{ t(ctx, "common.loading") }...
+						</div>
+						@attachmentTile(att)
+					</div>
+				} else {
+					@attachmentTile(att)
+				}
+			}
+		</div>
 	</div>
+}
+
+// attachmentTile is the download link: extension badge, name and size.
+templ attachmentTile(att Attachment) {
+	<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
+		@attachmentTileBody(att)
+	</a>
+}
+
+templ attachmentTileBody(att Attachment) {
+	<span class="att-ico" aria-hidden="true">{ attachmentExt(att.Filename, att.ContentType) }</span>
+	<span class="att-name">{ att.Filename }</span>
+	<span class="att-size">{ formatSize(att.Size) }</span>
+}
+
+// attachmentsHeading reads "Attachments . 2 files . 4.6 MB" with a singular
+// form for one file.
+func attachmentsHeading(ctx context.Context, attachments []Attachment) string {
+	var total int64
+	for _, a := range attachments {
+		total += a.Size
+	}
+	summary := fmt.Sprintf(t(ctx, "mail.attachmentsMany"), len(attachments), formatSize(total))
+	if len(attachments) == 1 {
+		summary = fmt.Sprintf(t(ctx, "mail.attachmentsOne"), formatSize(total))
+	}
+	return t(ctx, "mail.attachments") + " \u00b7 " + summary
+}
+
+// attachmentExt returns the short badge text for an attachment: the lowercase
+// filename extension cut to four characters, else the content-type subtype,
+// else "file". A leading dot (".bashrc") is a hidden file, not an extension.
+func attachmentExt(filename, contentType string) string {
+	if i := strings.LastIndexByte(filename, '.'); i > 0 {
+		if ext := strings.ToLower(filename[i+1:]); ext != "" {
+			return truncateBadge(ext)
+		}
+	}
+	if _, sub, ok := strings.Cut(contentType, "/"); ok && sub != "" {
+		sub, _, _ = strings.Cut(sub, ";")
+		sub = strings.ToLower(strings.TrimSpace(sub))
+		if i := strings.LastIndexByte(sub, '+'); i >= 0 && i < len(sub)-1 {
+			sub = sub[i+1:] // application/vnd.api+json -> json
+		}
+		if short, ok := subtypeBadges[sub]; ok {
+			return short
+		}
+		return truncateBadge(sub)
+	}
+	return "file"
+}
+
+// subtypeBadges shortens content-type subtypes that read badly cut to four
+// characters.
+var subtypeBadges = map[string]string{
+	"plain":        "txt",
+	"octet-stream": "bin",
+	"jpeg":         "jpg",
+}
+
+func truncateBadge(s string) string {
+	if r := []rune(s); len(r) > 4 {
+		return string(r[:4])
+	}
+	return s
 }
 
 func joinStrings(ss []string) string {
