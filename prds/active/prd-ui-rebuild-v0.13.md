@@ -24,7 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
-| D | Fixes from operator testing | US-016 to US-017 | 27.16 to 27.17 |
+| D | Fixes from operator testing | US-016 to US-018 | 27.16 to 27.18 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -279,9 +279,30 @@ calendar does nothing.
 - [ ] A template test fails if an x-* attribute in the calendar templates
       holds an expression the CSP build cannot parse.
 
+### US-018: Live unread counts
+Added 2026-10-28 at the operator's request. The per-folder unread counts in
+the sidebar are rendered with the page and never change, so marking a
+message read leaves the number as it was until a reload. Only the Unread
+view badge updates live, and only for new INBOX mail (`sse.go`).
+
+**Acceptance Criteria:**
+- [ ] Marking messages read or unread (toolbar, bulk bar, context menu,
+      keyboard), opening an unread message, and deleting, moving or
+      archiving unread messages update the affected folders' counts and the
+      Unread badge without a reload.
+- [ ] New mail updates the receiving folder's count through the existing
+      SSE stream, not only the INBOX badge.
+- [ ] A folder whose count reaches zero shows no count, as on page load;
+      INBOX keeps its current rule for subfolder mail (the 8.2 note on
+      sidebar versus header counts stays open).
+- [ ] The count's accessible label ("%d unread messages") is translated in
+      en, de, es and fr.
+- [ ] Handler tests assert the updated counts are sent after each of those
+      actions.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-17 are the acceptance criteria of US-001 to US-017. In every
+FR-1 to FR-18 are the acceptance criteria of US-001 to US-018. In every
 story:
 
 - Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF
@@ -495,3 +516,11 @@ From operator testing of the tag controls (2026-10-28):
 - Static assets are cache-busted by commit hash only, so during development
   a rebuilt but uncommitted bongo.js is served under the old URL and the
   browser keeps the previous copy until a hard reload.
+
+From the 27.16 rule editor work (2026-10-28):
+
+- The contact editor binds its repeated fields with `x-model="em.value"`
+  and similar; the CSP build forbids property assignments, so those models
+  never update. The inputs still post their DOM values, so saving works,
+  but anything that reads the model (adding or removing a row) can lose
+  typed values. Use setters as the rule editor now does.
