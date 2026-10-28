@@ -3310,6 +3310,9 @@ html[data-theme="auto"]:not([data-accent]) {
 
 .shortcut-modal-overlay[hidden] { display: none !important; }
 
+/* Events of a calendar hidden in the sidebar filter (calendarFilter). */
+[data-cal-id][hidden] { display: none !important; }
+
 /* Notification prompt */
 .notification-prompt {
   position: fixed;
