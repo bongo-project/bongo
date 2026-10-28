@@ -138,6 +138,16 @@ html[data-theme="dark"]:not([data-accent]) {
   --log-bg:     #010409;
   --log-text:   #8B949E;
   --log-border: #161B22;
+
+  /* Semantic tints the light ramp defines; --success/--warning/--error
+     themselves are not overridden. */
+  --success-bg-subtle: color-mix(in srgb, var(--success) 16%, transparent);
+  --success-text-strong: color-mix(in srgb, var(--success) 55%, white);
+  --warning-bg-subtle: color-mix(in srgb, var(--warning) 16%, transparent);
+  --error-bg-subtle: color-mix(in srgb, var(--error) 16%, transparent);
+  --error-text: color-mix(in srgb, var(--error) 55%, white);
+  --info-bg-subtle: color-mix(in srgb, var(--info) 16%, transparent);
+  --info-text: color-mix(in srgb, var(--info) 55%, white);
 }
 
 /* Admin layout modifier — preserved, sidebar stays slate-dark */
@@ -2736,40 +2746,6 @@ a.admin-nav-item.active, .admin-nav-item.active {
    20. ADMIN DASHBOARD
    ============================================ */
 
-/* Stat cards */
-.stat-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 16px; margin-bottom: 24px;
-}
-.stat-card {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 18px;
-}
-.stat-label {
-  font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px;
-}
-.stat-value { font-size: 1.8rem; font-weight: 700; color: var(--text); line-height: 1; }
-.stat-change { font-size: 0.75rem; margin-top: 4px; }
-.stat-change.up { color: var(--bongo-green); }
-.stat-change.down { color: var(--bongo-red); }
-
-/* Stat number variant (queue page) */
-.stat-number { font-size: 2.2rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
-.stat-number.blue { color: var(--bongo-blue); }
-.stat-number.red { color: var(--bongo-red); }
-.stat-number.orange { color: var(--bongo-orange); }
-
-/* Data table */
-.admin-table-card {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 24px;
-}
-.admin-table-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px; border-bottom: 1px solid var(--border);
-}
-.admin-table-title { font-size: 0.95rem; font-weight: 600; color: var(--text); }
 
 .admin-table { width: 100%; border-collapse: collapse; }
 .admin-table th {
@@ -3227,6 +3203,15 @@ a.admin-nav-item.active, .admin-nav-item.active {
     --log-bg:     #010409;
     --log-text:   #8B949E;
     --log-border: #161B22;
+
+    /* Semantic tints, as in [data-theme="dark"]. */
+    --success-bg-subtle: color-mix(in srgb, var(--success) 16%, transparent);
+    --success-text-strong: color-mix(in srgb, var(--success) 55%, white);
+    --warning-bg-subtle: color-mix(in srgb, var(--warning) 16%, transparent);
+    --error-bg-subtle: color-mix(in srgb, var(--error) 16%, transparent);
+    --error-text: color-mix(in srgb, var(--error) 55%, white);
+    --info-bg-subtle: color-mix(in srgb, var(--info) 16%, transparent);
+    --info-text: color-mix(in srgb, var(--info) 55%, white);
 }
 html[data-theme="auto"][data-accent="bongo"],
 html[data-theme="auto"]:not([data-accent]) {
@@ -3364,7 +3349,6 @@ html[data-theme="auto"]:not([data-accent]) {
   :root { --sidebar-width: 240px; }
   .content { max-width: 1200px; }
   .compose-card { max-width: 900px; }
-  .stat-grid { grid-template-columns: repeat(4, 1fr); }
   .admin-scroll { max-width: 1100px; }
 }
 
@@ -3436,7 +3420,6 @@ html[data-theme="auto"]:not([data-accent]) {
   .msg-from { width: 140px; }
   .mini-cal { display: none; }
   .contact-list-pane { width: 300px; }
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .form-grid { grid-template-columns: 1fr; }
 }
 
@@ -3518,7 +3501,6 @@ html[data-theme="auto"]:not([data-accent]) {
 
   /* Admin */
   .admin-scroll { padding: 16px; }
-  .stat-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .admin-table { font-size: 0.82rem; }
   .admin-table th, .admin-table td { padding: 8px 12px; }
   .admin-layout .search-input { width: 100%; }
@@ -3575,7 +3557,6 @@ html[data-theme="auto"]:not([data-accent]) {
   .result-meta { flex-wrap: wrap; }
 
   /* Admin */
-  .stat-grid { grid-template-columns: 1fr; }
   .login-card { padding: 24px 20px; }
 }
 
@@ -3591,8 +3572,6 @@ html[data-theme="auto"]:not([data-accent]) {
   .compose-footer { gap: 4px; }
   .day-cell { min-height: 36px; }
   .day-number { width: 16px; height: 16px; font-size: 0.65rem; }
-  .stat-grid { gap: 6px; }
-  .stat-card { padding: 10px; }
 }
 
 
@@ -4085,19 +4064,53 @@ a.admin-nav-item.active, .admin-nav-item.active { background: var(--accent); col
 .admin-title { font-weight: 700; letter-spacing: -0.01em; color: var(--text-primary); }
 .admin-subtitle { color: var(--text-secondary); }
 .section-title { font-weight: 700; letter-spacing: -0.01em; color: var(--text-primary); }
-.admin-table-card { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
-.admin-table-header { border-bottom: 1px solid var(--border-subtle); font-weight: 600; color: var(--text-primary); }
 .admin-table th { background: var(--surface-1); color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border-subtle); }
 .admin-table td { border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); }
 .admin-table tr:hover td { background: var(--surface-2); }
-.stat-card { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
-.stat-label { color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
-.stat-value { font-weight: 800; letter-spacing: -0.02em; color: var(--text-primary); }
-.stat-change { color: var(--text-muted); font-size: 0.78rem; }
-.stat-number { font-weight: 800; letter-spacing: -0.02em; }
-.stat-number.blue { color: var(--accent-accessible); }
-.stat-number.red { color: var(--error); }
-.stat-number.orange { color: var(--warning); }
+
+/* ==== Admin (US-013) ==== */
+/* KPI row, status pills and the card/table tweaks for the admin screens.
+   The pill tints use the semantic tokens, which already switch with the theme. */
+.kpi-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1rem; margin-bottom: 1.5rem;
+}
+.kpi {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.2rem;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.kpi .l { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.kpi .v { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; margin-top: .25rem; font-variant-numeric: tabular-nums; color: var(--text-primary); overflow-wrap: anywhere; }
+.kpi .d { font-size: .78rem; color: var(--success-text-strong); margin-top: .15rem; font-weight: 600; }
+.kpi .d.down { color: var(--error-text); }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: .74rem; font-weight: 600;
+  white-space: nowrap;
+}
+.status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.status-pill.ok { background: var(--success-bg-subtle); color: var(--success-text-strong); }
+.status-pill.warn { background: var(--warning-bg-subtle); color: var(--warning-text-strong); }
+.status-pill.err { background: var(--error-bg-subtle); color: var(--error-text); }
+.status-pill.info { background: var(--info-bg-subtle); color: var(--info-text); }
+.status-pill.neutral { background: var(--surface-2); color: var(--text-secondary); }
+
+.admin-card-head { padding: .85rem 1.25rem; border-bottom: 1px solid var(--border-subtle); }
+.admin-card-head h3 { margin: 0; font-size: .95rem; font-weight: 600; color: var(--text-primary); }
+.admin-kv-table th[scope="row"] {
+  width: 12rem; text-transform: none; letter-spacing: 0; font-size: .85rem;
+  font-weight: 600; color: var(--text-secondary); background: transparent;
+}
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.dns-legend .status-pill { margin-right: .35rem; }
+
 .bulk-bar { background: var(--accent-subtle); border: 1px solid var(--info-border-subtle); border-radius: var(--radius-md); }
 .bulk-label { color: var(--accent-accessible); font-weight: 600; }
 .admin-toolbar .search-input, .admin-layout .search-input { background: var(--surface-1); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-primary); }

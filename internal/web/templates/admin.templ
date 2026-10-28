@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -21,6 +22,19 @@ type SystemHealth struct {
 	UserCount   int
 	MessageRate int
 	Build       version.BuildInfo
+	// UserCountKnown and StorageKnown record that the handler actually loaded
+	// the value, so a genuine zero is distinguishable from "not available".
+	UserCountKnown bool
+	StorageKnown   bool
+}
+
+// AdminKPI is one stat card in a KPI row. Delta is empty unless a previous
+// value genuinely exists; DeltaSign colours it (negative is the error colour).
+type AdminKPI struct {
+	Label     string
+	Value     string
+	Delta     string
+	DeltaSign int
 }
 
 // AdminAddressInfo holds display data for a single address in the admin user form.
@@ -115,6 +129,38 @@ type NodeStatus struct {
 	HTTPAddr string
 }
 
+// AdminKPIRow renders the stat cards; an empty list renders nothing.
+templ AdminKPIRow(kpis []AdminKPI) {
+	if len(kpis) > 0 {
+		<div class="kpi-row">
+			for _, k := range kpis {
+				<div class="kpi" role="group" aria-label={ k.Label }>
+					<div class="l">{ k.Label }</div>
+					<div class="v">{ k.Value }</div>
+					if k.Delta != "" {
+						<div class={ "d", templ.KV("down", kpiDeltaClass(k.DeltaSign) == "down") }>{ k.Delta }</div>
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+// AdminStatusPill renders a dot-and-label pill tinted by the status. extra
+// carries legacy classes (the dns-* hooks) that stay alongside the tint.
+templ AdminStatusPill(kind, status, label string, extra ...string) {
+	if label != "" {
+		<span class={ "status-pill", statusPillClass(kind, status), extra }><span class="dot"></span>{ label }</span>
+	}
+}
+
+templ adminPageHead(title, meta string) {
+	<div class="page-head">
+		<h1>{ title }</h1>
+		<span class="meta">{ meta }</span>
+	</div>
+}
+
 templ AdminLayout(title, email, active string) {
 	@LayoutWithContent(title, email) {
 		<div data-admin-page="true" hidden></div>
@@ -181,64 +227,45 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<h1 class="admin-title">{ t(ctx, "admin.welcome") }</h1>
-			<p class="admin-subtitle">{ t(ctx, "admin.systemDashboard") }</p>
-			<!-- Health Cards -->
-			<div class="stat-grid">
-				<div class="stat-card" aria-label={ t(ctx, "admin.raftStatus") }>
-					<div class="stat-label">{ t(ctx, "admin.raftStatus") }</div>
-					<div class="stat-value">
-						<span class={ "badge", raftBadgeClass(health.RaftState) }>{ health.RaftState }</span>
-					</div>
-					if health.LeaderAddr != "" {
-						<div class="stat-change">{ health.LeaderAddr }</div>
-					}
-				</div>
-				<div class="stat-card" aria-label={ t(ctx, "admin.uptime") }>
-					<div class="stat-label">{ t(ctx, "admin.uptime") }</div>
-					<div class="stat-value">{ formatDuration(health.Uptime) }</div>
-				</div>
-				<div class="stat-card" aria-label={ t(ctx, "admin.storage") }>
-					<div class="stat-label">{ t(ctx, "admin.storage") }</div>
-					<div class="stat-value">{ formatBytes(health.PebbleSize + health.BlobSize) }</div>
-					<div class="stat-change">{ fmt.Sprint(health.BlobCount) } blobs</div>
-				</div>
-				<div class="stat-card" aria-label={ t(ctx, "admin.users") }>
-					<div class="stat-label">{ t(ctx, "admin.users") }</div>
-					<div class="stat-value">{ fmt.Sprint(health.UserCount) }</div>
-					<div class="stat-change">{ fmt.Sprint(health.NodeCount) } { t(ctx, "admin.nodes") }</div>
-				</div>
-			</div>
+			@adminPageHead(t(ctx, "admin.welcome"), t(ctx, "admin.systemDashboard"))
+			@AdminKPIRow(dashboardKPIs(ctx, health))
 			<!-- System Status Table -->
-			<div class="admin-table-card">
-				<div class="admin-table-header">{ t(ctx, "admin.systemStatus") }</div>
-				<table>
-					<tbody>
-						<tr>
-							<th>{ t(ctx, "admin.agentStatus") }</th>
-							<td><span class="status-dot green"></span> { t(ctx, "admin.operationNormal") }</td>
-						</tr>
-						<tr>
-							<th>{ t(ctx, "admin.version") }</th>
-							<td>
-								<strong>{ health.Build.Version }</strong>
-								<span class="u-text-muted"> &middot; { health.Build.Commit } &middot; { health.Build.Date }</span>
-							</td>
-						</tr>
-						<tr>
-							<th>{ t(ctx, "admin.raftState") }</th>
-							<td>{ health.RaftState }</td>
-						</tr>
-						<tr>
-							<th>{ t(ctx, "admin.storage") }</th>
-							<td>Pebble: { formatBytes(health.PebbleSize) }, Blobs: { fmt.Sprint(health.BlobCount) } ({ formatBytes(health.BlobSize) })</td>
-						</tr>
-						<tr>
-							<th>{ t(ctx, "admin.cluster") }</th>
-							<td>{ fmt.Sprint(health.NodeCount) } { t(ctx, "admin.nodes") }</td>
-						</tr>
-					</tbody>
-				</table>
+			<div class="card">
+				<div class="admin-card-head"><h3>{ t(ctx, "admin.systemStatus") }</h3></div>
+				<div class="card-body flush">
+					<table class="admin-table data-table admin-kv-table">
+						<tbody>
+							<tr>
+								<th scope="row">{ t(ctx, "admin.agentStatus") }</th>
+								<td><span class="status-pill ok"><span class="dot"></span>{ t(ctx, "admin.operationNormal") }</span></td>
+							</tr>
+							<tr>
+								<th scope="row">{ t(ctx, "admin.version") }</th>
+								<td>
+									<strong>{ health.Build.Version }</strong>
+									<span class="u-text-muted"> &middot; { health.Build.Commit } &middot; { health.Build.Date }</span>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row">{ t(ctx, "admin.raftState") }</th>
+								<td>
+									@AdminStatusPill("raft", health.RaftState, health.RaftState)
+									if health.LeaderAddr != "" {
+										<span class="u-text-muted"> &middot; { health.LeaderAddr }</span>
+									}
+								</td>
+							</tr>
+							<tr>
+								<th scope="row">{ t(ctx, "admin.storage") }</th>
+								<td>{ t(ctx, "admin.pebbleLabel") } { formatBytes(health.PebbleSize) }, { t(ctx, "admin.blobsLabel") } { fmt.Sprint(health.BlobCount) } ({ formatBytes(health.BlobSize) })</td>
+							</tr>
+							<tr>
+								<th scope="row">{ t(ctx, "admin.cluster") }</th>
+								<td>{ fmt.Sprint(health.NodeCount) } { t(ctx, "admin.nodes") }</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
 			</div>
 			<!-- Security Policy -->
 			<div class="form-card">
@@ -266,8 +293,7 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<h1 class="admin-title">{ t(ctx, "admin.users") }</h1>
-			<p class="admin-subtitle">{ t(ctx, "admin.usersSubtitle") }</p>
+			@adminPageHead(t(ctx, "admin.users"), t(ctx, "admin.usersSubtitle"))
 			<div class="admin-toolbar">
 				<div class="admin-toolbar-group">
 					<form method="get" action="/admin/users" class="u-m0">
@@ -278,8 +304,9 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 					<a href="/admin/users/new" class="btn-primary">{ t(ctx, "admin.createUser") }</a>
 				</div>
 			</div>
-			<div class="admin-table-card">
-				<table class="admin-table" aria-label={ t(ctx, "admin.userList") }>
+			<div class="card">
+				<div class="card-body flush">
+				<table class="admin-table data-table" aria-label={ t(ctx, "admin.userList") }>
 					<thead>
 						<tr>
 							<th class="u-width-40px"></th>
@@ -316,9 +343,9 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 								</td>
 								<td>
 									if u.Disabled {
-										<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
+										@AdminStatusPill("user", "disabled", t(ctx, "common.disabled"))
 									} else {
-										<span class="badge badge-active"><span class="status-dot green"></span> { t(ctx, "common.active") }</span>
+										@AdminStatusPill("user", "active", t(ctx, "common.active"))
 									}
 								</td>
 								<td>
@@ -333,6 +360,7 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 						}
 					</tbody>
 				</table>
+				</div>
 			</div>
 		</div>
 	}
@@ -434,8 +462,8 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 					<h3>{ t(ctx, "admin.addresses") }</h3>
 					<p class="u-text-muted u-font-082">{ t(ctx, "admin.addressesHelp") }</p>
 					if len(user.Addresses) > 0 {
-						<div class="admin-table-card u-mb-1">
-							<table class="admin-table" aria-label={ t(ctx, "admin.addressList") }>
+						<div class="table-scroll u-mb-1">
+							<table class="admin-table data-table" aria-label={ t(ctx, "admin.addressList") }>
 								<thead>
 									<tr>
 										<th scope="col">{ t(ctx, "admin.addressLabel") }</th>
@@ -449,9 +477,9 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 											<td><code class="u-font-088">{ ai.Address }</code></td>
 											<td>
 												if ai.CanSend && ai.Verified {
-													<span class="badge badge-active">{ t(ctx, "admin.sendCapable") }</span>
+													@AdminStatusPill("address", "sendable", t(ctx, "admin.sendCapable"))
 												} else {
-													<span class="badge badge-user">{ t(ctx, "admin.notVerified") }</span>
+													@AdminStatusPill("address", "unverified", t(ctx, "admin.notVerified"))
 												}
 											</td>
 											<td class="u-flex-gap-4">
@@ -467,7 +495,7 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 														<button type="submit" class="btn-flush">{ t(ctx, "common.remove") }</button>
 													</form>
 												} else {
-													<span class="badge badge-user">{ t(ctx, "admin.primary") }</span>
+													@AdminStatusPill("address", "primary", t(ctx, "admin.primary"))
 												}
 											</td>
 										</tr>
@@ -497,8 +525,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<h1 class="admin-title">{ t(ctx, "admin.domains") }</h1>
-			<p class="admin-subtitle">{ t(ctx, "admin.domainsSubtitle") }</p>
+			@adminPageHead(t(ctx, "admin.domains"), t(ctx, "admin.domainsSubtitle"))
 			if isGlobalAdmin {
 				<div class="form-card">
 					<h3>{ t(ctx, "admin.addDomain") }</h3>
@@ -511,8 +538,9 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 					</form>
 				</div>
 			}
-			<div class="admin-table-card">
-				<table class="admin-table" aria-label={ t(ctx, "admin.domainList") }>
+			<div class="card">
+				<div class="card-body flush">
+				<table class="admin-table data-table" aria-label={ t(ctx, "admin.domainList") }>
 					<thead>
 						<tr>
 							<th scope="col">{ t(ctx, "admin.domain") }</th>
@@ -527,16 +555,16 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 								<td><strong>{ d.Name }</strong></td>
 								<td>
 									if d.Enabled {
-										<span class="badge badge-active"><span class="status-dot green"></span> { t(ctx, "common.enabled") }</span>
+										@AdminStatusPill("domain", "enabled", t(ctx, "common.enabled"))
 									} else {
-										<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
+										@AdminStatusPill("domain", "disabled", t(ctx, "common.disabled"))
 									}
 								</td>
 								<td>
 									if d.HasMX {
-										<span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span>
+										@AdminStatusPill("mx", "valid", t(ctx, "admin.valid"), "dns-check")
 									} else {
-										<span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span>
+										@AdminStatusPill("mx", "missing", t(ctx, "admin.missing"), "dns-fail")
 									}
 								</td>
 								<td>
@@ -549,6 +577,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 						}
 					</tbody>
 				</table>
+				</div>
 			</div>
 		</div>
 	}
@@ -609,7 +638,8 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 			<div class="form-card">
 				<h3>{ t(ctx, "admin.dnsSectionTitle") }</h3>
 				<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.dnsHelp") }</small>
-				<table class="admin-table">
+				<div class="table-scroll">
+				<table class="admin-table data-table">
 					<thead>
 						<tr>
 							<th scope="col">{ t(ctx, "admin.dnsRecord") }</th>
@@ -625,13 +655,13 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 								<td>
 									switch row.Status {
 									case "ok":
-										<span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span>
+										@AdminStatusPill("dns", "ok", t(ctx, "admin.valid"), "dns-check")
 									case "neutral":
-										<span class="dns-neutral">&#8212; { t(ctx, "admin.dnsNotGenerated") }</span>
+										@AdminStatusPill("dns", "neutral", t(ctx, "admin.dnsNotGenerated"), "dns-neutral")
 									case "error":
-										<span class="dns-error">&#63; { t(ctx, "admin.dnsCheckError") }</span>
+										@AdminStatusPill("dns", "error", t(ctx, "admin.dnsCheckError"), "dns-error")
 									default:
-										<span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span>
+										@AdminStatusPill("dns", "fail", t(ctx, "admin.missing"), "dns-fail")
 									}
 								</td>
 								<td>
@@ -666,12 +696,25 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 						}
 					</tbody>
 				</table>
+				</div>
 				<!-- Status legend (task 8.1): explain each check state. -->
 				<div class="dns-legend u-mt-075">
-					<p class="u-text-small u-mb-025"><span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span> &#8212; { t(ctx, "admin.dnsLegendValid") }</p>
-					<p class="u-text-small u-mb-025"><span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span> &#8212; { t(ctx, "admin.dnsLegendMissing") }</p>
-					<p class="u-text-small u-mb-025"><span class="dns-neutral">&#8212; { t(ctx, "admin.dnsNotGenerated") }</span> &#8212; { t(ctx, "admin.dnsLegendNotGenerated") }</p>
-					<p class="u-text-small u-mb-0"><span class="dns-error">&#63; { t(ctx, "admin.dnsCheckError") }</span> &#8212; { t(ctx, "admin.dnsLegendError") }</p>
+					<p class="u-text-small u-mb-025">
+						@AdminStatusPill("dns", "ok", t(ctx, "admin.valid"), "dns-check")
+						&#8212; { t(ctx, "admin.dnsLegendValid") }
+					</p>
+					<p class="u-text-small u-mb-025">
+						@AdminStatusPill("dns", "fail", t(ctx, "admin.missing"), "dns-fail")
+						&#8212; { t(ctx, "admin.dnsLegendMissing") }
+					</p>
+					<p class="u-text-small u-mb-025">
+						@AdminStatusPill("dns", "neutral", t(ctx, "admin.dnsNotGenerated"), "dns-neutral")
+						&#8212; { t(ctx, "admin.dnsLegendNotGenerated") }
+					</p>
+					<p class="u-text-small u-mb-0">
+						@AdminStatusPill("dns", "error", t(ctx, "admin.dnsCheckError"), "dns-error")
+						&#8212; { t(ctx, "admin.dnsLegendError") }
+					</p>
 				</div>
 			</div>
 			<!-- DNS Setup Guide (task 7.3): records the owner should publish -->
@@ -682,7 +725,8 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 					<p class="dns-guide-notice u-mb-075">{ t(ctx, "admin.dnsGuideDKIMPending") }</p>
 				}
 				if len(d.DNSGuide) > 0 {
-					<table class="admin-table dns-guide-table">
+					<div class="table-scroll">
+					<table class="admin-table data-table dns-guide-table">
 						<thead>
 							<tr>
 								<th scope="col">{ t(ctx, "admin.dnsGuideType") }</th>
@@ -705,6 +749,7 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 							}
 						</tbody>
 					</table>
+					</div>
 					<div class="admin-toolbar u-mt-075">
 						<a href={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/dns.zone", d.Name)) } class="btn-outline" download>
 							{ t(ctx, "admin.dnsGuideDownload") }
@@ -717,9 +762,9 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 				<h3>{ t(ctx, "common.status") }</h3>
 				<div class="u-flex u-items-center u-gap-05 u-mb-075">
 					if d.Enabled {
-						<span class="badge badge-active"><span class="status-dot green"></span> { t(ctx, "common.enabled") }</span>
+						@AdminStatusPill("domain", "enabled", t(ctx, "common.enabled"))
 					} else {
-						<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
+						@AdminStatusPill("domain", "disabled", t(ctx, "common.disabled"))
 					}
 				</div>
 				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
@@ -849,8 +894,7 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<h1 class="admin-title">{ t(ctx, "admin.aliases") }</h1>
-			<p class="admin-subtitle">{ t(ctx, "admin.aliasesSubtitle") }</p>
+			@adminPageHead(t(ctx, "admin.aliases"), t(ctx, "admin.aliasesSubtitle"))
 			<div class="form-card">
 				<h3>{ t(ctx, "admin.addAlias") }</h3>
 				<form method="post" action="/admin/aliases" class="admin-inline-form u-flex-wrap">
@@ -869,8 +913,9 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 					<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "action.add") }</button>
 				</form>
 			</div>
-			<div class="admin-table-card">
-				<table class="admin-table" aria-label={ t(ctx, "admin.aliasList") }>
+			<div class="card">
+				<div class="card-body flush">
+				<table class="admin-table data-table" aria-label={ t(ctx, "admin.aliasList") }>
 					<thead>
 						<tr>
 							<th scope="col">{ t(ctx, "admin.aliasAddress") }</th>
@@ -895,6 +940,7 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 						}
 					</tbody>
 				</table>
+				</div>
 			</div>
 		</div>
 	}
@@ -903,23 +949,8 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1.OutboundMessage, email string) {
 	@AdminLayout(t(ctx, "admin.queue"), email, "queue") {
 		<div class="admin-scroll">
-			<h1 class="admin-title">{ t(ctx, "admin.messageQueue") }</h1>
-			<p class="admin-subtitle">{ t(ctx, "admin.queueSubtitle") }</p>
-			<!-- Stat Cards -->
-			<div class="stat-grid">
-				<div class="stat-card">
-					<div class="stat-number blue">{ fmt.Sprint(stats.PendingCount) }</div>
-					<div class="stat-label">{ t(ctx, "admin.pending") }</div>
-				</div>
-				<div class="stat-card">
-					<div class="stat-number red">{ fmt.Sprint(stats.FailedCount) }</div>
-					<div class="stat-label">{ t(ctx, "admin.failed") }</div>
-				</div>
-				<div class="stat-card">
-					<div class="stat-number orange">{ formatSeconds(stats.OldestPendingSeconds) }</div>
-					<div class="stat-label">{ t(ctx, "admin.oldestPending") }</div>
-				</div>
-			</div>
+			@adminPageHead(t(ctx, "admin.messageQueue"), t(ctx, "admin.queueSubtitle"))
+			@AdminKPIRow(queueKPIs(ctx, stats))
 			<!-- Bulk Actions -->
 			<div class="bulk-bar">
 				<span class="bulk-label">{ t(ctx, "admin.bulkActions") }:</span>
@@ -929,10 +960,12 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 			</div>
 			if len(pending) > 0 {
 				<h2 class="section-title">{ t(ctx, "admin.pendingMessages") }</h2>
-				<div class="admin-table-card">
-					<table class="admin-table" aria-label={ t(ctx, "admin.pendingMessages") }>
+				<div class="card">
+					<div class="card-body flush">
+					<table class="admin-table data-table" aria-label={ t(ctx, "admin.pendingMessages") }>
 						<thead>
 							<tr>
+								<th>{ t(ctx, "common.status") }</th>
 								<th>{ t(ctx, "admin.sender") }</th>
 								<th>{ t(ctx, "admin.recipients") }</th>
 								<th>{ t(ctx, "admin.attempts") }</th>
@@ -944,6 +977,7 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 						<tbody>
 							for _, msg := range pending {
 								<tr>
+									<td>@AdminStatusPill("queue", "pending", t(ctx, "admin.pending"))</td>
 									<td>{ msg.SenderEmail }</td>
 									<td>{ strings.Join(msg.Recipients, ", ") }</td>
 									<td>{ fmt.Sprint(msg.AttemptCount) }</td>
@@ -963,14 +997,17 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 							}
 						</tbody>
 					</table>
+					</div>
 				</div>
 			}
 			if len(bounced) > 0 {
 				<h2 class="section-title">{ t(ctx, "admin.failedMessages") }</h2>
-				<div class="admin-table-card">
-					<table class="admin-table" aria-label={ t(ctx, "admin.failedMessages") }>
+				<div class="card">
+					<div class="card-body flush">
+					<table class="admin-table data-table" aria-label={ t(ctx, "admin.failedMessages") }>
 						<thead>
 							<tr>
+								<th>{ t(ctx, "common.status") }</th>
 								<th>{ t(ctx, "admin.sender") }</th>
 								<th>{ t(ctx, "admin.recipients") }</th>
 								<th>{ t(ctx, "admin.reason") }</th>
@@ -980,6 +1017,7 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 						<tbody>
 							for _, msg := range bounced {
 								<tr>
+									<td>@AdminStatusPill("queue", "bounced", t(ctx, "admin.failed"))</td>
 									<td>{ msg.SenderEmail }</td>
 									<td>{ strings.Join(msg.Recipients, ", ") }</td>
 									<td class="u-text-status-red u-font-082">{ msg.StatusReason }</td>
@@ -992,6 +1030,7 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 							}
 						</tbody>
 					</table>
+					</div>
 				</div>
 			}
 		</div>
@@ -1001,23 +1040,24 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
 	@AdminLayout(t(ctx, "admin.cluster"), email, "cluster") {
 		<div class="admin-scroll">
-			<h1 class="admin-title">{ t(ctx, "admin.cluster") }</h1>
-			<p class="admin-subtitle">{ t(ctx, "admin.clusterSubtitle") }</p>
+			@adminPageHead(t(ctx, "admin.cluster"), t(ctx, "admin.clusterSubtitle"))
 			<!-- Raft State Table -->
-			<div class="admin-table-card">
-				<div class="admin-table-header">{ t(ctx, "admin.raftState") }</div>
-				<table>
-					<tbody>
-						<tr>
-							<th>{ t(ctx, "admin.state") }</th>
-							<td><span class={ "badge", raftBadgeClass(raftState) }>{ raftState }</span></td>
-						</tr>
-						<tr>
-							<th>{ t(ctx, "admin.nodesLabel") }</th>
-							<td>{ fmt.Sprint(len(nodes)) }</td>
-						</tr>
-					</tbody>
-				</table>
+			<div class="card">
+				<div class="admin-card-head"><h3>{ t(ctx, "admin.raftState") }</h3></div>
+				<div class="card-body flush">
+					<table class="admin-table data-table admin-kv-table">
+						<tbody>
+							<tr>
+								<th scope="row">{ t(ctx, "admin.state") }</th>
+								<td>@AdminStatusPill("raft", raftState, raftState)</td>
+							</tr>
+							<tr>
+								<th scope="row">{ t(ctx, "admin.nodesLabel") }</th>
+								<td>{ fmt.Sprint(len(nodes)) }</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
 			</div>
 			<!-- Node Cards -->
 			<h2 class="section-title">{ t(ctx, "admin.clusterNodes") }</h2>
@@ -1026,10 +1066,9 @@ templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
 					<div class={ "node-card", templ.KV("leader", isLeader(n.Role)) }>
 						<div class="node-card-header">
 							<span class="node-name">
-								<span class={ "status-dot", nodeStatusDotClass(n.Status) }></span>
 								{ n.Name }
 							</span>
-							<span class={ "badge", raftBadgeClass(n.Role) }>{ n.Role }</span>
+							@AdminStatusPill("role", n.Role, n.Role)
 						</div>
 						<div class="node-details">
 							<div class="node-detail">
@@ -1038,7 +1077,9 @@ templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
 							</div>
 							<div class="node-detail">
 								<span class="node-detail-label">{ t(ctx, "common.status") }</span>
-								<span class="node-detail-value">{ n.Status }</span>
+								<span class="node-detail-value">
+									@AdminStatusPill("node", n.Status, n.Status)
+								</span>
 							</div>
 						</div>
 					</div>
@@ -1054,8 +1095,7 @@ templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
 templ AdminLogViewer(email string) {
 	@AdminLayout(t(ctx, "admin.logs"), email, "logs") {
 		<div class="admin-scroll admin-scroll-wide">
-			<h1 class="admin-title">{ t(ctx, "admin.logs") }</h1>
-			<p class="admin-subtitle">{ t(ctx, "admin.logsSubtitle") }</p>
+			@adminPageHead(t(ctx, "admin.logs"), t(ctx, "admin.logsSubtitle"))
 			<div class="log-viewer">
 				<div class="log-toolbar">
 					<label class="admin-log-label">{ t(ctx, "admin.level") }:</label>
@@ -1088,36 +1128,63 @@ templ AdminLogViewer(email string) {
 
 // Helper functions
 
-func raftBadgeClass(state string) string {
-	switch strings.ToLower(state) {
-	case "leader":
-		return "badge-leader"
-	case "follower":
-		return "badge-follower"
-	default:
-		return "badge-disabled"
+// statusPillClass maps a status of the given kind to a semantic tint:
+// ok, warn, err, info or neutral. Matching is case-insensitive and an
+// unknown kind or status falls back to neutral, except where a missing
+// value is itself a failure (dns, node), which is err.
+func statusPillClass(kind, status string) string {
+	switch kind + "/" + strings.ToLower(status) {
+	case "user/active", "domain/enabled", "mx/valid", "dns/ok", "node/alive", "raft/leader", "address/sendable":
+		return "ok"
+	case "mx/missing", "dns/fail", "queue/bounced":
+		return "err"
+	case "dns/error", "node/suspect", "raft/candidate", "address/unverified":
+		return "warn"
+	case "raft/follower", "queue/pending", "address/primary":
+		return "info"
+	case "dns/neutral", "user/disabled", "domain/disabled":
+		return "neutral"
 	}
+	switch kind {
+	case "dns", "node":
+		return "err"
+	}
+	return "neutral"
 }
 
-func statusBadgeClass(status string) string {
-	switch strings.ToLower(status) {
-	case "alive":
-		return "badge-active"
-	case "suspect":
-		return "badge-pending"
-	default:
-		return "badge-disabled"
+// kpiDeltaClass returns the modifier for a KPI delta: empty for the success
+// colour (positive or zero), "down" for the error colour.
+func kpiDeltaClass(sign int) string {
+	if sign < 0 {
+		return "down"
 	}
+	return ""
 }
 
-func nodeStatusDotClass(status string) string {
-	switch strings.ToLower(status) {
-	case "alive":
-		return "green"
-	case "suspect":
-		return "yellow"
-	default:
-		return "red"
+// dashboardKPIs builds the dashboard stat cards from values the handler
+// loaded. A value that was not loaded is omitted rather than shown as zero,
+// and no delta is produced because no previous value is kept anywhere.
+func dashboardKPIs(ctx context.Context, h SystemHealth) []AdminKPI {
+	var kpis []AdminKPI
+	if h.UserCountKnown {
+		kpis = append(kpis, AdminKPI{Label: t(ctx, "admin.users"), Value: fmt.Sprint(h.UserCount)})
+	}
+	if h.StorageKnown {
+		kpis = append(kpis, AdminKPI{Label: t(ctx, "admin.storage"), Value: formatBytes(h.PebbleSize + h.BlobSize)})
+	}
+	kpis = append(kpis, AdminKPI{Label: t(ctx, "admin.uptime"), Value: formatDuration(h.Uptime)})
+	if h.NodeCount > 0 {
+		kpis = append(kpis, AdminKPI{Label: t(ctx, "admin.kpiNodes"), Value: fmt.Sprint(h.NodeCount)})
+	}
+	return kpis
+}
+
+// queueKPIs builds the queue page stat cards from the queue statistics.
+func queueKPIs(ctx context.Context, stats *bongov1.QueueStats) []AdminKPI {
+	return []AdminKPI{
+		{Label: t(ctx, "admin.pending"), Value: fmt.Sprint(stats.PendingCount)},
+		{Label: t(ctx, "admin.failed"), Value: fmt.Sprint(stats.FailedCount)},
+		{Label: t(ctx, "admin.oldestPending"), Value: formatSeconds(stats.OldestPendingSeconds)},
 	}
 }
 

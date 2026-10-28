@@ -195,11 +195,13 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// Pebble size estimate.
 	if h.store != nil {
 		health.PebbleSize = h.store.EstimateDiskUsage()
+		health.StorageKnown = true
 	}
 
 	// Blob stats.
 	if h.blobs != nil {
 		health.BlobCount, health.BlobSize = h.blobs.Stats()
+		health.StorageKnown = true
 	}
 
 	// User count.
@@ -207,6 +209,7 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		var count int
 		if err := h.metadata.System.DB().QueryRow("SELECT COUNT(*) FROM users").Scan(&count); err == nil {
 			health.UserCount = count
+			health.UserCountKnown = true
 		}
 	}
 
