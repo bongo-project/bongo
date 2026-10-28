@@ -400,3 +400,11 @@ From the 27.12 settings review (2026-10-28):
   steps to ui-shots. (27.12)
 - The 2FA-enabled variants (disable form, recovery codes) are covered by
   template tests only, not rendered in a browser. (27.12)
+
+From the 27.14 login review (2026-10-28):
+
+- ui-shots cannot reach `/login/2fa`, so the 2FA card is checked by its
+  shared CSS and template tests only; at 390 px a 9-character recovery code
+  can scroll inside the code input (as before). (27.14)
+- `address_verify.templ` was not restyled in US-014; US-015, which also
+  lists address verification, gives it the auth card. (27.14)
