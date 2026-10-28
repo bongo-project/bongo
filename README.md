@@ -26,6 +26,12 @@ release receives fixes.
 Releases are published as container images at `ghcr.io/bongo-project/bongo` and
 as tagged releases in this repository.
 
+The repository history was rewritten on 2026-10-26, before it went public, to
+remove operational details and old demo data. Release tags were moved to the
+rewritten commits, but images published before then (0.11.0 and earlier) still
+carry the old commit IDs in their `org.opencontainers.image.revision` label and
+short-SHA tags, and those commits no longer exist here.
+
 ## Quick start (development)
 
 Zero config — an all-in-one node with ephemeral storage. Requires Go and
