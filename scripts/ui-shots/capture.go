@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -259,12 +261,12 @@ func capture(parent context.Context, b *rod.Browser, path string, v variant, sho
 	utils.Sleep(o.settle.Seconds())
 
 	if v.dark {
-		theme, err := p.Eval(`() => document.documentElement.dataset.theme || ''`)
+		st, err := readThemeState(p)
 		if err != nil {
-			return fmt.Errorf("read theme: %w", err)
+			return err
 		}
-		if got := theme.Value.String(); got != "dark" {
-			return fmt.Errorf("dark variant rendered with data-theme=%q, not dark; screenshot withheld", got)
+		if !darkApplied(st) {
+			return fmt.Errorf("dark variant rendered with data-theme=%q (prefers dark %v, background %s), not dark; screenshot withheld", st.Theme, st.PrefersDark, st.Background)
 		}
 	}
 
@@ -362,4 +364,59 @@ func login(ctx context.Context, b *rod.Browser, origin, user, pass string, timeo
 		return errors.New("login rejected: still on /login after submit")
 	}
 	return nil
+}
+
+// themeState is what the page reports about its theme once loaded.
+type themeState struct {
+	Theme       string `json:"theme"`
+	PrefersDark bool   `json:"prefersDark"`
+	Background  string `json:"background"`
+}
+
+func readThemeState(p *rod.Page) (themeState, error) {
+	v, err := p.Eval(`() => JSON.stringify({
+		theme: document.documentElement.dataset.theme || '',
+		prefersDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
+		background: getComputedStyle(document.body).backgroundColor
+	})`)
+	if err != nil {
+		return themeState{}, fmt.Errorf("read theme: %w", err)
+	}
+	var st themeState
+	if err := json.Unmarshal([]byte(v.Value.String()), &st); err != nil {
+		return themeState{}, fmt.Errorf("decode theme state: %w", err)
+	}
+	return st, nil
+}
+
+var rgbRe = regexp.MustCompile(`^rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\s*\)$`)
+
+// darkApplied reports whether a dark screenshot is legitimate. An explicit
+// data-theme="dark" is trusted. data-theme="auto" (public pages, which carry no
+// script) counts only when the browser prefers dark AND the painted background
+// is actually dark, so a page that ignores the preference is still withheld.
+func darkApplied(st themeState) bool {
+	switch st.Theme {
+	case "dark":
+		return true
+	case "auto":
+		if !st.PrefersDark {
+			return false
+		}
+		m := rgbRe.FindStringSubmatch(st.Background)
+		if m == nil {
+			return false
+		}
+		if m[4] != "" {
+			if a, err := strconv.ParseFloat(m[4], 64); err != nil || a < 1 {
+				return false
+			}
+		}
+		r, _ := strconv.Atoi(m[1])
+		g, _ := strconv.Atoi(m[2])
+		b, _ := strconv.Atoi(m[3])
+		lum := (0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)) / 255
+		return lum < 0.25
+	}
+	return false
 }

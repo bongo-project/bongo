@@ -3092,89 +3092,155 @@ a.admin-nav-item.active, .admin-nav-item.active {
 /* ============================================
    27. LOGIN PAGE
    ============================================ */
-.login-wrapper {
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; min-height: 100vh; padding: 24px;
+.login-wrap {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 2rem 1rem 3rem;
 }
-
-.login-brand { text-align: center; margin-bottom: 32px; }
-.login-brand h1 { font-size: 2rem; font-weight: 700; color: var(--text); letter-spacing: -1px; }
-.login-brand h1 span { color: var(--bongo-orange); }
-.login-brand p { font-size: 0.92rem; color: var(--text-muted); margin-top: 4px; }
 
 .login-card {
-  width: 100%; max-width: 400px;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
-  padding: 36px;
+  width: 100%; max-width: 420px;
+  padding: 2.5rem;
 }
+.login-card .brand-mark { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.5rem; }
+.login-card .brand-glyph { width: 36px; height: 36px; color: var(--accent); }
+.login-card .wordmark { font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; }
+.login-card .wordmark em { font-style: normal; color: var(--accent); }
+.login-card h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em; margin-bottom: .4rem; }
+.login-card p.sub { color: var(--text-secondary); margin-bottom: 1.75rem; }
+.login-card .flash { margin-bottom: 1rem; }
 
-/* Login form inputs — larger, more visible */
-.login-card .form-group { margin-bottom: 16px; }
-.login-card .form-label { font-size: 0.82rem; margin-bottom: 6px; }
-.login-card .form-input {
-  padding: 12px 14px;
-  font-size: 0.95rem;
-  border: 1.5px solid var(--border-strong);
-  border-radius: 8px;
-  width: 100%;
-  box-sizing: border-box;
+.login-field { display: block; margin-bottom: 1rem; }
+.login-field label {
+  display: block; font-size: .82rem; font-weight: 600;
+  color: var(--text-secondary); margin-bottom: .35rem;
 }
-.login-card .form-input:focus {
-  border-color: var(--bongo-blue);
-  box-shadow: 0 0 0 3px rgba(81,127,175,0.18);
+.login-field input {
+  width: 100%; height: 40px; box-sizing: border-box;
+  padding: 0 .85rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit; font-size: .92rem;
+  transition: all var(--duration) var(--ease-out);
 }
-.login-card .form-check { margin: 16px 0 20px; }
-
-.btn-login {
-  width: 100%; background: var(--bongo-blue); color: #fff;
-  border: none; padding: 14px; border-radius: 8px;
-  font-size: 1rem; font-weight: 600; cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
-  box-shadow: 0 2px 8px rgba(81,127,175,0.25);
+.login-field input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
-.btn-login:hover { background: var(--bongo-blue-dark); box-shadow: 0 4px 12px rgba(81,127,175,0.35); }
+.login-remember {
+  display: flex; align-items: center; gap: .5rem;
+  margin: .5rem 0 1rem; font-size: .85rem; color: var(--text-secondary);
+}
+.login-submit { width: 100%; height: 42px; font: inherit; font-weight: 600; cursor: pointer; margin-top: .5rem; }
+.login-foot { text-align: center; margin-top: 1.25rem; font-size: .82rem; color: var(--text-muted); }
 
 /* 2FA section */
-.twofa-header { text-align: center; margin-bottom: 20px; }
-.twofa-header h2 { font-size: 1.1rem; font-weight: 700; color: var(--text); }
-.twofa-header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
-
-.code-input {
+.login-card .code-input {
   text-align: center; font-size: 1.8rem; letter-spacing: 8px;
-  font-weight: 700; padding: 12px;
+  font-weight: 700; height: 56px; padding: 0 .85rem;
 }
-.code-hint { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 18px; }
-.back-link { display: block; text-align: center; margin-top: 16px; font-size: 0.88rem; color: var(--bongo-blue); }
+.back-link { display: block; text-align: center; margin-top: 1.25rem; font-size: .88rem; color: var(--accent-accessible); }
+.back-link:hover { text-decoration: underline; }
 
-/* Login view toggle (prototype only) */
-.view-toggle { display: flex; gap: 8px; margin-bottom: 24px; }
-.view-toggle button {
-  flex: 1; padding: 8px; border: 1px solid var(--border);
-  border-radius: var(--radius); background: var(--bg-card);
-  color: var(--text-muted); font-size: 0.82rem; font-weight: 600; cursor: pointer;
-}
-.view-toggle button.active { background: var(--bongo-blue); color: #fff; border-color: var(--bongo-blue); }
+/* Login page body override: re-enable scrolling */
+.login-page { overflow: auto; }
 
-/* Floating theme toggle (login page) */
-.theme-float {
-  position: fixed; bottom: 20px; right: 20px;
-  width: 40px; height: 40px; border-radius: 50%;
-  border: 1px solid var(--border); background: var(--bg-card);
-  color: var(--text-muted); font-size: 1.1rem; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: var(--shadow-card);
-}
-.theme-float:hover { color: var(--text); }
+/* Public pages ship data-theme="auto" and no script. The light blocks match
+   "auto" too, so these repeat the dark token blocks under the media query,
+   with selectors at least as specific as the light ones and later in source.
+   TestAutoThemeFollowsDarkPreference keeps them in step. Only the OS
+   preference is honoured here: the explicit choice lives in localStorage,
+   which CSS cannot read. */
+@media (prefers-color-scheme: dark) {
+:root[data-theme="auto"] {
+      --n-0:#0A0B0D;--n-1:#111316;--n-2:#1A1D21;--n-3:#232629;
+      --n-4:#2D3135;--n-5:#3A3F44;--n-6:#6B7075;--n-7:#9AA0A6;
+      --n-8:#C9CCD1;--n-9:#E3E5E8;--n-10:#F2F3F5;--n-11:#FFFFFF;
 
-/* Login page body override: re-enable scrolling + subtle background */
-.login-page {
-  overflow: auto;
-  background: linear-gradient(135deg, #f0f4f8 0%, #e8edf2 50%, #f5f7fa 100%);
+      --brand:  var(--n-11);
+      --accent: #7AB8FF;
+
+      --brand-text:#fff;
+      --accent-hover: color-mix(in oklab, var(--accent) 88%, white);
+      --accent-accessible: var(--accent);
+      --accent-subtle: color-mix(in srgb, var(--accent) 12%, transparent);
+      --accent-glow:   color-mix(in srgb, var(--accent) 20%, transparent);
+      --focus-ring:    color-mix(in srgb, var(--accent) 45%, transparent);
+
+      --brand-hover: var(--accent-hover);
+      --brand-accessible: var(--accent-accessible);
+      --brand-subtle: var(--accent-subtle);
+      --brand-glow: var(--accent-glow);
+
+      --surface-0: var(--n-0); --surface-1: var(--n-1); --surface-2: var(--n-2);
+      --surface-3: var(--n-3); --surface-4: var(--n-4);
+
+      --text-primary: var(--n-10); --text-secondary: var(--n-7); --text-muted: var(--n-6);
+
+      --border-subtle: rgba(255,255,255,.06);
+      --border-default: rgba(255,255,255,.1);
+      --border-hover:   rgba(255,255,255,.15);
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.15);
+      --shadow-md: 0 2px 4px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.2);
+      --shadow-lg: 0 4px 8px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25), 0 16px 48px rgba(0,0,0,.15);
+      --shadow-brand: 0 4px 14px color-mix(in srgb, var(--accent) 28%, transparent),
+                      0 1px 3px color-mix(in srgb, var(--accent) 16%, transparent);
+
+      --success:#4ADE80; --warning:#FBBF24; --error:#F87171; --info: var(--accent);
+      --warning-text:#FBBF24; --warning-text-strong:#FCD34D;
+
+      --neutral: var(--n-7);
 }
-[data-theme="dark"] .login-page {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+:root[data-theme="auto"] {
+    --bongo-blue:          #7BA4CC;
+    --bongo-blue-dark:     #4A6E96;
+    --bongo-blue-light:    #1E3350;
+    --bongo-blue-lightest: #172A45;
+
+    --bg:        var(--surface-0);
+    --bg-subtle: var(--surface-1);
+    --bg-muted:  var(--surface-2);
+    --bg-hover:  var(--surface-3);
+    --bg-card:   var(--surface-1);
+
+    --sidebar-bg:     #1A1D21;
+    --sidebar-text:   rgba(255,255,255,.70);
+    --sidebar-bright: #FFFFFF;
+
+    --text:           var(--text-primary);
+
+    --border:        var(--border-subtle);
+    --border-strong: var(--border-default);
+
+    --cal-blue:   #60A5FA;
+    --cal-green:  #4ADE80;
+    --cal-indigo: #818CF8;
+    --cal-orange: #FBBF24;
+    --cal-red:    #F87171;
+    --cal-violet: #A78BFA;
+    --cal-yellow: #FACC15;
+
+    --log-bg:     #010409;
+    --log-text:   #8B949E;
+    --log-border: #161B22;
+}
+html[data-theme="auto"][data-accent="bongo"],
+html[data-theme="auto"]:not([data-accent]) {
+    --accent: #FBBF24;
+    --accent-hover: #F59E0B;
+    --accent-active: #D97706;
+    --accent-subtle: rgba(251, 191, 36, 0.18);
+    --accent-accessible: #FBBF24;
+    --brand-text: #1A1D21;
+    --focus-ring: rgba(251, 191, 36, 0.3);
+    --shadow-brand: 0 4px 14px rgba(251, 191, 36, 0.25);
+}
+:root[data-theme="auto"] .flash-success { background: #1a3a1a; color: #7acb74; border-color: #3a5e3a; }
+:root[data-theme="auto"] .flash-warning { background: #3a3420; color: #d4b340; border-color: #665d1e; }
 }
 
 
@@ -3511,7 +3577,6 @@ a.admin-nav-item.active, .admin-nav-item.active {
   /* Admin */
   .stat-grid { grid-template-columns: 1fr; }
   .login-card { padding: 24px 20px; }
-  .login-brand h1 { font-size: 1.6rem; }
 }
 
 /* Very small phone (375px) */

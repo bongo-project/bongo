@@ -1,31 +1,39 @@
 package templates
 
+// authBrand is the drum glyph and wordmark at the top of every public card.
+templ authBrand() {
+	<div class="brand-mark">
+		@Icon("logo", "brand-glyph")
+		<span class="wordmark">Bongo<em>&middot;</em>mail</span>
+	</div>
+}
+
 templ LoginPage(errMsg string) {
 	@LoginLayout(t(ctx, "auth.login")) {
-		<div class="login-wrapper">
-			<div class="login-brand">
-				<h1>Bongo<span>Mail</span></h1>
-				<p>{ t(ctx, "auth.tagline") }</p>
-			</div>
+		<div class="login-wrap">
 			<div class="login-card">
+				@authBrand()
+				<h1>{ t(ctx, "auth.welcomeBack") }</h1>
+				<p class="sub">{ t(ctx, "auth.signInSubtitle") }</p>
 				if errMsg != "" {
 					@FlashMessage(errMsg, "error")
 				}
 				<form method="post" action="/login" aria-label={ t(ctx, "auth.signIn") }>
-					<div class="form-group">
-						<label class="form-label" for="email">{ t(ctx, "auth.email") }</label>
-						<input type="email" id="email" name="email" class="form-input" placeholder="admin@localhost" required autofocus autocomplete="email"/>
+					<div class="login-field">
+						<label for="email">{ t(ctx, "auth.email") }</label>
+						<input type="email" id="email" name="email" placeholder="admin@localhost" required autofocus autocomplete="email"/>
 					</div>
-					<div class="form-group">
-						<label class="form-label" for="password">{ t(ctx, "auth.password") }</label>
-						<input type="password" id="password" name="password" class="form-input" required autocomplete="current-password"/>
+					<div class="login-field">
+						<label for="password">{ t(ctx, "auth.password") }</label>
+						<input type="password" id="password" name="password" required autocomplete="current-password"/>
 					</div>
-					<label class="form-check">
+					<label class="login-remember">
 						<input type="checkbox" name="remember" value="1"/>
 						{ t(ctx, "auth.rememberMe") }
 					</label>
-					<button type="submit" class="btn-login">{ t(ctx, "auth.login") }</button>
+					<button type="submit" class="login-submit">{ t(ctx, "auth.signIn") }</button>
 				</form>
+				<p class="login-foot">{ t(ctx, "auth.tagline") }</p>
 			</div>
 		</div>
 	}
@@ -33,15 +41,11 @@ templ LoginPage(errMsg string) {
 
 templ TwoFactorPage(errMsg string, recoveryWarning string) {
 	@LoginLayout(t(ctx, "auth.twoFactorAuth")) {
-		<div class="login-wrapper">
-			<div class="login-brand">
-				<h1>Bongo<span>Mail</span></h1>
-			</div>
+		<div class="login-wrap">
 			<div class="login-card">
-				<div class="twofa-header">
-					<h2>{ t(ctx, "auth.twoFactorAuth") }</h2>
-					<p>{ t(ctx, "auth.enterCodeHint") }</p>
-				</div>
+				@authBrand()
+				<h1>{ t(ctx, "auth.twoFactorAuth") }</h1>
+				<p class="sub">{ t(ctx, "auth.enterCodeHint") }</p>
 				if errMsg != "" {
 					@FlashMessage(errMsg, "error")
 				}
@@ -49,13 +53,13 @@ templ TwoFactorPage(errMsg string, recoveryWarning string) {
 					@FlashMessage(recoveryWarning, "warning")
 				}
 				<form method="post" action="/login/2fa" aria-label={ t(ctx, "auth.twoFactorAuth") }>
-					<div class="form-group">
-						<label class="form-label" for="code">{ t(ctx, "auth.authCode") }</label>
+					<div class="login-field">
+						<label for="code">{ t(ctx, "auth.authCode") }</label>
 						<input
 							type="text"
 							id="code"
 							name="code"
-							class="form-input code-input"
+							class="code-input"
 							placeholder="000000"
 							required
 							autofocus
@@ -65,10 +69,7 @@ templ TwoFactorPage(errMsg string, recoveryWarning string) {
 							aria-label={ t(ctx, "auth.twoFactorCode") }
 						/>
 					</div>
-					<p class="code-hint">
-						{ t(ctx, "auth.enterCodeHint") }
-					</p>
-					<button type="submit" class="btn-login">{ t(ctx, "auth.verify") }</button>
+					<button type="submit" class="login-submit">{ t(ctx, "auth.verify") }</button>
 				</form>
 				<a href="/login" class="back-link">{ t(ctx, "auth.backToLogin") }</a>
 			</div>

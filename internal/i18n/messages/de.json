@@ -194,6 +194,8 @@
   "auth.verify": "Verifizieren",
   "auth.logout": "Abmelden",
   "auth.rememberMe": "Angemeldet bleiben",
+  "auth.welcomeBack": "Willkommen zurück",
+  "auth.signInSubtitle": "Melden Sie sich bei Ihrem Bongo-Postfach an.",
   "auth.twoFactorAuth": "Zwei-Faktor-Authentifizierung",
   "auth.authCode": "Authentifizierungscode",
   "auth.backToLogin": "Zurück zur Anmeldung",

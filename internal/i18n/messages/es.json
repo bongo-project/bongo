@@ -194,6 +194,8 @@
   "auth.verify": "Verificar",
   "auth.logout": "Cerrar sesión",
   "auth.rememberMe": "Recordarme",
+  "auth.welcomeBack": "Bienvenido de nuevo",
+  "auth.signInSubtitle": "Inicie sesión en su buzón de Bongo.",
   "auth.twoFactorAuth": "Autenticación de dos factores",
   "auth.authCode": "Código de autenticación",
   "auth.backToLogin": "Volver al inicio de sesión",
