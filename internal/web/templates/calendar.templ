@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -33,7 +34,7 @@ type EventBlock struct {
 	ColourClass  string
 }
 
-templ CalendarPage(year, month int, days []DayCell, calendars []*bongov1.Calendar, email string, flash string) {
+templ CalendarPage(year, month int, days []DayCell, calendars []*bongov1.Calendar, calColors map[string]string, email string, flash string) {
 	@LayoutWithContent(t(ctx, "nav.calendar"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@CalendarSidebar(calendars)
@@ -42,38 +43,15 @@ templ CalendarPage(year, month int, days []DayCell, calendars []*bongov1.Calenda
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			@CalendarMonthGrid(year, month, days, calendars)
+			@CalendarMonthGrid(year, month, days, calendars, calColors)
 		</main>
 	}
 }
 
-templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Calendar) {
-	<div class="calendar-toolbar">
-		<a
-			href={ templ.SafeURL(prevMonthPath(year, month)) }
-			hx-get={ prevMonthPath(year, month) }
-			hx-target="#main-content"
-			hx-push-url="true"
-			role="button"
-			class="tool-btn"
-			aria-label={ t(ctx, "calendar.previous") }
-		>
-			{ t(ctx, "calendar.previous") }
-		</a>
-		<h2 class="calendar-month-title">{ monthName(month) } { fmt.Sprint(year) }</h2>
-		<a
-			href={ templ.SafeURL(nextMonthPath(year, month)) }
-			hx-get={ nextMonthPath(year, month) }
-			hx-target="#main-content"
-			hx-push-url="true"
-			role="button"
-			class="tool-btn"
-			aria-label={ t(ctx, "calendar.next") }
-		>
-			{ t(ctx, "calendar.next") }
-		</a>
-	</div>
-	@ViewSwitcherDay("month", firstOfMonth(year, month))
+templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Calendar, calColors map[string]string) {
+	@CalendarHeader("month", firstOfMonth(ctx, year, month))
+	<div class="cal-wrap">
+	@CalendarToolbar(prevMonthPath(year, month), nextMonthPath(year, month), todayMonthPath(ctx), monthName(month) + " " + fmt.Sprint(year))
 	<div class="calendar-grid">
 		<div class="calendar-header">{ t(ctx, "calendar.mon") }</div>
 		<div class="calendar-header">{ t(ctx, "calendar.tue") }</div>
@@ -93,17 +71,18 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 				for _, e := range day.Events {
 					<a
 						href={ templ.SafeURL("/calendar/event/" + e.Guid) }
-						class="event-chip"
+						class={ "event-chip", eventBlockColourClass(e, calColors) }
 						title={ e.Title }
 					>
 						if !e.AllDay {
-							<span class="event-time">{ formatEventTime(e.StartTime) }</span>
+							<span class="event-time">{ formatEventTime(ctx, e.StartTime) }</span>
 						}
 						{ truncateTitle(e.Title, 20) }
 					</a>
 				}
 			</div>
 		}
+	</div>
 	</div>
 }
 
@@ -121,7 +100,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 			</ul>
 		</div>
 		<div class="sidebar-group">
-			@MiniCalendar(time.Now().Year(), int(time.Now().Month()), time.Now().Day())
+			@MiniCalendar(calendarNow(ctx).Year(), int(calendarNow(ctx).Month()), calendarNow(ctx).Day())
 		</div>
 		if len(calendars) > 0 {
 			<div class="sidebar-group">
@@ -229,21 +208,21 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 				<div class="form-grid-two">
 					<label>
 						{ t(ctx, "calendar.startDate") }
-						<input type="date" name="start_date" value={ eventStartDate(event, date) } required/>
+						<input type="date" name="start_date" value={ eventStartDate(ctx, event, date) } required/>
 					</label>
 					<label x-bind:hidden="allDay">
 						{ t(ctx, "calendar.startTime") }
-						<input type="time" name="start_time" value={ eventStartTime(event) }/>
+						<input type="time" name="start_time" value={ eventStartTime(ctx, event) }/>
 					</label>
 				</div>
 				<div class="form-grid-two">
 					<label>
 						{ t(ctx, "calendar.endDate") }
-						<input type="date" name="end_date" value={ eventEndDate(event, date) }/>
+						<input type="date" name="end_date" value={ eventEndDate(ctx, event, date) }/>
 					</label>
 					<label x-bind:hidden="allDay">
 						{ t(ctx, "calendar.endTime") }
-						<input type="time" name="end_time" value={ eventEndTime(event) }/>
+						<input type="time" name="end_time" value={ eventEndTime(ctx, event) }/>
 					</label>
 				</div>
 				<div class="form-grid-two">
@@ -274,8 +253,8 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 				</div>
 				if !isNew {
 					<div class="meta event-meta">
-						<span>{ t(ctx, "calendar.created") } { formatEventDate(event.CreatedAt) }</span>
-						<span class="u-ml-1">{ t(ctx, "calendar.updated") } { formatEventDate(event.UpdatedAt) }</span>
+						<span>{ t(ctx, "calendar.created") } { formatEventDate(ctx, event.CreatedAt) }</span>
+						<span class="u-ml-1">{ t(ctx, "calendar.updated") } { formatEventDate(ctx, event.UpdatedAt) }</span>
 					</div>
 				}
 				<div class="u-flex u-gap-05">
@@ -318,32 +297,9 @@ templ WeekViewPage(year, week int, days []DayColumn, calendars []*bongov1.Calend
 }
 
 templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calendar, calColors map[string]string) {
-	<div class="calendar-toolbar">
-		<a
-			href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", prevWeekYear(year, week), prevWeekNum(year, week))) }
-			hx-get={ fmt.Sprintf("/calendar/week/%d/%d", prevWeekYear(year, week), prevWeekNum(year, week)) }
-			hx-target="#main-content"
-			hx-push-url="true"
-			role="button"
-			class="tool-btn"
-			aria-label={ t(ctx, "calendar.previous") }
-		>
-			{ t(ctx, "calendar.previous") }
-		</a>
-		<h2 class="calendar-month-title">{ t(ctx, "calendar.week") } { fmt.Sprint(week) }, { fmt.Sprint(year) }</h2>
-		<a
-			href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", nextWeekYear(year, week), nextWeekNum(year, week))) }
-			hx-get={ fmt.Sprintf("/calendar/week/%d/%d", nextWeekYear(year, week), nextWeekNum(year, week)) }
-			hx-target="#main-content"
-			hx-push-url="true"
-			role="button"
-			class="tool-btn"
-			aria-label={ t(ctx, "calendar.next") }
-		>
-			{ t(ctx, "calendar.next") }
-		</a>
-	</div>
-	@ViewSwitcher("week", year, week, days)
+	@CalendarHeader("week", weekHeaderDate(ctx, days))
+	<div class="cal-wrap">
+	@CalendarToolbar(weekPath(prevWeekYear(year, week), prevWeekNum(year, week)), weekPath(nextWeekYear(year, week), nextWeekNum(year, week)), todayWeekPath(ctx), t(ctx, "calendar.week") + " " + fmt.Sprint(week) + ", " + fmt.Sprint(year))
 	<div class="all-day-header">
 		<div class="time-gutter-header"></div>
 		for _, day := range days {
@@ -386,12 +342,13 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 						data-start={ fmt.Sprint(block.Event.StartTime) }
 						data-end={ fmt.Sprint(block.Event.EndTime) }
 					>
-						<span class="event-block-time">{ formatEventTime(block.Event.StartTime) }</span>
+						<span class="event-block-time">{ formatEventTime(ctx, block.Event.StartTime) }</span>
 						<span class="event-block-title">{ truncateTitle(block.Event.Title, 24) }</span>
 					</a>
 				}
 			</div>
 		}
+	</div>
 	</div>
 }
 
@@ -410,32 +367,9 @@ templ DayViewPage(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 }
 
 templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, calColors map[string]string) {
-	<div class="calendar-toolbar">
-		<a
-			href={ templ.SafeURL(prevDayPath(date)) }
-			hx-get={ prevDayPath(date) }
-			hx-target="#main-content"
-			hx-push-url="true"
-			role="button"
-			class="tool-btn"
-			aria-label={ t(ctx, "calendar.previous") }
-		>
-			{ t(ctx, "calendar.previous") }
-		</a>
-		<h2 class="calendar-month-title">{ date.Format("Monday, January 2, 2006") }</h2>
-		<a
-			href={ templ.SafeURL(nextDayPath(date)) }
-			hx-get={ nextDayPath(date) }
-			hx-target="#main-content"
-			hx-push-url="true"
-			role="button"
-			class="tool-btn"
-			aria-label={ t(ctx, "calendar.next") }
-		>
-			{ t(ctx, "calendar.next") }
-		</a>
-	</div>
-	@ViewSwitcherDay("day", date)
+	@CalendarHeader("day", date)
+	<div class="cal-wrap">
+	@CalendarToolbar(prevDayPath(date), nextDayPath(date), todayDayPath(ctx), date.Format("Monday, January 2, 2006"))
 	if len(col.AllDay) > 0 {
 		<div class="all-day-header day-view-allday">
 			<div class="time-gutter-header"></div>
@@ -477,85 +411,108 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 					data-start={ fmt.Sprint(block.Event.StartTime) }
 					data-end={ fmt.Sprint(block.Event.EndTime) }
 				>
-					<span class="event-block-time">{ formatEventTime(block.Event.StartTime) }</span>
+					<span class="event-block-time">{ formatEventTime(ctx, block.Event.StartTime) }</span>
 					<span class="event-block-title">{ block.Event.Title }</span>
 				</a>
 			}
 		</div>
 	</div>
+	</div>
 }
 
-templ ViewSwitcher(activeView string, year, week int, days []DayColumn) {
-	<div class="view-switcher">
-		if len(days) > 0 {
+// CalendarHeader is the page header shared by every calendar view: the title,
+// the Month / Week / Day / Agenda segmented control and the New event button.
+// date anchors the Month, Week and Day links.
+templ CalendarHeader(active string, date time.Time) {
+	<div class="page-head cal-head">
+		<h1>{ t(ctx, "nav.calendar") }</h1>
+		<div class="spacer"></div>
+		<div class="view-switcher seg">
 			<a
-				href={ templ.SafeURL(fmt.Sprintf("/calendar/%d/%d", days[0].Date.Year(), int(days[0].Date.Month()))) }
+				href={ templ.SafeURL(fmt.Sprintf("/calendar/%d/%d", date.Year(), int(date.Month()))) }
 				role="button"
-				class={ "outline", templ.KV("secondary", activeView != "month") }
-				if activeView == "month" {
+				class="seg-item"
+				if active == "month" {
 					aria-current="page"
 				}
 			>
 				{ t(ctx, "calendar.month") }
 			</a>
-		}
-		<a
-			href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", year, week)) }
-			role="button"
-			class={ templ.KV("outline", true), templ.KV("secondary", activeView != "week") }
-			if activeView == "week" {
-				aria-current="page"
-			}
-		>
-			{ t(ctx, "calendar.week") }
-		</a>
-		if len(days) > 0 {
 			<a
-				href={ templ.SafeURL(fmt.Sprintf("/calendar/day/%d/%d/%d", days[0].Date.Year(), int(days[0].Date.Month()), days[0].Date.Day())) }
+				href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", dateISOYear(date), dateISOWeek(date))) }
 				role="button"
-				class={ "outline", templ.KV("secondary", activeView != "day") }
-				if activeView == "day" {
+				class="seg-item"
+				if active == "week" {
+					aria-current="page"
+				}
+			>
+				{ t(ctx, "calendar.week") }
+			</a>
+			<a
+				href={ templ.SafeURL(fmt.Sprintf("/calendar/day/%d/%d/%d", date.Year(), int(date.Month()), date.Day())) }
+				role="button"
+				class="seg-item"
+				if active == "day" {
 					aria-current="page"
 				}
 			>
 				{ t(ctx, "calendar.day") }
 			</a>
-		}
+			<a
+				href={ templ.SafeURL(agendaPath(date)) }
+				role="button"
+				class="seg-item"
+				if active == "agenda" {
+					aria-current="page"
+				}
+			>
+				{ t(ctx, "calendar.agenda") }
+			</a>
+		</div>
+		<a href="/calendar/event/new" class="tool-btn primary">
+			@Icon("plus", "icon-sm")
+			{ t(ctx, "calendar.newEvent") }
+		</a>
 	</div>
 }
 
-templ ViewSwitcherDay(activeView string, date time.Time) {
-	<div class="view-switcher">
+// CalendarToolbar holds the Prev, Today and Next buttons and the large title.
+// All three buttons swap #main-content over HTMX and push the new URL.
+templ CalendarToolbar(prevPath, nextPath, todayPath, title string) {
+	<div class="calendar-toolbar cal-toolbar">
 		<a
-			href={ templ.SafeURL(fmt.Sprintf("/calendar/%d/%d", date.Year(), int(date.Month()))) }
+			href={ templ.SafeURL(prevPath) }
+			hx-get={ prevPath }
+			hx-target="#main-content"
+			hx-push-url="true"
 			role="button"
-			class={ "outline", templ.KV("secondary", activeView != "month") }
-			if activeView == "month" {
-				aria-current="page"
-			}
+			class="tool-btn outline cal-nav-btn"
+			aria-label={ t(ctx, "calendar.previous") }
 		>
-			{ t(ctx, "calendar.month") }
+			@Icon("chevron_left", "icon-sm")
 		</a>
 		<a
-			href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", dateISOYear(date), dateISOWeek(date))) }
+			href={ templ.SafeURL(todayPath) }
+			hx-get={ todayPath }
+			hx-target="#main-content"
+			hx-push-url="true"
 			role="button"
-			class={ "outline", templ.KV("secondary", activeView != "week") }
-			if activeView == "week" {
-				aria-current="page"
-			}
+			class="tool-btn outline cal-nav-btn"
 		>
-			{ t(ctx, "calendar.week") }
+			{ t(ctx, "calendar.today") }
 		</a>
 		<a
-			href={ templ.SafeURL(fmt.Sprintf("/calendar/day/%d/%d/%d", date.Year(), int(date.Month()), date.Day())) }
+			href={ templ.SafeURL(nextPath) }
+			hx-get={ nextPath }
+			hx-target="#main-content"
+			hx-push-url="true"
 			role="button"
-			class={ templ.KV("outline", true), templ.KV("secondary", activeView != "day") }
-			if activeView == "day" {
-				aria-current="page"
-			}
+			class="tool-btn outline cal-nav-btn"
+			aria-label={ t(ctx, "calendar.next") }
 		>
-			{ t(ctx, "calendar.day") }
+			@Icon("chevron_right", "icon-sm")
 		</a>
+		<h2 class="calendar-month-title">{ title }</h2>
 	</div>
 }
 
@@ -590,7 +547,7 @@ templ MiniCalendar(year, month, selectedDay int) {
 			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniFri") }</span>
 			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniSat") }</span>
 			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniSun") }</span>
-			for _, d := range miniCalDays(year, month, selectedDay) {
+			for _, d := range miniCalDays(calendarNow(ctx), year, month, selectedDay) {
 				if d.Day == 0 {
 					<span class="mini-cal-day empty"></span>
 				} else {
@@ -657,7 +614,7 @@ templ CalendarSearchResults(events []*bongov1.Event, query string, email string)
 										{ e.Title }
 									</a>
 								</td>
-								<td>{ formatEventListDate(e) }</td>
+								<td>{ formatEventListDate(ctx, e) }</td>
 								<td>{ e.Location }</td>
 							</tr>
 						}
@@ -697,24 +654,26 @@ func dayCellClass(day DayCell) string {
 	return cls
 }
 
-func formatEventTime(unix int64) string {
-	return time.Unix(unix, 0).Format("15:04")
+// formatEventTime renders an event's start in the user's calendar zone, the
+// zone the views place it in.
+func formatEventTime(ctx context.Context, unix int64) string {
+	return time.Unix(unix, 0).In(calendarNow(ctx).Location()).Format("15:04")
 }
 
-func formatEventDate(unix int64) string {
+func formatEventDate(ctx context.Context, unix int64) string {
 	if unix == 0 {
 		return "-"
 	}
-	return time.Unix(unix, 0).Format("Jan 2, 2006")
+	return time.Unix(unix, 0).In(calendarNow(ctx).Location()).Format("Jan 2, 2006")
 }
 
 // formatEventListDate formats an event's start date for lists. An all-day
-// event is a UTC calendar date, so the server zone must not shift it.
-func formatEventListDate(e *bongov1.Event) string {
+// event is a UTC calendar date, so no zone shifts it.
+func formatEventListDate(ctx context.Context, e *bongov1.Event) string {
 	if e.AllDay {
 		return icalevent.AllDayDate(e.StartTime).Format("Jan 2, 2006")
 	}
-	return formatEventDate(e.StartTime)
+	return formatEventDate(ctx, e.StartTime)
 }
 
 func truncateTitle(s string, maxLen int) string {
@@ -745,29 +704,29 @@ func eventLocation(e *bongov1.Event) string {
 	return e.Location
 }
 
-func eventStartDate(e *bongov1.Event, date string) string {
+func eventStartDate(ctx context.Context, e *bongov1.Event, date string) string {
 	if e != nil && e.StartTime > 0 {
 		if e.AllDay {
 			return icalevent.AllDayDate(e.StartTime).Format("2006-01-02")
 		}
-		return time.Unix(e.StartTime, 0).Format("2006-01-02")
+		return time.Unix(e.StartTime, 0).In(calendarNow(ctx).Location()).Format("2006-01-02")
 	}
 	if date != "" {
 		return date
 	}
-	return time.Now().Format("2006-01-02")
+	return calendarNow(ctx).Format("2006-01-02")
 }
 
-func eventStartTime(e *bongov1.Event) string {
+func eventStartTime(ctx context.Context, e *bongov1.Event) string {
 	if e != nil && e.StartTime > 0 && !e.AllDay {
-		return time.Unix(e.StartTime, 0).Format("15:04")
+		return time.Unix(e.StartTime, 0).In(calendarNow(ctx).Location()).Format("15:04")
 	}
 	return "09:00"
 }
 
-func eventEndDate(e *bongov1.Event, date string) string {
+func eventEndDate(ctx context.Context, e *bongov1.Event, date string) string {
 	if e != nil && e.EndTime > 0 {
-		t := time.Unix(e.EndTime, 0)
+		t := time.Unix(e.EndTime, 0).In(calendarNow(ctx).Location())
 		if e.AllDay {
 			t = icalevent.AllDayDate(e.EndTime).AddDate(0, 0, -1)
 		}
@@ -776,12 +735,12 @@ func eventEndDate(e *bongov1.Event, date string) string {
 	if date != "" {
 		return date
 	}
-	return time.Now().Format("2006-01-02")
+	return calendarNow(ctx).Format("2006-01-02")
 }
 
-func eventEndTime(e *bongov1.Event) string {
+func eventEndTime(ctx context.Context, e *bongov1.Event) string {
 	if e != nil && e.EndTime > 0 && !e.AllDay {
-		return time.Unix(e.EndTime, 0).Format("15:04")
+		return time.Unix(e.EndTime, 0).In(calendarNow(ctx).Location()).Format("15:04")
 	}
 	return "10:00"
 }
@@ -851,6 +810,11 @@ func eventBlockColor(e *bongov1.Event, calColors map[string]string) string {
 
 func eventBlockColourClass(e *bongov1.Event, calColors map[string]string) string {
 	return CalendarColourClass(eventBlockColor(e, calColors))
+}
+
+// EventColourClass is the cal-colour-* class for an event's calendar.
+func EventColourClass(e *bongov1.Event, calColors map[string]string) string {
+	return eventBlockColourClass(e, calColors)
 }
 
 func calendarTopClass(minutes int) string {
@@ -950,8 +914,8 @@ type MiniCalDay struct {
 	InMonth    bool
 }
 
-func miniCalDays(year, month, selectedDay int) []MiniCalDay {
-	firstDay := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Now().Location())
+func miniCalDays(today time.Time, year, month, selectedDay int) []MiniCalDay {
+	firstDay := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, today.Location())
 	lastDay := firstDay.AddDate(0, 1, -1).Day()
 
 	weekday := int(firstDay.Weekday())
@@ -959,7 +923,6 @@ func miniCalDays(year, month, selectedDay int) []MiniCalDay {
 		weekday = 7
 	}
 
-	today := time.Now()
 	todayYear, todayMonth, todayDay := today.Date()
 
 	var days []MiniCalDay
@@ -981,8 +944,8 @@ func miniCalDays(year, month, selectedDay int) []MiniCalDay {
 	return days
 }
 
-func firstOfMonth(year, month int) time.Time {
-	return time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Now().Location())
+func firstOfMonth(ctx context.Context, year, month int) time.Time {
+	return time.Date(year, time.Month(month), 1, 0, 0, 0, 0, calendarNow(ctx).Location())
 }
 
 func miniPrevYear(year, month int) int {
@@ -1011,4 +974,116 @@ func miniNextMonth(month int) int {
 		return 1
 	}
 	return month + 1
+}
+
+// AgendaItem is one row of the agenda. TimeLabel is formatted by the handler
+// in the user's zone; it is empty for an all-day event.
+type AgendaItem struct {
+	Event       *bongov1.Event
+	ColourClass string
+	TimeLabel   string
+}
+
+// AgendaDay groups the agenda rows that fall on one calendar day.
+type AgendaDay struct {
+	Date  time.Time
+	Items []AgendaItem
+}
+
+// AgendaData is everything the agenda view renders. The paths are built by
+// the handler so the range arithmetic lives in one place.
+type AgendaData struct {
+	From      time.Time
+	To        time.Time // last day shown
+	Days      []AgendaDay
+	PrevPath  string
+	NextPath  string
+	TodayPath string
+}
+
+templ AgendaPage(data AgendaData, calendars []*bongov1.Calendar, email string, flash string) {
+	@LayoutWithContent(t(ctx, "nav.calendar"), email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@CalendarSidebar(calendars)
+		</aside>
+		<main class="content" id="main-content">
+			if flash != "" {
+				@FlashMessage(flash, "success")
+			}
+			@AgendaContent(data)
+		</main>
+	}
+}
+
+templ AgendaContent(data AgendaData) {
+	@CalendarHeader("agenda", data.From)
+	<div class="cal-wrap">
+		@CalendarToolbar(data.PrevPath, data.NextPath, data.TodayPath, agendaTitle(data.From, data.To))
+		<div class="agenda card" id="agenda">
+			if len(data.Days) == 0 {
+				<p class="agenda-empty">{ t(ctx, "calendar.agendaEmpty") }</p>
+			}
+			for _, day := range data.Days {
+				<section class="agenda-day" data-agenda-date={ day.Date.Format("2006-01-02") }>
+					<h3 class="agenda-day-head">{ day.Date.Format("Monday, January 2") }</h3>
+					<ul class="agenda-list">
+						for _, it := range day.Items {
+							<li class="agenda-item">
+								<span class="agenda-time">
+									if it.TimeLabel == "" {
+										{ t(ctx, "calendar.allDay") }
+									} else {
+										{ it.TimeLabel }
+									}
+								</span>
+								<span class={ "agenda-bar", it.ColourClass }></span>
+								<span class="agenda-body">
+									<a href={ templ.SafeURL("/calendar/event/" + it.Event.Guid) } class="agenda-title">{ it.Event.Title }</a>
+									if it.Event.Location != "" {
+										<span class="agenda-location">{ it.Event.Location }</span>
+									}
+								</span>
+							</li>
+						}
+					</ul>
+				</section>
+			}
+		</div>
+	</div>
+}
+
+func agendaTitle(from, to time.Time) string {
+	return from.Format("Jan 2, 2006") + " - " + to.Format("Jan 2, 2006")
+}
+
+// agendaPath links to the agenda starting at date.
+func agendaPath(date time.Time) string {
+	return "/calendar/agenda?from=" + date.Format("2006-01-02")
+}
+
+func weekPath(year, week int) string {
+	return fmt.Sprintf("/calendar/week/%d/%d", year, week)
+}
+
+// weekHeaderDate anchors the header's Month and Day links to the week shown.
+func weekHeaderDate(ctx context.Context, days []DayColumn) time.Time {
+	if len(days) > 0 {
+		return days[0].Date
+	}
+	return calendarNow(ctx)
+}
+
+func todayMonthPath(ctx context.Context) string {
+	now := calendarNow(ctx)
+	return fmt.Sprintf("/calendar/%d/%d", now.Year(), int(now.Month()))
+}
+
+func todayWeekPath(ctx context.Context) string {
+	y, w := calendarNow(ctx).ISOWeek()
+	return weekPath(y, w)
+}
+
+func todayDayPath(ctx context.Context) string {
+	now := calendarNow(ctx)
+	return fmt.Sprintf("/calendar/day/%d/%d/%d", now.Year(), int(now.Month()), now.Day())
 }

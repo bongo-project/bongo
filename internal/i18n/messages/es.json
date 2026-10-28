@@ -81,6 +81,8 @@
   "compose.reply": "Redactar: Respuesta",
   "compose.forward": "Redactar: Reenvío",
   "compose.editDraft": "Redactar: Editar borrador",
+  "calendar.agenda": "Agenda",
+  "calendar.agendaEmpty": "No hay nada programado en este intervalo.",
   "calendar.month": "Mes",
   "calendar.week": "Semana",
   "calendar.day": "Día",

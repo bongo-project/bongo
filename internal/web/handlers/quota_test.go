@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/proto"
@@ -247,7 +248,7 @@ func TestCalendarQuota(t *testing.T) {
 	t.Run("create boundary uses stored record size", func(t *testing.T) {
 		form := eventForm("Lunch")
 		form.Set("description", strings.Repeat("d", 1337))
-		parsed, err := parseEventForm(formReq(http.MethodPost, "/", form))
+		parsed, err := parseEventForm(formReq(http.MethodPost, "/", form), time.UTC)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -283,8 +284,8 @@ func TestCalendarQuota(t *testing.T) {
 		seedForm := eventForm("Standup")
 		grownForm := eventForm("Standup")
 		grownForm.Set("description", strings.Repeat("g", 613))
-		seed, _ := parseEventForm(formReq(http.MethodPut, "/", seedForm))
-		grown, _ := parseEventForm(formReq(http.MethodPut, "/", grownForm))
+		seed, _ := parseEventForm(formReq(http.MethodPut, "/", seedForm), time.UTC)
+		grown, _ := parseEventForm(formReq(http.MethodPut, "/", grownForm), time.UTC)
 		delta := int64(proto.Size(grown) - proto.Size(seed))
 		if delta < 613 {
 			t.Fatalf("delta %d", delta)
@@ -361,12 +362,12 @@ func TestCalendarQuota(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				h, env := newHandler(t, over)
-				seed, err := parseEventForm(formReq(http.MethodPut, "/", eventForm("Standup")))
+				seed, err := parseEventForm(formReq(http.MethodPut, "/", eventForm("Standup")), time.UTC)
 				if err != nil {
 					t.Fatal(err)
 				}
 				if tc.newTitle == "Standupx" {
-					grown, err := parseEventForm(formReq(http.MethodPut, "/", eventForm(tc.newTitle)))
+					grown, err := parseEventForm(formReq(http.MethodPut, "/", eventForm(tc.newTitle)), time.UTC)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -927,7 +928,7 @@ var quotaRefusalCases = []struct {
 		env := newQuotaEnv(t)
 		h := NewCalendarHandler(env.events, env.calendars, nil)
 		h.SetQuotaChecker(&fakeQuota{headroom: map[string]int64{quotaUser: 0}})
-		seed, _ := parseEventForm(formReq(http.MethodPut, "/", eventForm("Standup")))
+		seed, _ := parseEventForm(formReq(http.MethodPut, "/", eventForm("Standup")), time.UTC)
 		guid, err := env.events.Create(quotaUser, seed)
 		if err != nil {
 			t.Fatal(err)

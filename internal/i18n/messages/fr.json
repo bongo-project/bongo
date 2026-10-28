@@ -81,6 +81,8 @@
   "compose.reply": "Composer : Réponse",
   "compose.forward": "Composer : Transfert",
   "compose.editDraft": "Composer : Modifier le brouillon",
+  "calendar.agenda": "Agenda",
+  "calendar.agendaEmpty": "Rien de prévu sur cette période.",
   "calendar.month": "Mois",
   "calendar.week": "Semaine",
   "calendar.day": "Jour",

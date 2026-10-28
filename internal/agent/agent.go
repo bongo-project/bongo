@@ -1393,10 +1393,14 @@ func (a *Agent) Run(ctx context.Context) error {
 				calendarH.SetQuotaChecker(a.DomainQuota)
 			}
 			calendarH.SetShareResolver(sharedResolver)
+			if a.Preferences != nil {
+				calendarH.SetZoneSource(a.Preferences)
+			}
 			a.wireCalendarShareLimiter(calendarH)
 			a.calendarHandler = calendarH
 			r.Get("/calendar", calendarH.CalendarIndex)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
+			r.Get("/calendar/agenda", calendarH.AgendaView)
 			r.Get("/calendar/{year}/{month}", calendarH.MonthView)
 			r.Get("/calendar/event/new", calendarH.NewEvent)
 			r.Post("/calendar/event", calendarH.CreateEvent)
