@@ -743,7 +743,7 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 									<td class="u-text-muted">{ fmt.Sprintf("%d", row.TTL) }</td>
 									<td class="dns-guide-value">
 										<code class="u-font-088">{ row.Value }</code>
-										<button type="button" class="btn-copy" data-copy-previous aria-label={ t(ctx, "admin.dnsGuideCopy") } title={ t(ctx, "admin.dnsGuideCopy") }>&#128203;</button>
+										<button type="button" class="btn-copy" data-copy-previous aria-label={ t(ctx, "admin.dnsGuideCopy") } title={ t(ctx, "admin.dnsGuideCopy") }>{ t(ctx, "admin.dnsGuideCopy") }</button>
 									</td>
 								</tr>
 							}

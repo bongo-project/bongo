@@ -2652,9 +2652,6 @@ a.admin-nav-item.active, .admin-nav-item.active {
 /* ============================================
    18. SEARCH RESULTS
    ============================================ */
-.results-header { padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--bg-subtle); }
-.results-title { font-size: 1rem; font-weight: 700; color: var(--text); }
-.results-count { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; }
 .results-query { color: var(--bongo-blue); font-weight: 600; }
 
 .results-list { flex: 1; overflow-y: auto; }
@@ -2668,7 +2665,6 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .search-result:focus-visible { outline-offset: -2px; }
 
 .result-subject { font-weight: 600; color: var(--text); font-size: 0.92rem; margin-bottom: 3px; }
-.result-meta { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 4px; }
 .result-from { color: var(--text-secondary); font-weight: 500; }
 .result-mailbox {
   display: inline-flex; padding: 1px 6px;
@@ -3414,6 +3410,65 @@ html[data-theme="auto"]:not([data-accent]) {
 .data-table tbody tr:hover td { background: var(--surface-2); }
 .data-table tr:last-child td { border-bottom: none; }
 
+/* ==== Remaining pages (US-015) ==== */
+/* Search results, import, quota, address verification and message source,
+   plus the sizing of icons that replaced emoji glyphs. */
+.page-intro { color: var(--text-secondary); font-size: .88rem; margin: 0 0 1rem; }
+
+/* Search results reuse the mailbox row grid without a checkbox or star. */
+.search-head { padding: .85rem 1.25rem 1rem; }
+.search-head .results-query { color: var(--accent-accessible); font-weight: 600; }
+.results-list { background: var(--surface-1); border-top: 1px solid var(--border-subtle); }
+.results-list .search-result.msg-row.msg-row-grid {
+  display: grid;
+  border-bottom: 1px solid var(--border-subtle);
+  color: inherit; text-decoration: none;
+}
+.msg-row.msg-row-grid.no-select { grid-template-columns: minmax(0, 1fr); }
+.search-result .result-from { font-weight: 600; color: var(--text-primary); }
+.search-result .result-subject { font-weight: 500; color: var(--text-primary); margin: 0; }
+.search-result .result-mailbox { flex-shrink: 0; }
+.search-result .msg-preview { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.search-result .result-snippet mark { background: var(--accent-subtle); color: var(--text-primary); }
+
+/* Import */
+.mbox-import-form { display: flex; flex-direction: column; gap: .6rem; max-width: 520px; }
+.mbox-import-form label { font-weight: 600; font-size: .85rem; color: var(--text-secondary); margin-top: .4rem; }
+.mbox-import-form input[type="file"], .mbox-import-form select, .mbox-import-form .form-input { max-width: 100%; box-sizing: border-box; }
+.import-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .75rem; }
+.import-summary { margin: 0 0 .25rem; overflow-wrap: anywhere; }
+
+/* Quota refused */
+.quota-back { margin: 1rem 0 0; }
+
+/* Address verification: the sidebar and card tables scroll inside the card. */
+.card > .card-body.flush .data-table { min-width: 460px; }
+
+/* Message source: monospace inside the card, long lines scroll in the card. */
+.msg-source-page { min-width: 0; width: 100%; box-sizing: border-box; }
+.source-wrap { position: relative; }
+.source-wrap > .msg-source {
+  margin: 0; border: 0; border-radius: 0; max-width: 100%; box-sizing: border-box;
+  font-family: var(--font-mono); padding-top: 2.75rem;
+  white-space: pre; overflow: auto; max-height: 70vh;
+}
+.source-wrap > .btn-copy {
+  position: absolute; top: .5rem; right: .75rem; transform: none; opacity: 1;
+  display: inline-flex; align-items: center; gap: .35rem;
+}
+.banner .spacer { flex: 1; }
+.banner .icon { flex-shrink: 0; }
+
+/* Icons that replaced emoji glyphs */
+.empty-icon .icon { width: 48px; height: 48px; }
+.flash-icon { display: inline-flex; align-items: center; }
+.flash-icon .icon { width: 18px; height: 18px; }
+.toggle-icon .icon { width: 12px; height: 12px; display: block; }
+.inline-icon { display: inline-flex; align-items: center; gap: .4rem; }
+.inline-icon .icon { width: 14px; height: 14px; }
+.btn-copy { white-space: nowrap; }
+.dns-guide-value .btn-copy { position: static; transform: none; opacity: 1; margin-left: .5rem; }
+
 /* Tablet (1024px) */
 @media (max-width: 1024px) {
   :root { --sidebar-width: 180px; }
@@ -3554,7 +3609,6 @@ html[data-theme="auto"]:not([data-accent]) {
 
   /* Search */
   .topbar-dark .search-input { width: 140px; }
-  .result-meta { flex-wrap: wrap; }
 
   /* Admin */
   .login-card { padding: 24px 20px; }
@@ -4149,9 +4203,6 @@ a.admin-nav-item.active, .admin-nav-item.active { background: var(--accent); col
 .letter-divider { color: var(--text-muted); background: var(--surface-0); font-weight: 700; }
 
 /* -------- Search results -------- */
-.results-header { border-bottom: 1px solid var(--border-subtle); }
-.results-title { font-weight: 700; letter-spacing: -0.01em; color: var(--text-primary); }
-.results-count { color: var(--text-muted); }
 .results-query { color: var(--accent-accessible); font-weight: 600; }
 .search-result { border-bottom: 1px solid var(--border-subtle); transition: background var(--duration) var(--ease-out); }
 .search-result:hover { background: var(--surface-2); }

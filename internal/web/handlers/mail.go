@@ -911,13 +911,13 @@ func (h *MailHandler) ShowThread(w http.ResponseWriter, r *http.Request) {
 
 // ImportPage renders the mbox import form.
 func (h *MailHandler) ImportPage(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	mailboxInfos := h.loadMailboxInfos(userID, "")
 	var names []string
 	for _, mb := range mailboxInfos {
 		names = append(names, mb.Name)
 	}
-	templ.Handler(templates.ImportPage(names)).ServeHTTP(w, r)
+	templ.Handler(templates.ImportPage(names, email)).ServeHTTP(w, r)
 }
 
 // SetQuotaChecker enables the domain storage-quota check on mbox import.
@@ -932,7 +932,7 @@ func (h *MailHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 // nothing, but a read error part-way leaves the messages already delivered in
 // place. The failure is logged and counted in the summary.
 func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 
 	r.Body = http.MaxBytesReader(w, r.Body, importMboxMultipartMaxBytes)
 	if err := r.ParseMultipartForm(uploadMaxMemory); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
@@ -1047,7 +1047,7 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("web: mbox imported", "mailbox", targetMailbox, "user", userID, "imported", imported, "failed", failed)
 
-	templ.Handler(templates.ImportResult(imported, failed, targetMailbox)).ServeHTTP(w, r)
+	templ.Handler(templates.ImportResult(imported, failed, targetMailbox, email)).ServeHTTP(w, r)
 }
 
 // ExportEML downloads a message as a .eml file (raw RFC 5322).

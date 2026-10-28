@@ -218,7 +218,7 @@ templ MailboxTreeNode(mb MailboxInfo, selected string) {
 					aria-expanded="true"
 					aria-label={ t(ctx, "nav.toggleSubfolder") }
 				>
-					<span class="toggle-icon expanded">&#9654;</span>
+					<span class="toggle-icon expanded">@Icon("chevron_right", "")</span>
 				</button>
 				<a
 					href={ templ.SafeURL(mailboxURL(mb.Name)) }
@@ -363,7 +363,7 @@ templ ContextMenu() {
 
 templ EmptyState(title, subtitle string) {
 	<div class="empty-state">
-		<div class="empty-icon">&#9993;</div>
+		<div class="empty-icon" aria-hidden="true">@Icon("inbox", "")</div>
 		<h3 class="empty-title">{ title }</h3>
 		<p class="empty-text">{ subtitle }</p>
 	</div>

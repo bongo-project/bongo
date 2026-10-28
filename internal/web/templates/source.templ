@@ -24,7 +24,7 @@ type MessageSourceDetail struct {
 // the full-page path is needed.
 templ MessageSourceFullPage(src MessageSourceDetail, email string) {
 	@LayoutWithContent(t(ctx, "mail.sourceTitle"), email) {
-		<aside class="sidebar" id="sidebar">
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			<nav>
 				<ul class="nav-list">
 					<li>
@@ -37,15 +37,19 @@ templ MessageSourceFullPage(src MessageSourceDetail, email string) {
 		</aside>
 		<main class="content" id="main-content">
 			<div class="msg-source-page u-p-20">
-				<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "mail.sourceTitle") }</h2>
-				<p class="u-text-muted">{ src.Subject }</p>
+				<div class="page-head">
+					<h1>{ t(ctx, "mail.sourceTitle") }</h1>
+					<span class="meta">{ src.Subject }</span>
+				</div>
 				if src.Truncated {
-					<div class="blocked-banner" role="alert">
+					<div class="banner warn" role="alert">
+						@Icon("alert", "")
 						<span>
-							&#9888; { t(ctx, "mail.sourceTruncated") }
+							{ t(ctx, "mail.sourceTruncated") }
 							{ " " }
 							({ formatSize(src.ShownSize) } / { formatSize(src.TotalSize) })
 						</span>
+						<span class="spacer"></span>
 						<a
 							href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", encMailbox(src.Mailbox), src.UID)) }
 							class="tool-btn"
@@ -54,11 +58,15 @@ templ MessageSourceFullPage(src MessageSourceDetail, email string) {
 						</a>
 					</div>
 				}
-				<pre class="msg-source">{ src.Source }</pre>
-				<button type="button" class="btn-copy" data-copy-previous="true" title={ t(ctx, "common.copy") } aria-label={ t(ctx, "common.copy") }>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-					{ t(ctx, "common.copy") }
-				</button>
+				<div class="card source-card">
+					<div class="card-body flush source-wrap">
+						<pre class="msg-source">{ src.Source }</pre>
+						<button type="button" class="btn-copy" data-copy-previous="true" title={ t(ctx, "common.copy") } aria-label={ t(ctx, "common.copy") }>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+							{ t(ctx, "common.copy") }
+						</button>
+					</div>
+				</div>
 			</div>
 		</main>
 	}

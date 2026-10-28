@@ -638,6 +638,8 @@
   "editor.insertLink": "Inserer un lien",
   "editor.textColour": "Couleur du texte",
   "editor.insertImage": "Inserer une image",
+  "editor.imageShort": "Image",
+  "editor.linkShort": "Lien",
   "editor.toggleSource": "Basculer vers HTML",
   "editor.toggleVisual": "Editeur visuel",
   "editor.editorLabel": "Corps du message",

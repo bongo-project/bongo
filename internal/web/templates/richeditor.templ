@@ -33,9 +33,9 @@ templ RichEditorField(fieldName string, initialHTML string, variant string) {
 			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.bold") } x-on:click="format('bold')"><b>B</b></button>
 			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.italic") } x-on:click="format('italic')"><i>I</i></button>
 			<span class="format-sep"></span>
-			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.insertLink") } x-on:click="promptLink()">&#128279;</button>
+			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.insertLink") } x-on:click="promptLink()">{ t(ctx, "editor.linkShort") }</button>
 			<input type="color" class="rich-editor-colour" aria-label={ t(ctx, "editor.textColour") } x-on:change="setColor($event.target.value)"/>
-			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.insertImage") } x-on:click="triggerImagePicker()">&#128247;</button>
+			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.insertImage") } x-on:click="triggerImagePicker()">{ t(ctx, "editor.imageShort") }</button>
 			<span class="format-sep"></span>
 			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.toggleSource") } x-on:click="toggleSource()">HTML</button>
 		</div>
