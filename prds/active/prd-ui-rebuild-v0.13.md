@@ -24,6 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
+| D | Fixes from operator testing | US-016 to US-017 | 27.16 to 27.17 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -239,9 +240,48 @@ attachment flag for messages that were not split.
 - [ ] A test fails if any `.templ` file contains an emoji character outside
       the allowed theme-toggle glyph.
 
+### US-016: Rule editor works under the CSP build
+Added 2026-10-28 from operator testing. The new and edit rule pages
+(`/settings/rules/new`, `/settings/rules/{id}/edit`) throw "CSP Parser
+Error" on load: the conditions `x-data` and `actionTypeData` define methods
+(and a regex) inline, which the Alpine CSP build cannot parse, so the
+condition rows and the action controls do not initialise.
+
+**Acceptance Criteria:**
+- [ ] The conditions and action state move into `Alpine.data` components in
+      `bongo.js`; the templates call them with plain arguments (no inline
+      methods, arrow functions, regex, template literals or statement
+      lists in any x-* attribute of `rules.templ`).
+- [ ] On both pages a user can add and remove conditions, change field and
+      operator (the size and has-attachment operator rules still apply),
+      pick every action type, and add and remove tags for the tag action;
+      the form posts the same field names as today.
+- [ ] Loading the new and edit pages logs no Alpine expression errors in
+      the browser.
+- [ ] A template test fails if an x-* attribute in the rule editor holds an
+      expression the CSP build cannot parse.
+
+### US-017: Calendar show/hide checkbox works under the CSP build
+Added 2026-10-28 from operator testing. Each calendar's checkbox in the
+calendar sidebar (`calendar.templ`, `hiddenCals`) hides that calendar's
+events with an `x-on:change` that uses an arrow function, `document.` and a
+statement list, none of which the Alpine CSP build parses, so unticking a
+calendar does nothing.
+
+**Acceptance Criteria:**
+- [ ] The toggle moves into a method on an `Alpine.data` component in
+      `bongo.js`; the template passes the calendar ID as a plain argument or
+      data attribute.
+- [ ] Unticking a calendar hides its events in the month, week, day and
+      agenda views, and ticking it shows them again.
+- [ ] Loading the calendar and toggling a calendar logs no Alpine
+      expression errors in the browser.
+- [ ] A template test fails if an x-* attribute in the calendar templates
+      holds an expression the CSP build cannot parse.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-15 are the acceptance criteria of US-001 to US-015. In every
+FR-1 to FR-17 are the acceptance criteria of US-001 to US-017. In every
 story:
 
 - Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF
@@ -438,3 +478,20 @@ From the 27.15 remaining-pages review (2026-10-28):
 - `address_verify.templ` is the signed-in send-as addresses page, not a
   public page, so it took the card and data-table styles rather than the
   auth card the 27.14 note expected. (27.15)
+
+From operator testing of the tag controls (2026-10-28):
+
+- Create a filter from a message: an action on the message view (and the
+  row context menu) that opens a new rule prefilled from that message, for
+  example From contains the sender address, with the action left to the
+  user. Feature, not a fix; scope it with the rules work.
+- The rule editor throws "CSP Parser Error" on load. Moved into scope as
+  US-016 (27.16).
+- The calendar sidebar's show/hide checkbox fails under the CSP build.
+  Moved into scope as US-017 (27.17).
+- Mailbox names are spliced into Alpine expressions as `'<name>'`, so a
+  name containing a quote breaks the bulk-action handlers. Pass the name
+  through a data attribute instead.
+- Static assets are cache-busted by commit hash only, so during development
+  a rebuilt but uncommitted bongo.js is served under the old URL and the
+  browser keeps the previous copy until a hard reload.

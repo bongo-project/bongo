@@ -3277,9 +3277,11 @@ html[data-theme="auto"]:not([data-accent]) {
   cursor: default;
 }
 
-/* Context menu — hidden by default, shown by Alpine x-show */
+/* Context menu: shown and hidden through the hidden attribute (x-bind:hidden).
+   A base display:none here would win over a cleared attribute and keep the
+   menu invisible. */
 .context-menu {
-  display: none;
+  display: block;
   position: fixed;
   z-index: 200;
   background: var(--bg);
@@ -3289,6 +3291,7 @@ html[data-theme="auto"]:not([data-accent]) {
   min-width: 180px;
   padding: 4px 0;
 }
+.context-menu[hidden] { display: none; }
 .context-menu a {
   display: block;
   padding: 8px 16px;
