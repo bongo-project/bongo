@@ -2,9 +2,11 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -796,37 +798,84 @@ func blobGCLeaderTestAgentWithLogger(t *testing.T, logger *slog.Logger) *Agent {
 // passes see the seeded state.
 func blobGCLeaderTestAgentSeeded(t *testing.T, logger *slog.Logger, seed func(a *Agent)) *Agent {
 	t.Helper()
+	return blobGCStartAgent(t, logger, seed, nil)
+}
+
+// blobGCStartAgent starts the agent for blobGCLeaderTestAgentSeeded. afterPorts,
+// if set, runs after each attempt's ports are chosen and may change them; only
+// TestBlobGCTestAgentRetriesOnPortRace uses it, to force a lost race.
+func blobGCStartAgent(t *testing.T, logger *slog.Logger, seed func(a *Agent), afterPorts func(attempt int, cfg *config.Config)) *Agent {
+	t.Helper()
 	cfg := config.Defaults()
-	isolatePorts(t, cfg)
 	cfg.Server.Role = "dev"
 	cfg.SMTP.Enabled = false
 
-	a, err := NewAgent(cfg, logger)
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-	if seed != nil {
-		seed(a)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- a.Run(ctx) }()
-	t.Cleanup(func() {
-		cancel()
-		if err := <-done; err != nil {
-			t.Errorf("Run returned error: %v", err)
+	// The ports are free when chosen but released before Run binds them, so a
+	// parallel test process can take one in between. A start that loses that
+	// race is retried on fresh ports, as sharedStartAgentWith does for the
+	// integration tests; any other failure is fatal at once.
+	const attempts = 3
+	for attempt := 1; ; attempt++ {
+		isolatePorts(t, cfg)
+		if afterPorts != nil {
+			afterPorts(attempt, cfg)
 		}
-	})
+		a, err := NewAgent(cfg, logger)
+		if err != nil {
+			t.Fatalf("NewAgent: %v", err)
+		}
+		if seed != nil {
+			seed(a)
+		}
 
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) && !a.Ready() {
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- a.Run(ctx) }()
+
+		runErr, ready := waitAgentReady(a, done, 10*time.Second)
+		if ready {
+			t.Cleanup(func() {
+				cancel()
+				if err := <-done; err != nil {
+					t.Errorf("Run returned error: %v", err)
+				}
+			})
+			return a
+		}
+		cancel()
+		if runErr == nil {
+			// Still running but not ready: wait for Run to stop before failing.
+			runErr = <-done
+			t.Fatalf("agent did not become ready (Run: %v)", runErr)
+		}
+		// Run's early-return paths skip Shutdown; release what it opened.
+		_ = a.Shutdown()
+		if attempt == attempts || !strings.Contains(runErr.Error(), "address already in use") {
+			t.Fatalf("agent Run exited before ready: %v", runErr)
+		}
+		t.Logf("start attempt %d lost a port race, retrying on new ports: %v", attempt, runErr)
+	}
+}
+
+// waitAgentReady polls a.Ready until it is true, Run returns on done, or the
+// timeout passes. It returns Run's error if Run exited first.
+func waitAgentReady(a *Agent, done <-chan error, timeout time.Duration) (runErr error, ready bool) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-done:
+			if err == nil {
+				err = errors.New("Run returned nil before ready")
+			}
+			return err, false
+		default:
+		}
+		if a.Ready() {
+			return nil, true
+		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if !a.Ready() {
-		t.Fatal("agent did not become ready")
-	}
-	return a
+	return nil, false
 }
 
 // TestBlobGCFailureAndModeChangeReset groups every US-007 scenario that needs
@@ -1620,5 +1669,31 @@ func TestCollectSpoolBlobsAbortsOnReadFailureInEitherPass(t *testing.T) {
 					"is indistinguishable from an empty one, and the sweep would delete on it")
 			}
 		})
+	}
+}
+
+// TestBlobGCTestAgentRetriesOnPortRace proves the helper survives a port taken
+// between selection and bind: the first attempt is given a web port that is
+// already held, and the helper must come up ready on fresh ports.
+func TestBlobGCTestAgentRetriesOnPortRace(t *testing.T) {
+	held, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("hold port: %v", err)
+	}
+	defer held.Close()
+	heldPort := held.Addr().(*net.TCPAddr).Port
+
+	calls := 0
+	a := blobGCStartAgent(t, testLogger(), nil, func(attempt int, cfg *config.Config) {
+		calls++
+		if attempt == 1 {
+			cfg.Web.Port = heldPort
+		}
+	})
+	if !a.Ready() {
+		t.Fatal("agent not ready after retry")
+	}
+	if calls != 2 {
+		t.Errorf("port assignment ran %d times, want 2 (one lost race, one retry)", calls)
 	}
 }
