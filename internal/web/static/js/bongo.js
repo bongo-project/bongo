@@ -549,6 +549,11 @@ document.addEventListener('alpine:init', () => {
     count: 0,
     lastClicked: null,
 
+    // Bulk "Tag..." dropdown. The CSP build cannot parse statement lists, so
+    // the template calls one method per event instead of "a(); b = c".
+    bulkTagOpen: false,
+    bulkTagInput: '',
+
     _updateCount() {
       this.count = Object.keys(this.selected).length;
     },
@@ -621,6 +626,25 @@ document.addEventListener('alpine:init', () => {
       } catch (e) {
         console.error('Bulk action failed:', e);
       }
+    },
+
+    toggleBulkTag() {
+      this.bulkTagOpen = !this.bulkTagOpen;
+    },
+
+    closeBulkTag() {
+      this.bulkTagOpen = false;
+    },
+
+    bulkTagEmpty() {
+      return this.bulkTagInput.trim() === '';
+    },
+
+    bulkTagSubmit(mailbox, action) {
+      const name = this.bulkTagInput;
+      this.bulkTagOpen = false;
+      this.bulkTagInput = '';
+      return this.bulkTagAction(mailbox, action, name);
     },
 
     async bulkTagAction(mailbox, action, tagName) {
@@ -1003,6 +1027,25 @@ document.addEventListener('alpine:init', () => {
     uid: null,
     mailbox: null,
     focusedItem: -1,
+    tagOpen: false,
+    tagInput: '',
+
+    toggleTag() {
+      this.tagOpen = !this.tagOpen;
+    },
+
+    tagEmpty() {
+      return this.tagInput.trim() === '';
+    },
+
+    // op is "add" or "remove"; one method because the CSP build cannot parse
+    // "action(...); tagInput = ''" in the template.
+    tagSubmit(op) {
+      const name = this.tagInput;
+      this.tagInput = '';
+      this.tagOpen = false;
+      this.action('tag-' + op + ':' + name);
+    },
 
     openAt(x, y, uid, mailbox) {
       this.uid = uid;

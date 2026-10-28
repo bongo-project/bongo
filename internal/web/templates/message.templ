@@ -431,7 +431,7 @@ templ messageTags(msg MessageDetail) {
 				</span>
 			</template>
 		</div>
-		<div class="tag-add-wrapper" x-ref="addWrapper">
+		<div class="tag-add-wrapper" x-ref="addWrapper" @click.outside="openDropdown = false">
 			<button
 				type="button"
 				class="tag-add-btn"
@@ -446,7 +446,6 @@ templ messageTags(msg MessageDetail) {
 				class="tag-dropdown"
 				role="listbox"
 				aria-label={ t(ctx, "mail.availableTags") }
-				@click.outside="openDropdown = false"
 				@keydown.escape.window="openDropdown = false"
 			>
 				<input

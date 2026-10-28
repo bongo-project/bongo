@@ -168,12 +168,11 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 				} else {
 					<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>{ t(ctx, "mail.markAsSpam") }</button>
 				}
-				<div class="bulk-tag-dropdown u-relative u-inline-block" x-data="{ open: false, tagInput: '' }">
-				<button type="button" class="tool-btn" x-on:click="open = !open" aria-haspopup="true" x-bind:aria-expanded="open">{ t(ctx, "tag.applyMenu") }</button>
+				<div class="bulk-tag-dropdown u-relative u-inline-block" x-on:click.away="closeBulkTag()">
+				<button type="button" class="tool-btn" x-on:click="toggleBulkTag()" aria-haspopup="true" x-bind:aria-expanded="bulkTagOpen">{ t(ctx, "tag.applyMenu") }</button>
 				<div
-					x-bind:hidden="!open"
-					x-on:click.away="open = false"
-					x-on:keydown.escape.window="open = false"
+					x-bind:hidden="!bulkTagOpen"
+					x-on:keydown.escape.window="closeBulkTag()"
 					x-cloak=""
 					class="bulk-tag-panel"
 					role="dialog"
@@ -182,23 +181,23 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 					<input
 						type="text"
 						class="bulk-tag-input"
-						x-model="tagInput"
+						x-model="bulkTagInput"
 						placeholder={ t(ctx, "tag.namePlaceholder") }
 						aria-label={ t(ctx, "tag.namePlaceholder") }
-						x-on:keydown.enter.prevent={ fmt.Sprintf("bulkTagAction('%s', 'add', tagInput); open = false; tagInput = ''", mailbox) }
+						x-on:keydown.enter.prevent={ "bulkTagSubmit('" + mailbox + "', 'add')" }
 					/>
 					<div class="bulk-tag-actions">
 						<button
 							type="button"
 							class="tool-btn"
-							x-on:click={ fmt.Sprintf("bulkTagAction('%s', 'add', tagInput); open = false; tagInput = ''", mailbox) }
-							x-bind:disabled="tagInput.trim() === ''"
+							x-on:click={ "bulkTagSubmit('" + mailbox + "', 'add')" }
+							x-bind:disabled="bulkTagEmpty()"
 						>{ t(ctx, "action.add") }</button>
 						<button
 							type="button"
 							class="tool-btn"
-							x-on:click={ fmt.Sprintf("bulkTagAction('%s', 'remove', tagInput); open = false; tagInput = ''", mailbox) }
-							x-bind:disabled="tagInput.trim() === ''"
+							x-on:click={ "bulkTagSubmit('" + mailbox + "', 'remove')" }
+							x-bind:disabled="bulkTagEmpty()"
 						>{ t(ctx, "action.remove") }</button>
 					</div>
 				</div>
