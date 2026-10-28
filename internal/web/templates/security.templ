@@ -152,23 +152,31 @@ templ TOTPRecoveryCodes(codes []string) {
 			</nav>
 		</aside>
 		<main class="content" id="main-content">
-			<h2>{ t(ctx, "security.recoveryCodes") }</h2>
-			<div class="flash flash-warning u-mb-15">
-				<div class="flash-icon">&#9888;</div>
-				<div class="flash-content">
-					<strong>{ t(ctx, "security.saveCodesWarning") }</strong> { t(ctx, "security.saveCodesDescription") }
+			<div class="settings-scroll">
+				<div class="settings-container">
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "security.recoveryCodes") }</h2>
+					<div class="flash flash-warning u-mb-15">
+						<div class="flash-icon">&#9888;</div>
+						<div class="flash-content">
+							<strong>{ t(ctx, "security.saveCodesWarning") }</strong> { t(ctx, "security.saveCodesDescription") }
+						</div>
+					</div>
+					<div class="settings-card">
+						<div class="settings-card-pad">
+							<fieldset>
+								<legend>{ t(ctx, "security.recoveryCodes") }</legend>
+								<p class="description">{ t(ctx, "security.saveCodesDescription") }</p>
+								<div class="recovery-codes">
+									for _, code := range codes {
+										<div class="recovery-code">{ code }</div>
+									}
+								</div>
+								<a href="/settings/security" class="btn-primary u-inline-block u-text-center u-text-decoration-none">{ t(ctx, "security.savedCodes") }</a>
+							</fieldset>
+						</div>
+					</div>
 				</div>
 			</div>
-			<fieldset>
-				<legend>{ t(ctx, "security.recoveryCodes") }</legend>
-				<p class="description">{ t(ctx, "security.saveCodesDescription") }</p>
-				<div class="recovery-codes">
-					for _, code := range codes {
-						<div class="recovery-code">{ code }</div>
-					}
-				</div>
-				<a href="/settings/security" class="btn-primary u-inline-block u-text-center u-text-decoration-none">{ t(ctx, "security.savedCodes") }</a>
-			</fieldset>
 		</main>
 	}
 }

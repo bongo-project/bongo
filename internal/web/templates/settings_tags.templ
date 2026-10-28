@@ -55,6 +55,10 @@ templ TagSettingsPage(data TagSettingsData) {
 					<div
 						id="tag-settings"
 						x-data={ fmt.Sprintf(`tagSettings(%s)`, tagSettingsPaletteJS()) }
+						data-count-label={ t(ctx, "tag.countTitle") }
+						data-colour-label={ t(ctx, "tag.colourLabel") }
+						data-edit-tag-label={ t(ctx, "tag.editLabel") }
+						data-delete-tag-label={ t(ctx, "tag.deleteLabel") }
 					>
 						<!-- Tag list -->
 						<div class="settings-card u-mb-24px">
@@ -90,7 +94,7 @@ templ TagSettingsPage(data TagSettingsData) {
 									<span
 										class="nav-badge"
 										x-text="tag.count"
-										:title="`${tag.count} message(s)`"
+										:title="countTitle(tag)"
 									></span>
 									<!-- Colour picker (shown in edit mode) -->
 									<template x-if="editingTag === tag.name">
@@ -100,7 +104,7 @@ templ TagSettingsPage(data TagSettingsData) {
 													type="button"
 													class="tag-colour-swatch-btn"
 													:class="[tagPaletteBGClass(idx), editColourIndex === idx ? 'tag-colour-swatch-btn--selected' : '']"
-													:aria-label="`Colour ${idx}`"
+													:aria-label="colourLabel(idx)"
 													:aria-pressed="editColourIndex === idx"
 													x-on:click="editColourIndex = idx"
 												></button>
@@ -113,7 +117,7 @@ templ TagSettingsPage(data TagSettingsData) {
 											<button
 												type="button"
 												class="btn-icon"
-												:aria-label="`Edit tag ${tag.name}`"
+												:aria-label="editLabel(tag)"
 												x-on:click="startEdit(tag)"
 												title={ t(ctx, "common.edit") }
 											>&#9998;</button>
@@ -137,7 +141,7 @@ templ TagSettingsPage(data TagSettingsData) {
 											<button
 												type="button"
 												class="btn-icon btn-icon--danger"
-												:aria-label="`Delete tag ${tag.name}`"
+												:aria-label="deleteLabel(tag)"
 												x-on:click="confirmDeleteTag = tag.name"
 												title={ t(ctx, "common.delete") }
 											>&#x2715;</button>
@@ -191,7 +195,7 @@ templ TagSettingsPage(data TagSettingsData) {
 												type="button"
 												class="tag-colour-swatch-btn"
 												:class="[tagPaletteBGClass(idx), newTagColourIndex === idx ? 'tag-colour-swatch-btn--selected' : '']"
-												:aria-label="`Colour ${idx}`"
+												:aria-label="colourLabel(idx)"
 												:aria-pressed="newTagColourIndex === idx"
 												x-on:click="newTagColourIndex = idx"
 											></button>
@@ -201,7 +205,7 @@ templ TagSettingsPage(data TagSettingsData) {
 								<div class="u-flex u-items-end u-pb-2">
 									<button
 										type="button"
-										class="btn-save"
+										class="btn-primary"
 										x-on:click="createTag()"
 										:disabled="creatingTag || !newTagName.trim()"
 									>{ t(ctx, "tag.addTag") }</button>

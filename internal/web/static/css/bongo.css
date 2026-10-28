@@ -2552,17 +2552,15 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .settings-container { max-width: 720px; margin: 0 auto; }
 
 .settings-tabs {
-  display: flex; gap: 2px; margin-bottom: 24px;
-  background: var(--bg-muted); border-radius: var(--radius-lg); padding: 3px; width: fit-content;
+  display: flex; gap: 4px; margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-subtle); max-width: 100%; overflow-x: auto;
 }
 .settings-tab {
-  padding: 8px 18px; border: none; background: transparent;
-  border-radius: var(--radius); font-size: 0.85rem; font-weight: 500;
-  color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+  padding: 10px 16px; border: none; background: transparent;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+  font-size: 0.85rem; font-weight: 500;
+  color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
 }
-.settings-tab.active { background: var(--bg); color: var(--bongo-blue); box-shadow: var(--shadow-sm); font-weight: 600; }
-.settings-tab:hover:not(.active) { color: var(--text-secondary); }
-
 .settings-section { margin-bottom: 28px; }
 .settings-section-title { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
 .settings-section-desc { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 16px; }
@@ -3936,6 +3934,62 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .toggle-slider { background: var(--surface-3); border-radius: 100px; }
 .toggle-input:checked + .toggle-slider,
 .toggle input:checked + .toggle-slider { background: var(--accent); }
+
+/* ==== Settings (US-012) ==== */
+/* Each section is a card; a row is a two-column label/control grid. Scoped to
+   .settings-section so the tag manager, which reuses .settings-row for its
+   flex layout, is untouched. */
+.settings-section .settings-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center; gap: 1rem; padding: 1rem 1.25rem;
+}
+.settings-section .settings-row > .settings-input,
+.settings-section .settings-row > .settings-select { width: 100%; box-sizing: border-box; }
+.settings-section .settings-row > .toggle { justify-self: start; }
+.settings-section .settings-row-stacked { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+.settings-section-title { font-size: 1.05rem; }
+.settings-section-desc { margin-bottom: 1rem; }
+.settings-save { align-items: center; gap: .75rem; }
+.settings-save .btn-primary { padding: .55rem 1.5rem; }
+
+/* Security: password and 2FA forms use the same label/control grid. */
+.settings-card-pad { padding: 1.25rem; }
+.settings-card-pad .form-group {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center; column-gap: 1rem; row-gap: .25rem;
+}
+.settings-card-pad .form-group > small { grid-column: 2; }
+.settings-card-pad .form-input { width: 100%; box-sizing: border-box; }
+.settings-card-pad details { margin-top: .5rem; }
+.settings-card-pad summary { cursor: pointer; color: var(--text-secondary); font-weight: 600; }
+.settings-card-pad .btn-primary,
+.settings-card-pad .btn-secondary { padding: .55rem 1.25rem; }
+
+.settings-card-pad .tfa-status { padding: .85rem 1rem; }
+.settings-card-pad .tfa-status-text .u-mb-12px { margin-bottom: .5rem; }
+
+/* ComponentLib switch: a real checkbox, visually hidden but focusable, inside a label. */
+.toggle { width: 40px; height: 22px; display: inline-block; }
+.toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.toggle-slider {
+  background: var(--surface-3); border: 1px solid var(--border-default); border-radius: 100px;
+  transition: background var(--duration) var(--ease-out), border-color var(--duration) var(--ease-out);
+}
+.toggle-slider::before {
+  width: 16px; height: 16px; left: 2px; bottom: 2px;
+  background: var(--surface-1); box-shadow: var(--shadow-sm);
+  transition: transform var(--duration) var(--ease-out);
+}
+.toggle input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+.toggle input:focus-visible + .toggle-slider { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: 0 0 0 4px var(--focus-ring); }
+
+@media (max-width: 768px) {
+  .settings-section .settings-row,
+  .settings-card-pad .form-group { grid-template-columns: minmax(0, 1fr); }
+  .settings-card-pad .form-group > small { grid-column: 1; }
+  .settings-section .settings-row > .toggle { justify-self: start; }
+}
 
 /* -------- Security / forms -------- */
 .form-card { background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }

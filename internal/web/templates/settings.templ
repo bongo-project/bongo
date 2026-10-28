@@ -100,7 +100,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 										<div class="settings-row-desc">{ t(ctx, "settings.infiniteScrollDesc") }</div>
 									</div>
 									<label class="toggle">
-										<input type="checkbox" name="infinite_scroll" value="1" checked?={ prefs.InfiniteScroll }/>
+										<input type="checkbox" name="infinite_scroll" value="1" aria-label={ t(ctx, "settings.infiniteScroll") } checked?={ prefs.InfiniteScroll }/>
 										<span class="toggle-slider"></span>
 									</label>
 								</div>
@@ -170,14 +170,14 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 										<div class="settings-row-title">{ t(ctx, "settings.forwardKeepCopy") }</div>
 									</div>
 									<label class="toggle">
-										<input type="checkbox" name="forward_keep_copy" value="1" checked?={ prefs.ForwardKeepCopy }/>
+										<input type="checkbox" name="forward_keep_copy" value="1" aria-label={ t(ctx, "settings.forwardKeepCopy") } checked?={ prefs.ForwardKeepCopy }/>
 										<span class="toggle-slider"></span>
 									</label>
 								</div>
 							</div>
 						</div>
 						<div class="settings-save">
-							<button type="submit" class="btn-save">{ t(ctx, "settings.save") }</button>
+							<button type="submit" class="btn-primary">{ t(ctx, "settings.save") }</button>
 							<a href="/mail/INBOX" class="btn-cancel">{ t(ctx, "settings.cancel") }</a>
 						</div>
 					</form>
