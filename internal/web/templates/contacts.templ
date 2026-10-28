@@ -3,6 +3,7 @@ package templates
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -60,6 +61,26 @@ func contactVCardDetails(c *bongov1.Contact) []contactExtraField {
 	}
 	if v := card.Value(vcard.FieldNickname); v != "" {
 		out = append(out, contactExtraField{"contacts.nickname", v})
+	}
+	return out
+}
+
+// contactDetailFields returns the labelled values for the read-only detail
+// card: primary email, phone, company and notes, then the vCard extras.
+// Empty and whitespace-only values are dropped so the grid has no blank rows.
+func contactDetailFields(c *bongov1.Contact) []contactExtraField {
+	all := []contactExtraField{
+		{"contacts.email", c.Email},
+		{"contacts.phone", c.Phone},
+		{"contacts.company", c.Company},
+		{"contacts.notes", c.Notes},
+	}
+	all = append(all, contactVCardDetails(c)...)
+	var out []contactExtraField
+	for _, f := range all {
+		if strings.TrimSpace(f.Value) != "" {
+			out = append(out, f)
+		}
 	}
 	return out
 }
@@ -247,15 +268,19 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<div class="toolbar" role="toolbar" aria-label={ t(ctx, "contacts.contactActions") }>
-				<button type="button" class="tool-btn primary" data-contact-form-toggle="toggle">{ t(ctx, "contacts.newContact") }</button>
-				<a href="/contacts/export" class="tool-btn">{ t(ctx, "contacts.exportVcard") }</a>
-				<div class="tool-spacer"></div>
+			<div class="page-head contacts-head">
+				<h1>{ t(ctx, "contacts.contacts") }</h1>
+				<div class="spacer"></div>
 				<form class="import-form" method="post" action="/contacts/import" enctype="multipart/form-data" aria-label={ t(ctx, "contacts.importContacts") }>
 					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-					<input type="file" name="vcf" accept=".vcf" aria-label={ t(ctx, "contacts.selectVcf") }/>
-					<button type="submit" class="tool-btn">{ t(ctx, "contacts.import") }</button>
+					<label class="tool-btn outline">
+						<span>{ t(ctx, "contacts.importVcard") }</span>
+						<input type="file" name="vcf" accept=".vcf" class="sr-only" aria-label={ t(ctx, "contacts.selectVcf") }/>
+					</label>
+					<button type="submit" class="sr-only">{ t(ctx, "contacts.import") }</button>
 				</form>
+				<a href="/contacts/export" class="tool-btn outline">{ t(ctx, "contacts.exportVcard") }</a>
+				<button type="button" class="tool-btn primary" data-contact-form-toggle="toggle">{ t(ctx, "contacts.newContact") }</button>
 			</div>
 			<div id="create-form" hidden>
 				<div class="settings-card u-mt-1">
@@ -325,8 +350,8 @@ templ ContactRow(c *bongov1.Contact) {
 		tabindex="0"
 		data-contact-select="true"
 	>
-		<div class={ "contact-avatar", avatarClassContact(c.DisplayName, c.Email) } aria-hidden="true">
-			{ avatarInitialsContact(c.DisplayName, c.Email) }
+		<div class={ "contact-avatar", avatarClass(c.DisplayName, c.Email) } aria-hidden="true">
+			{ avatarInitials(c.DisplayName, c.Email) }
 		</div>
 		<div class="contact-info">
 			<div class="contact-name">{ c.DisplayName }</div>
@@ -345,22 +370,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 				<a href="/contacts" class="tool-btn">&larr; { t(ctx, "common.back") }</a>
 			</div>
 			<div class="contact-detail-pane">
-				<div class="detail-card">
-					<div class="detail-header">
-						<div class={ "detail-avatar", avatarClassContact(c.DisplayName, c.Email) } aria-hidden="true">
-							{ avatarInitialsContact(c.DisplayName, c.Email) }
-						</div>
-						<h2 class="detail-name">{ c.DisplayName }</h2>
-						if c.Company != "" {
-							<p class="detail-title">{ c.Company }</p>
-						}
-					</div>
-					@ContactEditForm(newContactFormData(c), false)
-					<div class="detail-section-title u-font-075">
-						<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
-						<span class="u-ml-1">{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>
-					</div>
-				</div>
+				@contactCard(c, true)
 			</div>
 		</main>
 	}
@@ -522,38 +532,52 @@ templ contactTextField(name, labelKey, value string) {
 	</div>
 }
 
-// ContactExtraFields renders a read-only panel of the additional vCard fields
-// (address, birthday, extra emails/phones, etc.) that the quick-edit form does
-// not cover, so the web UI shows the full contact synced from a CardDAV client.
-templ ContactExtraFields(c *bongov1.Contact) {
-	if len(contactVCardDetails(c)) > 0 {
-		<div class="detail-extra-fields u-px-12">
-			<div class="detail-field-label u-text-muted">{ t(ctx, "contacts.additionalDetails") }</div>
-			for _, f := range contactVCardDetails(c) {
-				<div class="detail-field">
-					<div class="detail-field-label">{ t(ctx, f.LabelKey) }</div>
-					<div class="detail-field-value">{ f.Value }</div>
-				</div>
-			}
-		</div>
-	}
+templ ContactDetailPartial(c *bongov1.Contact) {
+	@contactCard(c, false)
 }
 
-templ ContactDetailPartial(c *bongov1.Contact) {
-	<div class="detail-card">
-		<div class="detail-header">
-			<div class={ "detail-avatar", avatarClassContact(c.DisplayName, c.Email) } aria-hidden="true">
-				{ avatarInitialsContact(c.DisplayName, c.Email) }
+// contactCard is the read-only detail card with the editor beneath it. The
+// editor is open on the full page (works without JS) and closed in the HTMX
+// pane until Edit is pressed.
+templ contactCard(c *bongov1.Contact, editorOpen bool) {
+	<div class="contact-detail-card">
+		<div class="contact-detail-header">
+			<div class={ "contact-avatar", "contact-avatar-lg", avatarClass(c.DisplayName, c.Email) } aria-hidden="true">
+				{ avatarInitials(c.DisplayName, c.Email) }
 			</div>
-			<h2 class="detail-name">{ c.DisplayName }</h2>
-			if c.Company != "" {
-				<p class="detail-title">{ c.Company }</p>
-			}
+			<div class="contact-detail-meta">
+				<h2>{ c.DisplayName }</h2>
+				if c.Company != "" {
+					<div class="sub">{ c.Company }</div>
+				}
+			</div>
+			<div class="contact-detail-actions">
+				<button
+					type="button"
+					class="tool-btn outline"
+					data-contact-edit-toggle="toggle"
+					aria-controls={ "contact-editor-" + c.Guid }
+					aria-expanded={ fmt.Sprint(editorOpen) }
+				>{ t(ctx, "contacts.edit") }</button>
+				if c.Email != "" {
+					<a class="tool-btn primary" href={ templ.URL("/compose?to=" + url.QueryEscape(c.Email)) }>{ t(ctx, "contacts.emailAction") }</a>
+				}
+			</div>
 		</div>
-		@ContactEditForm(newContactFormData(c), false)
-		<div class="detail-section-title u-font-075 u-px-12 u-text-muted">
+		if fields := contactDetailFields(c); len(fields) > 0 {
+			<dl class="contact-fields">
+				for _, f := range fields {
+					<dt>{ t(ctx, f.LabelKey) }</dt>
+					<dd>{ f.Value }</dd>
+				}
+			</dl>
+		}
+		<div class="contact-editor" id={ "contact-editor-" + c.Guid } hidden?={ !editorOpen }>
+			@ContactEditForm(newContactFormData(c), false)
+		</div>
+		<div class="contact-dates">
 			<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
-			<span class="u-ml-1">{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>
+			<span>{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>
 		</div>
 	</div>
 }
@@ -591,19 +615,3 @@ func formatContactDate(unix int64) string {
 	}
 	return time.Unix(unix, 0).Format("Jan 2, 2006")
 }
-
-func avatarInitialsContact(name, email string) string {
-	return avatarInitials(name, email)
-}
-
-func avatarClassContact(name, email string) string {
-	s := name + email
-	var hash uint32
-	for _, c := range s {
-		hash = hash*31 + uint32(c)
-	}
-	return fmt.Sprintf("avatar-colour-%d", hash%7)
-}
-
-// contactsActiveClass is unused but suppresses lint for the fmt import.
-var _ = fmt.Sprint

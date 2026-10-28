@@ -2141,7 +2141,7 @@ a.admin-nav-item.active, .admin-nav-item.active {
 
 /* Left pane: contact list */
 .contact-list-pane {
-  width: 360px; flex-shrink: 0;
+  width: 340px; flex-shrink: 0;
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -2198,27 +2198,6 @@ a.admin-nav-item.active, .admin-nav-item.active {
   flex: 1; overflow-y: auto; padding: 24px;
   background: var(--bg-subtle);
 }
-
-.detail-card {
-  max-width: 600px; margin: 0 auto;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
-  overflow: hidden;
-}
-
-.detail-header {
-  padding: 28px 24px 20px; text-align: center;
-  background: linear-gradient(135deg, var(--bongo-blue-light), var(--bg-subtle));
-  border-bottom: 1px solid var(--border);
-}
-.detail-avatar {
-  width: 72px; height: 72px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 1.6rem; color: #fff;
-  margin: 0 auto 12px; box-shadow: var(--shadow-md);
-}
-.detail-name { font-size: 1.25rem; font-weight: 700; color: var(--text); }
-.detail-title { font-size: 0.88rem; color: var(--text-secondary); margin-top: 4px; }
 
 .detail-fields { padding: 20px 24px; }
 .detail-field { display: flex; padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -2299,6 +2278,54 @@ a.admin-nav-item.active, .admin-nav-item.active {
 }
 .detail-empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
 .detail-empty-text { font-size: 0.9rem; }
+
+
+/* ==== Contacts (US-010) ==== */
+.page-head.contacts-head { padding: .85rem 20px 1rem; margin: 0; border-bottom: 1px solid var(--border-subtle); }
+.contacts-head .import-form { margin: 0; }
+.contacts-head .tool-btn.outline,
+.contact-detail-actions .tool-btn.outline {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-color: var(--border-default); background: var(--surface-1);
+  color: var(--text-primary); text-decoration: none; cursor: pointer;
+}
+.contacts-head .tool-btn.outline:hover,
+.contact-detail-actions .tool-btn.outline:hover { background: var(--surface-2); border-color: var(--border-default); }
+.contacts-head .tool-btn.outline:focus-within,
+.contact-detail-actions .tool-btn.outline:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.contacts-head a.tool-btn,
+.contact-detail-actions .tool-btn { display: inline-flex; align-items: center; text-decoration: none; }
+.contact-detail-pane { padding: 2rem 2.5rem; }
+.contact-detail-card {
+  max-width: 720px; margin: 0 auto;
+  background: var(--surface-1); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.contact-detail-header { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; padding: 1.75rem 1.75rem 1.25rem; }
+.contact-avatar-lg { width: 72px; height: 72px; font-size: 1.5rem; }
+.contact-detail-meta { flex: 1; min-width: 0; }
+.contact-detail-meta h2 { font-size: 1.4rem; font-weight: 700; margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.contact-detail-meta .sub { color: var(--text-muted); margin-top: 2px; }
+.contact-detail-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.contact-fields {
+  display: grid; grid-template-columns: 120px 1fr; gap: .75rem 1.25rem;
+  margin: 0; padding: 0 1.75rem 1.5rem; font-size: .9rem;
+}
+.contact-fields dt { color: var(--text-muted); font-weight: 500; }
+.contact-fields dd { color: var(--text-primary); margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.contact-editor { border-top: 1px solid var(--border-subtle); }
+.contact-editor[hidden] { display: none; }
+.contact-dates {
+  display: flex; flex-wrap: wrap; gap: 1rem;
+  padding: .75rem 1.75rem; border-top: 1px solid var(--border-subtle);
+  font-size: .75rem; color: var(--text-muted);
+}
+@media (max-width: 480px) {
+  .contact-fields { grid-template-columns: 1fr; gap: .15rem 0; }
+  .contact-fields dd { margin-bottom: .6rem; }
+  .contact-detail-header, .contact-fields { padding-left: 1rem; padding-right: 1rem; }
+}
 
 
 /* ============================================
@@ -3403,10 +3430,9 @@ a.admin-nav-item.active, .admin-nav-item.active {
   .field-label { width: 42px; font-size: 0.78rem; padding: 10px 8px 10px 0; }
 
   /* Contacts */
-  .contact-list-pane { width: 100%; border-right: none; }
-  .contact-detail-pane { display: none; }
-  .contacts-panes.showing-detail .contact-list-pane { display: none; }
-  .contacts-panes.showing-detail .contact-detail-pane { display: block; }
+  .contacts-panes { flex-direction: column; overflow-y: auto; }
+  .contact-list-pane { width: 100%; border-right: none; flex: 0 0 auto; max-height: 45vh; }
+  .contact-detail-pane { flex: 0 0 auto; overflow: visible; padding: 12px; }
   .detail-back-btn { display: inline-flex !important; }
   .import-form { display: none; }
 
@@ -3465,7 +3491,6 @@ a.admin-nav-item.active, .admin-nav-item.active {
 
   /* Contacts */
   .contact-detail-pane { padding: 12px; }
-  .detail-header { padding: 20px 16px 14px; }
   .detail-fields { padding: 14px 16px; }
   .detail-actions { padding: 10px 16px; flex-wrap: wrap; }
   .detail-actions .btn-edit,
