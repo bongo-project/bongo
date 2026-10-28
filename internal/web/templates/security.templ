@@ -156,7 +156,7 @@ templ TOTPRecoveryCodes(codes []string) {
 				<div class="settings-container">
 					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "security.recoveryCodes") }</h2>
 					<div class="flash flash-warning u-mb-15">
-						<div class="flash-icon">&#9888;</div>
+						<div class="flash-icon" aria-hidden="true">@Icon("alert", "")</div>
 						<div class="flash-content">
 							<strong>{ t(ctx, "security.saveCodesWarning") }</strong> { t(ctx, "security.saveCodesDescription") }
 						</div>

@@ -638,6 +638,8 @@
   "editor.insertLink": "Link einfuegen",
   "editor.textColour": "Textfarbe",
   "editor.insertImage": "Bild einfuegen",
+  "editor.imageShort": "Bild",
+  "editor.linkShort": "Link",
   "editor.toggleSource": "HTML-Quelltext",
   "editor.toggleVisual": "Visueller Editor",
   "editor.editorLabel": "Nachrichtentext",

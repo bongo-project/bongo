@@ -2,33 +2,79 @@ package templates
 
 import "fmt"
 
-templ ImportPage(mailboxes []string) {
-	<h2>{ t(ctx, "import.importMessages") }</h2>
-	<p>{ t(ctx, "import.uploadDescription") }</p>
-	<form method="post" action="/import" enctype="multipart/form-data">
-		<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-		<label for="mbox">{ t(ctx, "import.mboxFile") }</label>
-		<input type="file" id="mbox" name="mbox" accept=".mbox,.mbx" required/>
-		<label for="mailbox">{ t(ctx, "import.targetMailbox") }</label>
-		<select id="mailbox" name="mailbox">
-			for _, mb := range mailboxes {
-				<option value={ mb }>{ mb }</option>
-			}
-			<option value="">{ t(ctx, "import.newMailboxOption") }</option>
-		</select>
-		<input type="text" name="new_mailbox" placeholder={ t(ctx, "import.newMailboxPlaceholder") } class="u-mt-05"/>
-		<button type="submit" class="u-mt-1">{ t(ctx, "import.import") }</button>
-	</form>
+templ importSidebar() {
+	<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+		<nav aria-label={ t(ctx, "nav.mailboxNav") }>
+			<div class="sidebar-group">
+				<ul class="nav-list">
+					<li class="nav-item"><a href="/mail/INBOX"><span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span> { t(ctx, "nav.backToMail") }</a></li>
+				</ul>
+			</div>
+		</nav>
+	</aside>
 }
 
-templ ImportResult(imported int, failed int, mailbox string) {
-	<h2>{ t(ctx, "import.importComplete") }</h2>
-	<p>
-		{ fmt.Sprintf("%d", imported) } { t(ctx, "import.messagesImportedTo") } { mailbox }.
-		if failed > 0 {
-			{ fmt.Sprintf("%d", failed) } { t(ctx, "import.messagesFailed") }
-		}
-	</p>
-	<a href={ templ.SafeURL(mailboxURL(mailbox)) } role="button">{ t(ctx, "import.goToMailbox") } { mailbox }</a>
-	<a href="/import" role="button" class="outline secondary u-ml-05">{ t(ctx, "import.importMore") }</a>
+templ ImportPage(mailboxes []string, email string) {
+	@LayoutWithContent(t(ctx, "import.importMessages"), email) {
+		@importSidebar()
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					<div class="page-head">
+						<h1>{ t(ctx, "import.importMessages") }</h1>
+					</div>
+					<p class="page-intro">{ t(ctx, "import.uploadDescription") }</p>
+					<div class="card">
+						<div class="card-body">
+							<form method="post" action="/import" enctype="multipart/form-data" class="mbox-import-form">
+								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+								<label for="mbox">{ t(ctx, "import.mboxFile") }</label>
+								<input type="file" id="mbox" name="mbox" accept=".mbox,.mbx" required/>
+								<label for="mailbox">{ t(ctx, "import.targetMailbox") }</label>
+								<select id="mailbox" name="mailbox" class="settings-select">
+									for _, mb := range mailboxes {
+										<option value={ mb }>{ mb }</option>
+									}
+									<option value="">{ t(ctx, "import.newMailboxOption") }</option>
+								</select>
+								<input type="text" name="new_mailbox" placeholder={ t(ctx, "import.newMailboxPlaceholder") } class="form-input"/>
+								<div class="import-actions">
+									<button type="submit" class="btn-primary">{ t(ctx, "import.import") }</button>
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+	}
+}
+
+templ ImportResult(imported int, failed int, mailbox, email string) {
+	@LayoutWithContent(t(ctx, "import.importComplete"), email) {
+		@importSidebar()
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					<div class="page-head">
+						<h1>{ t(ctx, "import.importComplete") }</h1>
+					</div>
+					<div class="card">
+						<div class="card-body">
+							<p class="import-summary">
+								{ fmt.Sprintf("%d", imported) } { t(ctx, "import.messagesImportedTo") } { mailbox }.
+								if failed > 0 {
+									{ fmt.Sprintf("%d", failed) } { t(ctx, "import.messagesFailed") }
+								}
+							</p>
+							<div class="import-actions">
+								<a href={ templ.SafeURL(mailboxURL(mailbox)) } class="btn-primary">{ t(ctx, "import.goToMailbox") } { mailbox }</a>
+								<a href="/import" class="btn-secondary">{ t(ctx, "import.importMore") }</a>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+	}
 }

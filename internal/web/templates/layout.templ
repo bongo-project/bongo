@@ -92,7 +92,7 @@ templ Layout(title string, email string) {
 			@Topbar(email)
 			if require2FAFromCtx(ctx) {
 				<div class="flash flash-warning banner-2fa" role="alert">
-					<div class="flash-icon">&#9888;</div>
+					<div class="flash-icon" aria-hidden="true">@Icon("alert", "")</div>
 					<div class="flash-content">
 						{ t(ctx, "security.require2FABanner") }
 						<a href="/settings/security" class="u-ml-05 u-fw-600">{ t(ctx, "security.setupTwoFactor") }</a>
@@ -153,7 +153,7 @@ templ LayoutWithContent(title string, email string) {
 			@Topbar(email)
 			if require2FAFromCtx(ctx) {
 				<div class="flash flash-warning banner-2fa" role="alert">
-					<div class="flash-icon">&#9888;</div>
+					<div class="flash-icon" aria-hidden="true">@Icon("alert", "")</div>
 					<div class="flash-content">
 						{ t(ctx, "security.require2FABanner") }
 						<a href="/settings/security" class="u-ml-05 u-fw-600">{ t(ctx, "security.setupTwoFactor") }</a>

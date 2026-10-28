@@ -166,7 +166,7 @@ templ messageView(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
 			@senderBar(msg, mailboxes, opts)
 			if msg.HasBlockedImages {
 				<div class="blocked-banner" role="alert" x-data="remoteImages">
-					<span>&#9888; { t(ctx, "mail.remoteImagesBlocked") }</span>
+					<span class="inline-icon">@Icon("alert", "") { t(ctx, "mail.remoteImagesBlocked") }</span>
 					<button
 						type="button"
 						@click="load()"

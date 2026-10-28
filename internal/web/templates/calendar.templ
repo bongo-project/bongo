@@ -93,7 +93,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 			<ul class="nav-list">
 				<li class="nav-item">
 					<a href="/calendar" class="active">
-						<span class="nav-icon" aria-hidden="true">&#128197;</span>
+						<span class="nav-icon" aria-hidden="true">@Icon("calendar", "")</span>
 						<span>{ t(ctx, "nav.calendar") }</span>
 					</a>
 				</li>
@@ -123,13 +123,13 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 			<ul class="nav-list">
 				<li class="nav-item">
 					<a href="/mail/INBOX">
-						<span class="nav-icon" aria-hidden="true">&#9993;</span>
+						<span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span>
 						<span>{ t(ctx, "nav.backToMail") }</span>
 					</a>
 				</li>
 				<li class="nav-item">
 					<a href="/contacts">
-						<span class="nav-icon" aria-hidden="true">&#128101;</span>
+						<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
 						<span>{ t(ctx, "nav.contacts") }</span>
 					</a>
 				</li>

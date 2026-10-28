@@ -75,7 +75,7 @@ func TestMultipartFormsRenderCSRFFirst(t *testing.T) {
 		comp templ.Component
 	}{
 		{"compose", ComposePage("new", "", "", "", "", "", 0, nil, "", "")},
-		{"import", ImportPage([]string{"INBOX"})},
+		{"import", ImportPage([]string{"INBOX"}, "u1@example.com")},
 		{"contacts", ContactsPage(nil, 1, 1, "u1@example.com", "")},
 		{"calendar", CalendarSidebar(nil)},
 	}
@@ -107,7 +107,7 @@ func TestMultipartFormsRenderCSRFFirst(t *testing.T) {
 func TestRenderedUploadFormPassesRequireCSRF(t *testing.T) {
 	ctx, _ := csrfRenderCtx(t)
 	var page bytes.Buffer
-	if err := ImportPage([]string{"INBOX"}).Render(ctx, &page); err != nil {
+	if err := ImportPage([]string{"INBOX"}, "u1@example.com").Render(ctx, &page); err != nil {
 		t.Fatal(err)
 	}
 	forms := firstFieldOfMultipartForms(t, page.String())

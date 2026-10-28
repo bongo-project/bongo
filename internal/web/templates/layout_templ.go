@@ -368,7 +368,15 @@ func Layout(title string, email string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if require2FAFromCtx(ctx) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div class=\"flash flash-warning banner-2fa\" role=\"alert\"><div class=\"flash-icon\">&#9888;</div><div class=\"flash-content\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div class=\"flash flash-warning banner-2fa\" role=\"alert\"><div class=\"flash-icon\" aria-hidden=\"true\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = Icon("alert", "").Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div><div class=\"flash-content\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -381,7 +389,7 @@ func Layout(title string, email string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, " <a href=\"/settings/security\" class=\"u-ml-05 u-fw-600\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, " <a href=\"/settings/security\" class=\"u-ml-05 u-fw-600\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -394,12 +402,12 @@ func Layout(title string, email string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</a></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</a></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<div class=\"layout\"><div class=\"sidebar-overlay\" x-on:click=\"sidebarOpen = false\" x-bind:class=\"{'open': sidebarOpen}\" aria-hidden=\"true\"></div><aside class=\"sidebar\" id=\"sidebar\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<div class=\"layout\"><div class=\"sidebar-overlay\" x-on:click=\"sidebarOpen = false\" x-bind:class=\"{'open': sidebarOpen}\" aria-hidden=\"true\"></div><aside class=\"sidebar\" id=\"sidebar\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -412,7 +420,7 @@ func Layout(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" x-bind:class=\"{'open': sidebarOpen}\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\" x-bind:class=\"{'open': sidebarOpen}\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -420,7 +428,7 @@ func Layout(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</aside><main class=\"content\" id=\"main-content\" role=\"main\"></main></div><div id=\"aria-announcements\" aria-live=\"polite\" class=\"sr-only\"></div><div x-data=\"notifications\" x-init=\"init()\"><button type=\"button\" class=\"notification-prompt outline secondary\" x-bind:hidden=\"permission !== 'default'\" x-on:click=\"requestPermission()\" x-cloak=\"\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</aside><main class=\"content\" id=\"main-content\" role=\"main\"></main></div><div id=\"aria-announcements\" aria-live=\"polite\" class=\"sr-only\"></div><div x-data=\"notifications\" x-init=\"init()\"><button type=\"button\" class=\"notification-prompt outline secondary\" x-bind:hidden=\"permission !== 'default'\" x-on:click=\"requestPermission()\" x-cloak=\"\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -433,7 +441,7 @@ func Layout(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</button></div><script src=\"/static/js/htmx.min.js\"></script><script src=\"/static/js/sortable.min.js\"></script><script src=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</button></div><script src=\"/static/js/htmx.min.js\"></script><script src=\"/static/js/sortable.min.js\"></script><script src=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -446,7 +454,7 @@ func Layout(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\"></script><script src=\"/static/js/alpine-csp.min.js\" defer></script><script src=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\"></script><script src=\"/static/js/alpine-csp.min.js\" defer></script><script src=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -459,7 +467,7 @@ func Layout(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\"></script></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\"></script></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -488,7 +496,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 			templ_7745c5c3_Var30 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<!doctype html><html lang=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<!doctype html><html lang=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -501,7 +509,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" x-data=\"appState()\" x-bind:data-theme=\"resolvedTheme()\" data-accent=\"bongo\" data-sidebar=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. --><meta name=\"htmx-config\" content='{\"includeIndicatorStyles\":false}'><title>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" x-data=\"appState()\" x-bind:data-theme=\"resolvedTheme()\" data-accent=\"bongo\" data-sidebar=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. --><meta name=\"htmx-config\" content='{\"includeIndicatorStyles\":false}'><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -514,7 +522,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, " - Bongo</title><link rel=\"icon\" type=\"image/png\" href=\"/static/img/bongo-favicon.png\"><link rel=\"apple-touch-icon\" href=\"/static/img/bongo-favicon.png\"><link rel=\"stylesheet\" href=\"/static/css/componentlib/colors_and_type.css\"><link rel=\"stylesheet\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, " - Bongo</title><link rel=\"icon\" type=\"image/png\" href=\"/static/img/bongo-favicon.png\"><link rel=\"apple-touch-icon\" href=\"/static/img/bongo-favicon.png\"><link rel=\"stylesheet\" href=\"/static/css/componentlib/colors_and_type.css\"><link rel=\"stylesheet\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -527,7 +535,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\"><link rel=\"stylesheet\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\"><link rel=\"stylesheet\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -540,7 +548,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\"></head><body hx-headers=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\"></head><body hx-headers=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -553,7 +561,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\"><!-- Translation strings needed by bongo.js. CSP forbids inline\n\t\t\tscripts, so they are passed as a JSON data island (templ escapes it,\n\t\t\tthe browser decodes it, bongo.js parses it from dataset.messages).\n\t\t\thx-headers on <body> makes every HTMX mutation send the CSRF token. --><span id=\"i18n-data\" hidden data-messages=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\"><!-- Translation strings needed by bongo.js. CSP forbids inline\n\t\t\tscripts, so they are passed as a JSON data island (templ escapes it,\n\t\t\tthe browser decodes it, bongo.js parses it from dataset.messages).\n\t\t\thx-headers on <body> makes every HTMX mutation send the CSRF token. --><span id=\"i18n-data\" hidden data-messages=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -566,7 +574,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\"></span> <a href=\"#main-content\" class=\"skip-link\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\"></span> <a href=\"#main-content\" class=\"skip-link\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -579,7 +587,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</a>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</a>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -588,7 +596,15 @@ func LayoutWithContent(title string, email string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if require2FAFromCtx(ctx) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<div class=\"flash flash-warning banner-2fa\" role=\"alert\"><div class=\"flash-icon\">&#9888;</div><div class=\"flash-content\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<div class=\"flash flash-warning banner-2fa\" role=\"alert\"><div class=\"flash-icon\" aria-hidden=\"true\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = Icon("alert", "").Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</div><div class=\"flash-content\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -601,7 +617,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, " <a href=\"/settings/security\" class=\"u-ml-05 u-fw-600\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, " <a href=\"/settings/security\" class=\"u-ml-05 u-fw-600\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -614,12 +630,12 @@ func LayoutWithContent(title string, email string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</a></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</a></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div class=\"layout\"><div class=\"sidebar-overlay\" x-on:click=\"sidebarOpen = false\" x-bind:class=\"{'open': sidebarOpen}\" aria-hidden=\"true\"></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<div class=\"layout\"><div class=\"sidebar-overlay\" x-on:click=\"sidebarOpen = false\" x-bind:class=\"{'open': sidebarOpen}\" aria-hidden=\"true\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -627,7 +643,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</div><div id=\"aria-announcements\" aria-live=\"polite\" class=\"sr-only\"></div><div x-data=\"notifications\" x-init=\"init()\"><button type=\"button\" class=\"notification-prompt outline secondary\" x-bind:hidden=\"permission !== 'default'\" x-on:click=\"requestPermission()\" x-cloak=\"\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</div><div id=\"aria-announcements\" aria-live=\"polite\" class=\"sr-only\"></div><div x-data=\"notifications\" x-init=\"init()\"><button type=\"button\" class=\"notification-prompt outline secondary\" x-bind:hidden=\"permission !== 'default'\" x-on:click=\"requestPermission()\" x-cloak=\"\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -640,7 +656,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</button></div><script src=\"/static/js/htmx.min.js\"></script><script src=\"/static/js/sortable.min.js\"></script><script src=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</button></div><script src=\"/static/js/htmx.min.js\"></script><script src=\"/static/js/sortable.min.js\"></script><script src=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -653,7 +669,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\"></script><script src=\"/static/js/alpine-csp.min.js\" defer></script><script src=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\"></script><script src=\"/static/js/alpine-csp.min.js\" defer></script><script src=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -666,7 +682,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\"></script></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "\"></script></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -695,7 +711,7 @@ func LoginLayout(title string) templ.Component {
 			templ_7745c5c3_Var43 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<!doctype html><html lang=\"en\" data-theme=\"auto\" data-accent=\"bongo\" data-sidebar=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. --><meta name=\"htmx-config\" content='{\"includeIndicatorStyles\":false}'><title>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<!doctype html><html lang=\"en\" data-theme=\"auto\" data-accent=\"bongo\" data-sidebar=\"dark\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. --><meta name=\"htmx-config\" content='{\"includeIndicatorStyles\":false}'><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -708,7 +724,7 @@ func LoginLayout(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, " - Bongo</title><link rel=\"icon\" type=\"image/png\" href=\"/static/img/bongo-favicon.png\"><link rel=\"apple-touch-icon\" href=\"/static/img/bongo-favicon.png\"><link rel=\"stylesheet\" href=\"/static/css/componentlib/colors_and_type.css\"><link rel=\"stylesheet\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, " - Bongo</title><link rel=\"icon\" type=\"image/png\" href=\"/static/img/bongo-favicon.png\"><link rel=\"apple-touch-icon\" href=\"/static/img/bongo-favicon.png\"><link rel=\"stylesheet\" href=\"/static/css/componentlib/colors_and_type.css\"><link rel=\"stylesheet\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -721,7 +737,7 @@ func LoginLayout(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\"></head><body class=\"login-page\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\"></head><body class=\"login-page\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -729,7 +745,7 @@ func LoginLayout(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<p class=\"login-source\"><a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<p class=\"login-source\"><a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -742,7 +758,7 @@ func LoginLayout(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\" rel=\"noopener\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\" rel=\"noopener\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -755,7 +771,7 @@ func LoginLayout(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</a></p></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</a></p></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

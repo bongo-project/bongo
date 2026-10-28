@@ -24,12 +24,12 @@ templ SearchPageFull(query string, results []SearchResult, page, totalPages int,
 }
 
 templ SearchPage(query string, results []SearchResult, page, totalPages int) {
-	<div class="results-header">
-		<div class="results-title">{ t(ctx, "search.results") }</div>
+	<div class="page-head search-head">
+		<h1>{ t(ctx, "search.results") }</h1>
 		if query != "" {
-			<div class="results-count">
+			<span class="meta">
 				{ fmt.Sprintf("%d", len(results)) } { t(ctx, "search.resultsForCount") } <span class="results-query">"{ query }"</span>
-			</div>
+			</span>
 		}
 	</div>
 	if query != "" && len(results) == 0 {
@@ -39,23 +39,26 @@ templ SearchPage(query string, results []SearchResult, page, totalPages int) {
 		<div class="results-list" id="search-results">
 			for _, r := range results {
 				<a
-					class="search-result"
+					class="search-result msg-row msg-row-grid no-select"
 					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(r.Mailbox), r.UID)) }
 					hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(r.Mailbox), r.UID) }
 					hx-target="#main-content"
 					hx-push-url="true"
 					tabindex="0"
 				>
-					<div class="result-subject">{ r.Subject }</div>
-					<div class="result-meta">
-						<span class="result-from">{ r.From }</span>
-						<span>&middot;</span>
-						<span>{ r.Date }</span>
-						<span class="result-mailbox">{ r.Mailbox }</span>
+					<div class="msg-main">
+						<div class="msg-line">
+							<span class="msg-from result-from">{ r.From }</span>
+							<span class="result-mailbox">{ r.Mailbox }</span>
+							<span class="msg-date">{ r.Date }</span>
+						</div>
+						<div class="msg-line">
+							<span class="msg-subject result-subject">{ r.Subject }</span>
+						</div>
+						if r.Snippet != "" {
+							<div class="msg-preview result-snippet">{ r.Snippet }</div>
+						}
 					</div>
-					if r.Snippet != "" {
-						<div class="result-snippet">{ r.Snippet }</div>
-					}
 				</a>
 			}
 		</div>

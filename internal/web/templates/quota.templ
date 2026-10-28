@@ -7,9 +7,15 @@ templ QuotaRefusedPage(message, email string) {
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
 				<div class="settings-container">
-					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "quota.title") }</h2>
-					@FlashMessage(message, "error")
-					<p><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></p>
+					<div class="page-head">
+						<h1>{ t(ctx, "quota.title") }</h1>
+					</div>
+					<div class="card">
+						<div class="card-body">
+							@FlashMessage(message, "error")
+							<p class="quota-back"><a href="/mail/INBOX" class="btn-secondary">{ t(ctx, "nav.backToMail") }</a></p>
+						</div>
+					</div>
 				</div>
 			</div>
 		</main>

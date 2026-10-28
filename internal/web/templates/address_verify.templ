@@ -10,7 +10,7 @@ type UserAddressInfo struct {
 
 templ AddressVerifyPage(addresses []UserAddressInfo, email, flash, errMsg string) {
 	@LayoutWithContent(t(ctx, "settings.sendAsAddresses"), email) {
-		<aside class="sidebar" id="sidebar">
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			<nav>
 				<ul class="nav-list">
 					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
@@ -29,15 +29,17 @@ templ AddressVerifyPage(addresses []UserAddressInfo, email, flash, errMsg string
 					if errMsg != "" {
 						@FlashMessage(errMsg, "error")
 					}
-					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "settings.sendAsAddresses") }</h2>
-					<p class="u-text-muted u-font-088 u-mb-16px">{ t(ctx, "settings.sendAsDesc") }</p>
+					<div class="page-head">
+						<h1>{ t(ctx, "settings.sendAsAddresses") }</h1>
+					</div>
+					<p class="page-intro">{ t(ctx, "settings.sendAsDesc") }</p>
 					<!-- Address list -->
-					<div class="settings-card u-mb-24px">
-						<div class="settings-card-pad">
+					<div class="card">
+						<div class={ "card-body", templ.KV("flush", len(addresses) > 0) }>
 							if len(addresses) == 0 {
 								<p class="u-text-muted u-font-088">{ t(ctx, "settings.noSendAsAddresses") }</p>
 							} else {
-								<table class="admin-table">
+								<table class="data-table">
 									<thead>
 										<tr>
 											<th scope="col">{ t(ctx, "admin.addressLabel") }</th>
@@ -86,8 +88,8 @@ templ AddressVerifyPage(addresses []UserAddressInfo, email, flash, errMsg string
 						</div>
 					</div>
 					<!-- Add new address -->
-					<div class="settings-card">
-						<div class="settings-card-pad">
+					<div class="card">
+						<div class="card-body">
 							<h3 class="settings-section-title">{ t(ctx, "settings.addSendAsAddress") }</h3>
 							<p class="u-text-muted u-font-088 u-mb-12px">{ t(ctx, "settings.addSendAsDesc") }</p>
 							<form method="post" action="/settings/addresses" class="u-flex-gap-4">
