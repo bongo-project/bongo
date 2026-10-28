@@ -1525,8 +1525,34 @@ document.addEventListener('alpine:init', () => {
     creatingTag: false,
     errorMsg: null,
 
+    countLabel: '%s',
+    colourFmt: '%s',
+    editFmt: '%s',
+    deleteFmt: '%s',
+
     init() {
+      const d = this.$el.dataset;
+      this.countLabel = d.countLabel || this.countLabel;
+      this.colourFmt = d.colourLabel || this.colourFmt;
+      this.editFmt = d.editTagLabel || this.editFmt;
+      this.deleteFmt = d.deleteTagLabel || this.deleteFmt;
       this.loadTags();
+    },
+
+    countTitle(tag) {
+      return this.countLabel.replace('%s', String(tag.count));
+    },
+
+    colourLabel(idx) {
+      return this.colourFmt.replace('%s', String(idx));
+    },
+
+    editLabel(tag) {
+      return this.editFmt.replace('%s', () => tag.name);
+    },
+
+    deleteLabel(tag) {
+      return this.deleteFmt.replace('%s', () => tag.name);
     },
 
     tagPaletteBGClass(index) {
