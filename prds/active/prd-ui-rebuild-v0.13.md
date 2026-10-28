@@ -381,3 +381,13 @@ From the 27.11 rules review (2026-10-28):
 
 - At 390 px the arrow between the conditions and the action stays at the
   end of the chip line when the action wraps to its own line. (27.11)
+
+From the 27.10 contacts review (2026-10-28):
+
+- The detail card lists fields in stored order, so a second email can
+  appear after Notes; group fields by kind. (27.10)
+- At 390 px the Import vCard button is hidden (an older `.import-form`
+  rule), so mobile users can export but not import. (27.10)
+- The calendar and contacts sidebars still use emoji icons and unstyled
+  native file inputs for import/export; US-015 removes the emoji. (27.9,
+  27.10)
