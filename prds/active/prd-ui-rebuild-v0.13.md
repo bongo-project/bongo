@@ -408,3 +408,9 @@ From the 27.14 login review (2026-10-28):
   can scroll inside the code input (as before). (27.14)
 - `address_verify.templ` was not restyled in US-014; US-015, which also
   lists address verification, gives it the auth card. (27.14)
+
+From the 27.13 admin review (2026-10-28):
+
+- The dashboard has no message-rate, spam-rate or delivered-24h figures to
+  show; `SystemHealth.MessageRate` is declared but never set. Collecting
+  them is a feature for a later release (v0.17 operations work). (27.13)
