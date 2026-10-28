@@ -1183,6 +1183,38 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Calendar sidebar show/hide filter. Events carry data-cal-id; the choice
+  // is re-applied after every HTMX swap of the calendar view, since
+  // navigating replaces only the main pane, and remembered per browser.
+  Alpine.data('calendarFilter', () => ({
+    hidden: {},
+
+    init() {
+      try { this.hidden = JSON.parse(localStorage.getItem('bongo.hiddenCalendars') || '{}') || {}; } catch (e) { this.hidden = {}; }
+      this.apply();
+    },
+
+    isShown(id) {
+      return !this.hidden[id];
+    },
+
+    toggle(id, shown) {
+      if (shown) {
+        delete this.hidden[id];
+      } else {
+        this.hidden[id] = true;
+      }
+      try { localStorage.setItem('bongo.hiddenCalendars', JSON.stringify(this.hidden)); } catch (e) { /* private window: filter lasts for this page only */ }
+      this.apply();
+    },
+
+    apply() {
+      document.querySelectorAll('[data-cal-id]').forEach(el => {
+        el.toggleAttribute('hidden', !!this.hidden[el.dataset.calId]);
+      });
+    }
+  }));
+
   // Rule editor conditions. The initial list and the translated operator
   // labels arrive as JSON in data-conditions and data-op-labels; the CSP
   // build cannot evaluate an inline object with methods.

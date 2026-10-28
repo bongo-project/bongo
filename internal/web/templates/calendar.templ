@@ -72,6 +72,7 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 					<a
 						href={ templ.SafeURL("/calendar/event/" + e.Guid) }
 						class={ "event-chip", eventBlockColourClass(e, calColors) }
+						data-cal-id={ eventCalendarID(e) }
 						title={ e.Title }
 					>
 						if !e.AllDay {
@@ -308,6 +309,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 					<a
 						href={ templ.SafeURL("/calendar/event/" + e.Guid) }
 						class={ "event-chip", eventBlockColourClass(e, calColors) }
+						data-cal-id={ eventCalendarID(e) }
 					>
 						{ truncateTitle(e.Title, 16) }
 					</a>
@@ -339,6 +341,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 						href={ templ.SafeURL("/calendar/event/" + block.Event.Guid) }
 						class={ "event-block", calendarTopClass(block.TopMinutes), calendarHeightClass(block.HeightMinutes), block.ColourClass }
 						data-guid={ block.Event.Guid }
+						data-cal-id={ eventCalendarID(block.Event) }
 						data-start={ fmt.Sprint(block.Event.StartTime) }
 						data-end={ fmt.Sprint(block.Event.EndTime) }
 					>
@@ -378,6 +381,7 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 					<a
 						href={ templ.SafeURL("/calendar/event/" + e.Guid) }
 						class={ "event-chip", eventBlockColourClass(e, calColors) }
+						data-cal-id={ eventCalendarID(e) }
 					>
 						{ truncateTitle(e.Title, 30) }
 					</a>
@@ -408,6 +412,7 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 					href={ templ.SafeURL("/calendar/event/" + block.Event.Guid) }
 					class={ "event-block", calendarTopClass(block.TopMinutes), calendarHeightClass(block.HeightMinutes), block.ColourClass }
 					data-guid={ block.Event.Guid }
+						data-cal-id={ eventCalendarID(block.Event) }
 					data-start={ fmt.Sprint(block.Event.StartTime) }
 					data-end={ fmt.Sprint(block.Event.EndTime) }
 				>
@@ -567,14 +572,16 @@ templ MiniCalendar(year, month, selectedDay int) {
 }
 
 templ CalendarListPanel(calendars []*bongov1.Calendar) {
-	<div class="calendar-list-panel" x-data="{ hiddenCals: {} }">
+	<div class="calendar-list-panel" x-data="calendarFilter" x-on:htmx:after-swap.window="apply()">
 		for _, cal := range calendars {
 			<div class="calendar-list-item">
 				<label class="calendar-list-label">
 					<input
 						type="checkbox"
 						checked
-						x-on:change={ fmt.Sprintf("hiddenCals['%s'] = !$el.checked; document.querySelectorAll('[data-cal-id=\"%s\"]').forEach(el => el.toggleAttribute('hidden', !$el.checked))", cal.Guid, cal.Guid) }
+						data-calendar={ cal.Guid }
+						x-bind:checked="isShown($el.dataset.calendar)"
+						x-on:change="toggle($el.dataset.calendar, $el.checked)"
 						class="u-width-auto u-m0"
 					/>
 					<span class={ "cal-color-dot", CalendarColourClass(cal.Color) }></span>
@@ -808,6 +815,15 @@ func eventBlockColor(e *bongov1.Event, calColors map[string]string) string {
 	return "#4A90D9"
 }
 
+// eventCalendarID is the calendar an event is shown under for the sidebar's
+// show/hide filter; an event with no calendar belongs to the default one.
+func eventCalendarID(e *bongov1.Event) string {
+	if e.CalendarId == "" {
+		return "default"
+	}
+	return e.CalendarId
+}
+
 func eventBlockColourClass(e *bongov1.Event, calColors map[string]string) string {
 	return CalendarColourClass(eventBlockColor(e, calColors))
 }
@@ -1028,7 +1044,7 @@ templ AgendaContent(data AgendaData) {
 					<h3 class="agenda-day-head">{ day.Date.Format("Monday, January 2") }</h3>
 					<ul class="agenda-list">
 						for _, it := range day.Items {
-							<li class="agenda-item">
+							<li class="agenda-item" data-cal-id={ eventCalendarID(it.Event) }>
 								<span class="agenda-time">
 									if it.TimeLabel == "" {
 										{ t(ctx, "calendar.allDay") }
