@@ -602,6 +602,7 @@
   "rules.when": "When",
   "rules.forwardToEmail": "Forward to email address",
   "rules.tagsToApply": "Tags to apply",
+  "rules.removeCondition": "Remove condition",
   "rules.removeTag": "Remove tag",
   "rules.tagInputPlaceholder": "Type a tag and press Enter",
   "rules.recentMessagesMatched": "recent messages matched",
