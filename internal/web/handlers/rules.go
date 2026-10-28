@@ -322,9 +322,15 @@ func (h *RulesHandler) parseRuleForm(r *http.Request) *bongov1.FilterRule {
 	}
 
 	// Parse action.
+	// Only move, copy and forward have a target. The editor posts the folder
+	// and forward fields for every action, so other actions must not keep a
+	// stray folder name as their target.
 	actionType := r.FormValue("action_type")
-	target := r.FormValue("action_target")
-	if actionType == "forward" {
+	var target string
+	switch actionType {
+	case "move", "copy":
+		target = r.FormValue("action_target")
+	case "forward":
 		target = r.FormValue("action_target_forward")
 	}
 	rule.Action = &bongov1.FilterAction{

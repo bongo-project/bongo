@@ -1,8 +1,10 @@
 package templates
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 import "fmt"
-import "strings"
 
 // RuleInfo is the template data for a filter rule.
 type RuleInfo struct {
@@ -169,7 +171,9 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 				}
 			</h2>
 			<form method="post" action={ ruleFormAction(rule.ID, isNew) }
-				x-data={ conditionsAlpineData(rule.Conditions) }>
+				x-data="ruleConditions"
+				data-conditions={ ruleConditionsJSON(rule.Conditions) }
+				data-op-labels={ ruleOperatorLabelsJSON(ctx) }>
 				<div class="form-section">
 					<div class="form-section-title">{ t(ctx, "rules.ruleSettings") }</div>
 					<div class="form-group">
@@ -189,7 +193,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 					<div class="form-section-title">{ t(ctx, "rules.conditionsHeader") }</div>
 					<template x-for="(cond, i) in conditions" :key="i">
 						<div class="condition-row">
-							<select :name="'cond_field'" x-model="cond.field" @change="updateOperators(cond)">
+							<select name="cond_field" x-bind:value="cond.field" @change="setField(i, $event.target.value)">
 								<option value="from">{ t(ctx, "rules.fieldFrom") }</option>
 								<option value="to">{ t(ctx, "rules.fieldTo") }</option>
 								<option value="cc">{ t(ctx, "rules.fieldCc") }</option>
@@ -198,38 +202,28 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 								<option value="has_attachment">{ t(ctx, "rules.fieldHasAttachment") }</option>
 								<option value="size">{ t(ctx, "rules.fieldSize") }</option>
 							</select>
-							<select :name="'cond_operator'" x-model="cond.operator">
-								<template x-if="cond.field === 'size'">
-									<template x-for="op in ['greater_than', 'less_than']">
-										<option :value="op" x-text="op.replace('_', ' ')" :selected="cond.operator === op"></option>
-									</template>
-								</template>
-								<template x-if="cond.field === 'has_attachment'">
-									<option value="equals" selected>{ t(ctx, "rules.opEquals") }</option>
-								</template>
-								<template x-if="cond.field !== 'size' && cond.field !== 'has_attachment'">
-									<template x-for="op in ['contains', 'not_contains', 'equals', 'matches']">
-										<option :value="op" x-text="op.replace('_', ' ')" :selected="cond.operator === op"></option>
-									</template>
+							<select name="cond_operator" @change="setOperator(i, $event.target.value)">
+								<template x-for="op in operatorsFor(cond)" :key="op">
+									<option :value="op" x-text="operatorLabel(op)" :selected="cond.operator === op"></option>
 								</template>
 							</select>
-							<template x-if="cond.field === 'has_attachment'">
-								<select :name="'cond_value'" x-model="cond.value">
-									<option value="true">{ t(ctx, "common.yes") }</option>
-									<option value="false">{ t(ctx, "common.no") }</option>
+							<template x-if="isAttachment(cond)">
+								<select name="cond_value" @change="setValue(i, $event.target.value)">
+									<option value="true" x-bind:selected="cond.value !== 'false'">{ t(ctx, "common.yes") }</option>
+									<option value="false" x-bind:selected="cond.value === 'false'">{ t(ctx, "common.no") }</option>
 								</select>
 							</template>
-							<template x-if="cond.field !== 'has_attachment'">
-								<input type="text" :name="'cond_value'" x-model="cond.value" placeholder={ t(ctx, "rules.valuePlaceholder") }/>
+							<template x-if="!isAttachment(cond)">
+								<input type="text" name="cond_value" x-bind:value="cond.value" @input="setValue(i, $event.target.value)" placeholder={ t(ctx, "rules.valuePlaceholder") }/>
 							</template>
-							<button type="button" @click="conditions.splice(i, 1)" class="condition-row-remove" x-bind:hidden="conditions.length <= 1">&#10005;</button>
+							<button type="button" @click="removeCondition(i)" class="condition-row-remove" x-bind:hidden="!canRemove()" aria-label={ t(ctx, "rules.removeCondition") }>&#10005;</button>
 						</div>
 					</template>
-					<button type="button" @click="conditions.push({field:'from', operator:'contains', value:''})" class="btn-outline btn-sm">{ t(ctx, "rules.addCondition") }</button>
+					<button type="button" @click="addCondition()" class="btn-outline btn-sm">{ t(ctx, "rules.addCondition") }</button>
 				</div>
 				<div class="form-section">
 					<div class="form-section-title">{ t(ctx, "rules.actionHeader") }</div>
-					<div x-data={ actionTypeData(rule.Action.Type, rule.Action.Tags) }>
+					<div x-data="ruleAction" data-action-type={ ruleActionType(rule.Action.Type) } data-tags={ ruleTagsJSON(rule.Action.Tags) }>
 						<div class="form-row two-col">
 							<div class="form-group">
 								<label for="action_type">{ t(ctx, "rules.whenMatched") }</label>
@@ -243,7 +237,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 									<option value="tag">{ t(ctx, "rules.actionTag") }</option>
 								</select>
 							</div>
-							<div class="form-group" x-bind:hidden="!(actionType === 'move' || actionType === 'copy')">
+							<div class="form-group" x-bind:hidden="!needsFolder()">
 								<label for="action_target">{ t(ctx, "rules.targetFolder") }</label>
 								<select name="action_target" id="action_target">
 									for _, mb := range mailboxes {
@@ -252,18 +246,18 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 								</select>
 							</div>
 						</div>
-						<div class="form-group" x-bind:hidden="actionType !== 'forward'">
+						<div class="form-group" x-bind:hidden="!isAction('forward')">
 							<label for="action_target_forward">{ t(ctx, "rules.forwardToEmail") }</label>
-							<input type="email" name="action_target_forward" id="action_target_forward" class="form-input" placeholder="user@example.com" value={ rule.Action.Target }/>
+							<input type="email" name="action_target_forward" id="action_target_forward" class="form-input" placeholder="user@example.com" value={ forwardTarget(rule.Action) }/>
 						</div>
-						<div class="form-group" x-bind:hidden="actionType !== 'tag'">
+						<div class="form-group" x-bind:hidden="!isAction('tag')">
 							<label>{ t(ctx, "rules.tagsToApply") }</label>
 							<div class="tag-input-wrapper">
 								<template x-for="(tag, idx) in selectedTags" :key="idx">
 									<span class="tag-pill">
 										<span x-text="tag"></span>
 										<input type="hidden" name="action_tag" :value="tag"/>
-										<button type="button" class="tag-pill-remove" @click="selectedTags.splice(idx,1)" aria-label={ t(ctx, "rules.removeTag") }>&#10005;</button>
+										<button type="button" class="tag-pill-remove" @click="removeTag(idx)" aria-label={ t(ctx, "rules.removeTag") }>&#10005;</button>
 									</span>
 								</template>
 								<input
@@ -326,30 +320,60 @@ func ruleFormAction(id string, isNew bool) templ.SafeURL {
 	return templ.SafeURL("/settings/rules/" + id)
 }
 
-func conditionsAlpineData(conditions []ConditionInfo) string {
-	if len(conditions) == 0 {
-		return "{ conditions: [{field:'from', operator:'contains', value:''}], updateOperators(c) { if(c.field==='size'){c.operator='greater_than'} else if(c.field==='has_attachment'){c.operator='equals';c.value='true'} else if(['greater_than','less_than'].includes(c.operator)){c.operator='contains'} } }"
+// ruleConditionsJSON is the editor's initial condition list for the
+// ruleConditions component, as JSON in a data attribute: the Alpine CSP build
+// cannot evaluate an inline object with methods.
+func ruleConditionsJSON(conditions []ConditionInfo) string {
+	type cond struct {
+		Field    string `json:"field"`
+		Operator string `json:"operator"`
+		Value    string `json:"value"`
 	}
-	var parts []string
+	out := []cond{}
 	for _, c := range conditions {
-		parts = append(parts, fmt.Sprintf("{field:'%s', operator:'%s', value:'%s'}",
-			strings.ReplaceAll(c.Field, "'", "\\'"),
-			strings.ReplaceAll(c.Operator, "'", "\\'"),
-			strings.ReplaceAll(c.Value, "'", "\\'"),
-		))
+		out = append(out, cond{c.Field, c.Operator, c.Value})
 	}
-	return fmt.Sprintf("{ conditions: [%s], updateOperators(c) { if(c.field==='size'){c.operator='greater_than'} else if(c.field==='has_attachment'){c.operator='equals';c.value='true'} else if(['greater_than','less_than'].includes(c.operator)){c.operator='contains'} } }", strings.Join(parts, ", "))
+	if len(out) == 0 {
+		out = append(out, cond{"from", "contains", ""})
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
 
-func actionTypeData(actionType string, tags []string) string {
+// ruleOperatorLabelsJSON maps each condition operator to its translated label.
+func ruleOperatorLabelsJSON(ctx context.Context) string {
+	b, _ := json.Marshal(map[string]string{
+		"contains":     t(ctx, "rules.opContains"),
+		"not_contains": t(ctx, "rules.opNotContains"),
+		"equals":       t(ctx, "rules.opEquals"),
+		"matches":      t(ctx, "rules.opMatches"),
+		"greater_than": t(ctx, "rules.opGreaterThan"),
+		"less_than":    t(ctx, "rules.opLessThan"),
+	})
+	return string(b)
+}
+
+// forwardTarget pre-fills the forward address only on forward rules. Older
+// rules of other types can carry a folder name as their target, which in the
+// hidden type=email field would block the form from submitting.
+func forwardTarget(a ActionInfo) string {
+	if a.Type == "forward" {
+		return a.Target
+	}
+	return ""
+}
+
+func ruleActionType(actionType string) string {
 	if actionType == "" {
-		actionType = "move"
+		return "move"
 	}
-	// Build JS array literal of existing tags.
-	var tagParts []string
-	for _, tag := range tags {
-		tagParts = append(tagParts, fmt.Sprintf("'%s'", strings.ReplaceAll(tag, "'", "\\'")))
+	return actionType
+}
+
+func ruleTagsJSON(tags []string) string {
+	if tags == nil {
+		tags = []string{}
 	}
-	tagsJS := "[" + strings.Join(tagParts, ",") + "]"
-	return fmt.Sprintf("{ actionType: '%s', selectedTags: %s, tagInput: '', addTag() { const v = this.tagInput.trim().replace(/,$/, ''); if (v && !this.selectedTags.includes(v)) { this.selectedTags.push(v); } this.tagInput = ''; } }", actionType, tagsJS)
+	b, _ := json.Marshal(tags)
+	return string(b)
 }

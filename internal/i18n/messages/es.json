@@ -602,6 +602,7 @@
   "rules.when": "Cuando",
   "rules.forwardToEmail": "Reenviar a la dirección de correo",
   "rules.tagsToApply": "Etiquetas a aplicar",
+  "rules.removeCondition": "Quitar condición",
   "rules.removeTag": "Quitar etiqueta",
   "rules.tagInputPlaceholder": "Escriba una etiqueta y pulse Intro",
   "rules.recentMessagesMatched": "mensajes recientes coincidentes",

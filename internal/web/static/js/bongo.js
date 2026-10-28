@@ -1183,6 +1183,105 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Rule editor conditions. The initial list and the translated operator
+  // labels arrive as JSON in data-conditions and data-op-labels; the CSP
+  // build cannot evaluate an inline object with methods.
+  Alpine.data('ruleConditions', () => ({
+    conditions: [],
+    opLabels: {},
+
+    init() {
+      try { this.conditions = JSON.parse(this.$el.dataset.conditions || '[]'); } catch (e) { this.conditions = []; }
+      try { this.opLabels = JSON.parse(this.$el.dataset.opLabels || '{}'); } catch (e) { this.opLabels = {}; }
+      if (this.conditions.length === 0) this.addCondition();
+    },
+
+    operatorsFor(cond) {
+      if (cond.field === 'size') return ['greater_than', 'less_than'];
+      if (cond.field === 'has_attachment') return ['equals'];
+      return ['contains', 'not_contains', 'equals', 'matches'];
+    },
+
+    operatorLabel(op) {
+      return this.opLabels[op] || op;
+    },
+
+    isAttachment(cond) {
+      return cond.field === 'has_attachment';
+    },
+
+    // Row fields are written through these setters: the CSP build forbids
+    // property assignments, so x-model="cond.field" cannot write back.
+    setField(i, field) {
+      const cond = this.conditions[i];
+      if (!cond) return;
+      cond.field = field;
+      this.updateOperators(cond);
+    },
+
+    setOperator(i, op) {
+      if (this.conditions[i]) this.conditions[i].operator = op;
+    },
+
+    setValue(i, value) {
+      if (this.conditions[i]) this.conditions[i].value = value;
+    },
+
+    // Keep the operator (and value) valid for the newly chosen field.
+    updateOperators(cond) {
+      if (cond.field === 'size') {
+        if (cond.operator !== 'less_than') cond.operator = 'greater_than';
+      } else if (cond.field === 'has_attachment') {
+        cond.operator = 'equals';
+        if (cond.value !== 'false') cond.value = 'true';
+      } else if (!this.operatorsFor(cond).includes(cond.operator)) {
+        cond.operator = 'contains';
+      }
+    },
+
+    addCondition() {
+      this.conditions.push({ field: 'from', operator: 'contains', value: '' });
+    },
+
+    removeCondition(i) {
+      if (this.conditions.length > 1) this.conditions.splice(i, 1);
+    },
+
+    canRemove() {
+      return this.conditions.length > 1;
+    }
+  }));
+
+  // Rule editor action: type selector and the tag list for the tag action.
+  Alpine.data('ruleAction', () => ({
+    actionType: 'move',
+    selectedTags: [],
+    tagInput: '',
+
+    init() {
+      this.actionType = this.$el.dataset.actionType || 'move';
+      try { this.selectedTags = JSON.parse(this.$el.dataset.tags || '[]'); } catch (e) { this.selectedTags = []; }
+    },
+
+    isAction(type) {
+      return this.actionType === type;
+    },
+
+    needsFolder() {
+      return this.actionType === 'move' || this.actionType === 'copy';
+    },
+
+    addTag() {
+      const v = this.tagInput.trim().replace(/,$/, '');
+      if (v && !this.selectedTags.includes(v)) this.selectedTags.push(v);
+      this.tagInput = '';
+    },
+
+    removeTag(idx) {
+      this.selectedTags.splice(idx, 1);
+    }
+  }));
+
   // Message detail tag chips: add/remove tags on a single message.
   // Initialised via x-data="messageTags(tags, allTags, mailbox, uid)".
   Alpine.data('messageTags', (initialTags, allTags, mailbox, uid) => ({
