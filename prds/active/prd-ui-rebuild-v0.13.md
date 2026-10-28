@@ -391,3 +391,12 @@ From the 27.10 contacts review (2026-10-28):
 - The calendar and contacts sidebars still use emoji icons and unstyled
   native file inputs for import/export; US-015 removes the emoji. (27.9,
   27.10)
+
+From the 27.12 settings review (2026-10-28):
+
+- ui-shots captures only the first settings tab and an empty tag list, so
+  the switch toggles (Display, Forwarding) and a populated tag list are
+  checked by hand, not by the screenshot run. Add tab and populated-state
+  steps to ui-shots. (27.12)
+- The 2FA-enabled variants (disable form, recovery codes) are covered by
+  template tests only, not rendered in a browser. (27.12)
