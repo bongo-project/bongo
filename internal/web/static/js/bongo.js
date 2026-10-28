@@ -47,6 +47,68 @@ function i18n(key) {
   };
 })();
 
+// Live sidebar unread counts. After any mail request, HTMX or fetch (marking
+// read, opening a message, moving, deleting, spam), and on new mail from the
+// SSE stream, re-read /api/mail/unread-counts and update every
+// [data-unread-for] count and the Unread view badge. Debounced, so a bulk
+// action that fires several requests refreshes once.
+(function () {
+  var timer = null;
+  var origFetch = window.fetch;
+
+  function isMailPath(url) {
+    try {
+      var p = new URL(url, window.location.origin);
+      return p.origin === window.location.origin && p.pathname.indexOf('/mail/') === 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function apply(data) {
+    var counts = (data && data.mailboxes) || {};
+    document.querySelectorAll('[data-unread-for]').forEach(function (el) {
+      var n = counts[el.dataset.unreadFor] || 0;
+      el.textContent = n > 0 ? String(n) : '';
+      el.toggleAttribute('hidden', n === 0);
+      el.setAttribute('aria-label', (el.dataset.unreadLabel || '%d').replace('%d', n));
+    });
+    var badge = document.getElementById('unread-badge');
+    if (badge) badge.textContent = data && data.inbox > 0 ? String(data.inbox) : '';
+  }
+
+  function refresh() {
+    timer = null;
+    if (!document.querySelector('[data-unread-for], #unread-badge')) return;
+    origFetch.call(window, '/api/mail/unread-counts', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) { if (data) apply(data); })
+      .catch(function () { /* the next action retries */ });
+  }
+
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(refresh, 250);
+  }
+  window.refreshUnreadCounts = schedule;
+
+  var wrapped = window.fetch;
+  window.fetch = function (input, init) {
+    var url = (typeof input === 'string') ? input : (input && input.url) || '';
+    var p = wrapped.apply(this, arguments);
+    if (isMailPath(url)) {
+      p.then(schedule, function () { /* failed request changed nothing */ });
+    }
+    return p;
+  };
+
+  document.addEventListener('htmx:afterRequest', function (evt) {
+    var path = evt.detail && evt.detail.pathInfo && evt.detail.pathInfo.requestPath;
+    if (path && isMailPath(path)) schedule();
+  });
+  document.addEventListener('DOMContentLoaded', schedule);
+})();
+
 // CSRF for native (non-HTMX, non-fetch) <form> submissions: a full-page browser
 // POST cannot set an X-CSRF-Token header, so inject the token as a hidden _csrf
 // field on submit. GET forms are skipped so the token never lands in a URL (log
@@ -823,6 +885,7 @@ document.addEventListener('alpine:init', () => {
       this.eventSource = new EventSource('/events?mailbox=INBOX');
 
       this.eventSource.addEventListener('newmail', (e) => {
+        if (window.refreshUnreadCounts) window.refreshUnreadCounts();
         try {
           const data = JSON.parse(e.data);
           if (this.permission === 'granted') {

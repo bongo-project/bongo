@@ -1297,6 +1297,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			mailH.SetTagStore(store.NewTagStore(a.Store, a))
 			r.Get("/mail/tag/{name}", mailH.ListTagMessages)
+			r.Get("/api/mail/unread-counts", mailH.UnreadCounts)
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
 			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)

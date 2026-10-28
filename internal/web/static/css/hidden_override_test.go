@@ -7,8 +7,8 @@ import (
 )
 
 // hiddenToggledPanels are shown and hidden only through the hidden attribute
-// (x-bind:hidden), never x-show.
-var hiddenToggledPanels = []string{".tag-dropdown", ".msg-more-menu", ".context-menu"}
+// (x-bind:hidden, or refreshUnreadCounts for the sidebar counts), never x-show.
+var hiddenToggledPanels = []string{".tag-dropdown", ".msg-more-menu", ".context-menu", ".unread"}
 
 // TestDisplayRulesOnToggledPanelsKeepHiddenWorking: a class rule that sets
 // display beats the user-agent [hidden]{display:none}. The tag popover sat open
