@@ -300,7 +300,7 @@ func assertAllDayViews(t *testing.T, e *allDayEnv) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, col := range buildWeekColumns(isoWeekMonday(2026, 45), all, nil) {
+	for _, col := range buildWeekColumns(isoWeekMonday(2026, 45, time.Local), all, nil, time.Now()) {
 		if got, want := len(col.AllDay), map[bool]int{true: 1, false: 0}[col.DateStr == "2026-11-05"]; got != want {
 			t.Errorf("week column %s holds %d all-day events, want %d", col.DateStr, got, want)
 		}

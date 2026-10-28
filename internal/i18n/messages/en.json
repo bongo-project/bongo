@@ -81,6 +81,8 @@
   "compose.reply": "Compose: Reply",
   "compose.forward": "Compose: Forward",
   "compose.editDraft": "Compose: Edit Draft",
+  "calendar.agenda": "Agenda",
+  "calendar.agendaEmpty": "Nothing scheduled in this range.",
   "calendar.month": "Month",
   "calendar.week": "Week",
   "calendar.day": "Day",

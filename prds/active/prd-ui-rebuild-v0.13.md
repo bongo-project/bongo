@@ -414,3 +414,10 @@ From the 27.13 admin review (2026-10-28):
 - The dashboard has no message-rate, spam-rate or delivered-24h figures to
   show; `SystemHealth.MessageRate` is declared but never set. Collecting
   them is a feature for a later release (v0.17 operations work). (27.13)
+
+From the 27.9 calendar review (2026-10-28):
+
+- Agenda day headings use Go's English date layout, not a localised one;
+  the other calendar views share the same limitation. (27.9)
+- The calendar sidebar's import control is still a native file input
+  (export is a styled button); 27.15 covers the sidebar emoji. (27.9)

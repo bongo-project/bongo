@@ -7,11 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/bongo-project/bongo/internal/auth"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 func TestWeekDayViews(t *testing.T) {
@@ -252,5 +254,96 @@ func TestSharedCalendar(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "start") {
 		t.Error("freebusy response should contain busy blocks with start/end")
+	}
+}
+
+// TestAgendaRouteAuthAndHTMX checks /calendar/agenda sits behind the session
+// check like the other calendar routes, and serves a full page or an HTMX
+// fragment to a signed-in user.
+func TestAgendaRouteAuthAndHTMX(t *testing.T) {
+	_, baseURL, client, cancel := startDragonflyAgent(t)
+	defer cancel()
+
+	bare := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := bare.Get(baseURL + "/calendar/agenda")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("sessionless GET /calendar/agenda: status %d, want a redirect to login or 401", resp.StatusCode)
+	}
+	if resp.StatusCode != http.StatusUnauthorized && !strings.HasPrefix(resp.Header.Get("Location"), "/login") {
+		t.Fatalf("sessionless GET /calendar/agenda redirected to %q, want /login", resp.Header.Get("Location"))
+	}
+
+	get := func(htmx bool) string {
+		req, _ := http.NewRequest("GET", baseURL+"/calendar/agenda", nil)
+		if htmx {
+			req.Header.Set("HX-Request", "true")
+		}
+		r, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		if r.StatusCode != http.StatusOK {
+			t.Fatalf("GET /calendar/agenda htmx=%v: status %d", htmx, r.StatusCode)
+		}
+		b, _ := io.ReadAll(r.Body)
+		return string(b)
+	}
+	if full := get(false); !strings.Contains(full, "<html") || !strings.Contains(full, `id="agenda"`) {
+		t.Error("full page should include the layout and the agenda container")
+	}
+	if part := get(true); strings.Contains(part, "<html") || !strings.Contains(part, `id="agenda"`) {
+		t.Error("HTMX response should be the fragment with the agenda container")
+	}
+}
+
+// TestAgendaUsesPreferenceZone guards the agent wiring of the agenda's zone
+// source: a 23:30 UTC event belongs to the next day for a user whose zone
+// preference is Pacific/Auckland (UTC+12 or +13), and to its own day under
+// the UTC default.
+func TestAgendaUsesPreferenceZone(t *testing.T) {
+	a, baseURL, client, cancel := startDragonflyAgent(t)
+	defer cancel()
+
+	userID := findUserID(t, a.Store)
+	if userID == "" {
+		t.Fatal("could not find user ID")
+	}
+	if _, err := a.Calendars.EnsureDefault(userID); err != nil {
+		t.Fatal(err)
+	}
+	day := time.Date(2030, 6, 10, 23, 30, 0, 0, time.UTC)
+	if _, err := a.Events.Create(userID, &bongov1.Event{
+		Title: "Zone Probe", CalendarId: "default",
+		StartTime: day.Unix(), EndTime: day.Add(time.Hour).Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	dates := func() string {
+		resp, err := client.Get(baseURL + "/calendar/agenda?from=2030-06-01")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		m := regexp.MustCompile(`data-agenda-date="([0-9-]+)"`).FindStringSubmatch(string(b))
+		if m == nil {
+			t.Fatalf("no agenda day found: %s", b)
+		}
+		return m[1]
+	}
+	if got := dates(); got != "2030-06-10" {
+		t.Fatalf("UTC default: day %s, want 2030-06-10", got)
+	}
+	if err := a.Preferences.Set(userID, &bongov1.UserPreferences{Timezone: "Pacific/Auckland"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := dates(); got != "2030-06-11" {
+		t.Fatalf("Auckland preference: day %s, want 2030-06-11 (SetZoneSource wiring)", got)
 	}
 }

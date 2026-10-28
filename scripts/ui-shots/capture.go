@@ -52,6 +52,7 @@ func routeSpecs(now time.Time) []routeSpec {
 		{name: "calendar-month", path: "/calendar"},
 		{name: "calendar-week", path: fmt.Sprintf("/calendar/week/%d/%d", year, week)},
 		{name: "calendar-day", path: fmt.Sprintf("/calendar/day/%d/%d/%d", now.Year(), int(now.Month()), now.Day())},
+		{name: "calendar-agenda", path: "/calendar/agenda"},
 		{name: "contacts", path: "/contacts"},
 		{name: "junk", path: "/mail/Junk"},
 		{name: "rules", path: "/settings/rules"},

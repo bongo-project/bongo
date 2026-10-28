@@ -6,12 +6,31 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 
 	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 )
+
+type calendarClockKey struct{}
+
+// WithCalendarNow records the current time in the user's calendar zone. The
+// calendar views read today and the zone from it, so a handler decides both
+// once and every component in the render agrees.
+func WithCalendarNow(ctx context.Context, now time.Time) context.Context {
+	return context.WithValue(ctx, calendarClockKey{}, now)
+}
+
+// calendarNow returns the time recorded by WithCalendarNow, or the process
+// clock when a component is rendered without it.
+func calendarNow(ctx context.Context) time.Time {
+	if now, ok := ctx.Value(calendarClockKey{}).(time.Time); ok {
+		return now
+	}
+	return time.Now()
+}
 
 // jsMessageIDs are the translation keys that bongo.js needs at runtime. They
 // are serialized into the #i18n-data element by layout.templ and read by the

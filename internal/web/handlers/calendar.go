@@ -37,6 +37,43 @@ type CalendarHandler struct {
 	shares    shareTargetResolver
 	// shareLimiter caps ShareCalendar requests per user. nil = unlimited.
 	shareLimiter shareRateLimiter
+	// zones supplies the user's preferred time zone to the agenda. nil falls
+	// back to the process zone, which the month, week and day views use.
+	zones zoneSource
+	// now is the clock; nil means time.Now. Tests inject a fixed one.
+	now func() time.Time
+}
+
+// zoneSource resolves a user's preferred time zone.
+type zoneSource interface {
+	Location(userID string) *time.Location
+}
+
+// SetZoneSource wires the user time-zone preference the agenda reads.
+func (h *CalendarHandler) SetZoneSource(z zoneSource) { h.zones = z }
+
+// nowIn returns the current time in the user's zone, the one every calendar
+// view groups days, marks today and builds Today links in.
+func (h *CalendarHandler) nowIn(userID string) time.Time {
+	now := time.Now
+	if h.now != nil {
+		now = h.now
+	}
+	return now().In(h.userLocation(userID))
+}
+
+// clockRequest returns r carrying the user's current time, so the templates
+// mark today and render times in the same zone the handler grouped days in.
+func clockRequest(r *http.Request, now time.Time) *http.Request {
+	return r.WithContext(templates.WithCalendarNow(r.Context(), now))
+}
+
+// userLocation returns the zone every calendar view groups days in.
+func (h *CalendarHandler) userLocation(userID string) *time.Location {
+	if h.zones != nil {
+		return h.zones.Location(userID)
+	}
+	return time.Local
 }
 
 // shareRateLimiter is the per-user limiter ShareCalendar consults.
@@ -73,7 +110,8 @@ func (h *CalendarHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 
 // CalendarIndex redirects to the current month view.
 func (h *CalendarHandler) CalendarIndex(w http.ResponseWriter, r *http.Request) {
-	now := time.Now()
+	userID, _ := middleware.UserFromContext(r.Context())
+	now := h.nowIn(userID)
 	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d", now.Year(), int(now.Month())), http.StatusSeeOther)
 }
 
@@ -99,13 +137,16 @@ func (h *CalendarHandler) MonthView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	calendars, _ := h.calendars.List(userID)
+	calColorMap := buildCalColorMap(calendars)
 
 	// Load events for every visible cell, including the neighbouring months'
 	// days in the first and last weeks. The one-day widening each side is
 	// defensive: it only matters for a zero-length all-day event (DTEND ==
 	// DTSTART), whose end sits at its UTC midnight, before the local midnight
 	// of a cell in a zone west of UTC.
-	loc := time.Now().Location()
+	now := h.nowIn(userID)
+	loc := now.Location()
+	r = clockRequest(r, now)
 	gridStart, gridEnd := monthGridRange(year, time.Month(month), loc)
 	events, err := h.events.ListByDateRange(userID, gridStart.AddDate(0, 0, -1).Unix(), gridEnd.AddDate(0, 0, 1).Unix(), "")
 	if err != nil {
@@ -114,17 +155,17 @@ func (h *CalendarHandler) MonthView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build day cells for the grid.
-	days := buildMonthGrid(year, time.Month(month), events, loc)
+	days := buildMonthGrid(year, time.Month(month), events, now)
 
 	flash := r.URL.Query().Get("flash")
 
 	// Check if HTMX partial request.
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.CalendarMonthGrid(year, month, days, calendars)).ServeHTTP(w, r)
+		templ.Handler(templates.CalendarMonthGrid(year, month, days, calendars, calColorMap)).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.CalendarPage(year, month, days, calendars, email, flash)).ServeHTTP(w, r)
+	templ.Handler(templates.CalendarPage(year, month, days, calendars, calColorMap, email, flash)).ServeHTTP(w, r)
 }
 
 // WeekView renders the calendar week view.
@@ -150,7 +191,9 @@ func (h *CalendarHandler) WeekView(w http.ResponseWriter, r *http.Request) {
 	calColorMap := buildCalColorMap(calendars)
 
 	// Find Monday of the given ISO week.
-	weekStart := isoWeekMonday(year, week)
+	now := h.nowIn(userID)
+	r = clockRequest(r, now)
+	weekStart := isoWeekMonday(year, week, now.Location())
 	weekEnd := weekStart.AddDate(0, 0, 7)
 
 	events, err := h.events.ListByDateRange(userID, weekStart.Unix(), weekEnd.Unix(), "")
@@ -159,7 +202,7 @@ func (h *CalendarHandler) WeekView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	days := buildWeekColumns(weekStart, events, calColorMap)
+	days := buildWeekColumns(weekStart, events, calColorMap, now)
 
 	flash := r.URL.Query().Get("flash")
 
@@ -198,8 +241,9 @@ func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
 	calendars, _ := h.calendars.List(userID)
 	calColorMap := buildCalColorMap(calendars)
 
-	loc := time.Now().Location()
-	date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, loc)
+	now := h.nowIn(userID)
+	r = clockRequest(r, now)
+	date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, now.Location())
 	dayEnd := date.AddDate(0, 0, 1)
 
 	events, err := h.events.ListByDateRange(userID, date.Unix(), dayEnd.Unix(), "")
@@ -208,7 +252,7 @@ func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	col := buildDayColumn(date, events, calColorMap)
+	col := buildDayColumn(date, events, calColorMap, now)
 
 	flash := r.URL.Query().Get("flash")
 
@@ -218,6 +262,111 @@ func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templ.Handler(templates.DayViewPage(date, col, calendars, calColorMap, email, flash)).ServeHTTP(w, r)
+}
+
+// agendaRangeDays is the fixed agenda length. It is not a request parameter:
+// recurrence expansion has no occurrence cap, so a caller-chosen range would
+// let one request expand a daily rule across years.
+const agendaRangeDays = 30
+
+// AgendaView renders the agenda: the next agendaRangeDays days from ?from
+// (default today), grouped by day in the user's time zone.
+func (h *CalendarHandler) AgendaView(w http.ResponseWriter, r *http.Request) {
+	userID, email := middleware.UserFromContext(r.Context())
+	now := h.nowIn(userID)
+	loc := now.Location()
+	r = clockRequest(r, now)
+
+	var from time.Time
+	if raw := r.URL.Query().Get("from"); raw != "" {
+		d, err := time.ParseInLocation("2006-01-02", raw, loc)
+		if err != nil {
+			http.Error(w, "invalid from date", http.StatusBadRequest)
+			return
+		}
+		from = d
+	} else {
+		from = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	}
+
+	if _, err := h.calendars.EnsureDefault(userID); err != nil {
+		http.Error(w, "failed to init calendar", http.StatusInternalServerError)
+		return
+	}
+	calendars, _ := h.calendars.List(userID)
+	calColorMap := buildCalColorMap(calendars)
+
+	to := from.AddDate(0, 0, agendaRangeDays)
+	events, err := h.events.ListByDateRange(userID, from.Unix(), to.Unix(), "")
+	if err != nil {
+		http.Error(w, "failed to load events", http.StatusInternalServerError)
+		return
+	}
+
+	data := templates.AgendaData{
+		From:      from,
+		To:        to.AddDate(0, 0, -1),
+		Days:      buildAgenda(from, agendaRangeDays, events, calColorMap, loc),
+		PrevPath:  agendaFromPath(from.AddDate(0, 0, -agendaRangeDays)),
+		NextPath:  agendaFromPath(to),
+		TodayPath: "/calendar/agenda",
+	}
+
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.AgendaContent(data)).ServeHTTP(w, r)
+		return
+	}
+	templ.Handler(templates.AgendaPage(data, calendars, email, r.URL.Query().Get("flash"))).ServeHTTP(w, r)
+}
+
+func agendaFromPath(d time.Time) string {
+	return "/calendar/agenda?from=" + d.Format("2006-01-02")
+}
+
+// buildAgenda groups events by day over [from, from+days) in loc. All-day
+// events keep their UTC date (eventDateKey). The store query overlaps the
+// neighbouring day, so occurrences whose date falls outside the range are
+// dropped here. Within a day, all-day events come first, then start time.
+func buildAgenda(from time.Time, days int, events []*bongov1.Event, calColorMap map[string]string, loc *time.Location) []templates.AgendaDay {
+	first := from.In(loc)
+	firstKey := first.Format("2006-01-02")
+	endKey := first.AddDate(0, 0, days).Format("2006-01-02")
+
+	type keyed struct {
+		key string
+		ev  *bongov1.Event
+	}
+	var in []keyed
+	for _, e := range events {
+		k := eventDateKey(e, loc)
+		if k < firstKey || k >= endKey {
+			continue
+		}
+		in = append(in, keyed{k, e})
+	}
+	sort.SliceStable(in, func(a, b int) bool {
+		if in[a].key != in[b].key {
+			return in[a].key < in[b].key
+		}
+		if in[a].ev.AllDay != in[b].ev.AllDay {
+			return in[a].ev.AllDay
+		}
+		return in[a].ev.StartTime < in[b].ev.StartTime
+	})
+
+	var out []templates.AgendaDay
+	for _, k := range in {
+		if n := len(out); n == 0 || out[n-1].Date.Format("2006-01-02") != k.key {
+			d, _ := time.ParseInLocation("2006-01-02", k.key, loc)
+			out = append(out, templates.AgendaDay{Date: d})
+		}
+		item := templates.AgendaItem{Event: k.ev, ColourClass: templates.EventColourClass(k.ev, calColorMap)}
+		if !k.ev.AllDay {
+			item.TimeLabel = time.Unix(k.ev.StartTime, 0).In(loc).Format("15:04")
+		}
+		out[len(out)-1].Items = append(out[len(out)-1].Items, item)
+	}
+	return out
 }
 
 // RescheduleEvent handles POST to update only start/end times (drag-and-drop).
@@ -479,6 +628,7 @@ func (h *CalendarHandler) NewEvent(w http.ResponseWriter, r *http.Request) {
 	date := r.URL.Query().Get("date")
 
 	calendars, _ := h.calendars.List(userID)
+	r = clockRequest(r, h.nowIn(userID))
 
 	templ.Handler(templates.EventFormPage(nil, calendars, true, date, email)).ServeHTTP(w, r)
 }
@@ -487,7 +637,7 @@ func (h *CalendarHandler) NewEvent(w http.ResponseWriter, r *http.Request) {
 func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
-	event, err := parseEventForm(r)
+	event, err := parseEventForm(r, h.userLocation(userID))
 	if err != nil {
 		http.Error(w, "invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
@@ -506,7 +656,7 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t := eventMonthTime(event)
+	t := eventMonthTime(event, h.userLocation(userID))
 	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+created", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
@@ -523,6 +673,7 @@ func (h *CalendarHandler) ShowEvent(w http.ResponseWriter, r *http.Request) {
 
 	calendars, _ := h.calendars.List(userID)
 
+	r = clockRequest(r, h.nowIn(userID))
 	templ.Handler(templates.EventFormPage(event, calendars, false, "", email)).ServeHTTP(w, r)
 }
 
@@ -537,7 +688,7 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := parseEventForm(r)
+	updated, err := parseEventForm(r, h.userLocation(userID))
 	if err != nil {
 		http.Error(w, "invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
@@ -586,7 +737,7 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t := eventMonthTime(updated)
+	t := eventMonthTime(updated, h.userLocation(userID))
 	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+updated", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
@@ -609,7 +760,7 @@ func (h *CalendarHandler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if event != nil {
-		t := eventMonthTime(event)
+		t := eventMonthTime(event, h.userLocation(userID))
 		http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+deleted", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 		return
 	}
@@ -862,7 +1013,9 @@ func encodeEventGroup(src *ical.Calendar, group []*ical.Component) ([]byte, erro
 
 // MiniCalendar returns the mini calendar sidebar as an HTMX partial.
 func (h *CalendarHandler) MiniCalendar(w http.ResponseWriter, r *http.Request) {
-	now := time.Now()
+	userID, _ := middleware.UserFromContext(r.Context())
+	now := h.nowIn(userID)
+	r = clockRequest(r, now)
 	year := now.Year()
 	month := int(now.Month())
 	day := now.Day()
@@ -910,6 +1063,7 @@ func (h *CalendarHandler) SearchEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	r = clockRequest(r, h.nowIn(userID))
 	templ.Handler(templates.CalendarSearchResults(events, query, email)).ServeHTTP(w, r)
 }
 
@@ -922,16 +1076,19 @@ func normaliseNewlines(s string) string {
 }
 
 // eventMonthTime is the time whose year and month the redirect after saving
-// should show: an all-day event's UTC date, otherwise its start in local time.
-func eventMonthTime(e *bongov1.Event) time.Time {
+// should show: an all-day event's UTC date, otherwise its start in loc.
+func eventMonthTime(e *bongov1.Event, loc *time.Location) time.Time {
 	if e.AllDay {
 		return icalevent.AllDayDate(e.StartTime)
 	}
-	return time.Unix(e.StartTime, 0)
+	return time.Unix(e.StartTime, 0).In(loc)
 }
 
 // parseEventForm extracts event data from form values.
-func parseEventForm(r *http.Request) (*bongov1.Event, error) {
+//
+// Timed events are read in loc, the zone the views show them in. All-day
+// events are dates and are read in UTC.
+func parseEventForm(r *http.Request, loc *time.Location) (*bongov1.Event, error) {
 	event := &bongov1.Event{
 		Title:       normaliseNewlines(r.FormValue("title")),
 		Description: normaliseNewlines(r.FormValue("description")),
@@ -960,9 +1117,8 @@ func parseEventForm(r *http.Request) (*bongov1.Event, error) {
 		return nil, fmt.Errorf("start date is required")
 	}
 
-	// Timed events are read in the server's zone. All-day events are dates:
-	// CalDAV stores them at UTC midnight, so they are read in UTC.
-	loc := time.Now().Location()
+	// All-day events are dates: CalDAV stores them at UTC midnight, so they
+	// are read in UTC.
 	if event.AllDay {
 		t, err := time.ParseInLocation("2006-01-02", startDate, time.UTC)
 		if err != nil {
@@ -1176,13 +1332,15 @@ func monthGridRange(year int, month time.Month, loc *time.Location) (start, end 
 }
 
 // buildMonthGrid builds a 6-week grid of day cells for the given month.
-func buildMonthGrid(year int, month time.Month, events []*bongov1.Event, loc *time.Location) []templates.DayCell {
+// now carries both the zone the grid is laid out in and the instant that
+// marks today.
+func buildMonthGrid(year int, month time.Month, events []*bongov1.Event, now time.Time) []templates.DayCell {
+	loc := now.Location()
 	firstDay := time.Date(year, month, 1, 0, 0, 0, 0, loc)
 	lastDay := firstDay.AddDate(0, 1, -1)
 	gridStart, _ := monthGridRange(year, month, loc)
 
-	today := time.Now().In(loc)
-	todayDate := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
+	todayDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 
 	// Build event map by date string.
 	eventsByDate := make(map[string][]*bongov1.Event)
@@ -1226,9 +1384,9 @@ func buildCalColorMap(calendars []*bongov1.Calendar) map[string]string {
 }
 
 // isoWeekMonday returns the Monday of the given ISO week.
-func isoWeekMonday(year, week int) time.Time {
+func isoWeekMonday(year, week int, loc *time.Location) time.Time {
 	// Jan 4 is always in week 1 of the year.
-	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.Now().Location())
+	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, loc)
 	// Find Monday of week 1.
 	weekday := int(jan4.Weekday())
 	if weekday == 0 {
@@ -1240,10 +1398,9 @@ func isoWeekMonday(year, week int) time.Time {
 }
 
 // buildWeekColumns builds 7 DayColumn structs for week view.
-func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap map[string]string) []templates.DayColumn {
+func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap map[string]string, now time.Time) []templates.DayColumn {
 	loc := weekStart.Location()
-	today := time.Now().In(loc)
-	todayDate := today.Format("2006-01-02")
+	todayDate := now.In(loc).Format("2006-01-02")
 
 	// Group events by date.
 	eventsByDate := make(map[string][]*bongov1.Event)
@@ -1310,9 +1467,9 @@ func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap 
 }
 
 // buildDayColumn builds a DayColumn for day view.
-func buildDayColumn(date time.Time, events []*bongov1.Event, calColorMap map[string]string) templates.DayColumn {
+func buildDayColumn(date time.Time, events []*bongov1.Event, calColorMap map[string]string, now time.Time) templates.DayColumn {
 	loc := date.Location()
-	today := time.Now().In(loc)
+	today := now.In(loc)
 
 	// The range query overlaps neighbouring days, so an all-day event stored
 	// at UTC midnight can arrive for the day before or after its date.
