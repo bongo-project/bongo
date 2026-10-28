@@ -2037,6 +2037,17 @@ function initContactsPage() {
   createForm.dataset.contactFormReady = 'true';
 }
 
+var pendingContactReveal = null;
+
+// Picking a vCard file submits the import form; the submit button stays in
+// the markup (visually hidden) so the form still works without JS.
+document.addEventListener('change', function(e) {
+  var input = e.target;
+  if (!input || !input.matches || !input.matches('.contacts-head input[name="vcf"]')) return;
+  if (!input.files || input.files.length === 0 || !input.form) return;
+  if (input.form.requestSubmit) input.form.requestSubmit();
+});
+
 document.addEventListener('click', function(e) {
   var copyBtn = e.target.closest('[data-copy-previous]');
   if (copyBtn) {
@@ -2078,6 +2089,16 @@ document.addEventListener('click', function(e) {
     return;
   }
 
+  var editToggle = e.target.closest('[data-contact-edit-toggle]');
+  if (editToggle) {
+    var card = editToggle.closest('.contact-detail-card');
+    var editor = card ? card.querySelector('.contact-editor') : null;
+    if (!editor) return;
+    editor.toggleAttribute('hidden');
+    editToggle.setAttribute('aria-expanded', String(!editor.hasAttribute('hidden')));
+    return;
+  }
+
   var contactRow = e.target.closest('[data-contact-select]');
   if (contactRow) {
     document.querySelectorAll('.contact-card').forEach(function(card) {
@@ -2086,6 +2107,16 @@ document.addEventListener('click', function(e) {
     contactRow.classList.add('selected');
     var panes = document.getElementById('contacts-panes');
     if (panes) panes.classList.add('showing-detail');
+    if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+      if (pendingContactReveal) document.body.removeEventListener('htmx:afterSettle', pendingContactReveal);
+      pendingContactReveal = function revealContactDetail(ev) {
+        if (!ev.target || ev.target.id !== 'contact-detail') return;
+        document.body.removeEventListener('htmx:afterSettle', revealContactDetail);
+        pendingContactReveal = null;
+        ev.target.scrollIntoView({block: 'start'});
+      };
+      document.body.addEventListener('htmx:afterSettle', pendingContactReveal);
+    }
     return;
   }
 

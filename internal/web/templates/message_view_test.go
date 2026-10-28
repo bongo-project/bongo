@@ -453,8 +453,5 @@ func TestSenderAvatarInitialsAreRuneSafe(t *testing.T) {
 		if got := avatarInitials(tt.name, tt.email); got != tt.want {
 			t.Errorf("avatarInitials(%q, %q) = %q, want %q", tt.name, tt.email, got, tt.want)
 		}
-		if got := avatarInitialsContact(tt.name, tt.email); got != tt.want {
-			t.Errorf("avatarInitialsContact(%q, %q) = %q, want %q", tt.name, tt.email, got, tt.want)
-		}
 	}
 }

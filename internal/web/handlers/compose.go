@@ -193,19 +193,39 @@ func (h *ComposeHandler) buildFromPickerOptions(userID, primaryEmail string) (op
 	return options, selected
 }
 
-// NewMessage renders the compose form.
+// maxComposeToBytes caps the ?to= prefill (the RFC 5321 path limit).
+const maxComposeToBytes = 320
+
+// composeToPrefill returns raw when it is exactly one bare address, with no
+// line breaks and within the length cap, and "" otherwise. The value is shown
+// in an input and later reused as a recipient, so anything else is dropped.
+func composeToPrefill(raw string) string {
+	// The CR/LF and display-name checks are redundant with addr.Address != raw below; kept as defence in depth.
+	if raw == "" || len(raw) > maxComposeToBytes || strings.ContainsAny(raw, "\r\n") {
+		return ""
+	}
+	addr, err := netmail.ParseAddress(raw)
+	if err != nil || addr.Name != "" || addr.Address != raw {
+		return ""
+	}
+	return addr.Address
+}
+
+// NewMessage renders the compose form. A single valid ?to= address prefills
+// the recipient (used by the Email button on a contact).
 func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
+	to := composeToPrefill(r.URL.Query().Get("to"))
 	userID, email := middleware.UserFromContext(r.Context())
 	body := h.signatureBody(userID)
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("new", "", "", "", body, "", 0, fromOpts, fromSel, "")).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("new", to, "", "", body, "", 0, fromOpts, fromSel, "")).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel, "")).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("new", to, "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
 // maxQuickReplyRunes caps the quick reply text carried by the quick reply form.
