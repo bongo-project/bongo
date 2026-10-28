@@ -297,8 +297,9 @@ view badge updates live, and only for new INBOX mail (`sse.go`).
       sidebar versus header counts stays open).
 - [ ] The count's accessible label ("%d unread messages") is translated in
       en, de, es and fr.
-- [ ] Handler tests assert the updated counts are sent after each of those
-      actions.
+- [ ] The counts come from one endpoint the page re-reads after a mail
+      action; a handler test asserts it reflects marking read and unread,
+      deleting, and subfolder mail.
 
 ## 4. Functional Requirements
 
