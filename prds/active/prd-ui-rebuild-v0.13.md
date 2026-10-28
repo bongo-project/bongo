@@ -524,3 +524,11 @@ From the 27.16 rule editor work (2026-10-28):
   never update. The inputs still post their DOM values, so saving works,
   but anything that reads the model (adding or removing a row) can lose
   typed values. Use setters as the rule editor now does.
+
+From CI on PR #108 (2026-10-28):
+
+- `TestSweepGhostUserTrees` (internal/agent) failed once in CI with
+  `SQLITE_BUSY` from `auth.CreateUser` writing the address record while the
+  running agent's background workers held the per-user SQLite database. It
+  passed on re-run and 20 of 20 times locally under -race. Retry or wait on
+  SQLITE_BUSY in the address store, or quiesce the workers in the test.
