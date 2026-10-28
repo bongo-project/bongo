@@ -421,3 +421,20 @@ From the 27.9 calendar review (2026-10-28):
   the other calendar views share the same limitation. (27.9)
 - The calendar sidebar's import control is still a native file input
   (export is a styled button); 27.15 covers the sidebar emoji. (27.9)
+
+From the 27.15 remaining-pages review (2026-10-28):
+
+- The mobile search entry point (27.2 note) was not added: at 390 px there is
+  still no search field, so Ctrl-K and "/" have nothing to focus. Deferred to
+  the next release. (27.15)
+- The calendar sidebar's mini-calendar, calendar list and event search are
+  still the old controls (boxed day cells, native checkbox); only their emoji
+  were replaced. (27.15)
+- The quota-refused page and the admin DNS copy button (now a text button)
+  are covered by template tests only; the dev seed has no quota-limited user
+  and no domain to capture. (27.15)
+- In compact density the search snippet is hidden, as in the mailbox list.
+  (27.15)
+- `address_verify.templ` is the signed-in send-as addresses page, not a
+  public page, so it took the card and data-table styles rather than the
+  auth card the 27.14 note expected. (27.15)
