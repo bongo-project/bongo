@@ -3,6 +3,7 @@ package css_test
 import (
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -142,6 +143,234 @@ func TestIntroducedAliasesDefinedInBothThemes(t *testing.T) {
 		}
 		if !def.MatchString(dark[1]) {
 			t.Errorf("%s -> %s is not defined in the dark token block", alias, m[1])
+		}
+	}
+}
+
+// cssBlock returns the body of the first brace block opened at the end of loc
+// (a regexp match ending in "{"), balancing nested braces.
+func cssBlock(src string, loc []int) string {
+	depth, start := 1, loc[1]
+	for i := start; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[start:i]
+			}
+		}
+	}
+	return ""
+}
+
+var cssCommentRe = regexp.MustCompile(`(?s)/\*.*?\*/`)
+
+func cssDecls(body string) map[string]string {
+	out := map[string]string{}
+	for _, d := range strings.Split(cssCommentRe.ReplaceAllString(body, ""), ";") {
+		name, val, ok := strings.Cut(d, ":")
+		if !ok {
+			continue
+		}
+		out[strings.TrimSpace(name)] = strings.Join(strings.Fields(val), " ")
+	}
+	return out
+}
+
+// cssRules parses flat "selector { body }" rules (no nesting).
+func cssRules(body string) map[string]map[string]string {
+	out := map[string]map[string]string{}
+	body = cssCommentRe.ReplaceAllString(body, "")
+	for {
+		open := strings.Index(body, "{")
+		if open < 0 {
+			return out
+		}
+		end := strings.Index(body, "}")
+		sel := strings.Join(strings.Fields(body[:open]), " ")
+		if out[sel] == nil {
+			out[sel] = map[string]string{}
+		}
+		for k, v := range cssDecls(body[open+1 : end]) {
+			out[sel][k] = v
+		}
+		body = body[end+1:]
+	}
+}
+
+var (
+	specNotRe  = regexp.MustCompile(`:not\(([^)]*)\)`)
+	specAttrRe = regexp.MustCompile(`\[[^\]]*\]`)
+	specClsRe  = regexp.MustCompile(`\.[A-Za-z_-][\w-]*`)
+	specPseuRe = regexp.MustCompile(`:[a-z-]+`)
+	specElemRe = regexp.MustCompile(`(^|[\s>+~])[a-z][a-z0-9]*`)
+)
+
+// specificity returns (classes+attributes+pseudo-classes, elements) for a
+// selector without ids; enough for the selectors in these files.
+func specificity(sel string) [2]int {
+	var s [2]int
+	for {
+		m := specNotRe.FindStringSubmatchIndex(sel)
+		if m == nil {
+			break
+		}
+		inner := specificity(sel[m[2]:m[3]])
+		s[0] += inner[0]
+		s[1] += inner[1]
+		sel = sel[:m[0]] + sel[m[1]:]
+	}
+	s[0] += len(specAttrRe.FindAllString(sel, -1))
+	sel = specAttrRe.ReplaceAllString(sel, "")
+	s[0] += len(specClsRe.FindAllString(sel, -1))
+	s[0] += len(specPseuRe.FindAllString(sel, -1))
+	s[1] += len(specElemRe.FindAllString(sel, -1))
+	return s
+}
+
+func specAtLeast(a, b [2]int) bool {
+	return a[0] > b[0] || (a[0] == b[0] && a[1] >= b[1])
+}
+
+// Public pages ship data-theme="auto" and no script, so the only way they can
+// render dark is CSS keyed on prefers-color-scheme. Each dark token block is
+// repeated for the auto state; this guards against drift and against the auto
+// selector losing the cascade to the light blocks (which also match "auto").
+func TestAutoThemeFollowsDarkPreference(t *testing.T) {
+	libB, err := os.ReadFile("componentlib/colors_and_type.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appB, err := os.ReadFile("bongo.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib, app := string(libB), string(appB)
+
+	mediaRe := regexp.MustCompile(`@media \(prefers-color-scheme: dark\)\s*\{`)
+	loc := mediaRe.FindStringIndex(app)
+	if loc == nil {
+		t.Fatal("bongo.css has no @media (prefers-color-scheme: dark) block")
+	}
+	auto := cssRules(cssBlock(app, loc))
+
+	// Gather declarations per selector across every auto rule, last wins.
+	declsFor := func(sel string) map[string]string {
+		got := map[string]string{}
+		for s, d := range auto {
+			if slices.Contains(strings.Split(s, ", "), sel) {
+				for k, v := range d {
+					got[k] = v
+				}
+			}
+		}
+		return got
+	}
+
+	type source struct {
+		name     string
+		src      string
+		re       *regexp.Regexp
+		autoSel  string
+		lightSel string
+	}
+	sources := []source{
+		{"library dark tokens", lib, regexp.MustCompile(`(?m)^\[data-theme="dark"\]\s*\{`), `:root[data-theme="auto"]`, `:root:not([data-theme="dark"])`},
+		{"app dark tokens", app, regexp.MustCompile(`(?m)^\[data-theme="dark"\]\s*\{`), `:root[data-theme="auto"]`, `:root:not([data-theme="dark"])`},
+		{"bongo accent dark", app, regexp.MustCompile(`html\[data-theme="dark"\]\[data-accent="bongo"\]\s*\{`), `html[data-theme="auto"][data-accent="bongo"]`, `html:not([data-theme="dark"])[data-accent="bongo"]`},
+	}
+	for _, s := range sources {
+		l := s.re.FindStringIndex(s.src)
+		if l == nil {
+			t.Fatalf("%s: block not found", s.name)
+		}
+		want := cssDecls(cssBlock(s.src, l))
+		if len(want) == 0 {
+			t.Fatalf("%s: parsed no declarations", s.name)
+		}
+		got := declsFor(s.autoSel)
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("%s: auto state has %s = %q, dark has %q", s.name, k, got[k], v)
+			}
+		}
+		if !specAtLeast(specificity(s.autoSel), specificity(s.lightSel)) {
+			t.Errorf("%s: %s (%v) loses to the light selector %s (%v)", s.name, s.autoSel, specificity(s.autoSel), s.lightSel, specificity(s.lightSel))
+		}
+		// Same file: equal specificity is decided by source order. The library
+		// is linked before bongo.css, so only bongo.css selectors need the check.
+		if s.src == app {
+			if li := strings.Index(app, s.lightSel+" {"); li >= 0 && loc[0] < li {
+				t.Errorf("%s: auto block precedes the light block, equal specificity would lose", s.name)
+			}
+		}
+	}
+
+	// Component overrides the public pages use under the dark theme.
+	for _, sel := range []string{".flash-success", ".flash-warning"} {
+		dl := regexp.MustCompile(`(?m)^\[data-theme="dark"\] ` + regexp.QuoteMeta(sel) + `\s*\{`).FindStringIndex(app)
+		if dl == nil {
+			t.Fatalf("dark rule for %s not found", sel)
+		}
+		want := cssDecls(cssBlock(app, dl))
+		got := declsFor(`:root[data-theme="auto"] ` + sel)
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("%s: auto state has %s = %q, dark has %q", sel, k, got[k], v)
+			}
+		}
+	}
+}
+
+// Every custom property the explicit dark Bongo-accent blocks set must also be
+// set for the auto state under the dark media query, or the library's
+// :root[data-theme="auto"] rule wins for the missing ones (for example
+// --brand-text turning white on the amber accent).
+func TestAutoDarkAccentCoversExplicitDark(t *testing.T) {
+	appB, err := os.ReadFile("bongo.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := string(appB)
+
+	want := map[string]bool{}
+	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`html\[data-theme="dark"\]\[data-accent="bongo"\],\s*html\[data-theme="dark"\]:not\(\[data-accent\]\)\s*\{`),
+		regexp.MustCompile(`html\[data-theme="dark"\]\[data-accent="bongo"\]\s*\{`),
+	} {
+		l := re.FindStringIndex(app)
+		if l == nil {
+			t.Fatalf("explicit dark accent block %s not found", re)
+		}
+		for k := range cssDecls(cssBlock(app, l)) {
+			want[k] = true
+		}
+	}
+	if len(want) == 0 {
+		t.Fatal("parsed no explicit dark accent properties")
+	}
+
+	loc := regexp.MustCompile(`@media \(prefers-color-scheme: dark\)\s*\{`).FindStringIndex(app)
+	if loc == nil {
+		t.Fatal("bongo.css has no @media (prefers-color-scheme: dark) block")
+	}
+	rules := cssRules(cssBlock(app, loc))
+	const bongoSel = `html[data-theme="auto"][data-accent="bongo"], html[data-theme="auto"]:not([data-accent])`
+	got, ok := rules[bongoSel]
+	if !ok {
+		t.Fatalf("auto-dark accent rule %q not found", bongoSel)
+	}
+	for k := range want {
+		if _, ok := got[k]; !ok {
+			t.Errorf("auto-dark accent rule is missing %s set by explicit dark", k)
+		}
+	}
+	// Must beat the library's :root[data-theme="auto"] token rule.
+	for _, sel := range strings.Split(bongoSel, ", ") {
+		if !specAtLeast(specificity(sel), specificity(`:root[data-theme="auto"]`)) {
+			t.Errorf("%s loses to :root[data-theme=\"auto\"]", sel)
 		}
 	}
 }

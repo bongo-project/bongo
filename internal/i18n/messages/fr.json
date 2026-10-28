@@ -194,6 +194,8 @@
   "auth.verify": "Vérifier",
   "auth.logout": "Déconnexion",
   "auth.rememberMe": "Se souvenir de moi",
+  "auth.welcomeBack": "Content de vous revoir",
+  "auth.signInSubtitle": "Connectez-vous à votre boîte Bongo.",
   "auth.twoFactorAuth": "Authentification à deux facteurs",
   "auth.authCode": "Code d'authentification",
   "auth.backToLogin": "Retour à la connexion",
