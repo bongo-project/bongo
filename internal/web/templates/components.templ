@@ -197,14 +197,28 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 	</nav>
 }
 
+// mailboxCount is always rendered, hidden at zero, so the live refresh in
+// bongo.js (refreshUnreadCounts) can fill it in when a folder gains unread mail.
 templ mailboxCount(mb MailboxInfo) {
-	if mb.Unread > 0 {
-		if mb.Name == "INBOX" {
-			<span class="unread" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
-		} else {
-			<span class="count" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
+	<span
+		class={ mailboxCountClass(mb.Name) }
+		data-unread-for={ mb.Name }
+		data-unread-label={ t(ctx, "mail.unreadCount") }
+		aria-label={ fmt.Sprintf(t(ctx, "mail.unreadCount"), mb.Unread) }
+		hidden?={ mb.Unread == 0 }
+	>
+		if mb.Unread > 0 {
+			{ fmt.Sprint(mb.Unread) }
 		}
+	</span>
+}
+
+// mailboxCountClass gives INBOX the accent pill and other folders the muted count.
+func mailboxCountClass(name string) string {
+	if name == "INBOX" {
+		return "unread"
 	}
+	return "count"
 }
 
 templ MailboxTreeNode(mb MailboxInfo, selected string) {

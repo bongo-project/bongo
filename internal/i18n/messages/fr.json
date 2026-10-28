@@ -19,6 +19,7 @@
   "nav.security": "Sécurité",
   "nav.settings": "Paramètres",
   "nav.allContacts": "Tous les contacts",
+  "mail.unreadCount": "%d messages non lus",
   "mail.reply": "Répondre",
   "mail.replyAll": "Répondre à tous",
   "mail.forward": "Transférer",

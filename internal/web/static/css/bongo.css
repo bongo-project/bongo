@@ -984,6 +984,7 @@ html[data-theme="dark"][data-accent="bongo"] {
   font-variant-numeric: tabular-nums;
 }
 .sidebar .nav-item .unread-badge:empty { display: none; }
+.sidebar .nav-item .unread[hidden] { display: none; }
 .sidebar .nav-item a.active .count,
 .sidebar .nav-item a.active .unread-badge { color: var(--sidebar-bright); }
 .sidebar .nav-item .unread {
