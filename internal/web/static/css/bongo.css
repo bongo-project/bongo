@@ -1807,6 +1807,8 @@ a.admin-nav-item.active, .admin-nav-item.active {
   border-top: 1px solid var(--border); padding: 4px 0;
 }
 .tag-dropdown-item--create { color: var(--bongo-blue); font-style: italic; }
+.tag-dropdown-error { margin: 4px 8px; color: var(--error); font-size: 0.8rem; }
+.tag-dropdown-error[hidden] { display: none; }
 
 /* Tag settings page */
 .tag-settings-row { flex-wrap: wrap; gap: 8px; }

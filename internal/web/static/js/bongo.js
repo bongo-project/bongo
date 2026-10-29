@@ -1424,8 +1424,10 @@ document.addEventListener('alpine:init', () => {
     allTags: allTags,           // [{name, colourIndex}, ...]  all user-defined tags
     openDropdown: false,
     newTagName: '',
+    tagError: '',
     viewTagLabel: '',
     removeTagLabel: '',
+    tagErrorLabel: '',
 
     messageTagBGClass(index) {
       return 'message-tag-bg-' + (Number.isInteger(index) ? index : 0);
@@ -1456,10 +1458,20 @@ document.addEventListener('alpine:init', () => {
       return this.allTags.filter(t => t.name.toLowerCase().includes(q));
     },
 
+    // foldedNewTagName previews the name the server will store, mirroring
+    // tagname.Normalise: "My Tag" becomes "my-tag", punctuation is dropped.
+    get foldedNewTagName() {
+      return this.newTagName.trim().toLowerCase()
+        .replace(/[ _]/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    },
+
     get exactMatch() {
-      const q = this.newTagName.trim().toLowerCase();
-      return this.allTags.some(t => t.name.toLowerCase() === q) ||
-             this.tags.some(t => t.name.toLowerCase() === q);
+      const q = this.foldedNewTagName;
+      return this.allTags.some(t => t.name === q) ||
+             this.tags.some(t => t.name === q);
     },
 
     isTagged(name) {
@@ -1485,12 +1497,17 @@ document.addEventListener('alpine:init', () => {
             const t = this.tags.find(x => x.name === n) || this.allTags.find(x => x.name === n);
             return { name: n, colourIndex: t ? t.colourIndex : colourIndex };
           });
-          if (!this.allTags.some(t => t.name === name)) {
-            this.allTags.push({ name, colourIndex });
-          }
+          data.tags.forEach(n => {
+            if (!this.allTags.some(t => t.name === n)) {
+              this.allTags.push({ name: n, colourIndex });
+            }
+          });
         }
+        this.closeDropdown();
+        return;
       }
-      this.closeDropdown();
+      // Keep the dropdown open so the rejection is visible.
+      this.tagError = this.tagErrorLabel;
     },
 
     async removeTag(name) {
@@ -1522,21 +1539,28 @@ document.addEventListener('alpine:init', () => {
     },
 
     async addTagByInput() {
-      const name = this.newTagName.trim();
-      if (!name) return;
+      if (!this.newTagName.trim()) return;
+      const name = this.foldedNewTagName;
+      if (!name) {
+        this.tagError = this.tagErrorLabel;
+        return;
+      }
       await this.addTag(name);
-      this.newTagName = '';
     },
 
     closeDropdown() {
       this.openDropdown = false;
       this.newTagName = '';
+      this.tagError = '';
     },
 
     init() {
       this.viewTagLabel = this.$el.dataset.viewTagLabel || '';
       this.removeTagLabel = this.$el.dataset.removeTagLabel || '';
+      this.tagErrorLabel = this.$el.dataset.tagErrorLabel || '';
+      this.$watch('newTagName', () => { this.tagError = ''; });
       this.$watch('openDropdown', (val) => {
+        if (!val) this.tagError = '';
         if (val) this.$nextTick(() => this.$refs.tagInput && this.$refs.tagInput.focus());
       });
     }

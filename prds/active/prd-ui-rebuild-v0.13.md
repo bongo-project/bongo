@@ -24,7 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
-| D | Fixes from operator testing | US-016 to US-021 | 27.16 to 27.21 |
+| D | Fixes from operator testing | US-016 to US-022 | 27.16 to 27.22 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -343,9 +343,24 @@ Added 2026-10-29 at the operator's request. The test failed once in CI with
 - [ ] A test reproduces the contention deterministically or the fix is
       shown under a stress run (-race, -count, parallel load).
 
+### US-022: Typed tag names are accepted, and a rejected tag is reported
+Added 2026-10-29 from operator testing. Typing "Bob" in a message's tag
+picker and clicking "Create tag" closed the dropdown and added nothing: the
+server accepts only lowercase letters, digits and hyphens, answered 400, and
+the picker discarded the error.
+
+**Acceptance Criteria:**
+- [ ] Every endpoint that takes a typed tag name (message tags, bulk tags,
+      tag create and rename, rule tag actions) folds it into stored form
+      ("Bob" to "bob", "My Tag" to "my-tag") with the importer's existing
+      rules, shared rather than copied.
+- [ ] A name that folds to nothing is still rejected with 400.
+- [ ] The picker previews the folded name, and when the server rejects a tag
+      it stays open with a translated error instead of closing.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-21 are the acceptance criteria of US-001 to US-021. In every
+FR-1 to FR-22 are the acceptance criteria of US-001 to US-022. In every
 story:
 
 - Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF

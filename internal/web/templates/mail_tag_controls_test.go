@@ -140,3 +140,43 @@ func hasUnquotedSemicolon(expr string) bool {
 	}
 	return false
 }
+
+// TestMessageTagPickerShowsRejection: when the server rejects a tag the picker
+// must say so. It used to close silently, which looked like the click did
+// nothing. The error text comes from the root element and the create preview
+// shows the folded name the server will store.
+func TestMessageTagPickerShowsRejection(t *testing.T) {
+	doc, err := html.Parse(strings.NewReader(renderToString(t, messageTags(viewFixture()))))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var root, errEl *html.Node
+	walk(doc, func(n *html.Node) {
+		if n.Type != html.ElementNode {
+			return
+		}
+		a := attrMap(n)
+		if strings.HasPrefix(a["x-data"], "messageTags(") {
+			root = n
+		}
+		if hasClass(n, "tag-dropdown-error") {
+			errEl = n
+		}
+	})
+	if root == nil {
+		t.Fatal("no messageTags root")
+	}
+	if attrMap(root)["data-tag-error-label"] == "" {
+		t.Error("messageTags root has no data-tag-error-label")
+	}
+	if errEl == nil {
+		t.Fatal("no .tag-dropdown-error element")
+	}
+	if a := attrMap(errEl); a["x-text"] != "tagError" || a["role"] != "alert" {
+		t.Errorf(".tag-dropdown-error attrs = %v, want x-text=tagError role=alert", a)
+	}
+	out := renderToString(t, messageTags(viewFixture()))
+	if !strings.Contains(out, `x-text="foldedNewTagName"`) {
+		t.Error("create preview does not show the folded tag name")
+	}
+}

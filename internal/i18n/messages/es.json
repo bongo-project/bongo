@@ -65,6 +65,7 @@
   "mail.imageHidden": "Imagen oculta: haga clic en Mostrar imagenes para mostrarla",
   "mail.addTag": "Agregar etiqueta",
   "mail.createTag": "Crear etiqueta",
+  "mail.tagAddFailed": "No se pudo añadir esa etiqueta. Usa letras, números y guiones.",
   "mail.tagNamePlaceholder": "Nombre de etiqueta",
   "compose.from": "De",
   "compose.to": "Para",

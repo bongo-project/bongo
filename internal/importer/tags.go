@@ -4,9 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"strings"
-	"unicode"
 
 	"github.com/emersion/go-imap/v2"
+
+	"github.com/bongo-project/bongo/internal/tagname"
 )
 
 // gmailSystemLabels are Gmail-internal labels that should not become tags.
@@ -60,7 +61,7 @@ func ExtractGmailLabels(raw []byte) []string {
 		if gmailSystemLabels[lower] || lower == "important" {
 			continue
 		}
-		tag := normaliseTagName(label)
+		tag := tagname.Normalise(label)
 		if tag != "" {
 			tags = append(tags, tag)
 		}
@@ -86,7 +87,7 @@ func ExtractIMAPKeywords(flags []imap.Flag) []string {
 		if keyword == "" {
 			continue
 		}
-		tag := normaliseTagName(keyword)
+		tag := tagname.Normalise(keyword)
 		if tag != "" {
 			tags = append(tags, tag)
 		}
@@ -112,7 +113,7 @@ func ExtractThunderbirdTags(raw []byte) []string {
 		if keyword == "" {
 			continue
 		}
-		tag := normaliseTagName(keyword)
+		tag := tagname.Normalise(keyword)
 		if tag != "" {
 			tags = append(tags, tag)
 		}
@@ -171,42 +172,6 @@ func extractHeaderValue(raw []byte, lowerName string) string {
 	}
 
 	return value.String()
-}
-
-// normaliseTagName converts an arbitrary label string into a valid tag name:
-//   - Lowercase
-//   - Spaces and underscores replaced with hyphens
-//   - Non-alphanumeric, non-hyphen characters stripped
-//   - Leading/trailing hyphens trimmed
-//   - Empty or invalid results return ""
-func normaliseTagName(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == ' ', r == '_', r == '-':
-			b.WriteByte('-')
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			// Non-ASCII letters/digits: skip (tags must be ASCII per tagNameRe).
-		default:
-			// Punctuation, symbols: skip.
-		}
-	}
-
-	result := strings.Trim(b.String(), "-")
-	// Collapse consecutive hyphens.
-	for strings.Contains(result, "--") {
-		result = strings.ReplaceAll(result, "--", "-")
-	}
-
-	if len(result) == 0 || len(result) > 50 {
-		return ""
-	}
-
-	return result
 }
 
 // diffTags returns tags from candidate that are not present in any of the

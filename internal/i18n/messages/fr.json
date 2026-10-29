@@ -65,6 +65,7 @@
   "mail.imageHidden": "Image masquee - cliquez sur Afficher les images pour l'afficher",
   "mail.addTag": "Ajouter un tag",
   "mail.createTag": "Créer un tag",
+  "mail.tagAddFailed": "Impossible d’ajouter ce tag. Utilisez des lettres, des chiffres et des tirets.",
   "mail.tagNamePlaceholder": "Nom du tag",
   "compose.from": "De",
   "compose.to": "À",

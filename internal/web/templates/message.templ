@@ -416,6 +416,7 @@ templ messageTags(msg MessageDetail) {
 		) }
 		data-view-tag-label={ t(ctx, "mail.viewTag") }
 		data-remove-tag-label={ t(ctx, "mail.removeTag") }
+		data-tag-error-label={ t(ctx, "mail.tagAddFailed") }
 	>
 		<div class="msg-tags-chips" role="list" aria-label={ t(ctx, "mail.messageTags") }>
 			<template x-for="tag in tags" :key="tag.name">
@@ -486,14 +487,15 @@ templ messageTags(msg MessageDetail) {
 						</template>
 					</ul>
 				</template>
-				<template x-if="newTagName.trim() && !exactMatch">
+				<p class="tag-dropdown-error" role="alert" x-bind:hidden="!tagError" x-text="tagError"></p>
+				<template x-if="foldedNewTagName && !exactMatch">
 					<div class="tag-dropdown-create">
 						<button
 							type="button"
 							class="tag-dropdown-item tag-dropdown-item--create"
 							@click="addTagByInput()"
 						>
-							{ t(ctx, "mail.createTag") } &ldquo;<span x-text="newTagName.trim()"></span>&rdquo;
+							{ t(ctx, "mail.createTag") } &ldquo;<span x-text="foldedNewTagName"></span>&rdquo;
 						</button>
 					</div>
 				</template>

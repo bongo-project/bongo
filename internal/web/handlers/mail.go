@@ -1526,13 +1526,13 @@ func (h *MailHandler) UpdateMessageTags(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Validate all tag names up-front.
-	for _, name := range req.Tags {
-		if err := store.ValidateTagName(name); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	// Fold typed names ("Bob", "My Tag") into stored form, then validate.
+	tags, err := normaliseTagInputs(req.Tags)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
+	req.Tags = tags
 
 	// Resolve mailbox message to get the mail GUID.
 	msg, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
@@ -1717,13 +1717,13 @@ func (h *MailHandler) BulkTagAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate all tag names up-front.
-	for _, name := range req.Tags {
-		if err := store.ValidateTagName(name); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	// Fold typed names ("Bob", "My Tag") into stored form, then validate.
+	tags, err := normaliseTagInputs(req.Tags)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
+	req.Tags = tags
 
 	// Auto-create tag definitions once before the loop (add only).
 	if req.Action == "add" && h.tags != nil {

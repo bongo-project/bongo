@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/tagname"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -113,8 +114,13 @@ func (h *TagsHandler) CreateTag(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
 	}
+	name, err := normaliseTagInput(req.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	meta, err := h.tags.CreateTag(userID, req.Name)
+	meta, err := h.tags.CreateTag(userID, name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -157,6 +163,14 @@ func (h *TagsHandler) UpdateTag(w http.ResponseWriter, r *http.Request) {
 	activeName := currentName
 
 	// Rename if a new name was provided.
+	if req.Name != nil {
+		name, err := normaliseTagInput(*req.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.Name = &name
+	}
 	if req.Name != nil && *req.Name != currentName {
 		meta, err := h.tags.RenameTag(userID, currentName, *req.Name)
 		if err != nil {
@@ -307,4 +321,28 @@ func (h *TagsHandler) removeTagFromAllMessages(userID, tagName string) error {
 	}
 
 	return nil
+}
+
+// normaliseTagInput folds a typed tag name into the stored form ("Bob" becomes
+// "bob", "My Tag" becomes "my-tag") and validates the result. A name that folds
+// to nothing is rejected with the validation error for what was typed.
+func normaliseTagInput(name string) (string, error) {
+	folded := tagname.Normalise(name)
+	if folded == "" {
+		return "", store.ValidateTagName(name)
+	}
+	return folded, store.ValidateTagName(folded)
+}
+
+// normaliseTagInputs applies normaliseTagInput to each name.
+func normaliseTagInputs(names []string) ([]string, error) {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		folded, err := normaliseTagInput(name)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, folded)
+	}
+	return out, nil
 }
