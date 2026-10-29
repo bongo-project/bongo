@@ -2,6 +2,7 @@ package templates
 
 import (
 	"context"
+	"encoding/json"
 	"html"
 	"os"
 	"regexp"
@@ -101,5 +102,36 @@ func TestSettingsTogglesAreCheckboxesInLabels(t *testing.T) {
 		if !re.MatchString(out) {
 			t.Errorf("%s is not a checkbox input inside a label.toggle", name)
 		}
+	}
+}
+
+// TestTagColourSwatchesAreNamed: screen readers announced swatches as
+// "Colour 0" to "Colour 15". The page now carries one translated name per
+// palette entry for colourLabel to use.
+func TestTagColourSwatchesAreNamed(t *testing.T) {
+	out := renderToString(t, TagSettingsPage(TagSettingsData{Email: "a@b.c"}))
+	m := regexp.MustCompile(`data-colour-names="([^"]*)"`).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatal("tag settings root has no data-colour-names")
+	}
+	var names []string
+	if err := json.Unmarshal([]byte(html.UnescapeString(m[1])), &names); err != nil {
+		t.Fatalf("data-colour-names is not a JSON array: %v", err)
+	}
+	if len(names) != len(tagColourPalette) {
+		t.Fatalf("got %d colour names, want %d", len(names), len(tagColourPalette))
+	}
+	seen := map[string]bool{}
+	for i, n := range names {
+		if n == "" || strings.HasPrefix(n, "tag.colourName.") {
+			t.Errorf("colour %d has no translation: %q", i, n)
+		}
+		if seen[n] {
+			t.Errorf("colour name %q is used twice", n)
+		}
+		seen[n] = true
+	}
+	if names[0] != "blue" {
+		t.Errorf("colour 0 = %q, want blue", names[0])
 	}
 }

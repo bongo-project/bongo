@@ -24,7 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
-| D | Fixes from operator testing | US-016 to US-022 | 27.16 to 27.22 |
+| D | Fixes from operator testing | US-016 to US-023 | 27.16 to 27.23 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -358,9 +358,17 @@ the picker discarded the error.
 - [ ] The picker previews the folded name, and when the server rejects a tag
       it stays open with a translated error instead of closing.
 
+### US-023: Tag colour swatches are announced by name
+Added 2026-10-29 at the operator's request. Screen readers announced the
+Settings > Tags colour swatches as "Colour 0" to "Colour 15".
+
+**Acceptance Criteria:**
+- [ ] Each swatch's accessible name uses a translated colour name ("Colour
+      blue"), in all four locales, for both the new-tag and edit pickers.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-22 are the acceptance criteria of US-001 to US-022. In every
+FR-1 to FR-23 are the acceptance criteria of US-001 to US-023. In every
 story:
 
 - Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF
