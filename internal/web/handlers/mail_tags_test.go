@@ -341,7 +341,7 @@ func TestUpdateMessageTags_InvalidTagName(t *testing.T) {
 
 	w := doTagsRequest(t, env.handler, userID, mailbox, uid, map[string]any{
 		"action": "add",
-		"tags":   []string{"Invalid Tag!"},
+		"tags":   []string{"!!!"},
 	})
 
 	if w.Code != http.StatusBadRequest {

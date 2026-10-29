@@ -65,6 +65,7 @@
   "mail.imageHidden": "Bild ausgeblendet - klicken Sie auf Bilder anzeigen, um es anzuzeigen",
   "mail.addTag": "Tag hinzufügen",
   "mail.createTag": "Tag erstellen",
+  "mail.tagAddFailed": "Dieser Tag konnte nicht hinzugefügt werden. Verwenden Sie Buchstaben, Ziffern und Bindestriche.",
   "mail.tagNamePlaceholder": "Tag-Name",
   "compose.from": "Von",
   "compose.to": "An",

@@ -65,6 +65,7 @@
   "mail.imageHidden": "Image hidden - click Show images to display",
   "mail.addTag": "Add tag",
   "mail.createTag": "Create tag",
+  "mail.tagAddFailed": "Could not add that tag. Use letters, numbers and hyphens.",
   "mail.tagNamePlaceholder": "Tag name",
   "compose.from": "From",
   "compose.to": "To",

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/mail"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/rules"
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/tagname"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -385,7 +387,7 @@ func (h *RulesHandler) parseRuleForm(r *http.Request) *bongov1.FilterRule {
 	rule.Action = &bongov1.FilterAction{
 		Type:   actionType,
 		Target: target,
-		Tags:   r.Form["action_tag"],
+		Tags:   ruleActionTags(r.Form["action_tag"]),
 	}
 
 	return rule
@@ -437,4 +439,16 @@ func extractBodyText(raw []byte) string {
 		return ""
 	}
 	return env.Text
+}
+
+// ruleActionTags folds typed tag names into stored form so the tag action
+// applies at delivery; names that fold to nothing are dropped.
+func ruleActionTags(names []string) []string {
+	var out []string
+	for _, name := range names {
+		if folded := tagname.Normalise(name); folded != "" && !slices.Contains(out, folded) {
+			out = append(out, folded)
+		}
+	}
+	return out
 }
