@@ -1178,6 +1178,9 @@ document.addEventListener('alpine:init', () => {
         case 'open':
           window.location.href = '/mail/' + encodeURIComponent(mailbox) + '/' + uid;
           break;
+        case 'create-filter':
+          window.location.href = '/settings/rules/new?mailbox=' + encodeURIComponent(mailbox) + '&uid=' + encodeURIComponent(uid);
+          break;
         case 'reply':
           window.location.href = '/compose/reply/' + encodeURIComponent(mailbox) + '/' + uid;
           break;
