@@ -24,7 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
-| D | Fixes from operator testing | US-016 to US-018 | 27.16 to 27.18 |
+| D | Fixes from operator testing | US-016 to US-021 | 27.16 to 27.21 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -301,9 +301,51 @@ view badge updates live, and only for new INBOX mail (`sse.go`).
       action; a handler test asserts it reflects marking read and unread,
       deleting, and subfolder mail.
 
+### US-019: Contact editor works under the CSP build
+Added 2026-10-29 at the operator's request (found in 27.16). The contact
+editor bound its repeated email, phone and address fields with
+`x-model="em.value"` and similar; the CSP build forbids property writes, so
+the model never updated and adding or removing a row could lose typed
+values.
+
+**Acceptance Criteria:**
+- [ ] The rows move into a `contactEditor` Alpine.data component seeded
+      from JSON data attributes; fields write through a setter; add and
+      remove are method calls.
+- [ ] Typing into rows, adding and removing rows, and changing a row's
+      type keep every other row's values; the contact saves and reloads
+      with them.
+- [ ] `assertCSPSafe` passes for the editor.
+
+### US-020: Create a filter from a message
+Added 2026-10-29 at the operator's request.
+
+**Acceptance Criteria:**
+- [ ] The message view's More menu and the message-row context menu offer
+      "Create filter", which opens the new-rule page with one condition,
+      From contains the sender's address, and a suggested rule name; the
+      action is left for the user to choose.
+- [ ] The prefill arrives as query parameters, is validated and length
+      capped server-side, and is rendered only through the editor's JSON
+      data attributes (no splicing into an expression).
+- [ ] The new label is translated in en, de, es and fr.
+- [ ] Handler and template tests cover the prefill, including hostile
+      input.
+
+### US-021: Fix the TestSweepGhostUserTrees SQLITE_BUSY flake
+Added 2026-10-29 at the operator's request. The test failed once in CI with
+`SQLITE_BUSY` from `auth.CreateUser` writing the address record.
+
+**Acceptance Criteria:**
+- [ ] The cause is identified (which connection holds the lock and why a
+      writer gives up instead of waiting) and fixed at that cause, not by
+      retrying the test.
+- [ ] A test reproduces the contention deterministically or the fix is
+      shown under a stress run (-race, -count, parallel load).
+
 ## 4. Functional Requirements
 
-FR-1 to FR-18 are the acceptance criteria of US-001 to US-018. In every
+FR-1 to FR-21 are the acceptance criteria of US-001 to US-021. In every
 story:
 
 - Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF
@@ -503,10 +545,7 @@ From the 27.15 remaining-pages review (2026-10-28):
 
 From operator testing of the tag controls (2026-10-28):
 
-- Create a filter from a message: an action on the message view (and the
-  row context menu) that opens a new rule prefilled from that message, for
-  example From contains the sender address, with the action left to the
-  user. Feature, not a fix; scope it with the rules work.
+- Create a filter from a message. Moved into scope as US-020 (27.20).
 - The rule editor throws "CSP Parser Error" on load. Moved into scope as
   US-016 (27.16).
 - The calendar sidebar's show/hide checkbox fails under the CSP build.
@@ -520,16 +559,13 @@ From operator testing of the tag controls (2026-10-28):
 
 From the 27.16 rule editor work (2026-10-28):
 
-- The contact editor binds its repeated fields with `x-model="em.value"`
-  and similar; the CSP build forbids property assignments, so those models
-  never update. The inputs still post their DOM values, so saving works,
-  but anything that reads the model (adding or removing a row) can lose
-  typed values. Use setters as the rule editor now does.
+- The contact editor's nested `x-model` bindings never update under the
+  CSP build. Moved into scope as US-019 (27.19).
 
 From CI on PR #108 (2026-10-28):
 
 - `TestSweepGhostUserTrees` (internal/agent) failed once in CI with
   `SQLITE_BUSY` from `auth.CreateUser` writing the address record while the
   running agent's background workers held the per-user SQLite database. It
-  passed on re-run and 20 of 20 times locally under -race. Retry or wait on
-  SQLITE_BUSY in the address store, or quiesce the workers in the test.
+  passed on re-run and 20 of 20 times locally under -race. Moved into
+  scope as US-021 (27.21).

@@ -1246,6 +1246,43 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Contact editor rows (emails, phones, addresses), seeded from JSON in
+  // data-emails, data-phones and data-addresses. Fields write through setRow:
+  // the CSP build forbids property assignments, so x-model="em.value" never
+  // updated the model, and adding or removing a row could lose typed values.
+  Alpine.data('contactEditor', () => ({
+    emails: [],
+    phones: [],
+    addresses: [],
+
+    init() {
+      const read = (key) => {
+        try { return JSON.parse(this.$el.dataset[key] || '[]'); } catch (e) { return []; }
+      };
+      this.emails = read('emails');
+      this.phones = read('phones');
+      this.addresses = read('addresses');
+    },
+
+    blank(list) {
+      if (list === 'addresses') return { type: '', street: '', city: '', region: '', postal: '', country: '' };
+      return { value: '', type: '' };
+    },
+
+    addRow(list) {
+      this[list].push(this.blank(list));
+    },
+
+    removeRow(list, i) {
+      this[list].splice(i, 1);
+    },
+
+    setRow(list, i, field, value) {
+      const row = this[list][i];
+      if (row) row[field] = value;
+    }
+  }));
+
   // Calendar sidebar show/hide filter. Events carry data-cal-id; the choice
   // is re-applied after every HTMX swap of the calendar view, since
   // navigating replaces only the main pane, and remembered per browser.

@@ -2,6 +2,7 @@ package templates
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -209,26 +210,41 @@ func normalizeBirthday(s string) string {
 	return s
 }
 
-// contactAlpineData renders the x-data object seeding the dynamic email/phone
-// rows (mirrors the rules form's conditionsAlpineData pattern). Add/remove is
-// done with inline push/splice in the template.
-func contactAlpineData(fd contactFormData) string {
-	rows := func(list []contactFormRow) string {
-		if len(list) == 0 {
-			return "{value:'', type:''}"
-		}
-		var parts []string
-		for _, r := range list {
-			parts = append(parts, fmt.Sprintf("{value:'%s', type:'%s'}", jsEscape(r.Value), jsEscape(r.Type)))
-		}
-		return strings.Join(parts, ", ")
+// contactRowsJSON seeds the contactEditor component's email or phone rows,
+// as JSON in a data attribute: the Alpine CSP build cannot evaluate an
+// expression built from the values. An empty list gets one blank row.
+func contactRowsJSON(list []contactFormRow) string {
+	type row struct {
+		Value string `json:"value"`
+		Type  string `json:"type"`
 	}
-	var addrs []string
-	for _, a := range fd.Addresses {
-		addrs = append(addrs, fmt.Sprintf("{type:'%s', street:'%s', city:'%s', region:'%s', postal:'%s', country:'%s'}",
-			jsEscape(a.Type), jsEscape(a.Street), jsEscape(a.City), jsEscape(a.Region), jsEscape(a.PostalCode), jsEscape(a.Country)))
+	out := []row{}
+	for _, r := range list {
+		out = append(out, row{r.Value, r.Type})
 	}
-	return fmt.Sprintf("{ emails: [%s], phones: [%s], addresses: [%s] }", rows(fd.Emails), rows(fd.Phones), strings.Join(addrs, ", "))
+	if len(out) == 0 {
+		out = append(out, row{})
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
+}
+
+// contactAddressesJSON seeds the contactEditor component's address blocks.
+func contactAddressesJSON(list []contactAddressRow) string {
+	type addr struct {
+		Type    string `json:"type"`
+		Street  string `json:"street"`
+		City    string `json:"city"`
+		Region  string `json:"region"`
+		Postal  string `json:"postal"`
+		Country string `json:"country"`
+	}
+	out := []addr{}
+	for _, a := range list {
+		out = append(out, addr{a.Type, a.Street, a.City, a.Region, a.PostalCode, a.Country})
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
 
 // timezoneInList reports whether tz is one of the curated options.
@@ -239,14 +255,6 @@ func timezoneInList(tz string) bool {
 		}
 	}
 	return false
-}
-
-func jsEscape(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "'", "\\'")
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", "")
-	return s
 }
 
 func formatVCardAddress(a *vcard.Address) string {
@@ -388,7 +396,10 @@ templ ContactEditForm(fd contactFormData, isNew bool) {
 		} else {
 			action={ templ.SafeURL("/contacts/" + fd.Guid) }
 		}
-		x-data={ contactAlpineData(fd) }
+		x-data="contactEditor"
+		data-emails={ contactRowsJSON(fd.Emails) }
+		data-phones={ contactRowsJSON(fd.Phones) }
+		data-addresses={ contactAddressesJSON(fd.Addresses) }
 	>
 		if !isNew {
 			<input type="hidden" name="_method" value="PUT"/>
@@ -405,21 +416,21 @@ templ ContactEditForm(fd contactFormData, isNew bool) {
 				<div class="detail-field-value">
 					<template x-for="(em, i) in emails" :key="i">
 						<div class="contact-multi-row">
-							<input type="email" name="email" x-model="em.value" class="form-input" placeholder={ t(ctx, "contacts.email") }/>
-							<select name="email_type" x-model="em.type" class="form-input contact-type-select">
+							<input type="email" name="email" x-bind:value="em.value" @input="setRow('emails', i, 'value', $event.target.value)" class="form-input" placeholder={ t(ctx, "contacts.email") }/>
+							<select name="email_type" @change="setRow('emails', i, 'type', $event.target.value)" class="form-input contact-type-select">
 								<template x-if="em.type && em.type !== 'home' && em.type !== 'work' && em.type !== 'cell' && em.type !== 'other'">
-									<option :value="em.type" x-text="em.type"></option>
+									<option :value="em.type" x-text="em.type" selected></option>
 								</template>
-								<option value="">&#8212;</option>
-								<option value="home">{ t(ctx, "contacts.typeHome") }</option>
-								<option value="work">{ t(ctx, "contacts.typeWork") }</option>
-								<option value="cell">{ t(ctx, "contacts.typeCell") }</option>
-								<option value="other">{ t(ctx, "contacts.typeOther") }</option>
+								<option value="" x-bind:selected="!em.type">&#8212;</option>
+								<option value="home" x-bind:selected="em.type === 'home'">{ t(ctx, "contacts.typeHome") }</option>
+								<option value="work" x-bind:selected="em.type === 'work'">{ t(ctx, "contacts.typeWork") }</option>
+								<option value="cell" x-bind:selected="em.type === 'cell'">{ t(ctx, "contacts.typeCell") }</option>
+								<option value="other" x-bind:selected="em.type === 'other'">{ t(ctx, "contacts.typeOther") }</option>
 							</select>
-							<button type="button" class="btn-flush contact-row-remove" @click="emails.splice(i, 1)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
+							<button type="button" class="btn-flush contact-row-remove" @click="removeRow('emails', i)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
 						</div>
 					</template>
-					<button type="button" class="btn-outline btn-sm" @click="emails.push({value:'', type:''})">{ t(ctx, "contacts.addEmail") }</button>
+					<button type="button" class="btn-outline btn-sm" @click="addRow('emails')">{ t(ctx, "contacts.addEmail") }</button>
 				</div>
 			</div>
 			<div class="detail-field">
@@ -427,21 +438,21 @@ templ ContactEditForm(fd contactFormData, isNew bool) {
 				<div class="detail-field-value">
 					<template x-for="(ph, i) in phones" :key="i">
 						<div class="contact-multi-row">
-							<input type="tel" name="phone" x-model="ph.value" class="form-input" placeholder={ t(ctx, "contacts.phone") }/>
-							<select name="phone_type" x-model="ph.type" class="form-input contact-type-select">
+							<input type="tel" name="phone" x-bind:value="ph.value" @input="setRow('phones', i, 'value', $event.target.value)" class="form-input" placeholder={ t(ctx, "contacts.phone") }/>
+							<select name="phone_type" @change="setRow('phones', i, 'type', $event.target.value)" class="form-input contact-type-select">
 								<template x-if="ph.type && ph.type !== 'home' && ph.type !== 'work' && ph.type !== 'cell' && ph.type !== 'other'">
-									<option :value="ph.type" x-text="ph.type"></option>
+									<option :value="ph.type" x-text="ph.type" selected></option>
 								</template>
-								<option value="">&#8212;</option>
-								<option value="home">{ t(ctx, "contacts.typeHome") }</option>
-								<option value="work">{ t(ctx, "contacts.typeWork") }</option>
-								<option value="cell">{ t(ctx, "contacts.typeCell") }</option>
-								<option value="other">{ t(ctx, "contacts.typeOther") }</option>
+								<option value="" x-bind:selected="!ph.type">&#8212;</option>
+								<option value="home" x-bind:selected="ph.type === 'home'">{ t(ctx, "contacts.typeHome") }</option>
+								<option value="work" x-bind:selected="ph.type === 'work'">{ t(ctx, "contacts.typeWork") }</option>
+								<option value="cell" x-bind:selected="ph.type === 'cell'">{ t(ctx, "contacts.typeCell") }</option>
+								<option value="other" x-bind:selected="ph.type === 'other'">{ t(ctx, "contacts.typeOther") }</option>
 							</select>
-							<button type="button" class="btn-flush contact-row-remove" @click="phones.splice(i, 1)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
+							<button type="button" class="btn-flush contact-row-remove" @click="removeRow('phones', i)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
 						</div>
 					</template>
-					<button type="button" class="btn-outline btn-sm" @click="phones.push({value:'', type:''})">{ t(ctx, "contacts.addPhone") }</button>
+					<button type="button" class="btn-outline btn-sm" @click="addRow('phones')">{ t(ctx, "contacts.addPhone") }</button>
 				</div>
 			</div>
 			@contactTextField("company", "contacts.company", fd.Company)
@@ -452,27 +463,27 @@ templ ContactEditForm(fd contactFormData, isNew bool) {
 					<template x-for="(ad, i) in addresses" :key="i">
 						<div class="contact-address-block">
 							<div class="contact-address-head">
-								<select name="adr_type" x-model="ad.type" class="form-input contact-type-select">
+								<select name="adr_type" @change="setRow('addresses', i, 'type', $event.target.value)" class="form-input contact-type-select">
 									<template x-if="ad.type && ad.type !== 'home' && ad.type !== 'work' && ad.type !== 'other'">
-										<option :value="ad.type" x-text="ad.type"></option>
+										<option :value="ad.type" x-text="ad.type" selected></option>
 									</template>
-									<option value="">&#8212;</option>
-									<option value="home">{ t(ctx, "contacts.typeHome") }</option>
-									<option value="work">{ t(ctx, "contacts.typeWork") }</option>
-									<option value="other">{ t(ctx, "contacts.typeOther") }</option>
+									<option value="" x-bind:selected="!ad.type">&#8212;</option>
+									<option value="home" x-bind:selected="ad.type === 'home'">{ t(ctx, "contacts.typeHome") }</option>
+									<option value="work" x-bind:selected="ad.type === 'work'">{ t(ctx, "contacts.typeWork") }</option>
+									<option value="other" x-bind:selected="ad.type === 'other'">{ t(ctx, "contacts.typeOther") }</option>
 								</select>
-								<button type="button" class="btn-flush contact-row-remove" @click="addresses.splice(i, 1)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
+								<button type="button" class="btn-flush contact-row-remove" @click="removeRow('addresses', i)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
 							</div>
 							<div class="contact-address-grid">
-								<input type="text" name="adr_street" x-model="ad.street" class="form-input" placeholder={ t(ctx, "contacts.street") }/>
-								<input type="text" name="adr_city" x-model="ad.city" class="form-input" placeholder={ t(ctx, "contacts.city") }/>
-								<input type="text" name="adr_region" x-model="ad.region" class="form-input" placeholder={ t(ctx, "contacts.region") }/>
-								<input type="text" name="adr_postal" x-model="ad.postal" class="form-input" placeholder={ t(ctx, "contacts.postalCode") }/>
-								<input type="text" name="adr_country" x-model="ad.country" class="form-input" placeholder={ t(ctx, "contacts.country") }/>
+								<input type="text" name="adr_street" x-bind:value="ad.street" @input="setRow('addresses', i, 'street', $event.target.value)" class="form-input" placeholder={ t(ctx, "contacts.street") }/>
+								<input type="text" name="adr_city" x-bind:value="ad.city" @input="setRow('addresses', i, 'city', $event.target.value)" class="form-input" placeholder={ t(ctx, "contacts.city") }/>
+								<input type="text" name="adr_region" x-bind:value="ad.region" @input="setRow('addresses', i, 'region', $event.target.value)" class="form-input" placeholder={ t(ctx, "contacts.region") }/>
+								<input type="text" name="adr_postal" x-bind:value="ad.postal" @input="setRow('addresses', i, 'postal', $event.target.value)" class="form-input" placeholder={ t(ctx, "contacts.postalCode") }/>
+								<input type="text" name="adr_country" x-bind:value="ad.country" @input="setRow('addresses', i, 'country', $event.target.value)" class="form-input" placeholder={ t(ctx, "contacts.country") }/>
 							</div>
 						</div>
 					</template>
-					<button type="button" class="btn-outline btn-sm" @click="addresses.push({type:'', street:'', city:'', region:'', postal:'', country:''})">{ t(ctx, "contacts.addAddress") }</button>
+					<button type="button" class="btn-outline btn-sm" @click="addRow('addresses')">{ t(ctx, "contacts.addAddress") }</button>
 				</div>
 			</div>
 			<div class="detail-field">
