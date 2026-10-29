@@ -40,26 +40,25 @@ type UserIndex struct {
 }
 
 func openSQLiteDB(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path)
+	// WAL allows concurrent readers but still only one writer at a time, and
+	// SQLite's default busy timeout is 0 -- a second writer fails immediately
+	// with SQLITE_BUSY rather than waiting. Indexing runs on its own worker
+	// (FSM.StartIndexer), so genuine concurrent writers exist, e.g. a
+	// user-creation insert into system.db alongside the profile index write
+	// for that same user. Waiting briefly is right for contention this short.
+	//
+	// Both pragmas go in the DSN, which the driver applies to every connection
+	// it opens. busy_timeout is per connection and *sql.DB is a pool: setting
+	// it once with db.Exec reached only the connection that ran the statement,
+	// and the others still failed at once under contention.
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite %s: %w", path, err)
 	}
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+	// sql.Open connects lazily; ping so a bad path or pragma fails here.
+	if err := db.Ping(); err != nil {
 		closeErr := db.Close()
-		return nil, errors.Join(fmt.Errorf("setting WAL mode: %w", err), closeErr)
-	}
-	// WAL allows concurrent readers but still only one writer at a time, and
-	// SQLite's default busy timeout is 0 — a second writer fails immediately
-	// with SQLITE_BUSY rather than waiting. That was survivable while every
-	// derived-index write happened inside the Raft apply loop, because callers
-	// blocked on the apply and so could not write concurrently with it. Now
-	// that indexing runs on its own worker (FSM.StartIndexer), genuine
-	// concurrent writers exist — e.g. a user-creation insert into system.db
-	// alongside the profile index write for that same user. Waiting briefly is
-	// the correct behaviour for contention this short.
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		closeErr := db.Close()
-		return nil, errors.Join(fmt.Errorf("setting busy timeout: %w", err), closeErr)
+		return nil, errors.Join(fmt.Errorf("opening sqlite %s: %w", path, err), closeErr)
 	}
 	return db, nil
 }
