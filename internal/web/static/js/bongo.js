@@ -1828,6 +1828,7 @@ document.addEventListener('alpine:init', () => {
 
     countLabel: '%s',
     colourFmt: '%s',
+    colourNames: [],
     editFmt: '%s',
     deleteFmt: '%s',
 
@@ -1835,6 +1836,7 @@ document.addEventListener('alpine:init', () => {
       const d = this.$el.dataset;
       this.countLabel = d.countLabel || this.countLabel;
       this.colourFmt = d.colourLabel || this.colourFmt;
+      try { this.colourNames = JSON.parse(d.colourNames || '[]'); } catch (e) { this.colourNames = []; }
       this.editFmt = d.editTagLabel || this.editFmt;
       this.deleteFmt = d.deleteTagLabel || this.deleteFmt;
       this.loadTags();
@@ -1845,7 +1847,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     colourLabel(idx) {
-      return this.colourFmt.replace('%s', String(idx));
+      const name = this.colourNames[idx] || String(idx);
+      return this.colourFmt.replace('%s', () => name);
     },
 
     editLabel(tag) {

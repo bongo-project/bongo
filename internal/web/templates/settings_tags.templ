@@ -1,6 +1,10 @@
 package templates
 
-import "fmt"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+)
 
 // TagSettingItem is the template data for a single tag on the settings page.
 type TagSettingItem struct {
@@ -14,6 +18,18 @@ type TagSettingsData struct {
 	Tags  []TagSettingItem
 	Email string
 	Flash string
+}
+
+// tagColourNamesJSON is a JSON array of the translated palette colour names,
+// indexed like tagColourPalette, so swatches are announced as "Colour blue"
+// rather than "Colour 0".
+func tagColourNamesJSON(ctx context.Context) string {
+	names := make([]string, len(tagColourPalette))
+	for i := range names {
+		names[i] = t(ctx, fmt.Sprintf("tag.colourName.%d", i))
+	}
+	b, _ := json.Marshal(names)
+	return string(b)
 }
 
 // tagSettingsPalette is a JS array literal of the 16 tag palette colours,
@@ -57,6 +73,7 @@ templ TagSettingsPage(data TagSettingsData) {
 						x-data={ fmt.Sprintf(`tagSettings(%s)`, tagSettingsPaletteJS()) }
 						data-count-label={ t(ctx, "tag.countTitle") }
 						data-colour-label={ t(ctx, "tag.colourLabel") }
+						data-colour-names={ tagColourNamesJSON(ctx) }
 						data-edit-tag-label={ t(ctx, "tag.editLabel") }
 						data-delete-tag-label={ t(ctx, "tag.deleteLabel") }
 					>
