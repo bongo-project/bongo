@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/rules"
 	"github.com/bongo-project/bongo/internal/store"
@@ -104,7 +107,53 @@ func (h *RulesHandler) NewRule(w http.ResponseWriter, r *http.Request) {
 		Action: templates.ActionInfo{Type: "move"},
 	}
 
+	// "Create filter" on a message links here with ?mailbox=&uid=. The sender
+	// is read from the user's own stored message, never taken from the URL,
+	// so the prefill is always an address the user actually received from.
+	if addr := h.messageSender(userID, r.URL.Query().Get("mailbox"), r.URL.Query().Get("uid")); addr != "" {
+		info.Conditions = []templates.ConditionInfo{{Field: "from", Operator: "contains", Value: addr}}
+		info.Name = fmt.Sprintf(i18n.T(middleware.LocaleFromContext(r.Context()), "rules.filterFromName"), addr)
+	}
+
 	templ.Handler(templates.RuleFormPage(info, mailboxes, true, email, "")).ServeHTTP(w, r)
+}
+
+// maxFilterAddress caps a prefilled sender address (RFC 5321 path limit).
+const maxFilterAddress = 320
+
+// messageSender returns the bare sender address of the user's message at
+// mailbox/uid, or "" when the message is missing or its From does not parse.
+// Virtual mailboxes (unread, starred, all-mail) resolve to the real one.
+func (h *RulesHandler) messageSender(userID, mailbox, uidStr string) string {
+	if mailbox == "" || uidStr == "" || h.mailboxes == nil || h.pebble == nil {
+		return ""
+	}
+	uid, err := strconv.ParseUint(uidStr, 10, 32)
+	if err != nil {
+		return ""
+	}
+	var msg *bongov1.MailboxMessage
+	if store.VirtualMailboxes[mailbox] {
+		msg, _, err = h.mailboxes.GetMessageVirtual(userID, mailbox, uint32(uid))
+	} else {
+		msg, err = h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	}
+	if err != nil || msg == nil {
+		return ""
+	}
+	data, err := h.pebble.Get([]byte(fmt.Sprintf("/user/%s/mail/%s", userID, msg.MailGuid)))
+	if err != nil {
+		return ""
+	}
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(data, &meta); err != nil {
+		return ""
+	}
+	a, err := mail.ParseAddress(meta.From)
+	if err != nil || a.Address == "" || len(a.Address) > maxFilterAddress || strings.ContainsAny(a.Address, "\r\n") {
+		return ""
+	}
+	return a.Address
 }
 
 // CreateRule processes the new rule form.

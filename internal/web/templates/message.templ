@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/mail"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -285,6 +286,7 @@ templ moreMenu(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
 			<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", encMailbox(msg.Mailbox), msg.UID)) } class="msg-more-item">{ t(ctx, "mail.export") }</a>
 			<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/source", encMailbox(msg.Mailbox), msg.UID)) } class="msg-more-item">{ t(ctx, "mail.viewSource") }</a>
 			<button type="button" class="msg-more-item" data-print-page="true">{ t(ctx, "mail.print") }</button>
+			<a href={ createFilterURL(msg) } class="msg-more-item">{ t(ctx, "mail.createFilter") }</a>
 			if opts.Top && !msg.IsContact {
 				<form method="post" action="/contacts/quick-add" class="msg-more-form">
 					<input type="hidden" name="from_email" value={ msg.From }/>
@@ -339,6 +341,12 @@ templ quickReply(msg MessageDetail) {
 			</a>
 		</div>
 	</form>
+}
+
+// createFilterURL opens the new-rule page prefilled from this message; the
+// rules handler reads the sender from the stored message itself.
+func createFilterURL(msg MessageDetail) templ.SafeURL {
+	return templ.SafeURL(fmt.Sprintf("/settings/rules/new?mailbox=%s&uid=%d", url.QueryEscape(msg.Mailbox), msg.UID))
 }
 
 // senderParts splits a From header into display name and address. When the
