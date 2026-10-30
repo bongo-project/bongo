@@ -43,7 +43,10 @@ As a global administrator, go to **Admin → Domains** (`/admin/domains`) and ad
 you can delegate day-to-day management (see step 7).
 
 A new domain starts **enabled**. You can disable it at any time from its Manage
-page — disabled domains stop accepting mail without being deleted.
+page. A disabled domain refuses all inbound mail (SMTP answers `550 5.1.1`
+for every address on it, including aliases and the catch-all) without being
+deleted; its accounts and stored mail are kept, and re-enabling restores
+delivery.
 
 ## 2. Open the domain's Manage page
 

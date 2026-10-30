@@ -12,7 +12,8 @@ import (
 	"github.com/bongo-project/bongo/internal/store"
 )
 
-// A disabled or deleted local recipient must be refused with a permanent 550 on
+// A disabled or deleted local recipient, or any recipient on a disabled
+// domain, must be refused with a permanent 550 on
 // every session. On an authenticated one the resolver error would otherwise
 // fall into the relay branch and the mail would leave for our own MX.
 func TestRcptRefusesUnavailableLocalRecipient(t *testing.T) {
@@ -43,6 +44,11 @@ func TestRcptRefusesUnavailableLocalRecipient(t *testing.T) {
 	}
 	put("live", "live@example.com", false)
 	put("off", "off@example.com", true)
+	// A live account on a domain an administrator has disabled.
+	put("ondisabled", "user@disabled.example", false)
+	if err := ps.Set([]byte("/system/domain/disabled.example"), []byte("disabled")); err != nil {
+		t.Fatal(err)
+	}
 	// Deleted: users row survives on this node but the profile is gone.
 	if _, err := mm.System.DB().Exec(
 		"INSERT INTO users (id, username, display_name, enabled, created_at) VALUES ('gone', 'gone@example.com', 'U', 1, 0)"); err != nil {
@@ -55,7 +61,7 @@ func TestRcptRefusesUnavailableLocalRecipient(t *testing.T) {
 	}
 
 	for _, authed := range []bool{false, true} {
-		for _, to := range []string{"off@example.com", "gone@example.com"} {
+		for _, to := range []string{"off@example.com", "gone@example.com", "user@disabled.example"} {
 			s := &Session{backend: b, logger: b.logger, authed: authed}
 			if code := smtpCode(s.Rcpt(to, nil)); code != 550 {
 				t.Errorf("authed=%v RCPT %s = %d, want 550", authed, to, code)
