@@ -69,12 +69,13 @@ templ Topbar(email string) {
 
 templ Layout(title string, email string) {
 	<!DOCTYPE html>
-	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-accent="bongo" data-sidebar="dark">
+	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-theme="auto" data-accent="bongo" data-sidebar="dark">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. -->
 			<meta name="htmx-config" content='{"includeIndicatorStyles":false}'/>
+			<script src={ "/static/js/theme.js?v=" + assetVersion() }></script>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="apple-touch-icon" href="/static/img/bongo-favicon.png"/>
@@ -130,12 +131,13 @@ templ Layout(title string, email string) {
 
 templ LayoutWithContent(title string, email string) {
 	<!DOCTYPE html>
-	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-accent="bongo" data-sidebar="dark">
+	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-theme="auto" data-accent="bongo" data-sidebar="dark">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. -->
 			<meta name="htmx-config" content='{"includeIndicatorStyles":false}'/>
+			<script src={ "/static/js/theme.js?v=" + assetVersion() }></script>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="apple-touch-icon" href="/static/img/bongo-favicon.png"/>

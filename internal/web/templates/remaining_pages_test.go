@@ -93,7 +93,7 @@ func TestAddressVerifyPageCardAndHooks(t *testing.T) {
 		`action="/settings/addresses/pending@example.com/verify-submit"`, `name="code"`,
 		`action="/settings/addresses/new@example.com/verify-request"`,
 		`action="/settings/addresses"`, `name="address"`, translated("settings.sendAsAddresses"))
-	mustNotContain(t, out, `admin-table`, `settings-card`, `login-card`, `data-theme="auto"`)
+	mustNotContain(t, out, `admin-table`, `settings-card`, `login-card`, `<html lang="en" data-theme="auto"`)
 
 	empty := renderToString(t, AddressVerifyPage(nil, "a@example.com", "", ""))
 	mustContain(t, empty, translated("settings.noSendAsAddresses"))
