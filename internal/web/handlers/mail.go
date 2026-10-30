@@ -1483,7 +1483,7 @@ func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("web: message moved", "src", mailbox, "dest", dest, "uid", uid, "user", userID)
 
 	// Redirect back to mailbox with flash.
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Moved+to+%s", mailbox, dest))
+	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, "Moved to "+dest))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -1856,7 +1856,7 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		realMailbox = rm
 	}
 
-	flash := "Message+moved+to+Trash"
+	flash := "Message moved to Trash"
 	if realMailbox == trashMailbox {
 		// Already in Trash: remove permanently.
 		if err := h.mailboxes.AddFlags(userID, realMailbox, uint32(uid), store.FlagDeleted); err != nil {
@@ -1867,7 +1867,7 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to delete message", http.StatusInternalServerError)
 			return
 		}
-		flash = "Message+permanently+deleted"
+		flash = "Message permanently deleted"
 		h.logger.Info("web: message permanently deleted", "mailbox", realMailbox, "uid", uid, "user", userID)
 	} else {
 		// Move to Trash instead of permanently deleting.
@@ -1882,7 +1882,7 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		h.logger.Info("web: message moved to Trash", "mailbox", realMailbox, "uid", uid, "user", userID)
 	}
 
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=%s", mailbox, flash))
+	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, flash))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -2048,6 +2048,13 @@ func matchesSelector(n *html.Node, selector string) bool {
 // decodeMailbox URL-decodes a mailbox name from a chi URL parameter.
 // Sidebar links encode '/' as %2F so nested mailboxes like INBOX/Important
 // are routed as a single path segment.
+// mailboxRedirect returns the URL of a mailbox with a flash message. The name
+// is path-escaped so a folder such as "INBOX/Important" stays one segment;
+// unescaped, the router reads "Important" as a message UID.
+func mailboxRedirect(mailbox, flash string) string {
+	return "/mail/" + url.PathEscape(mailbox) + "?flash=" + url.QueryEscape(flash)
+}
+
 func decodeMailbox(encoded string) string {
 	if decoded, err := url.PathUnescape(encoded); err == nil {
 		return decoded
@@ -2262,9 +2269,9 @@ func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSp
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
-	target, score, action, flash := "INBOX", float32(0.0), "marked as not spam", "Marked+as+not+spam"
+	target, score, action, flash := "INBOX", float32(0.0), "marked as not spam", "Marked as not spam"
 	if isSpam {
-		target, score, action, flash = "Junk", 1.0, "marked as spam", "Marked+as+spam"
+		target, score, action, flash = "Junk", 1.0, "marked as spam", "Marked as spam"
 	}
 
 	// Get the mail GUID from the mailbox message.
@@ -2295,7 +2302,7 @@ func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSp
 	if h.bayes != nil {
 		if h.trainLimiter != nil && !h.trainLimiter.Allow(userID) {
 			h.logger.Warn("web: bayes training rate limit reached, skipping training", "user", userID, "mailbox", mailbox, "uid", uid)
-			flash += "+-+training+skipped+(too+many+requests)"
+			flash += " - training skipped (too many requests)"
 		} else if err := h.trainBayes(userID, msg.MailGuid, isSpam); err != nil {
 			h.logger.Error("web: bayes training failed", "user", userID, "guid", msg.MailGuid, "spam", isSpam, "error", err)
 			http.Error(w, "Training failed", http.StatusInternalServerError)
@@ -2305,7 +2312,7 @@ func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSp
 
 	h.logger.Info("web: "+action, "mailbox", mailbox, "uid", uid, "user", userID)
 
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=%s", mailbox, flash))
+	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, flash))
 	w.WriteHeader(http.StatusOK)
 }
 
