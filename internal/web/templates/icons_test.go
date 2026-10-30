@@ -41,7 +41,8 @@ func TestIconSetIsExactlyTheHandoffSet(t *testing.T) {
 	}
 }
 
-// The golden file was verified byte-for-byte against the handoff ICONS map and
+// The golden file was verified byte-for-byte against the handoff ICONS map.
+// The logo is the original Bongo project swoosh instead of the handoff's
 // LOGO_GLYPH. It pins viewBox, attributes and inner markup of every icon.
 // Regenerate with: go test ./internal/web/templates -run Golden -update
 func TestIconMarkupGolden(t *testing.T) {
