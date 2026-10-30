@@ -1,13 +1,14 @@
-# Config reload on SIGHUP: design
+# Config reload on SIGHUP
 
-Status: DESIGN ONLY, for operator review. No code accompanies this document.
-Backlog item B9; the implementation is task 16.7 and must not start until this
-is approved.
+Status: increment 1 is implemented (`internal/agent/reload.go`,
+`internal/config/diff.go`, and `watchSignals` in `cmd/bongo-go/agent.go`).
+Increments 2 and 3 (section 9) are not built. This document began as the
+design for backlog item B9 (task 16.7); the design rationale is kept, and
+statements of fact have been corrected to match the code.
 
-Base commit: every `file:line` below is cited at `b2eb0b9`
-(`norman/phase-15-logging`). Task 16.5 edits `internal/config/config.go` and
-`cmd/bongo-go/agent.go` in parallel, so line numbers in those two files WILL
-drift. Each citation therefore also names the enclosing symbol, for example
+Citations: every `file:line` below is historical, pinned at `b2eb0b9`
+(`norman/phase-15-logging`), and the code has moved since. Each citation also
+names the enclosing symbol, for example
 `internal/smtp/server.go:130 (Backend.SetTrustedNetworks)`. Re-find by symbol,
 not by number.
 
@@ -44,8 +45,10 @@ either applied or reported as "needs restart"; none is dropped silently.
      `join` (`:1074`), `log-level` (`:1078`) and `web.session_secret`
      (`:1083`, reachable as `BONGO_WEB_SESSION_SECRET`).
 3. Applies `--plain-http` to `cfg.Web.PlainHTTP` AFTER loading (`:116-117`).
-4. Does not call `cfg.Validate()`. A comment at `:106` says so deliberately;
-   task 16.5 (B8) wires it. Reload must call it either way.
+4. Validates. Startup now loads through `loadServeConfig`, which calls
+   `config.LoadWithDiscovery` and then `cfg.Validate()`; an invalid config makes
+   `bongo-go serve` refuse to start. (At `b2eb0b9` `Validate` was not called
+   here; task 16.5 (B8) wired it.)
 5. Builds the logger from `cfg.Telemetry.Log` once (`:121-142`) and hands `cfg`
    to `agent.NewAgent` (`:108`).
 
@@ -56,9 +59,9 @@ returned.
 
 Two facts about env handling matter for reload:
 
-- The process environment cannot change after start, so re-running
-  `LoadWithDiscovery` with the SAME viper instance reproduces the same env
-  overrides. Under systemd, `EnvironmentFile=` (`deploy/bongo-go.service`) is
+- The process environment cannot change after start, so applying the
+  overrides again (`config.ApplyOverrides`) with the SAME viper instance
+  reproduces the same env overrides. Under systemd, `EnvironmentFile=` (`deploy/bongo-go.service`) is
   read at service start only, so editing `/etc/bongo/bongo.env` still needs a
   restart. This must be stated in the operator docs.
 - The `log-level` override key has no practical env form. With the replacer
@@ -74,16 +77,24 @@ must therefore:
 
 1. Keep the startup `*viper.Viper` (and the `servePlainHTTP` flag value) alive
    for the life of the process.
-2. Pin the file: after the first load, `v.Set("config", configFile)` with the
-   resolved path, so a reload re-reads the SAME file instead of re-running
-   discovery (a newly created `./bongo.hcl` must not change which file is read
-   on SIGHUP). If startup found no file (`configFile == ""`), reload logs
+2. Pin the file: after the first load, `runServe` resolves the path to an
+   absolute one and calls `v.Set("config", abs)`, so a reload re-reads the
+   SAME file instead of re-running discovery (a newly created `./bongo.hcl`
+   does not change which file is read on SIGHUP). If startup found no file,
+   no reloader is enabled and a reload logs
    `config reload: no config file in use, nothing to reload` and returns.
-3. Call `config.LoadWithDiscovery(v)` again, then re-apply `--plain-http`.
-4. When a flag or env var shadows a key whose file value changed, log it at
-   WARN as `config reload: key shadowed by flag or env, file value ignored`
-   (key name only). Example: `--log-level=debug` was passed and the file's
-   `telemetry.log.level` changed: the file change must not take effect.
+3. Re-read the pinned file with `config.LoadFile` (which also returns the
+   file's mtime and size), apply the flag and env overrides to a clone of it
+   with `config.ApplyOverrides(v, merged)` (the same function startup uses, so
+   the precedence cannot drift), then re-apply `--plain-http`. Discovery is
+   not re-run.
+4. Log every key whose flag or env value differs from the file value at WARN
+   as `config reload: key shadowed by flag or env, file value ignored` (key
+   name only). This fires on every reload for as long as the override and the
+   file disagree, whether or not the file value changed since the last
+   reload. Example: `--log-level=debug` was passed and the file says `info`:
+   the file value does not take effect, and each reload warns about
+   `telemetry.log.level`.
 
 ### Design consequence 2: the baseline for diffing is a snapshot, not `a.Config`
 
@@ -155,6 +166,7 @@ Legend for "Class":
 | `server.advertise_addr` | `cluster/raft.go:89`, `cluster/gossip.go:58` | ctor | RESTART |
 | `server.control_addr` | `agent.go` (`Run`, control listener bind) | listener address | RESTART |
 | `server.agents` | `agent.go:2624,2643,2698` (`runAgent`) | ctor; agent role only | RESTART |
+| `server.trusted_proxies` | `agent.go` `trustedProxies` (`ServerConfig.ParseTrustedProxies`) -> PROXY-protocol listeners and `middleware.SetTrustedProxies` | ctor, parsed once at startup | RESTART |
 
 `agent_server` (pointer block; only meaningful for role `agent`)
 
@@ -167,6 +179,7 @@ Legend for "Class":
 
 | Key | Consumer | How read today | Class |
 |---|---|---|---|
+| `cluster.bind_addr` | `cluster/raft.go`, `cluster/gossip.go` via `Config.ClusterBindHost` | ctor, transport listen address | RESTART |
 | `cluster.join` | `agent.go:992-993` (gossip join); `cluster/raft.go:174`; `config.go:744` (Validate gate) | ctor | RESTART |
 | `cluster.raft.data_dir` | none (raft snapshots use `Storage.DataDir`, `cluster/raft.go:135`; the log lives in Pebble) | none | NO-OP |
 | `cluster.raft.port` | `cluster/raft.go:86` | ctor | RESTART |
@@ -213,9 +226,11 @@ TLS as well as raft transport.
 | `smtp.limits.messages_per_minute` | `smtp/server.go:697` -> `newInboundRateLimiter` (`smtp/inbound_ratelimit.go:30`) | ctor; limiter has a plain `limit` field | RESTART (HOT-3 candidate) |
 | `smtp.limits.max_connections_per_ip` | `smtp/server.go:696`, read at `:172` (`Backend.NewSession`) | ctor; plain `maxPerIP` int. Read at `:172` OUTSIDE `b.mu` (the mutex only guards `perIP`, taken at `:174`) | RESTART (HOT-3 candidate) |
 | `smtp.limits.outbound_messages_per_minute` | `smtp/server.go:698`, used `:446-447` | ctor; as above | RESTART (HOT-3 candidate) |
+| `smtp.limits.outbound_recipients_per_hour` | `agent.go` -> `mail.NewRateLimiter` stored as `Agent.RecipientLimiter` | ctor | RESTART |
+| `smtp.limits.send_as_verify_max_per_hour` | `agent.go` -> `mail.NewRateLimiter` handed to the send-as verification handler (`SetLimiter`) | ctor | RESTART |
 | `smtp.relay.enabled` | `smtp/relay.go:91` (`Relay.Deliver`) | ptr: read per delivery through `&a.Config.SMTP.Relay` (`agent.go:1239`) | RESTART in incr. 1 (HOT-3, see 4.3) |
 | `smtp.relay.host` | `relay.go:91,98,101` | ptr, per delivery | RESTART (HOT-3) |
-| `smtp.relay.username` | `relay.go:251,258` | ptr, per delivery | RESTART (HOT-3) |
+| `smtp.relay.username` | `relay.go:251,258` | ptr, per delivery. SECRET | RESTART (HOT-3) |
 | `smtp.relay.password` | `relay.go:258` | ptr, per delivery. SECRET | RESTART (HOT-3) |
 | `smtp.relay.allow_insecure_auth` | `relay.go:252` | ptr, per delivery | RESTART (HOT-3) |
 | `smtp.relay.mta_sts_enabled` | `relay.go:41` (`NewRelay`) | ctor, decides whether a cache object exists | RESTART |
@@ -292,6 +307,9 @@ TLS as well as raft transport.
 | `pipeline.poll_interval` | `agent.go:1099` -> `runner.go:27`; consumed ONCE by `time.NewTicker(r.pollInterval)` at `runner.go:88` | ctor, then ticker fixed | HOT-2 (needs `Ticker.Reset` plumbing) |
 | `pipeline.error_retention` | `agent.go` `startErrorPurge` -> `pipeline.RunErrorPurge` (`pipeline/errorpurge.go`), retention fixed at start | ctor | RESTART |
 | `pipeline.quarantine_retention` | `agent.go` `startQuarantinePurge` -> `handlers.RunAutoPurge`, retention fixed at start (16.18) | ctor | RESTART |
+| `pipeline.message_timeout` | `agent.go` -> `pipeline.WithMessageTimeout(MessageTimeoutDuration())` | ctor | RESTART |
+| `pipeline.forward_max_per_hour` | `agent.go` -> `mail.NewRateLimiter` handed to `deliverProc.SetForwardLimiter` | ctor | RESTART |
+| `pipeline.forward_verify_max_per_hour` | `agent.go` -> `mail.NewRateLimiter` handed to the forward verifier (`SetLimiter`) | ctor | RESTART |
 | `pipeline.stage "<name>"` label `name`, `enabled`, `backend` | `agent.go:1047-1073` builds the ordered `[]pipeline.Processor` once | ctor | RESTART (stage re-ordering and add/remove is out of scope) |
 | `queue.poll_interval` | `agent.go:1257` -> `queue.WithPollInterval`; `queue/worker.go:40`, ONE `time.NewTicker(w.pollInterval)` at `:101` | ctor, then ticker fixed | HOT-2 (needs `Ticker.Reset` plumbing) |
 
@@ -307,26 +325,32 @@ TLS as well as raft transport.
 
 ### 4.2 Keys with no reader (NO-OP)
 
-Sixteen leaf keys are parsed and then never read in non-test code at
-`b2eb0b9`: `server.datacenter`, `cluster.raft.data_dir`, `storage.pebble.cache_size`,
-`storage.pebble.wal_dir`, `smtp.tls.ca_file`, `web.enabled`,
-`web.tls.ca_file`, `caldav.enabled`, `antispam.builtin.enabled`,
-`pipeline.error_retention`, `pipeline.quarantine_retention`,
-`telemetry.prometheus.enabled`, `telemetry.prometheus.port`.
+The NO-OP keys are those listed in `noopKeys` in `internal/config/diff.go`.
+They are parsed and then never read in non-test code:
 
-Update: `pipeline.error_retention` now has a reader (`startErrorPurge`, class
-RESTART) and is no longer a NO-OP.
+- `telemetry.prometheus.enabled`, `telemetry.prometheus.port`
+- `antispam.builtin.enabled`
+- `caldav.enabled`
+- `web.enabled`
+- `cluster.raft.data_dir`
+- `server.datacenter`
+- `smtp.tls.ca_file`, `web.tls.ca_file`
+- `storage.pebble.wal_dir`
 
-Verified by `grep -rn` of each name over `internal/` and `cmd/` excluding
-`_test.go` and `internal/config/config.go`. Consequences for reload:
+`storage.pebble.cache_size`, `pipeline.error_retention` and
+`pipeline.quarantine_retention` were NO-OP at `b2eb0b9`; each now has a reader
+at startup and is classified RESTART.
 
-- Changing them is a no-op both now and after reload. The reloader should NOT
-  log "needs restart" for them (that would imply a restart helps). It should
-  log them at INFO as `config reload: key has no effect` so the operator is not
-  misled. Whether to remove them from the schema is a separate cleanup and out
-  of scope here.
-- The classification test in task (e) of section 9 forces every new key to be
-  classified, so a key cannot silently become a NO-OP again.
+Consequences for reload:
+
+- Changing them is a no-op both now and after reload, so the reloader does not
+  report them as needing a restart (that would imply a restart helps). They
+  are listed under `no_effect` in the `config reload complete` summary; there
+  is no separate log line for them. Whether to remove them from the schema is
+  a separate cleanup and out of scope here.
+- `TestEveryConfigLeafIsClassified` (`internal/config/diff_test.go`) fails if a
+  config leaf is missing from the classification table, so a new key cannot
+  silently go unclassified.
 
 ### 4.3 Notes on specific classifications
 
@@ -551,32 +575,32 @@ capacity 1).
 
 Steps. A failure in steps 1-3 aborts and leaves the running state untouched.
 
-1. **Load** with the startup precedence (section 2): same viper, same pinned
-   file, then re-apply `--plain-http`.
-2. **Validate**: call `cfg.Validate()` (`config.go:716`) plus the validators
-   that `Validate` does not call today. At `b2eb0b9` `Config.Validate` does NOT
-   call `DNSBLConfig.Validate` (invoked separately from `Agent.Run`,
-   `agent.go:374`) or `PipelineConfig.Validate` (`config.go:836`; I found no
-   non-test caller). The reloader must call both explicitly, or 16.5 must fold
-   them into `Config.Validate`; whichever lands, the reloader must exercise all
-   of them. It must also validate the session-secret minimum length the same
-   way `Run` does (`agent.go:414-427`) if the file's value changed (it will be
-   reported restart-required, but a bad value should still be flagged).
+1. **Load** with the startup precedence (section 2): `config.LoadFile` on the
+   pinned file, `config.ApplyOverrides` with the startup viper, then re-apply
+   `--plain-http`. Shadowed keys are logged at this point.
+2. **Validate**: on every reload, `merged.Validate()`,
+   `merged.Antispam.DNSBL.Validate()` and
+   `validateSessionSecret(role, web.session_secret)` (the same check `Run`
+   applies), whether or not the relevant keys changed. `PipelineConfig.Validate`
+   is deliberately not called: startup never calls it, so checking it on
+   reload could stop a server that started successfully from ever reloading.
 3. **Prepare all hot values** without publishing any: parse CIDRs
    (`ParseTrustedNetworks`), the threshold pair (applying the `high >= tag`
    clamp), the log level, the `on_failure` policy. Any error aborts.
-4. **Diff** the new config against the baseline snapshot (section 2) with a
-   pure function `config.Diff(old, new *Config) (hot, restart, noop []string)`
-   that walks the struct by reflection on leaf fields and uses the
-   classification table as data.
+4. **Diff** the new config against the baseline snapshot (section 2) with the
+   pure function `config.Diff(old, new *Config) (hot, restart, noop
+   []config.KeyChange)`. It walks the struct by reflection on leaf fields and
+   uses the classification table as data. A `KeyChange` is `{Key string;
+   Secret bool}` and never carries a value. A changed key missing from the
+   table is reported as restart and secret.
 5. **Apply** each changed hot key by its dedicated atomic store (section 5).
 6. **Report restart-required keys**: for each changed key classified RESTART,
-   log once at WARN with msg `config reload: key needs restart`, attributes
-   `key`, and `old`/`new` (non-secret keys only).
-7. **Summary** at INFO, msg `config reload complete`, attributes `applied`
-   (list of key names), `needs_restart` (list of key names), `shadowed` (list),
-   `file`, and `file_mtime` (RFC 3339, UTC) and `file_size` (bytes) of the
-   file as read. A reload with no changes logs the same message with empty lists.
+   log at WARN with msg `config reload: key needs restart` and attributes
+   `key` and `secret` (bool). Values, old or new, are never logged.
+7. **Summary** at INFO, msg `config reload complete`, attributes `file`,
+   `applied`, `needs_restart`, `no_effect`, `shadowed` (lists of key names),
+   `file_mtime` (RFC 3339, UTC) and `file_size` (bytes) of the file as read. A
+   reload with no changes logs the same message with empty lists.
 8. Replace the baseline snapshot with the new config ONLY after step 5
    succeeded. Restart-required keys stay "changed" relative to what the process
    is actually running, so the baseline for those keys must remain the
@@ -602,10 +626,13 @@ cross-key invariant other than that pair.
 ### Secrets in logs
 
 Never log the value of a secret key: `smtp.relay.password`,
-`web.session_secret`, `cluster.gossip.encryption_key`. For a changed secret
-key the WARN line carries `key` and `changed=true` only, with no `old` and no
-`new`. The classification table carries a `Secret` flag per key so the
-redaction is data-driven; a new key whose name contains `secret`, `password`,
+`smtp.relay.username`, `web.session_secret`, `cluster.gossip.encryption_key`
+(`secretKeys` in `internal/config/diff.go`). The reloader never logs any
+config value on the restart path: the WARN line carries `key` and `secret`
+only, for secret and non-secret keys alike. The only values it logs are the
+old and new CIDR sets for `smtp.trusted_networks` (section 5.3), which are not
+secret. The classification table carries a `Secret` flag per key so callers
+can redact anything they add; a new key whose name contains `secret`, `password`,
 `key` (as in `encryption_key`, but not `private_key_file`, which is a path) or
 `token` fails the classification test until it is flagged or explicitly
 exempted.
@@ -630,18 +657,16 @@ did not audit each). Therefore:
 
 ### Signal semantics: what SIGHUP does today
 
+- SIGHUP now reloads the config and no longer terminates the process.
+  `watchSignals` registers a handler for it, so the Go runtime's default
+  action (exit on SIGHUP) no longer applies. Before this change, a SIGHUP
+  terminated `bongo-go`.
 - In-container: `bongo-go` is the image's `ENTRYPOINT`, so it runs directly
   as the container's main process (PID 1) as uid 10001, with no wrapper
-  script. The binary registers no SIGHUP handler. Per the `os/signal`
-  documentation, "A SIGHUP, SIGINT, or SIGTERM signal causes the program to
-  exit" in a Go program with no handler. I confirmed that with a trivial Go
-  program locally (exit status 129 on SIGHUP, darwin). I did not run it as PID
-  1 in a container; I am not relying on the kernel's PID 1 signal rules because
-  the Go runtime installs its own SIGHUP handler.
-- Under systemd: `deploy/bongo-go.service` has no `ExecReload`. A SIGHUP
-  sent to the unit's process terminates it, and `Restart=on-failure`
-  restarts it. So today SIGHUP is destructive, not neutral. Task 16.7 should
-  add `ExecReload=/bin/kill -HUP $MAINPID`.
+  script, and receives the signal itself.
+- Under systemd: `deploy/bongo-go.service` has
+  `ExecReload=/bin/kill -HUP $MAINPID`, so `systemctl reload bongo-go`
+  triggers a reload.
 - Docker: `docker compose kill -s HUP bongo` delivers it.
 - Terminal: a foreground `bongo-go serve` also receives SIGHUP when its
   controlling terminal closes. After this change that closes the terminal
@@ -653,9 +678,9 @@ did not audit each). Therefore:
   mount pointing at the old inode. This is general Docker behaviour that I
   have not tested against this stack; the deployment doc for 16.7 should
   say "edit in place or verify with `docker compose exec bongo cat
-  /etc/bongo/bongo.hcl` before sending SIGHUP". The design proposed logging the
-  file's mtime so a stale read is visible; `reloadLocked` does not log it, so
-  the README gives only the manual check. Adding the mtime is not done.
+  /etc/bongo/bongo.hcl` before sending SIGHUP". The `config reload complete`
+  line logs `file_mtime` and `file_size` of the file as read, so a stale read
+  is visible by comparing them with the edited file.
 
 ## 7. Cluster considerations
 
@@ -788,8 +813,8 @@ mutation-check each.
   Mutation: make `failureResult` read twice with a flip in between; test goes
   red.
 - **(e) Pure diff and classification.** `config.Diff(old, new *Config) (hot,
-  restart, noop []string)` driven by a classification table that includes a
-  `Secret` flag. Table-driven test that reflects over EVERY leaf field of
+  restart, noop []config.KeyChange)`, where `KeyChange` is `{Key, Secret}`,
+  driven by a classification table that includes a `Secret` flag. Table-driven test that reflects over EVERY leaf field of
   `Config` and fails if any field is unclassified (mirroring
   `knownBlobBearingFields` in `internal/agent/blobref_enumeration_test.go`),
   plus cases for the pointer blocks (`Queue`, `AgentServer`, `SpamAssassin`,

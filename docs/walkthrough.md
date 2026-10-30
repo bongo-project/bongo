@@ -1,26 +1,25 @@
-# Bongo-Go: Full Walkthrough
+# Bongo: Full Walkthrough
 
-A step-by-step guide to building, running, and exploring Bongo-Go — a complete
-mail and calendar server shipped as a single Go binary with a modern HTMX web UI.
+A step-by-step guide to building, running and exploring Bongo, a mail and
+calendar server shipped as a single Go binary with an HTMX web UI. The server
+binary is `bongo-go`.
 
 ---
 
 ## Prerequisites
 
-Before you start, make sure you have the following installed:
-
-- **Go 1.22+** — [https://go.dev/dl/](https://go.dev/dl/)
-- **templ CLI** — for compiling `.templ` templates into Go code
+- **Go** at the version named in `go.mod` (currently 1.27): <https://go.dev/dl/>
+- **templ CLI**, which compiles `.templ` templates into Go code:
   ```bash
   go install github.com/a-h/templ/cmd/templ@latest
   ```
-- **Git** — to clone the repository
-- A modern web browser (Chrome, Firefox, Safari, Edge)
+- **Git**, to clone the repository
+- A current web browser (Chrome, Firefox, Safari or Edge)
 
-Optional (for testing with a real mail client):
+Optional, for testing with a real mail client:
 
-- **Thunderbird** — [https://www.thunderbird.net](https://www.thunderbird.net)
-- **swaks** — a command-line SMTP test tool: `brew install swaks` (macOS) or
+- **Thunderbird**: <https://www.thunderbird.net>
+- **swaks**, a command-line SMTP test tool: `brew install swaks` (macOS) or
   `apt install swaks` (Linux)
 
 ---
@@ -29,61 +28,51 @@ Optional (for testing with a real mail client):
 
 ```bash
 git clone https://github.com/bongo-project/bongo.git
-cd bongo-go
+cd bongo
+make build
 ```
 
-Generate Go code from the templ templates, then build both binaries:
+`make build` runs `templ generate` and builds both binaries into `bin/`:
 
-```bash
-templ generate
-go build -o bin/bongo-go ./cmd/bongo-go
-go build -o bin/bongo-import ./cmd/bongo-import
-```
-
-You should now have two binaries in the `bin/` directory:
-
-- `bongo-go` — the mail/calendar server
-- `bongo-import` — the mail/contacts/calendar import tool
+- `bongo-go`: the mail and calendar server
+- `bongo-import`: the mail, contacts and calendar import tool
 
 ---
 
 ## Step 2: Start the Server in Dev Mode
 
-Dev mode starts a fully functional server with zero configuration. It creates an
-ephemeral data directory (deleted on shutdown), auto-generates a self-signed TLS
-certificate, creates a default admin user, and starts all services on
-non-privileged ports so you don't need root.
+The quickest route is one command:
+
+```bash
+make dev
+```
+
+It builds, starts a dev server, runs the validation suite, seeds test data and keeps the server running until you press Ctrl-C. Open
+<http://localhost:8080> when it prints "Dev server ready".
+
+To start the server on its own instead:
 
 ```bash
 ./bin/bongo-go serve --dev
 ```
 
-You'll see output like:
-
-```
-config loaded  role=dev log_level=info log_format=text
-dev data dir: /tmp/bongo-dev-XXXXXXXX
-web server listening on https://localhost:8080
-SMTP MX listening on :2525
-SMTP submission listening on :2587
-IMAP listening on :1143 (TLS :1993)
-POP3 listening on :1110 (TLS :1995)
-Raft single-node cluster ready
-```
-
-Leave this terminal running. Open a new terminal for the next steps.
+Dev mode needs no configuration. It creates an ephemeral data directory
+(deleted on shutdown), serves the web UI over plain HTTP, uses a self-signed
+certificate for the mail protocols' TLS ports, creates a default admin user and listens on non-privileged ports, so it does not need
+root. Logs are JSON lines on standard output.
 
 ### Dev Mode Ports
 
-| Service         | Port  | Protocol               |
-|-----------------|-------|------------------------|
-| Web UI (HTTPS)  | 8080  | HTTPS (self-signed)    |
-| SMTP Inbound    | 2525  | Plain text             |
-| SMTP Submission | 2587  | Auth required          |
-| IMAP            | 1143  | Plain / STARTTLS       |
-| IMAPS           | 1993  | Implicit TLS           |
-| POP3            | 1110  | Plain / STARTTLS       |
-| POP3S           | 1995  | Implicit TLS           |
+| Service         | Port  | Protocol                          |
+|-----------------|-------|-----------------------------------|
+| Web UI          | 8080  | Plain HTTP                        |
+| Control         | 8081  | `/internal` endpoints, loopback only |
+| SMTP inbound    | 2525  | Plain text                        |
+| SMTP submission | 2587  | Authentication required           |
+| IMAP            | 1143  | Plain / STARTTLS                  |
+| IMAPS           | 1993  | Implicit TLS                      |
+| POP3            | 1110  | Plain / STARTTLS                  |
+| POP3S           | 1995  | Implicit TLS                      |
 
 ### Default Login
 
@@ -94,132 +83,165 @@ Leave this terminal running. Open a new terminal for the next steps.
 
 ## Step 3: Open the Web UI
 
-Open your browser and go to:
+Open <http://localhost:8080> and log in with `admin@localhost` / `admin`.
 
-```
-https://localhost:8080
-```
-
-Your browser will warn about the self-signed certificate — accept it and proceed.
-You'll see the Bongo login page. Log in with `admin@localhost` / `admin`.
-
-After login you'll land on the Inbox view. It will be empty until we send some
-mail or import data.
+After login the Inbox opens. It is empty until mail is sent or test data is
+seeded.
 
 ---
 
-## Step 4: Populate with Demo Data
+## Step 4: Populate with Test Data
 
-Bongo ships with a seed-data script that populates the server with realistic
-content — emails, contacts, and calendar events — so you can see every feature
-in action.
+`make dev` seeds test data already. Against a dev server you started yourself,
+run:
 
 ```bash
-go run scripts/seed-data/main.go
+make seed
 ```
 
-This sends 18 emails via SMTP (threaded conversations, HTML messages, different
-senders), creates 8 contacts, and adds 5 calendar events. It takes a few seconds
-to complete.
-
-Once the script finishes, refresh the web UI. You should now see:
-
-- **Inbox** — Messages from Alice, Bob, Charlie and others with realistic subjects
-- **Contacts** — 8 contacts with names, emails, phone numbers, and companies
-- **Calendar** — Events spread across the current week (meetings, deadlines, etc.)
+The seed creates three test users (`alice`, `bob` and `charlie`, all
+`@localhost`), delivers a set of messages over SMTP (threads, HTML mail and
+attachments), creates the folders `INBOX/Important`, `INBOX/Receipts` and
+`Projects` with two subfolders, and adds contacts and calendar events. Seeding
+is not idempotent: running it twice creates duplicate contacts and events.
 
 ---
 
 ## Step 5: Explore the Web UI
 
+### Layout
+
+- **Top bar:** the Bongo logo, mail search, a light/dark theme toggle and the
+  account menu.
+- **Sidebar:** three groups. **Mail** holds INBOX (with its subfolders), Sent,
+  Drafts, Trash, Junk and Archive, plus the Unread, Starred and All Mail
+  views. **Folders** holds your own folders. **Workspace** links to Calendar,
+  Contacts, Filter Rules, Settings and, for administrators, Admin.
+- On a narrow screen the sidebar collapses into a menu.
+
 ### Mail
 
-- **Inbox** — Click any message to read it. Threaded conversations show as
-  collapsible bubbles. Use the toolbar to reply, forward, star, or delete.
-- **Compose** — Click the compose button in the sidebar. The compose view has
-  recipient chips, a Cc/Bcc toggle, and a rich text toolbar.
-- **Folders** — INBOX, Sent, Drafts, Trash, Junk are pre-created. You can see
-  them in the sidebar.
-- **Search** — Use the search bar in the top bar to find messages by keyword.
-  Results show highlighted matches with mailbox badges.
-- **Right-click** — Right-click any message row for a context menu with quick
-  actions (reply, forward, move, delete, mark read/unread).
+- **Message list:** the toolbar above the list switches between three
+  layouts: **List** (a message opens on its own page), **Two-pane** (the
+  reading pane below the list) and **Three-pane** (the reading pane beside the
+  list). In the pane layouts a click on a message opens it in the reading
+  pane. The toolbar also has Refresh, Scan for spam and Compose.
+- **Selecting messages:** tick the checkboxes to act on several messages at
+  once. Messages can be dragged onto a folder in the sidebar to move them.
+- **Right-click** a message row for a menu with open, reply, reply all,
+  forward, mark read or unread, star, spam or not spam, create filter and
+  delete.
+- **Reading a message:** the message toolbar has Reply, Reply all, Forward,
+  Archive, Move to, Delete and tags. **More** holds Export, View Original
+  (the raw source with all headers) and Print. Remote images are blocked until
+  you choose to load them.
+- **Compose:** the Compose button in the sidebar, or `c`. The composer has
+  recipient chips, Cc and Bcc, attachments, a choice of rich text or plain
+  text, a From address when you have send-as addresses, and Save draft.
+- **Search:** the search field in the top bar. `/` or Ctrl-K (Cmd-K on a Mac)
+  moves focus to it.
+
+### Keyboard shortcuts
+
+Press `?` for the full list. Shortcuts are ignored while typing in a field.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Next / previous message. In the pane layouts the message opens after a short pause. |
+| `Enter` | Open the highlighted message |
+| `r` | Reply |
+| `s` | Star or unstar |
+| `d` | Move to Trash (does nothing in Trash) |
+| `c` | Compose |
+| `/`, Ctrl-K | Focus search |
+| `?` | Show the shortcut list |
 
 ### Calendar
 
-- **Month view** — Shows a 7-column grid with event chips. Click any day to
-  create a new event.
-- **Week view** — Hourly time grid with positioned event blocks. Click any hour
-  slot to create an event at that time.
-- **Day view** — Focused single-day view with the same hourly grid.
-- **View switcher** — Toggle between Month / Week / Day using the buttons
-  below the toolbar.
+- **Views:** Month, Week, Day and Agenda, switched with the buttons at the
+  top. The arrows and **Today** move through dates.
+- **New Event** creates an event; clicking a day or a time slot also creates
+  one at that point.
+- The calendar sidebar has a mini month, your calendars (tick to show or
+  hide), event search, and import and export of `.ics` files.
 
 ### Contacts
 
-- **Contact list** — Left pane shows all contacts. Click any contact to load
-  their details in the right-side reading pane.
-- **Edit in place** — The reading pane shows an editable form. Change any field
-  and click Save.
-- **Import/Export** — Export all contacts as a `.vcf` file, or import a `.vcf`
-  from another system (macOS Contacts, Google Contacts, etc.)
+- The contact list is on the left; a click shows the contact on the right,
+  where it can be edited and saved.
+- **New Contact** adds one. **Import vCard** and **Export vCard** move
+  contacts in and out as `.vcf` files (macOS Contacts, Google Contacts and
+  others).
 
 ### Settings
 
-- **Appearance** — Theme (light/dark/auto), language, timezone
-- **Account** — Display name, signature
-- **Notifications** — Desktop notification preferences
-- **Forwarding** — Forward all incoming mail to an external address, with an
-  option to keep a local copy
-- **Filter Rules** — Create rules to auto-sort incoming mail (e.g., move
-  newsletters to a folder, auto-star messages from your boss, or forward
-  matching messages to an external address)
+**Settings** in the sidebar opens a page with five tabs:
+
+- **Appearance:** theme (light, dark or follow the OS), default mail layout
+  and list density.
+- **Display:** messages per page and infinite scroll.
+- **Composition:** default reply (sender or all) and signature.
+- **Localization:** language (English, German, Spanish or French) and time
+  zone.
+- **Forwarding:** forward incoming mail to verified external addresses, with
+  an option to keep a local copy.
+
+The settings sidebar also links to:
+
+- **Filter Rules:** rules that sort incoming mail, for example move
+  newsletters to a folder, star messages from a sender or forward matches.
+- **Tags:** create, colour and order tags.
+- **Security:** change password, and set up two-factor authentication with
+  recovery codes.
+
+Send-as addresses are managed at `/settings/addresses`.
 
 ---
 
 ## Step 6: Explore the Admin Panel
 
-Navigate to the admin panel by clicking your avatar/name in the top bar and
-selecting "Admin", or go directly to:
+Administrators see **Admin** in the Workspace group of the sidebar. It opens
+<http://localhost:8080/admin>.
 
-```
-https://localhost:8080/admin
-```
+### Dashboard
 
-### Admin Dashboard
-
-Shows system health: total users, messages, storage used, and service status
-for each subsystem (SMTP, IMAP, POP3, Raft, etc.)
+Users, storage, uptime and node count, the version, Raft state and cluster
+size, and a policy switch that requires two-factor authentication for all
+users.
 
 ### Users
 
-List all users, create new ones, reset passwords, enable/disable accounts. Each
-user has quota tracking (messages and storage).
+List users, create them, reset passwords and set quotas.
 
 ### Domains
 
-Manage the domains your server handles mail for. Shows MX record status and DNS
-hints for proper configuration.
+The domains the server handles mail for. Each domain's **Manage** page has its
+DKIM key, catch-all, administrators and quota, the DNS records to publish (also
+as a BIND zone download) and live DNS checks. See
+[`multi-domain-hosting.md`](multi-domain-hosting.md).
 
 ### Aliases
 
-Create email aliases that forward to one or more real accounts.
+Addresses that deliver to one or more accounts.
+
+### Quarantine
+
+Messages held by the scanner, with Rescan, Restore and Delete.
 
 ### Queue
 
-Monitor the outbound mail queue. See pending and failed messages with retry/drop
+The outbound mail queue: pending and failed messages, with retry and drop
 controls.
 
 ### Cluster
 
-View Raft consensus state: leader, followers, log index, and cluster health.
-Each node shows its role and commit status.
+Raft state: leader, followers, log index and the health of each node.
 
 ### Logs
 
-Real-time log viewer with streaming output. Filter by log level (debug, info,
-warn, error) and component (smtp, imap, raft, web, queue, gossip, blob). Logs
-stream in via Server-Sent Events.
+A live log viewer, filtered by level (debug, info, warn, error) and component
+(smtp, imap, raft, web, queue, gossip, blob). Lines arrive over Server-Sent
+Events.
 
 ---
 
@@ -329,10 +351,10 @@ end-to-end: user creation, SMTP delivery, IMAP operations, POP3 retrieval,
 contacts round-trip, calendar round-trip, antispam scoring, and web auth.
 
 ```bash
-go run scripts/validate-server/main.go
+make validate
 ```
 
-The script creates 3 test users (alice, bob, charlie), sends 10 emails through
+The script creates three test users (alice, bob, charlie), sends mail through
 SMTP, verifies delivery via IMAP (threading, attachments, HTML), tests POP3
 retrieval, creates and round-trips contacts and calendar events, tests antispam
 scoring (sends a spam-like message and verifies it lands in Junk), and checks
@@ -344,7 +366,7 @@ Output shows per-check pass/fail status. At the end you'll see a summary:
 ====================================================
   Bongo Server Validation Report
   ---------------------------------------------------
-  TOTAL: 48/48 checks passed                    PASS
+  TOTAL: N/N checks passed                      PASS
 ====================================================
 ```
 
@@ -411,7 +433,7 @@ the Junk folder instead of the Inbox.
 
 ## Architecture Overview
 
-Bongo-Go is a single binary that includes:
+Bongo is a single binary that includes:
 
 - **SMTP server** — Inbound (port 25/2525) and submission (port 587/2587) with
   DKIM signing, SPF checking, and antispam scoring
@@ -420,45 +442,33 @@ Bongo-Go is a single binary that includes:
 - **CalDAV/CardDAV** — Standards-compliant calendar and contact sync
 - **HTMX Web UI** — Server-rendered HTML with Alpine.js interactivity and HTMX
   for SPA-like navigation without a JavaScript framework
-- **Raft consensus** — Built-in clustering for high availability (2-node or
-  3-node clusters)
+- **Raft consensus** — Built-in clustering for high availability (three or five
+  `server` nodes form a quorum)
 - **Embedded storage** — PebbleDB (key-value) + content-addressed blob store.
   No external database required.
-- **Admin panel** — User management, domain config, queue monitoring, real-time
-  logs, cluster status
+- **Admin panel** — User and domain management, quarantine, queue monitoring,
+  real-time logs, cluster status
 
 ---
 
 ## Useful Commands
 
 ```bash
-# Build everything
-templ generate && go build -o bin/bongo-go ./cmd/bongo-go
-
-# Start dev server
-./bin/bongo-go serve --dev
-
-# Start dev server without TLS (plain HTTP on port 8080)
-./bin/bongo-go serve --dev --plain-http
-
-# Seed demo data
-go run scripts/seed-data/main.go
-
-# Run validation suite
-go run scripts/validate-server/main.go
-
-# Run integration tests
-go test -tags integration ./test/integration/...
-
-# Run e2e tests
-go test -tags e2e ./test/e2e/...
+make build      # templ generate + build bin/bongo-go and bin/bongo-import
+make dev        # build, start a dev server, validate, seed, keep running
+make run        # build and start a dev server
+make seed       # seed test data into a running dev server
+make validate   # run the validation suite against a running dev server
+make test       # unit tests
+make test-all   # unit and integration tests
+make ui-shots OUT=~/shots   # screenshot every route (light, dark, mobile)
 
 # Import mail from a directory
 ./bin/bongo-import directory /path/to/data \
   --dst-user admin@localhost --dst-pass admin
 
 # Check server health
-curl -k https://localhost:8080/health/ready
+curl http://localhost:8080/health/ready
 ```
 
 ---
@@ -467,10 +477,9 @@ curl -k https://localhost:8080/health/ready
 
 ### Setup and development
 
-**"Certificate not trusted" in browser**
-This is expected with dev mode's self-signed certificate. In Chrome, type
-`thisisunsafe` on the warning page. In Firefox, click "Advanced" then "Accept
-the Risk and Continue".
+**Certificate warning in a mail client**
+Dev mode's TLS ports (IMAPS 1993, POP3S 1995) use a self-signed certificate.
+Accept it in the client, or use the plain ports 1143 and 1110.
 
 **Port already in use**
 Another process is using one of Bongo's ports. Check with `lsof -i :8080` (or
@@ -592,7 +601,7 @@ DNS, bounces fail DMARC authentication and are treated as spam.
 **Symptom:** A message landed in Junk but you do not know why. You need to
 inspect the spam scoring decision and authentication results.
 
-**Solution:** Use the message toolbar's **View Original** button. It renders the
+**Solution:** Open the message and choose **More > View Original**. It renders the
 full RFC 5322 raw source including all headers. Look for these headers:
 
 - **`Authentication-Results`** — records the SPF, DKIM and DMARC verdicts

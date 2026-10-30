@@ -8,7 +8,12 @@
 # "#" and adjust the value to enable them.
 #
 # HCL syntax: blocks {} group related settings; strings are quoted; durations
-# are Go-style ("120s", "30d"); sizes accept KB/MB/GB suffixes.
+# are Go-style ("120s", "720h"); sizes accept KB/MB/GB suffixes. Whole days
+# ("30d") are accepted only by pipeline.error_retention and
+# pipeline.quarantine_retention; everywhere else write hours ("720h").
+#
+# Keys marked "currently unused" are parsed but nothing reads them; setting
+# them has no effect.
 #
 # WHERE THIS FILE GOES
 #   The server looks for its config in this order:
@@ -31,9 +36,12 @@
 server {
   # Role for this node. For a normal standalone mail server use "server".
   #   server — full stack (storage, all protocols, Raft voter). Use this.
-  #   dev    — all-in-one, ephemeral storage, zero config, self-signed TLS.
+  #   dev    — all-in-one, ephemeral storage, zero config. The web UI is always
+  #            plain HTTP; the mail TLS ports use a self-signed certificate.
   #   edge   — stateless proxy that forwards to servers (no local storage).
   #   agent  — stateless remote protocol processor (requires agent_server + agents).
+  #   edge and agent are incomplete in this build: edge starts no SMTP, IMAP or
+  #   POP3 listeners, and no server accepts agent registrations. Do not use them.
   role = "server"
 
   # A human-readable node name (defaults to the machine hostname).
@@ -48,7 +56,7 @@ server {
   # exact address (a /32) rather than its whole network where you can.
   # trusted_proxies = ["172.18.0.5/32"]
 
-  # Datacenter label (informational; used for clustering topology).
+  # Datacenter label. Currently unused: nothing reads it.
   # datacenter = "dc1"
 
   # Address the protocol listeners bind to. 0.0.0.0 = all interfaces.
@@ -96,9 +104,19 @@ cluster {
   # join = ["10.0.0.2:8301", "10.0.0.3:8301"]
 
   raft {
+    # data_dir is currently unused: nothing reads it. Raft snapshots are
+    # written under storage.data_dir.
     data_dir           = "/var/lib/bongo-go/raft"
     port               = 8300
     snapshot_threshold = 8192
+    # trailing_logs — raft log entries kept after a snapshot, so a lagging
+    # follower can catch up from the log instead of receiving a full snapshot.
+    # It MUST be below snapshot_threshold, otherwise a snapshot reclaims
+    # nothing and the log grows without bound; config load rejects a value at
+    # or above it. Unset (0) leaves hashicorp/raft's default of 10240, which is
+    # above the default threshold of 8192, so the server logs a warning at
+    # startup. Raise both together on a busier deployment.
+    trailing_logs      = 4096
     snapshot_interval  = "120s"
   }
 
@@ -143,7 +161,7 @@ storage {
 
   pebble {
     cache_size = "256MB"
-    # wal_dir  = "/var/lib/bongo-go/wal"   # put the write-ahead log on a separate disk
+    # wal_dir  = "/var/lib/bongo-go/wal"   # currently unused: nothing reads it
   }
 
   # Attachments at or above this encoded size are split into their own
@@ -217,6 +235,8 @@ smtp {
 
   # Set true ONLY when a trusted reverse proxy (e.g. Traefik/HAProxy) sits in
   # front and sends the PROXY protocol header, so Bongo sees the real client IP.
+  # The header is honoured only from peers listed in server.trusted_proxies;
+  # from any other peer it is read and discarded.
   # Anything that judges the connecting IP depends on this being right:
   # trusted_networks below, per-IP rate limiting, SPF, and the antispam
   # dnsbl block. Set it wrong and those all evaluate the proxy instead of
@@ -260,13 +280,15 @@ smtp {
   # 192.168.0.0/16) — list them explicitly if you want them trusted.
   #
   # WARNING: if proxy_protocol = true above, trusted_networks is only as
-  # trustworthy as the set of hosts that can reach this SMTP port from a
-  # loopback/private/link-local address, because the PROXY header lets such a
-  # peer assert an arbitrary source IP (see internal/netx/proxyproto.go).
+  # trustworthy as the proxies listed in server.trusted_proxies, because the
+  # PROXY header lets such a peer assert an arbitrary source IP (see
+  # internal/netx/proxyproto.go). Headers from any other peer are ignored.
   # trusted_networks = ["127.0.0.1/32", "10.0.5.0/24"]
 
   # TLS certificate for SMTP STARTTLS/implicit TLS. Should match `hostname`.
-  # If empty, STARTTLS falls back to a self-signed cert with a warning.
+  # If empty (or the files cannot be loaded), STARTTLS is not offered at all:
+  # there is no self-signed fallback for SMTP, and as AUTH is offered only over
+  # TLS, authenticated submission on 587 is unavailable.
   tls {
     # cert_file = "/etc/bongo/certs/mail.example.com/fullchain.pem"
     # key_file  = "/etc/bongo/certs/mail.example.com/privkey.pem"
@@ -338,7 +360,9 @@ imap {
 
 
 # -----------------------------------------------------------------------------
-# pop3 — mail access (110 STARTTLS, 995 implicit TLS). Off by default; use IMAP.
+# pop3 — mail access (110 STARTTLS, 995 implicit TLS). TLS from cluster.tls.
+# Enabled by default in code if this block is omitted; this example turns it
+# off. Prefer IMAP.
 # -----------------------------------------------------------------------------
 pop3 {
   enabled  = false
@@ -352,10 +376,11 @@ pop3 {
 
 
 # -----------------------------------------------------------------------------
-# web — HTMX web UI and admin (also serves /metrics via telemetry.prometheus)
+# web — HTMX web UI and admin. Also serves /metrics on this port, answered only
+# to loopback, private and link-local clients.
 # -----------------------------------------------------------------------------
 web {
-  enabled = true
+  enabled = true   # currently unused: nothing reads it; the web UI always runs
   port    = 443
 
   # Serve the UI over HTTPS directly using these certs. Omit both if you set
@@ -390,7 +415,7 @@ web {
 # caldav — CalDAV/CardDAV (calendar + contacts sync)
 # -----------------------------------------------------------------------------
 caldav {
-  enabled = true
+  enabled = true   # currently unused: nothing reads it; CalDAV/CardDAV always run
 }
 
 
@@ -399,7 +424,7 @@ caldav {
 # -----------------------------------------------------------------------------
 antispam {
   builtin {
-    enabled = true
+    enabled = true   # currently unused: nothing reads it; the builtin scorer always runs
     # Score thresholds for the built-in heuristic scorer (range 0.0–1.0).
     #   threshold:      at/above this, tagged as spam and moved to Junk (default 0.5)
     #   high_threshold: at/above this, quarantined instead of delivered (default 0.9)
@@ -483,13 +508,11 @@ antispam {
   # at all, because the verdict looks authoritative and is about the wrong
   # host.
   #
-  # Facing the internet directly, set it false. Not because a public sender's
-  # IP would be lost — it would not; a PROXY header from any peer that is not
-  # loopback, RFC 1918 or link-local is ignored and the real socket address is
-  # used — but because leaving it on widens what a local or LAN-adjacent
-  # attacker can do: from such an address they can assert any source IP they
-  # like, and DNSBL would then judge that invented address instead of theirs.
-  # Turn it on only when something in front of you is genuinely supplying it.
+  # Facing the internet directly, set it false. A PROXY header is honoured only
+  # from peers in server.trusted_proxies (any other peer's header is ignored
+  # and the real socket address is used), so there is nothing for it to do,
+  # and enabling it requires trusted_proxies to be set. Turn it on only when
+  # something in front of you is genuinely supplying it.
   #
   # There is no shipped default zone list, and none is named here on
   # purpose. Which blocklists to consult is an operator judgement with
@@ -659,9 +682,13 @@ pipeline {
 # telemetry — metrics and logging
 # -----------------------------------------------------------------------------
 telemetry {
+  # Both keys are currently unused: nothing reads them and nothing binds 9090.
+  # Metrics are served at /metrics on the web port (web.port), answered only to
+  # loopback, private and link-local clients (and to nobody when
+  # web.behind_tls_proxy is set with server.trusted_proxies empty).
   prometheus {
     enabled = true
-    port    = 9090   # Prometheus scrape endpoint at http://<host>:9090/metrics
+    port    = 9090
   }
 
   log {

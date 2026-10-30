@@ -111,8 +111,8 @@ ui-test-headed:
 ui-test-setup: build
 	$(BUILD_DIR)/$(BINARY) serve --dev &
 	sleep 3
-	go run ./scripts/validate-server/...
-	go run ./scripts/validate-server/... --seed-only
+	go run ./scripts/validate-server/... --plain-http
+	go run ./scripts/validate-server/... --plain-http --seed-only
 
 # Visual verification harness: builds into a temp dir, starts a dev server on
 # free ports, seeds it, and screenshots every route (light, dark, mobile).
@@ -125,10 +125,10 @@ ui-shots:
 	go run ./scripts/ui-shots $(if $(OUT),-out $(OUT))
 
 validate:
-	go run ./scripts/validate-server/...
+	go run ./scripts/validate-server/... --plain-http
 
 seed:
-	go run ./scripts/validate-server/... --seed-only
+	go run ./scripts/validate-server/... --plain-http --seed-only
 
 ## Clean
 

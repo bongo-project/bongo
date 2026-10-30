@@ -11,13 +11,21 @@ If you would rather run under Docker + Traefik, see
 
 ## 1. What's in the zip
 
+Download the zip for your architecture from the
+[GitHub releases page](https://github.com/bongo-project/bongo/releases), or
+build the same zips from a source checkout with `make dist` (they land in
+`dist/`).
+
 ```
 bongo-go_<version>_linux_<arch>/
-  bongo-go            # the server binary
-  bongo-import        # mail import tool (mbox/maildir/eml/IMAP/Thunderbird)
-  bongo.example.hcl   # fully annotated example configuration
-  bongo-go.service    # systemd unit template
-  INSTALL.md          # this guide
+  bongo-go                # the server binary
+  bongo-import            # mail import tool (mbox/maildir/eml/IMAP/Thunderbird)
+  bongo.example.hcl       # fully annotated example configuration
+  bongo-go.service        # systemd unit template
+  INSTALL.md              # this guide
+  README.md               # what this release is and what is not finished yet
+  LICENSE                 # licence text
+  THIRD_PARTY_NOTICES.md  # licences of bundled third-party components
 ```
 
 `<arch>` is `amd64` (Intel/AMD x86-64) or `arm64` (ARM 64-bit, e.g. Raspberry
@@ -42,9 +50,11 @@ software:
   mail hostname (e.g. `mail.example.com`).
 - Control of your domain's **DNS** to publish A / MX / SPF / DKIM / DMARC
   records (the admin UI generates the exact records for you).
-- A **TLS certificate** for the mail hostname (e.g. from Let's Encrypt). The
-  server can start with a self-signed fallback for testing, but real clients
-  need a trusted certificate.
+- A **TLS certificate** for the mail hostname (e.g. from Let's Encrypt).
+  Without one, IMAP and POP3 fall back to a self-signed certificate (fine for
+  testing; real clients will not trust it), and SMTP offers no STARTTLS at all,
+  so authenticated submission on port 587 is unavailable because AUTH is only
+  offered over TLS.
 - Ports open: `25`, `587` (SMTP), `143`, `993` (IMAP), optionally `110`, `995`
   (POP3), and `443` (web UI). Binding ports below 1024 needs root or a
   capability grant (see step 6).
@@ -83,8 +93,9 @@ bongo-go serve --dev
 ```
 
 Dev mode uses ephemeral storage, runs the mail protocols on high ports, and
-auto-creates a login of `admin@localhost` / `admin`. The web UI is served over
-plain **http** (no TLS, so no certificate warning) at
+auto-creates a login of `admin@localhost` / `admin`. The mail protocols' TLS
+ports use a self-signed certificate. The web UI is always served over
+plain **http** in dev mode (no TLS, so no certificate warning) at
 <http://localhost:8080> — do not use dev mode anywhere untrusted, since the
 password crosses the network in clear. Stop it with Ctrl-C — nothing is
 persisted.
@@ -110,7 +121,10 @@ The minimum you must change for a real single-domain server:
                    key_file  = "/etc/bongo/certs/privkey.pem" } }
    ```
    (Behind a TLS-terminating reverse proxy instead? Set `web.plain_http = true`
-   and `web.behind_tls_proxy = true`, and change `web.port` to `8080`.)
+   and `web.behind_tls_proxy = true`, change `web.port` to `8080`, and list the
+   proxy's address in `server.trusted_proxies`; without it `X-Forwarded-For`
+   and `X-Forwarded-Proto` are ignored, so rate limits and lockout see the
+   proxy's IP and HSTS is not sent.)
 3. **Session secret** — generate one and keep it out of the file:
    ```bash
    openssl rand -base64 32
@@ -127,8 +141,9 @@ The minimum you must change for a real single-domain server:
 Generate a signing key and enable the `smtp.dkim` block:
 
 ```bash
-openssl genrsa -out /etc/bongo/secrets/dkim.key 2048
-openssl rsa -in /etc/bongo/secrets/dkim.key -pubout -outform DER 2>/dev/null \
+sudo mkdir -p /etc/bongo/secrets
+sudo openssl genrsa -out /etc/bongo/secrets/dkim.key 2048
+sudo openssl rsa -in /etc/bongo/secrets/dkim.key -pubout -outform DER 2>/dev/null \
   | openssl base64 -A            # this is the p= value for the DNS TXT record
 ```
 
@@ -144,6 +159,10 @@ smtp {
 
 Publish the public key as a TXT record at `mail._domainkey.example.com`
 (`v=DKIM1; k=rsa; p=<base64 from above>`).
+
+Alternatively, once the server is running, generate a key per domain in the web
+UI under **Admin → Domains → Manage**. The page shows the DNS TXT record to
+publish, and no key file or `smtp.dkim` block is needed for that domain.
 
 ---
 
@@ -225,8 +244,13 @@ port. If you change `server.control_addr`, pass the new address here, because
 the CLI does not read the server config.
 `--session-secret` must match the node's
 `web.session_secret`; it also falls back to the `BONGO_WEB_SESSION_SECRET`
-environment variable. Then log in to the web UI and add your domain(s) from the
-admin area — additional domains are managed at runtime, not in the config file.
+environment variable. Then log in to the web UI.
+
+You do not need to add your primary domain: on startup the server adds it as a
+managed domain, taking `smtp.dkim.domain` or, if that is unset, the registered
+domain of `smtp.hostname` (`example.com` for `mail.example.com`). Add any
+further domains under **Admin → Domains**; they are managed at runtime, not in
+the config file.
 
 ---
 

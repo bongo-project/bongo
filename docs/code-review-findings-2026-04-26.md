@@ -1,5 +1,10 @@
 # Code Review Findings
 
+> **Historical record.** This review describes the code as of 2026-04-26. Its
+> open items and file:line citations are out of date: for example, token-based
+> CSRF protection (`InjectCSRF`/`RequireCSRF`) has since been built. Do not use it
+> as a list of current issues; see `SECURITY.md` for known limitations.
+
 Date: 2026-04-26
 
 Repository: `bongo-go`

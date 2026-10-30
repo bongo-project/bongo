@@ -40,7 +40,7 @@ Consequences worth knowing up front:
 
 As a global administrator, go to **Admin → Domains** (`/admin/domains`) and add
 `tenant.com`. Only a global admin can create or delete a domain; once it exists,
-you can delegate day-to-day management (see step 6).
+you can delegate day-to-day management (see step 7).
 
 A new domain starts **enabled**. You can disable it at any time from its Manage
 page — disabled domains stop accepting mail without being deleted.
@@ -63,12 +63,14 @@ The record set is:
 
 | Type | Host | Value | Purpose |
 |------|------|-------|---------|
-| A/AAAA | `@`, `mail`, `autoconfig`, `autodiscover` | server IP | apex + client-discovery names |
+| A | `@`, `mail`, `autoconfig`, `autodiscover` | server IPv4 address | apex + client-discovery names |
+| AAAA | `@`, `mail` | server IPv6 address | only when the mail host has an IPv6 address |
 | MX | `@` | `10 mail.example.com.` | route inbound mail to the shared host |
 | TXT (SPF) | `@` | `v=spf1 mx ~all` | authorise the MX host to send |
 | TXT (DMARC) | `_dmarc` | `v=DMARC1; p=none; rua=mailto:postmaster@tenant.com` | reporting, policy `none` to start |
 | TXT (DKIM) | `mail._domainkey` | `v=DKIM1; k=rsa; p=...` | shown only after you generate a key (step 4) |
 | SRV | `_imaps._tcp`, `_submission._tcp`, `_autodiscover._tcp`, `_caldavs._tcp`, `_carddavs._tcp` | target `mail.example.com.` | RFC 6186 client autodiscovery |
+| TXT | `_caldavs._tcp`, `_carddavs._tcp` | `path=/caldav/`, `path=/carddav/` | CalDAV/CardDAV discovery path |
 
 Start DMARC at `p=none` so you can watch the `rua` reports before you enforce.
 Move to `p=quarantine` and then `p=reject` once SPF and DKIM are consistently
@@ -81,8 +83,9 @@ what this server expects. The legend below the table explains the four states:
 
 - **Valid** — the record is published and matches this server.
 - **Missing** — no matching record was found; publish it using the setup records
-  above. For MX, "matching" means an MX host that resolves to `mail.example.com`
-  (any old MX pointing elsewhere still reads as missing — that is deliberate).
+  above. For MX, Valid means at least one MX host name equals
+  `mail.example.com`; a domain whose MX records all point elsewhere reads as
+  Missing.
 - **Not generated** — nothing to check yet, e.g. no DKIM key exists.
 - **Could not check** — the DNS lookup failed or timed out; retry shortly.
 
@@ -117,7 +120,7 @@ forward fails SPF at the next hop.
 
 ## 6. Set a catch-all (optional)
 
-**Catch-All** routes any mail to an unrecognised address in the domain to one
+**Catch-All Address** routes any mail to an unrecognised address in the domain to one
 user. Enter the owning user's ID; clear it to turn catch-all off. Use this
 sparingly — a catch-all receives spam addressed to guessed local parts.
 
@@ -125,7 +128,7 @@ sparingly — a catch-all receives spam addressed to guessed local parts.
 
 Bongo has two admin tiers:
 
-- **Domain owner** — set in the **Owner** section (global-admin only). The owner
+- **Domain owner** — set in the **Domain Owner** section (global-admin only). The owner
   has elevated trust for the domain and is implicitly a domain administrator.
 - **Domain administrators** — granted in the **Domain Administrators** section.
   They can manage users, aliases, DKIM and catch-all *for this domain only*.
@@ -142,9 +145,10 @@ In **Quota** (global-admin only) you can cap a domain:
 - **Max users** — the number of accounts whose primary domain is this domain
   (`0` = unlimited). Enforced when a new user is created.
 - **Max storage** — aggregate stored-message bytes for the domain (`0` =
-  unlimited). Enforced at SMTP delivery: once a domain is over its storage quota,
-  inbound mail to its users is rejected. Usage figures are recomputed
-  periodically by the leader, so they lag live usage slightly.
+  unlimited). Checked at SMTP delivery, IMAP APPEND, CalDAV/CardDAV PUT and web
+  saves: once the domain is at or over quota those writes are refused. Usage is
+  recomputed by the leader about every ten minutes, so this is a soft limit
+  that can be overshot between recomputations.
 
 ## 9. Client autoconfiguration
 
