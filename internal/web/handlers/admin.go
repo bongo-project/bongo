@@ -1318,7 +1318,7 @@ func (h *AdminHandler) ToggleDomain(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
 	scope := middleware.AdminScopeFromContext(r.Context())
-	if !requireDomainAccess(w, scope, domain) {
+	if !requireGlobalAdmin(w, scope) {
 		return
 	}
 	lower := strings.ToLower(strings.TrimSpace(domain))

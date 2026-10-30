@@ -413,6 +413,23 @@ func TestDeleteDomain_DomainAdmin_D2Forbidden(t *testing.T) {
 	}
 }
 
+// A domain admin cannot delete even a domain they administer: deletion is a
+// global-admin action, like creation. The UI hides the button, so this guards
+// a direct POST.
+func TestDeleteDomain_DomainAdmin_OwnDomainForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.DeleteDomain,
+		http.MethodPost, fmt.Sprintf("/admin/domains/%s/delete", testDomain1),
+		nil,
+		map[string]string{"domain": testDomain1},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("DeleteDomain d1 (own domain, domain-admin) status = %d, want 403", w.Code)
+	}
+}
+
 func TestGenerateDKIMKey_DomainAdmin_D2Forbidden(t *testing.T) {
 	env := newAdminScopeTestEnv(t)
 

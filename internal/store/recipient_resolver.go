@@ -42,6 +42,11 @@ var ErrRecipientUnavailable = errors.New("recipient unavailable")
 //     Skipped when pebble is nil (same nil-guard as tier 2a). SRS0/SRS1 local
 //     parts are never matched by the catch-all.
 //
+//     Before any tier, an address on a domain an administrator has disabled
+//     returns ErrRecipientUnavailable (ResolveRecipient only; ResolveAccount
+//     is unaffected, because disabling a domain stops its mail, not its
+//     accounts). A domain read error fails open.
+//
 //     Every tier checks that the target's profile exists and is not disabled.
 //     The first tier that matches decides; a dead or disabled target returns
 //     ErrRecipientUnavailable and never falls through to a later tier. This is
@@ -109,6 +114,16 @@ func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
 	// rules and antispam stages running that owner's forwards on a bounce.
 	if at := strings.LastIndex(email, "@"); at > 0 && srs.IsNoRelay(email[:at]) {
 		return "", fmt.Errorf("resolve recipient: %s: reserved address", email)
+	}
+
+	if !strict && r.pebble != nil {
+		if at := strings.LastIndex(email, "@"); at > 0 {
+			// Fail open, like the profile check: a transient read error must
+			// not become a permanent 5xx.
+			if off, err := DomainDisabled(r.pebble, email[at+1:]); err == nil && off {
+				return "", unavailable(email)
+			}
+		}
 	}
 
 	// Tier 1: AddressStore.Get reads Pebble (source of truth, all nodes).
