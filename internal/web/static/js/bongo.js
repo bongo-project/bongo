@@ -1985,17 +1985,23 @@ document.addEventListener('alpine:init', () => {
   }));
 });
 
-// Reading pane: intercept message link clicks in pane modes.
+// Reading pane: intercept message link clicks in pane modes. The listener runs
+// in the capture phase because the link also carries hx-get, and htmx's own
+// handler on the link would otherwise replace the whole view before a
+// bubbling listener here ever saw the click. The pane's visibility decides,
+// not localStorage: the layout may come from server preferences, and on
+// narrow screens CSS hides the pane in every mode.
 document.addEventListener('click', (e) => {
   const link = e.target.closest('a[data-pane-url]');
   if (!link) return;
-  const layout = localStorage.getItem('bongo-layout') || 'list';
-  if (layout === 'list') return;
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const pane = document.getElementById('reading-pane');
+  if (!pane || pane.hidden || pane.offsetParent === null) return;
   e.preventDefault();
   e.stopPropagation();
   htmx.ajax('GET', link.dataset.paneUrl, '#reading-pane');
   markOpenRow(link.closest('.msg-row'));
-});
+}, true);
 
 // Highlight the row whose message is open in the reading pane.
 function markOpenRow(row) {
