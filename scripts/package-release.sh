@@ -50,9 +50,12 @@ for platform in ${PLATFORMS}; do
   cp "${REPO_ROOT}/deploy/bongo.example.hcl" "${stage}/bongo.example.hcl"
   cp "${REPO_ROOT}/deploy/bongo-go.service"  "${stage}/bongo-go.service"
   cp "${REPO_ROOT}/docs/install.md"          "${stage}/INSTALL.md"
-  # Tester-facing README: what this is, what is NOT finished, and where to send
-  # feedback. INSTALL.md covers installation only, which is not the same thing.
+  # README: what this is, known limitations, how to report problems and the
+  # licence. INSTALL.md covers installation only.
   cp "${REPO_ROOT}/deploy/release-README.md" "${stage}/README.md"
+  # AGPL-3.0: the licence and third-party notices travel with the binaries.
+  cp "${REPO_ROOT}/LICENSE"                  "${stage}/LICENSE"
+  cp "${REPO_ROOT}/THIRD_PARTY_NOTICES.md"   "${stage}/THIRD_PARTY_NOTICES.md"
 
   # Prefer the `zip` tool; fall back to python3's zipfile if it is not installed.
   # The README ships with deliberate placeholders. Building a release with them

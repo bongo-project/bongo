@@ -1,29 +1,39 @@
-# Bongo — test build
-
-Thanks for taking a look. This is a pre-release build shared for feedback; it is not a finished
-product and is not supported.
+# Bongo
 
 Bongo is a mail and calendar server that runs as a single binary: SMTP, IMAP, POP3, CalDAV and
-CardDAV, with a web interface, its own storage (no separate database to install), and full-text
-search. `bongo-go` is the server; `bongo-import` brings in existing mail from mbox, maildir, .eml
-files, another IMAP server, or Thunderbird.
+CardDAV, with a web interface, its own storage (no separate database to install) and full-text
+search. `bongo-go` is the server. `bongo-import` imports existing mail from mbox, maildir, .eml
+files, another IMAP server or Thunderbird.
 
-## Try it in one command
+Bongo is pre-1.0. A single-server installation is the supported shape. Only the latest release
+receives fixes.
+
+Source, issues and releases: <https://github.com/bongo-project/bongo>
+
+## Contents of this zip
+
+| File | Purpose |
+|---|---|
+| `bongo-go` | The server (static Linux binary) |
+| `bongo-import` | The import tool |
+| `INSTALL.md` | Installation, configuration, DNS, systemd and upgrades |
+| `bongo.example.hcl` | Annotated configuration; every option is documented in place |
+| `bongo-go.service` | systemd unit |
+| `LICENSE` | GNU Affero General Public License v3.0 |
+| `THIRD_PARTY_NOTICES.md` | Licences of bundled third-party code |
+
+## Try it in dev mode
 
 ```bash
 ./bongo-go serve --dev
 ```
 
 Dev mode needs no configuration. It uses a temporary data directory (deleted on exit), creates
-`admin@localhost` / `admin`, and starts everything on non-privileged ports.
+`admin@localhost` with the password `admin`, and listens on non-privileged ports.
 
-Open **<http://localhost:8080>** and log in as `admin@localhost` / `admin`.
-
-Note it is plain **http**, not https: dev mode deliberately runs the web interface without TLS so
-there is no certificate warning to click through. Do not run dev mode anywhere untrusted — your
-password crosses the network in clear. A real installation serves the web UI over TLS.
-
-The mail protocols run on non-privileged ports too, so you can point a mail client at it:
+Open <http://localhost:8080> and log in as `admin@localhost` / `admin`. Dev mode serves the web
+interface over plain HTTP, so the password crosses the network unencrypted. Use it for evaluation
+on a trusted machine only; a real installation serves the web interface over TLS.
 
 | Protocol | Port |
 |---|---|
@@ -32,133 +42,39 @@ The mail protocols run on non-privileged ports too, so you can point a mail clie
 | IMAP | 1143 |
 | IMAP over TLS | 1993 |
 | POP3 | 1110 |
+| POP3 over TLS | 1995 |
 
-This is the fastest way to form an opinion. Nothing is written outside the temporary directory,
-and it is all deleted when you stop the server.
+## Install a real server
 
-## Running it properly
+`INSTALL.md` covers file locations, configuration, DNS, the systemd unit, an external SMTP relay,
+creating the first administrator and upgrading. A mail server needs correct DNS (MX, SPF, DKIM,
+DMARC and a PTR record for its IP address); receivers reject mail from servers without it.
 
-See `INSTALL.md` in this zip for a real installation: where files go, how to configure it, and how
-to point DNS at it. `bongo.example.hcl` is a fully annotated configuration — every option is
-documented in place, so it doubles as the configuration reference.
+A container image is also published: `ghcr.io/bongo-project/bongo`.
 
-If you are going to receive real mail, read the DNS section carefully. A mail server that is not
-set up correctly will have its mail rejected by most receivers, and that is a property of the
-internet rather than of this software.
+## Known limitations
 
-If you run behind a reverse proxy, set `trusted_proxies` in the `server` block to the proxy's
-address. PROXY protocol and `X-Forwarded-*` headers are now believed only from listed addresses
-(private and loopback peers are no longer trusted implicitly). Startup fails if `proxy_protocol` is
-enabled with an empty list, and `X-Forwarded-For` is ignored until the proxy is listed.
+- Use the `server` role (or `dev` for evaluation). The `edge` and `agent` roles are incomplete: an
+  `edge` node starts no mail protocol listeners, and no `server` runs the gRPC endpoint that
+  `agent` nodes register with.
+- Multi-node clustering is implemented but less tested than a single server. A server refuses to
+  join a cluster unless raft mTLS and gossip encryption are configured.
+- Antivirus scanning needs a running ClamAV daemon and is off by default. With the default
+  `on_failure = "quarantine"`, mail that cannot be scanned is held in the admin quarantine and
+  deleted after `pipeline.quarantine_retention` (30 days by default). Failures are logged at ERROR.
 
-## Forwarded mail now uses SRS
+The full list is in `SECURITY.md` in the repository.
 
-Mail that Bongo forwards (an account forward address or a rule's forward action) now leaves with an
-SRS envelope sender, `SRS0=...@<the forwarding user's domain>`, instead of the original author's
-address. The `Return-Path` of forwarded mail changes accordingly; the header `From` is untouched.
-SPF at the next hop therefore checks the forwarding user's domain, so that domain's SPF record must
-include this host (it already does if it can send outbound mail). Null-sender bounces and mail you
-authored and forwarded are not rewritten.
+## Reporting problems
 
-Bounces for forwarded mail come back to the SRS address. They are accepted only with a null sender,
-only when the address's HMAC verifies, and only within `smtp.srs_max_age_days` (default 21), then
-relayed to the original sender. Spam-tagged bounces are dropped. Backscatter to a forged sender is
-limited by that rule but not eliminated.
+- Bugs and questions: <https://github.com/bongo-project/bongo/issues>. Include the output of
+  `./bongo-go version`, what you did, what you expected and what happened. Redact email addresses
+  and subject lines from logs before posting them.
+- Security issues: report privately through GitHub's private vulnerability reporting (the
+  repository's **Security** tab, then **Report a vulnerability**), not in a public issue.
 
-The SRS key is derived from `web.session_secret`. Every node must share it, or a bounce that reaches
-another node is refused. Rotating the secret invalidates outstanding SRS addresses, so bounces for
-forwards sent within the window are lost; key rotation is not implemented. Upgrade every node
-before relying on SRS: a node on an older binary still forwards with the original sender.
+## Licence
 
-## What is not finished
-
-Being direct about this so you do not waste time reporting things already known:
-
-- **The `agent` server role only implements SMTP.** Setting its role to `imap`, `pop3` or `caldav`
-  logs "not yet implemented" and does nothing.
-- **Multi-node clustering is not ready to use.** A single server is the supported shape. The
-  clustering code exists but the transport is not hardened, and the server deliberately refuses to
-  join a cluster unless TLS and gossip encryption are configured.
-- **No upgrade path is promised between test builds.** Treat the data directory as disposable.
-
-## Antivirus, if you turn it on
-
-Antivirus scanning works, but it is off by default and needs a running ClamAV daemon. Set
-`antivirus.clamav.enabled = true`, point `socket` at your clamd, and add an `antivirus` stage to
-the `pipeline` block. With `enabled = false` no scanner is built and nothing pretends to scan.
-
-The part worth understanding before you enable it is what happens when clamd is *not* reachable,
-because the answer is deliberate and it is not "carry on":
-
-- By default (`on_failure = "quarantine"`) the message is held in the admin quarantine rather than
-  delivered unscanned. Drain the backlog with the quarantine page's bulk **rescan** action once
-  clamd is back — rescanned messages are genuinely scanned on the second pass.
-- **The recovery window is finite.** Quarantine is auto-purged after `pipeline.quarantine_retention`
-  (30 days by default) and the purge deletes the message itself. An outage nobody notices for
-  longer than that destroys real mail. Every failure logs at ERROR — alert on it.
-- `on_failure = "accept"` delivers unscanned instead, logging each occurrence at ERROR. Choose it
-  only if availability matters more than the guarantee that everything was scanned.
-
-Note that clamd being unreachable does **not** stop the server starting; it is handled per message
-at delivery time, as above. The one startup-time change: an `agent`-role node listing `antivirus`
-in `server.agents` now refuses to start unless `antivirus.clamav.enabled = true`. It previously
-started and registered a scanner that passed everything, which is worse than failing loudly — a
-node whose entire job is scanning should not run without a scanner configured.
-
-## What feedback is most useful
-
-In rough order:
-
-1. **Anything where mail is lost, duplicated, or silently not delivered.** This is the one class of
-   bug that matters more than the rest combined.
-2. **Anything that made you stop and read code** to work out what was meant — that is a
-   documentation bug, and it is worth reporting even if you solved it.
-3. Interoperability: which mail client you used, and what it did that was wrong.
-4. Anything that surprised you about the web interface.
-5. ClamAV antivirus scanner behaviour: whether clamd scans as expected, whether quarantine
-   recovery via the admin "rescan" action works, and what log output you see during failures.
-
-Please include the version below, what you did, what you expected, and what happened. Server logs
-are useful; **redact anything sensitive first** — logs can contain email addresses and subject
-lines.
-
-## Reporting a security issue
-
-Open an issue on the private repository (see Contact below) — because the repository is private,
-that is already a closed channel rather than public disclosure. Please give a reasonable window to
-fix it before disclosing anywhere else.
-
-This is a mail server handling real messages, so security reports are especially welcome. Anything
-that lets one account reach another's mail, lets an unauthenticated sender relay, or exposes stored
-messages is worth reporting even if you are not certain.
-
-## Version
-
-Run `./bongo-go version` — it reports the version, the exact commit it was built from, and the
-build date. Please include that line in any report.
-
-## Contact
-
-Report everything — bugs, confusion, and security issues — as an issue on the repository:
-
-**<https://github.com/bongo-project/bongo/issues>**
-
-The repository is private, so you need to have been added as a collaborator before you can open an
-issue. If you were given this build but cannot reach that page, ask and you will be added.
-
-That privacy is also why security reports belong there: on a private repository, issues are visible
-only to collaborators, so a report is not public disclosure. If the repository is ever made public,
-this changes, and security issues should move to a private channel instead.
-
-## Terms
-
-This is a **private build, shared directly with you for evaluation and feedback**. Please do not
-redistribute it or pass it on.
-
-No open-source licence applies to it yet. Bongo-Go is a ground-up reimplementation of the original
-Bongo mail server, and the licensing position is still being settled; a licence will accompany any
-future public release. Until then, treat this as "shared with you, for you to try" rather than as
-software you have been granted rights over.
-
-Nothing here is a warranty. It is a pre-release mail server: run it where losing its data would not
-matter to you.
+Bongo is licensed under the GNU Affero General Public License v3.0 (`LICENSE`). If you modify it and
+let others use it over a network, the AGPL requires you to offer them the modified source.
+Bundled third-party code is credited in `THIRD_PARTY_NOTICES.md`. There is no warranty.
