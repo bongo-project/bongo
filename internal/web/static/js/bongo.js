@@ -1985,6 +1985,19 @@ document.addEventListener('alpine:init', () => {
   }));
 });
 
+// In the pane modes j and k also open the highlighted message, after a pause
+// so that holding the key skims the list without opening, and marking read,
+// every message on the way.
+const PANE_OPEN_DELAY_MS = 300;
+let paneOpenTimer = null;
+
+// readingPaneVisible reports whether messages open in the reading pane: the
+// layout is two-pane or three-pane and the screen is wide enough to show it.
+function readingPaneVisible() {
+  const pane = document.getElementById('reading-pane');
+  return !!pane && !pane.hidden && pane.offsetParent !== null;
+}
+
 // Reading pane: intercept message link clicks in pane modes. The listener runs
 // in the capture phase because the link also carries hx-get, and htmx's own
 // handler on the link would otherwise replace the whole view before a
@@ -1995,13 +2008,22 @@ document.addEventListener('click', (e) => {
   const link = e.target.closest('a[data-pane-url]');
   if (!link) return;
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  const pane = document.getElementById('reading-pane');
-  if (!pane || pane.hidden || pane.offsetParent === null) return;
+  if (!readingPaneVisible()) return;
   e.preventDefault();
   e.stopPropagation();
-  htmx.ajax('GET', link.dataset.paneUrl, '#reading-pane');
-  markOpenRow(link.closest('.msg-row'));
+  openInPane(link.closest('.msg-row'));
 }, true);
+
+// openInPane loads a row's message into the reading pane and moves the
+// keyboard highlight to it, so j and k carry on from the message being read.
+function openInPane(row) {
+  clearTimeout(paneOpenTimer);
+  const link = row && row.querySelector('a[data-pane-url]');
+  if (!link) return;
+  htmx.ajax('GET', link.dataset.paneUrl, '#reading-pane');
+  markOpenRow(row);
+  setKeyboardFocus(row);
+}
 
 // Highlight the row whose message is open in the reading pane.
 function markOpenRow(row) {
@@ -2013,6 +2035,45 @@ function markOpenRow(row) {
     row.classList.add('is-open');
     row.setAttribute('aria-current', 'true');
   }
+}
+
+function setKeyboardFocus(row) {
+  document.querySelectorAll('.msg-list .msg-row.keyboard-focus').forEach(function(r) {
+    r.classList.remove('keyboard-focus');
+  });
+  row.classList.add('keyboard-focus');
+  row.scrollIntoView({ block: 'nearest' });
+}
+
+function moveKeyboardFocus(row) {
+  setKeyboardFocus(row);
+  clearTimeout(paneOpenTimer);
+  if (!readingPaneVisible()) return;
+  paneOpenTimer = setTimeout(function() {
+    if (row.isConnected && !row.classList.contains('is-open')) openInPane(row);
+  }, PANE_OPEN_DELAY_MS);
+}
+
+// deleteRow moves a message to Trash, reloads the list and highlights the
+// message that took its place. Trash is skipped: deleting there is permanent,
+// which is too much for a single key.
+function deleteRow(row, idx) {
+  const mailbox = document.querySelector('[data-selected-mailbox]')?.dataset.selectedMailbox;
+  const uid = row.dataset.uid;
+  if (!mailbox || !uid || mailbox === 'Trash') return;
+  const params = new URLSearchParams();
+  params.set('action', 'delete');
+  params.append('uids', uid);
+  const url = '/mail/' + encodeURIComponent(mailbox);
+  fetch(url + '/bulk', { method: 'POST', body: params })
+    .then(resp => {
+      if (!resp.ok) return;
+      return htmx.ajax('GET', url, '#main-content').then(() => {
+        const rows = document.querySelectorAll('.msg-list .msg-row[data-uid]');
+        if (rows.length > 0) moveKeyboardFocus(rows[Math.min(idx, rows.length - 1)]);
+      });
+    })
+    .catch(() => {});
 }
 
 // Keyboard shortcut help modal
@@ -2152,29 +2213,21 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  const messageRows = document.querySelectorAll('.msg-list .msg-row');
+  const messageRows = document.querySelectorAll('.msg-list .msg-row[data-uid]');
   if (messageRows.length === 0) return;
 
-  const current = document.querySelector('.msg-list .msg-row.keyboard-focus');
+  const current = document.querySelector('.msg-list .msg-row[data-uid].keyboard-focus');
   let idx = current ? Array.from(messageRows).indexOf(current) : -1;
 
   switch (e.key) {
     case 'j': // Next message
       e.preventDefault();
-      if (idx < messageRows.length - 1) {
-        if (current) current.classList.remove('keyboard-focus');
-        messageRows[idx + 1].classList.add('keyboard-focus');
-        messageRows[idx + 1].scrollIntoView({ block: 'nearest' });
-      }
+      if (idx < messageRows.length - 1) moveKeyboardFocus(messageRows[idx + 1]);
       break;
 
     case 'k': // Previous message
       e.preventDefault();
-      if (idx > 0) {
-        if (current) current.classList.remove('keyboard-focus');
-        messageRows[idx - 1].classList.add('keyboard-focus');
-        messageRows[idx - 1].scrollIntoView({ block: 'nearest' });
-      }
+      if (idx > 0) moveKeyboardFocus(messageRows[idx - 1]);
       break;
 
     case 'Enter': // Open focused message
@@ -2199,8 +2252,7 @@ document.addEventListener('keydown', (e) => {
     case 'd': // Delete
       if (current) {
         e.preventDefault();
-        const deleteBtn = current.querySelector('[data-action="delete"]');
-        if (deleteBtn) deleteBtn.click();
+        deleteRow(current, idx);
       }
       break;
 
