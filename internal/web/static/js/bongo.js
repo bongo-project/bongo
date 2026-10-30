@@ -2068,11 +2068,20 @@ function moveKeyboardFocus(row) {
   }, PANE_OPEN_DELAY_MS);
 }
 
+// currentMailbox returns the mailbox whose list is on screen. It is read from
+// the list itself: #main-content's data-selected-mailbox is rendered once per
+// full page load and keeps the old name after the sidebar swaps in another
+// mailbox, which sent actions to the right UID in the wrong mailbox.
+function currentMailbox() {
+  const view = document.querySelector('.mail-view[data-mailbox]');
+  return view ? view.dataset.mailbox : null;
+}
+
 // deleteRow moves a message to Trash, reloads the list and highlights the
 // message that took its place. Trash is skipped: deleting there is permanent,
 // which is too much for a single key.
 function deleteRow(row, idx) {
-  const mailbox = document.querySelector('[data-selected-mailbox]')?.dataset.selectedMailbox;
+  const mailbox = currentMailbox();
   const uid = row.dataset.uid;
   if (!mailbox || !uid || mailbox === 'Trash') return;
   const params = new URLSearchParams();
@@ -2256,9 +2265,9 @@ document.addEventListener('keydown', (e) => {
       if (current) {
         e.preventDefault();
         const uid = current.dataset.uid;
-        const mailbox = document.querySelector('[data-selected-mailbox]')?.dataset.selectedMailbox;
+        const mailbox = currentMailbox();
         if (uid && mailbox) {
-          window.location.href = '/compose/reply/' + mailbox + '/' + uid;
+          window.location.href = '/compose/reply/' + encodeURIComponent(mailbox) + '/' + uid;
         }
       }
       break;
@@ -2313,8 +2322,8 @@ function initDragDrop() {
     onStart(evt) {
       // Store source mailbox and uid on the dragged element.
       const row = evt.item;
-      const mailboxEl = document.querySelector('[data-selected-mailbox]');
-      row.dataset.srcMailbox = mailboxEl ? mailboxEl.dataset.selectedMailbox : 'INBOX';
+      const mailbox = currentMailbox();
+      if (mailbox) row.dataset.srcMailbox = mailbox;
     }
   });
 
@@ -2344,7 +2353,7 @@ function initDragDrop() {
         }).then(resp => {
           if (resp.ok) {
             // Remove the row from the list.
-            const row = document.querySelector('tr[data-uid="' + uid + '"]');
+            const row = document.querySelector('.msg-list .msg-row[data-uid="' + uid + '"]');
             if (row) row.remove();
           }
         }).catch(() => {});
