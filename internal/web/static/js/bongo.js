@@ -2005,13 +2005,27 @@ function readingPaneVisible() {
 // not localStorage: the layout may come from server preferences, and on
 // narrow screens CSS hides the pane in every mode.
 document.addEventListener('click', (e) => {
-  const link = e.target.closest('a[data-pane-url]');
-  if (!link) return;
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  if (!readingPaneVisible()) return;
-  e.preventDefault();
-  e.stopPropagation();
-  openInPane(link.closest('.msg-row'));
+  const link = e.target.closest('a[data-pane-url]');
+  if (link) {
+    if (!readingPaneVisible()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openInPane(link.closest('.msg-row'));
+    return;
+  }
+  // Only sender and subject are links, but the whole row highlights, so a
+  // click anywhere else on it opens the message too. The row's own controls
+  // keep their actions, and a click that ends a text selection is left alone.
+  const row = e.target.closest('.msg-list .msg-row[data-uid]');
+  if (!row || e.target.closest('a, button, input, label, [hx-get], [hx-post]')) return;
+  if (String(window.getSelection())) return;
+  if (readingPaneVisible() && row.querySelector('a[data-pane-url]')) {
+    openInPane(row);
+    return;
+  }
+  const rowLink = row.querySelector('.msg-main a');
+  if (rowLink) rowLink.click();
 }, true);
 
 // openInPane loads a row's message into the reading pane and moves the

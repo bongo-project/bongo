@@ -102,3 +102,20 @@ func TestThemeScriptReadsSavedTheme(t *testing.T) {
 		t.Error("theme.js must resolve auto from the OS preference and set data-theme")
 	}
 }
+
+// Only sender and subject are links, so clicks on the rest of a row did
+// nothing. The capture handler opens the row's message for those clicks too,
+// but leaves the row's own controls alone.
+func TestRowClickOpensMessage(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	start := strings.Index(js, "const row = e.target.closest('.msg-list .msg-row[data-uid]');")
+	if start < 0 {
+		t.Fatal("click handler does not handle clicks on the rest of a row")
+	}
+	body := js[start : start+strings.Index(js[start:], "\n}, true);")]
+	for _, want := range []string{"'a, button, input, label, [hx-get], [hx-post]'", "openInPane(row)", "rowLink.click()"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("row click handling missing %s", want)
+		}
+	}
+}

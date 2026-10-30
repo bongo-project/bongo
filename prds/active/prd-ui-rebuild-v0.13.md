@@ -389,7 +389,8 @@ the help did nothing.
 - [ ] In two-pane and three-pane mode, j and k open the highlighted message in
       the reading pane after a 300 ms pause; holding the key skims without
       opening or marking read. List mode is unchanged.
-- [ ] Clicking a message moves the keyboard highlight to it.
+- [ ] Clicking anywhere on a message row, other than its own controls, opens
+      the message and moves the keyboard highlight to it.
 - [ ] d moves the highlighted message to Trash and highlights the next one.
       In Trash, d does nothing, because deletion there is permanent.
 
