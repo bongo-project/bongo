@@ -655,3 +655,33 @@ From CI on PR #108 (2026-10-28):
   running agent's background workers held the per-user SQLite database. It
   passed on re-run and 20 of 20 times locally under -race. Moved into
   scope as US-021 (27.21).
+
+From the post-release docs audit (2026-10-30):
+
+- Domain admins can delete their own domain: `DeleteDomain` checks
+  `requireDomainAccess`, not `requireGlobalAdmin`
+  (`internal/web/handlers/admin.go:1321`). The UI hides the button and the
+  docs and the handler comment say deletion is global-admin only. An
+  authorisation bug; candidate for a v0.13.2 fix.
+- Disabling a domain does not stop its mail. `ToggleDomain` writes the
+  enabled flag, but delivery checks only that `/system/domain/{d}` exists
+  (`store.DomainHosted`); the flag is read only by autoconfig. Decide whether
+  disable should refuse mail, then fix the code or keep the corrected doc.
+- `bongo-import directory` sets `InsecureSkipVerify` on the web API client
+  (`cmd/bongo-import/directory.go:319`) and logs in with the destination
+  password over it. Verify by default and add an explicit opt-out flag.
+- Admin pages: the top-bar brand text is dark on the dark bar, and an
+  unstyled "Bongo — Mail and Calendar Server" line sits at the foot of the
+  page (1440 px, light theme).
+- Calendar sidebar: the .ics import and export controls render as unstyled
+  browser defaults (a native file input and plain text buttons).
+- Settings > Security has a different sidebar from /settings (no icons; it
+  lists Settings instead of Tags). `/settings/addresses` (send-as addresses)
+  is not linked from Settings.
+- Seeding (`validate-server --seed-only`) is not idempotent: a second run
+  duplicates contacts and calendar events.
+- `make seed`, `make validate` and `make ui-test-setup` called
+  validate-server without `--plain-http`, so they failed against every dev
+  server (dev forces plain HTTP). Fixed in the docs pass.
+- The `edge` and `agent` roles do not work end to end; recorded as
+  `prds/research/prd-remote-agents.md` at the operator's request.

@@ -1,6 +1,7 @@
 # Continuous Improvement Loop — Design Exploration
 
-**Status:** Thought experiment / design sketch. Not yet scoped into a sprint.
+**Status:** Design sketch. Phase 1 (Prometheus metrics on `/metrics`,
+`internal/observability/metrics.go`) has been built; the rest is not scoped.
 **Last discussed:** 2026-04-11
 
 ## Purpose

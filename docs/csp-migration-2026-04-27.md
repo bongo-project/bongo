@@ -1,5 +1,10 @@
 # CSP Migration Tracker
 
+> **Historical record.** The migration finished in 2026. The current policy is
+> set in `internal/web/middleware/security.go`. Some statements below no longer
+> hold, for example "no app-owned x-show usage remains": the v0.13 templates use
+> `x-show` with the Alpine CSP build.
+
 Date: 2026-04-27
 
 Repository: `bongo-go`

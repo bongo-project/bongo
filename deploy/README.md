@@ -14,11 +14,17 @@ for **example.com** on a single Docker host, behind an existing Traefik.
 | File | Purpose |
 |------|---------|
 | `Dockerfile` | Multi-stage build (templ generate + static Go binary → Alpine runtime) |
-| `docker-compose.yml` | Bongo service + a certs-dumper sidecar; Traefik HTTP router (web) and TCP routers (mail) |
+| `docker-compose.yml` | Three services: `bongo`, a `certs-dumper` sidecar and a static `website` nginx container; Traefik HTTP routers (web) and TCP routers (mail) |
 | `certs-hook.sh` | certs-dumper post-hook: publishes only the mail host's cert and key to `./certs`; must sit beside `docker-compose.yml` |
+| `test-certs-hook.sh` | Tests `certs-hook.sh` against the pinned certs-dumper image with a synthetic `acme.json` (needs docker, jq and openssl) |
 | `bongo.prod.hcl` | Configuration template for this compose deployment (mounted at `/etc/bongo/bongo.hcl`); not any particular live server |
 | `.env.example` | Copy to `.env`; holds the session secret + Traefik names |
+| `website/` | Static landing page served by the `website` container on the mail domain's apex |
 | `ship-logs.sh` | Pull the JSON log file from the server to your laptop |
+| `LOGGING.md` | Where logs go and how to collect them; where `/metrics` is served |
+| `bongo-go.service` | systemd unit for the binary release (no Docker); see `docs/install.md` |
+| `bongo.example.hcl` | Fully annotated example configuration for the binary release |
+| `release-README.md` | README shipped inside the binary release zip |
 
 ### How mail reaches bongo (important)
 
@@ -76,7 +82,7 @@ mail.example.com.        IN  A      <server-public-ip>
 example.com.             IN  MX  10 mail.example.com.
 
 ; SPF: authorise this host to send for the domain
-example.com.             IN  TXT    "v=spf1 mx a:mail.example.com -all"
+example.com.             IN  TXT    "v=spf1 mx ~all"
 
 ; DKIM: public key (generated in §4)
 mail._domainkey.example.com.  IN  TXT  "v=DKIM1; k=rsa; p=<dkim-public-key>"
@@ -103,6 +109,11 @@ _caldavs._tcp.example.com.   IN  TXT  "path=/caldav/"
 _carddavs._tcp.example.com.  IN  SRV  0 1 443 mail.example.com.
 _carddavs._tcp.example.com.  IN  TXT  "path=/carddav/"
 ```
+
+The SPF record matches what the admin UI's DNS guide generates (`~all`, a soft
+fail for unlisted senders). Once you are sure every host that sends mail for the
+domain is covered, you can tighten it to `-all` (hard fail); the admin DNS check
+accepts either.
 
 And the **PTR** (reverse DNS), set at your VPS provider, not in this zone:
 
@@ -204,6 +215,9 @@ openssl rand -base64 32
 mkdir -p logs
 test -f secrets/dkim.key || echo "!! generate secrets/dkim.key first (see §4)"
 
+# docker-compose.yml pins a specific image tag, which may be older than the
+# release you want. Set the bongo service's `image:` tag first, e.g.
+# ghcr.io/bongo-project/bongo:X.Y.Z.
 docker compose pull                 # pull the image from ghcr.io/bongo-project/bongo
 docker compose up -d
 docker compose logs -f bongo        # watch startup
@@ -235,7 +249,8 @@ Confirm Traefik picked up the routers (its dashboard is on `:8080`), and that
 
 ```bash
 docker compose logs certs-dumper | tail
-ls -l /mnt/data/... # the shared volume; or: docker compose exec bongo ls -l /certs/mail.example.com
+ls -l certs/mail.example.com     # the ./certs bind mount, written by certs-hook.sh
+docker compose exec bongo ls -l /certs/mail.example.com   # the same files inside bongo
 ```
 
 **No outbound :25?** Set a smarthost in `bongo.prod.hcl` under `smtp.relay`:
@@ -274,8 +289,12 @@ controlling terminal on a foreground `serve`, and a process started under
   `config reload: key needs restart` (names only, never values) on every
   reload until you restart. A few keys that nothing reads appear only under
   `no_effect` in the `config reload complete` line.
-- **Flags and environment win.** A key set by a command-line flag or a
-  `BONGO_*` variable keeps that value; the file value is ignored and logged as
+- **Flags and environment win.** Only a few keys can be overridden from
+  outside the file: `BONGO_ROLE`, `BONGO_BIND`, `BONGO_JOIN` and
+  `BONGO_WEB_SESSION_SECRET` (plus `BONGO_CONFIG`, which picks the file), and
+  the matching command-line flags, including `--log-level`. Other `BONGO_*`
+  variables are not read. An overridden key keeps its flag or environment
+  value; the file value is ignored and logged as
   `key shadowed by flag or env`.
 - **Environment changes need a restart.** `/etc/bongo/bongo.env` (systemd) and
   `.env` / `environment:` (Compose) are read when the process starts. With
@@ -310,16 +329,20 @@ docker compose exec bongo \
   bongo-go user create \
     --email you@example.com \
     --password 'a-strong-password' \
-    --admin \
-    --session-secret "$BONGO_WEB_SESSION_SECRET"
+    --admin
 ```
 
 `--admin` grants administrator rights (needed to reach the `/admin` UI). Without
-it you get a normal mailbox user. The `--session-secret` must match
-`BONGO_WEB_SESSION_SECRET` (the internal control-plane endpoint requires a
-signed request); if it's set in the container's environment you can drop the
-flag — the CLI falls back to `BONGO_WEB_SESSION_SECRET`. Once you have one admin,
-create further users (admin or not) from **Admin → Users** in the web UI.
+it you get a normal mailbox user. The internal control-plane endpoint requires a
+request signed with the session secret. Without `--session-secret` the CLI uses
+`BONGO_WEB_SESSION_SECRET` from its environment, which the compose file sets in
+the bongo container from `.env`, so no flag is needed here. Once you have one
+admin, create further users (admin or not) from **Admin → Users** in the web UI.
+
+You do not need to add the mail domain by hand. On startup bongo adds its
+primary domain as a managed domain: the `smtp.dkim.domain` value, or, if that is
+unset, the registered domain of `smtp.hostname` (`example.com` for
+`mail.example.com`). Add any further domains under **Admin → Domains**.
 
 Then log in at `https://mail.example.com/`.
 
@@ -373,8 +396,10 @@ grep '"level":"ERROR"' logs/bongo.jsonl | tail
 tail -n 50 logs/bongo.jsonl | jq .
 ```
 
-Turn up detail when chasing a problem: set `log.level = "debug"` in
-`bongo.prod.hcl` and `docker compose restart bongo`.
+Turn up detail when chasing a problem: set `level = "debug"` in the
+`telemetry { log { ... } }` block of `bongo.prod.hcl` (the key
+`telemetry.log.level`) and reload it without a restart:
+`docker compose kill -s HUP bongo` (see "Reloading configuration" in §6).
 
 Other options: `docker compose logs -f bongo` (live), or the admin UI's built-in
 live log viewer under **Admin → Logs**.
@@ -402,10 +427,11 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
 
 - **Cert reload:** mail-protocol TLS is loaded once at startup; restart after
   renewal (§5).
-- **IMAP reads the cluster cert:** in this build, IMAP (993) reads its TLS cert
-  from `cluster.tls`, which is why `bongo.prod.hcl` sets it to the same
-  Let's Encrypt cert as `smtp.tls`. Worth refactoring to a dedicated `imap.tls`
-  block later. (POP3 is disabled here — no Traefik entrypoint for it.)
+- **IMAP and POP3 read the cluster cert:** in this build, IMAP (143/993) and
+  POP3 (110/995) both read their TLS cert from `cluster.tls`, which is why
+  `bongo.prod.hcl` sets it to the same Let's Encrypt cert as `smtp.tls`. Worth
+  refactoring to dedicated `imap.tls` / `pop3.tls` blocks later. (POP3 is
+  disabled here — no Traefik entrypoint for it.)
 - **Container runs as uid 10001 (non-root) from the start.** There is no root
   entrypoint, no `su-exec` and no file capability. The compose service sets
   `user: "10001:10001"`, `cap_drop: [ALL]` (nothing added back),
@@ -434,8 +460,10 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   ```
 
   If it is missed, bongo exits at startup with a permission error opening
-  Pebble or raft under `/data`, or serves STARTTLS/IMAPS without the Let's
-  Encrypt certificate because it cannot read `privatekey.key`.
+  Pebble or raft under `/data`, or, when it cannot read
+  `/certs/mail.example.com/privatekey.key`, exits because IMAP (and POP3, if
+  enabled) cannot load the certificate. SMTP on its own does not stop on that
+  error: it logs a warning and runs without STARTTLS.
 
   **Certificate ownership after renewals.** certs-dumper stays root, and its
   post-hook (`certs-hook.sh`) copies the mail host's files into `/certs` owned by
@@ -455,38 +483,35 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   `net.ipv4.ip_unprivileged_port_start=0` (bridge networking, as there), and
   chown the host data, logs and certs directories to 10001:10001 before
   deploying the new image.
-- **Secure cookies behind a proxy:** with `plain_http=true`, the app doesn't set
-  the `Secure` cookie flag itself (TLS is at Traefik). Fine for a test; revisit
-  for production.
-- **No log rotation on `bongo.jsonl`:** add `logrotate` or cap it if it runs for
-  a long time.
-- **Set `trusted_proxies` before the first deploy behind Traefik.**
-  `deploy/bongo.prod.hcl` ships it empty, and with `proxy_protocol` on, startup
-  refuses until it is set. Find Traefik's address on the shared network with
+- **Secure cookies behind a proxy:** with `web.plain_http = true`, also set
+  `web.behind_tls_proxy = true` (as `bongo.prod.hcl` does) so auth cookies are
+  marked `Secure` and HSTS is sent. HSTS also needs Traefik listed in
+  `server.trusted_proxies`, because `X-Forwarded-Proto` is ignored otherwise.
+- **Log rotation:** `bongo.jsonl` is rotated in place by bongo itself when it
+  reaches `telemetry.log.max_size_mb` (default 50); `max_backups`,
+  `max_age_days` and `compress` in the same block control what is kept. No
+  external `logrotate` is needed.
+- **Set `server.trusted_proxies` to Traefik before the first deploy.** PROXY
+  protocol and `X-Forwarded-*` headers are believed only from the addresses
+  listed in `server.trusted_proxies`; no private or loopback peer is trusted
+  implicitly. `deploy/bongo.prod.hcl` ships the list empty, and with
+  `proxy_protocol` on, startup refuses until it is set (this also applies when
+  upgrading from a release without this key). Pin Traefik to a static IP on
+  `${TRAEFIK_NETWORK}` (in Traefik's own compose project) and list it as a
+  `/32`, or find its current address with
   `docker network inspect ${TRAEFIK_NETWORK} --format '{{range .Containers}}{{.Name}} {{.IPv4Address}}{{"\n"}}{{end}}'`
-  (or `docker inspect <traefik-container> --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`),
-  or pin Traefik to a static IP, and list it as a `/32`. Never list the compose
-  network's subnet: other containers on it could then forge client IPs. After
+  (or `docker inspect <traefik-container> --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`).
+  Avoid listing the network's subnet: it trusts every container on the network,
+  so any of them can forge a client IP; treat it as a stopgap at most. After
   deploying, the WARN `proxy protocol header from a peer not in
   server.trusted_proxies was ignored` (at most once a minute, peer IP only)
   means the value is wrong, and its `peer` field is the address to list. With no
   proxy in front, set `proxy_protocol = false` and leave `trusted_proxies` empty.
-- **`server.trusted_proxies` must name Traefik.** PROXY protocol and
-  `X-Forwarded-*` headers are believed only from the addresses listed in
-  `server.trusted_proxies` in `bongo.prod.hcl`; no private or loopback peer is
-  trusted implicitly, and startup fails if `proxy_protocol` is on and the list is
-  empty. Pin Traefik to a static IP on `${TRAEFIK_NETWORK}` (in Traefik's own
-  compose project) and list it as a `/32`. The fallback is the network CIDR from
-  `docker network inspect traefik_web`, but that trusts every container on the
-  network, so any of them can forge a client IP; treat it as a stopgap. Upgrading
-  from a release without this key: set it before deploying or bongo will not start.
-- **Inbound SPF (historical note).** Because inbound SMTP (port 25) is
-  routed through Traefik's TCP entrypoint, bongo sees Traefik's IP as the sender,
-  not the real remote — so SPF checks and per-IP abuse controls don't see the
-  true client. Before relying on inbound spam filtering, either enable PROXY
-  protocol v2 on the Traefik TCP routers + a PROXY-protocol reader in bongo, or
-  expose port 25 directly (bypassing Traefik). See
-  `docs/security-review-2026-07-03.md` (NEW-1).
+- **Inbound client IPs come from PROXY protocol v2.** The Traefik TCP services
+  in `docker-compose.yml` send a PROXY protocol v2 header, and bongo reads it on
+  the SMTP and IMAP listeners (`proxy_protocol = true` in `bongo.prod.hcl`), so
+  SPF, DNSBL, per-IP limits and logs see the real client address rather than
+  Traefik's. This depends on `server.trusted_proxies` naming Traefik (above).
 - **This is preview software** — do not put irreplaceable mail here yet.
 
 ---

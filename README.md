@@ -10,8 +10,8 @@ a mail and calendar server from the Hula and Novell days. The server binary is
 
 **Status:** pre-1.0. A single-node deployment runs in production and has had
 several security reviews (see [SECURITY.md](SECURITY.md)). Multi-node clustering
-and the remote agent role are implemented but less tested. Only the latest
-release receives fixes.
+is implemented but less tested; the `edge` and `agent` roles are incomplete.
+Only the latest release receives fixes.
 
 - **Protocols:** SMTP (25/587), IMAP (143/993), POP3 (110/995), CalDAV/CardDAV,
   plus client autoconfig (Thunderbird/Outlook/Apple).
@@ -24,7 +24,8 @@ release receives fixes.
 - **Web UI:** HTMX + Alpine.js + templ, no JavaScript build step.
 
 Releases are published as container images at `ghcr.io/bongo-project/bongo` and
-as tagged releases in this repository.
+as [GitHub releases](https://github.com/bongo-project/bongo/releases) with Linux
+binaries (amd64 and arm64).
 
 The repository history was rewritten on 2026-10-26, before it went public, to
 remove operational details and old demo data. Release tags were moved to the
@@ -60,13 +61,17 @@ make sec        # gosec
 Run a real server from a single self-contained binary — no Docker, no build
 toolchain. Web assets, templates and translations are all embedded.
 
+Download the zip for your architecture from the
+[releases page](https://github.com/bongo-project/bongo/releases), or build the
+same zips locally:
+
 ```bash
-make dist        # build shareable release zips for linux amd64 + arm64 under dist/
+make dist        # release zips for linux amd64 + arm64 under dist/
 ```
 
 Each zip contains the `bongo-go` and `bongo-import` binaries, a fully annotated
-[`bongo.example.hcl`](deploy/bongo.example.hcl), a `systemd` unit, and an install
-guide. Share the zip; the recipient follows
+[`bongo.example.hcl`](deploy/bongo.example.hcl), a `systemd` unit, an install
+guide, the licence and third-party notices. Follow
 [`docs/install.md`](docs/install.md) to install, configure (including an
 external SMTP relay), run under systemd, and create the first admin.
 
@@ -124,8 +129,10 @@ profiles. See [`docs/importing.md`](docs/importing.md).
 ## Server roles
 
 - **`server`** — Raft voter, storage, all protocols. Three or five form a quorum.
-- **`edge`** — stateless proxy: runs protocol listeners, forwards to servers.
-- **`agent`** — stateless remote protocol processor, registers with servers over gRPC.
+- **`edge`** — intended as a stateless protocol proxy. Incomplete: it starts no
+  mail protocol listeners today.
+- **`agent`** — intended as a remote processor that registers with servers over
+  gRPC. Incomplete: no server runs the registration endpoint yet.
 - **`dev`** — all-in-one single node with ephemeral storage.
 
 Before you scale past one node, work through

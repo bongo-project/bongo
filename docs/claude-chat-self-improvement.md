@@ -5,7 +5,8 @@ reads like a conversation because that is what it is — it begins mid-thread, i
 reply to a question about which piece to build first.
 
 Kept because the phased breakdown (Phases 0–6 below) is the most concrete plan
-anyone has written for this, and nothing here has been built. The distilled,
+anyone has written for this. Phase 1 (the `/metrics` endpoint and `bongo_*`
+metrics) has since been built; the rest has not. The distilled,
 readable version is in `docs/continuous-improvement-loop.md`; **read that first**
 and treat this as the appendix it is.
 

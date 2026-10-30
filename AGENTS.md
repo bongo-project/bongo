@@ -30,9 +30,9 @@ make dev          # build, run a dev server, seed test data
 tag. The suite once stayed red for a month because a plain `go test ./...` looked
 green. Use `make test-all` before you push.
 
-The integration suite has a known flaky `agent not ready in time` startup race
-affecting a handful of tests. If you see it, re-run before assuming you broke
-something.
+Integration tests start agents through `sharedStartAgentErr`, which fails with
+Run's own error when startup fails. An `agent not ready in time` message used to
+hide such errors; if a start fails now, read the error rather than re-running.
 
 ## Architecture in one screen
 

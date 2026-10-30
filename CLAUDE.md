@@ -45,13 +45,17 @@ See `.claude/skills/README.md` for provenance. Other assistants: see `AGENTS.md`
 make all              # generate templ + build both binaries
 make build            # generate + go build bin/bongo-go + bin/bongo-import
 make generate         # templ generate (required before build)
-make test             # go test ./...
+make test             # go test ./... (unit only; integration needs make test-integration)
+make test-all         # fmt-check + test-race + test-integration
 make test-race        # go test -race ./...
 make test-cover       # go test -race -cover ./...
 make lint             # golangci-lint run
-make sec              # gosec ./... (security scanning)
+make sec              # govulncheck + gosec (medium and above)
 make run              # build + ./bin/bongo-go serve --dev
 make dev              # build + run dev server, validate, seed test data, wait (preferred for dev)
+make seed             # seed test data into a running dev server
+make ui-shots OUT=dir # screenshot every route (light, dark, mobile); not in CI
+make dist             # linux amd64/arm64 release zips under dist/
 make clean            # rm -rf bin/
 
 # Run a single test
@@ -75,28 +79,34 @@ Backup = export Pebble keys + copy referenced blobs. Restore = write blobs, repl
 
 ### Server Startup (internal/agent/agent.go)
 
-The `Agent` struct is the central orchestrator. Startup order:
-1. Config loading (viper: CLI flags > env vars > HCL file > defaults)
-2. Storage init: Pebble, BlobStore, MetadataManager (per-user SQLite), SearchManager (per-user Bleve)
-3. Raft + gossip cluster setup (dev mode: in-memory single-node; server: TCP + file snapshots)
-4. HTTP routes (chi router), protocol servers (SMTP :25/:587, IMAP :143/:993, POP3 :110/:995)
-5. Background workers: queue delivery (leader-only), blob sync, event reminders
-6. Dev mode: auto-creates `admin@localhost` / `admin` with default mailboxes
+The `Agent` struct is the central orchestrator. Config is loaded and validated in
+`cmd/bongo-go` (viper: CLI flags > the few `BONGO_*` env vars > HCL file > defaults) before
+`NewAgent` runs. Startup order:
+1. `NewAgent`: storage (Pebble, BlobStore, MetadataManager per-user SQLite, SearchManager
+   per-user Bleve), then Raft for `server` and `dev` (dev: in-memory transport and snapshots,
+   Pebble-backed log in a temp dir). The `agent` role returns before storage.
+2. `Run`: HTTP router built, wait for a Raft leader, gossip, FSM indexer, blob sync, then SMTP,
+   queue worker, reminders, IMAP, POP3 (protocols only when Raft is running), dev admin user,
+   orphan GC and usage recompute, control listener, and finally the public web server.
 
-Graceful shutdown reverses the order: HTTP > SMTP > IMAP > POP3 > workers > Raft > gossip > stores.
+Graceful shutdown: HTTP > SMTP > IMAP > POP3 > workers > gossip > Raft > indexer > search >
+metadata > Pebble.
 
 ### Request Flow (HTTP)
 
 ```
-Request → chi router → SecurityHeaders → RequireAuth (HMAC-SHA256 cookie) →
-  Require2FA → InjectLocale → Handler → Store (Pebble/Blobs) → Templ template → Response
+Request → chi router → SecurityHeaders → InjectSourceURL → Compress →
+  RequireAuth (HMAC-SHA256 cookie) → Require2FA → InjectLocale → RequireSameOrigin →
+  InjectCSRF → RequireCSRF → Handler → Store (Pebble/Blobs) → Templ template → Response
 ```
 
-Admin routes add `RequireAdmin` middleware. CalDAV/CardDAV use HTTP Basic Auth instead of cookies.
+RequireCSRF does not enforce in the dev role. Admin routes add `RequireAdminOrDomainAdmin`;
+the quarantine pages use `RequireAdmin` (global admins only). CalDAV/CardDAV use HTTP Basic
+Auth with a lockout limiter instead of cookies.
 
 ### Key Architectural Patterns
 
-**RaftApplier interface**: All writes go through Raft consensus. Handlers never write to Pebble directly — they call `ApplyCommand()` which serializes a `RaftCommand` protobuf (PUT/DELETE) through the Raft log. The FSM applies committed entries to Pebble.
+**RaftApplier interface**: All writes go through Raft consensus. Handlers never write to Pebble directly — they call `ApplyCommand()` which serializes a `RaftCommand` protobuf (PUT/DELETE) through the Raft log. The FSM applies committed entries to Pebble. Multi-key operations travel as composite commands under synthetic key prefixes (`/__mailbox_{append,copy,delete,deliver,expunge,move,rename,subscribe}__/`, `/__queue_move__/`, `/__bayes_train__/`) that the FSM expands.
 
 **Handler dependency injection via setters**: Handlers receive stores via `SetXXX()` methods, enabling nil-check graceful degradation on edge nodes:
 ```go
@@ -104,15 +114,15 @@ func (h *MailHandler) SetApplier(applier store.RaftApplier) { h.applier = applie
 func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 ```
 
-**FSM side effects**: On Apply(), the FSM also triggers search indexing (Bleve), blob sync enqueueing, and IMAP notifications for new mail.
+**FSM side effects**: On Apply(), the FSM enqueues search indexing (Bleve) for a single async worker (`FSM.StartIndexer`; inline only when no worker is started), blob sync enqueueing, and IMAP notifications for new mail.
 
 **Templ + HTMX + Alpine.js**: Templates compile to Go functions (`templ generate` required). HTMX handles interactivity, Alpine.js for reactive data binding. No JS build step.
 
 ### Server Roles
 
 - `server` — Raft voter, storage, all protocols. 3 or 5 form a quorum.
-- `edge` — Stateless proxy. Runs protocol listeners, forwards to servers. No Raft, no local storage.
-- `agent` — Stateless remote protocol processor (SMTP, IMAP, etc.). Registers with servers via gRPC. No storage.
+- `edge` — Intended stateless proxy. Incomplete: it opens local stores but starts no Raft and therefore no SMTP/IMAP/POP3 listeners, and no forwarding exists.
+- `agent` — Intended remote processor (smtp, antispam, antivirus; imap/pop3/caldav log "not yet implemented"). Incomplete: `grpc.NewAgentServer` is only constructed in tests, so no server accepts agent registration.
 - `dev` — All-in-one, single node, ephemeral storage. Zero config.
 
 ## Pebble Key Space
@@ -137,6 +147,15 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /system/domain_admin/{domain}/{user_id} → domain-admin grant marker
 /system/alias/{alias}                → alias → target user
 /system/catchall/{domain}            → per-domain catch-all target
+/system/domain/{domain}/dkim         → per-domain DKIM key (generated in the admin UI)
+/system/domain/{domain}/quota        → per-domain quota; /usage holds the recomputed usage
+/system/domain/{domain}/owner        → domain owner user ID
+/system/address/{address}            → address → owning user (primary and send-as)
+/system/settings/require_2fa         → global 2FA policy flag
+/system/raft/applied_index           → last applied Raft index (replay skips up to it)
+/system/migration/fwdtargets         → forwarding-target migration done marker
+/user/{user_id}/fwdtarget/{address}  → verified forwarding target
+/user/{user_id}/fwdverify/{address}  → pending forwarding verification
 /queue/pending/{unix_ts}-{id}        → queued outbound message (zero-padded ts)
 /queue/bounced/{id}                  → bounced outbound message
 

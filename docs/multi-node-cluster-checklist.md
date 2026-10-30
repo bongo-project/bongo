@@ -48,7 +48,11 @@ what that gate is guarding — work through it before forming a cluster.
    ```hcl
    cluster { gossip { encryption_key = "<base64-key>" } }
    ```
-   Keep it out of git — inject via secret/env like the session secret.
+   There is no environment-variable override for this key (only
+   `web.session_secret` has one, `BONGO_WEB_SESSION_SECRET`), and the HCL
+   loader does not support `env()`. The key therefore lives in the config
+   file: keep that file out of version control and readable only by the
+   service user.
 
 2. **Provision raft mTLS.** Give every node a certificate/key signed by a shared
    cluster CA, and point all three at that trust anchor:
@@ -107,13 +111,14 @@ what that gate is guarding — work through it before forming a cluster.
    split-brain risk). Only the first node bootstraps; the rest set `cluster.join`.
 
 6. **Stagger the daily cold backup** so only one node cycles at a time and the
-   raft quorum + leader stay up throughout (see `zero-downtime-backup-plan`).
-   Optionally front the cluster with a stateless `agent`/`edge` SMTP node so
-   inbound mail is absorbed while a server node reboots for its backup.
-   An `agent` SMTP node must set the same `web.session_secret` as the servers:
-   SRS bounce addresses are keyed from it, and an agent with a different or no
-   secret refuses every SRS-shaped recipient with `550 5.1.1` (it logs one
-   warning at startup when none is set).
+   raft quorum + leader stay up throughout. The backup procedure itself is in
+   section 10 ("Backup") of `deploy/README.md`.
+   Do not plan on `edge` or `agent` nodes to absorb inbound mail while a server
+   node is down: both roles are incomplete. An `edge` node starts no SMTP,
+   IMAP or POP3 listeners, because those require Raft, which only the `server`
+   and `dev` roles start. An `agent` node registers with a server over gRPC,
+   but no server constructs the gRPC `AgentServer` it registers with (see
+   step 4).
 
 ## Peer listener design note (blob sync and cluster join)
 
@@ -178,11 +183,18 @@ served only on the loopback control listener (`server.control_addr`, default
 
 ## Sanity check
 
-With `cluster.join` set but any of the above missing, startup fails fast with:
+With `cluster.join` set but the gossip key or any `cluster.tls` file missing,
+startup fails with (the `set` clause names only what is missing):
 
 ```
-cluster: joining peers requires transport security before a multi-node cluster
-can form; set cluster.gossip.encryption_key and cluster.tls.{cert_file,key_file,ca_file}
+invalid config: cluster: joining peers requires transport security before a multi-node cluster can form; set cluster.gossip.encryption_key and cluster.tls.{cert_file,key_file,ca_file} (see docs/multi-node-cluster-checklist.md)
+```
+
+With `cluster.join` set and the advertise address (`server.advertise_addr`,
+or `server.bind_addr` when that is unset) a loopback address, it fails with:
+
+```
+invalid config: cluster: cluster.join is set but raft/gossip advertise the loopback address "127.0.0.1"; set server.advertise_addr to this node's routable IP
 ```
 
 Single-node deployments (empty `cluster.join`) are unaffected and start exactly
