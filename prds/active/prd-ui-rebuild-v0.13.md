@@ -24,7 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
-| D | Fixes from operator testing | US-016 to US-026 | 27.16 to 27.26 |
+| D | Fixes from operator testing | US-016 to US-026, US-028 | 27.16 to 27.26, 27.28 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -401,6 +401,15 @@ mode showed the light theme until Alpine set data-theme.
 **Acceptance Criteria:**
 - [ ] The app layouts set data-theme from the saved choice, or the OS
       preference, before the first paint, and fall back to data-theme="auto".
+
+### US-028: The brand mark is the original Bongo swoosh
+Added 2026-10-30 at the operator's request, as a nod to the original Bongo
+project. The rebuild used the handoff's drum glyph.
+
+**Acceptance Criteria:**
+- [ ] The top bar and the login card show the orange swoosh from the original
+      Bongo project logo next to the "Bongo·mail" wordmark, legible in light
+      and dark mode.
 
 ## 4. Functional Requirements
 
