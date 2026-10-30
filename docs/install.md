@@ -1,4 +1,4 @@
-# Installing Bongo-Go from the binary release
+# Installing Bongo from the binary release
 
 This guide installs and runs a Bongo mail + calendar server from a release zip —
 no Docker, no build toolchain. Everything (web assets, templates, translations)
@@ -17,11 +17,11 @@ build the same zips from a source checkout with `make dist` (they land in
 `dist/`).
 
 ```
-bongo-go_<version>_linux_<arch>/
-  bongo-go                # the server binary
+bongo_<version>_linux_<arch>/
+  bongo                # the server binary
   bongo-import            # mail import tool (mbox/maildir/eml/IMAP/Thunderbird)
   bongo.example.hcl       # fully annotated example configuration
-  bongo-go.service        # systemd unit template
+  bongo.service        # systemd unit template
   INSTALL.md              # this guide
   README.md               # what this release is and what is not finished yet
   LICENSE                 # licence text
@@ -64,23 +64,23 @@ software:
 ## 3. Install the files
 
 ```bash
-unzip bongo-go_<version>_linux_<arch>.zip
-cd bongo-go_<version>_linux_<arch>
+unzip bongo_<version>_linux_<arch>.zip
+cd bongo_<version>_linux_<arch>
 
 # Binaries onto PATH
-sudo install -m 0755 bongo-go bongo-import /usr/local/bin/
+sudo install -m 0755 bongo bongo-import /usr/local/bin/
 
 # Config directory
 sudo mkdir -p /etc/bongo
 sudo cp bongo.example.hcl /etc/bongo/bongo.hcl
 
 # Data + log directories
-sudo mkdir -p /var/lib/bongo-go /var/log/bongo-go
+sudo mkdir -p /var/lib/bongo /var/log/bongo
 ```
 
 The server discovers its config file in this order:
 `--config` flag > `BONGO_CONFIG` env var > `./bongo.hcl` > `/etc/bongo/bongo.hcl`.
-Putting it at `/etc/bongo/bongo.hcl` means you can just run `bongo-go serve`.
+Putting it at `/etc/bongo/bongo.hcl` means you can just run `bongo serve`.
 
 ---
 
@@ -89,7 +89,7 @@ Putting it at `/etc/bongo/bongo.hcl` means you can just run `bongo-go serve`.
 To confirm the binary runs on your machine before doing any real setup:
 
 ```bash
-bongo-go serve --dev
+bongo serve --dev
 ```
 
 Dev mode uses ephemeral storage, runs the mail protocols on high ports, and
@@ -168,25 +168,25 @@ publish, and no key file or `smtp.dkim` block is needed for that domain.
 
 ## 6. Run as a service (systemd)
 
-The included `bongo-go.service` runs the server as a dedicated user, restarts on
+The included `bongo.service` runs the server as a dedicated user, restarts on
 failure, and grants the capability to bind low ports without running as root.
 
 ```bash
 # Dedicated system user
-sudo useradd --system --home /var/lib/bongo-go --shell /usr/sbin/nologin bongo || true
-sudo chown -R bongo:bongo /var/lib/bongo-go /var/log/bongo-go /etc/bongo
+sudo useradd --system --home /var/lib/bongo --shell /usr/sbin/nologin bongo || true
+sudo chown -R bongo:bongo /var/lib/bongo /var/log/bongo /etc/bongo
 
 # Secret in an environment file (root-only)
 echo "BONGO_WEB_SESSION_SECRET=$(openssl rand -base64 32)" | sudo tee /etc/bongo/bongo.env >/dev/null
 sudo chmod 600 /etc/bongo/bongo.env
 
 # Install and start the unit
-sudo cp bongo-go.service /etc/systemd/system/
+sudo cp bongo.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now bongo-go
+sudo systemctl enable --now bongo
 
 # Watch it come up
-journalctl -u bongo-go -f
+journalctl -u bongo -f
 ```
 
 ---
@@ -229,7 +229,7 @@ Production does not auto-create a login. With the server running, create one by
 calling its internal endpoint (authenticated with the session secret):
 
 ```bash
-bongo-go user create \
+bongo user create \
   --email you@example.com \
   --password 'a-strong-password' \
   --admin \
@@ -264,11 +264,11 @@ profiles. See [`importing.md`](importing.md).
 ## 10. Upgrading
 
 Stop the service, replace the two binaries, start it again — data in
-`/var/lib/bongo-go` and your config are untouched:
+`/var/lib/bongo` and your config are untouched:
 
 ```bash
-sudo systemctl stop bongo-go
-sudo install -m 0755 bongo-go bongo-import /usr/local/bin/
-sudo systemctl start bongo-go
-bongo-go version   # confirm the new version
+sudo systemctl stop bongo
+sudo install -m 0755 bongo bongo-import /usr/local/bin/
+sudo systemctl start bongo
+bongo version   # confirm the new version
 ```

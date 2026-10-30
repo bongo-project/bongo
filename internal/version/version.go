@@ -2,7 +2,7 @@ package version
 
 import "fmt"
 
-const Name = "bongo-go"
+const Name = "bongo"
 
 // Set via ldflags at build time.
 var (

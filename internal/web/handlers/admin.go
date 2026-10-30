@@ -629,7 +629,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	// the mail is neither bounced nor visible anywhere.
 	//
 	// Best-effort by the repo's own rule: the user IS deleted either way, the
-	// failure is logged with the address, and `bongo-go address repair` exists
+	// failure is logged with the address, and `bongo address repair` exists
 	// to sweep up anything missed here.
 	if h.addresses != nil {
 		addrs, aErr := h.addresses.ListByUser(userID)

@@ -17,7 +17,7 @@ import (
 	"github.com/bongo-project/bongo/internal/netx"
 )
 
-// Config is the top-level configuration for bongo-go.
+// Config is the top-level configuration for bongo.
 type Config struct {
 	Server      ServerConfig    `hcl:"server,block" mapstructure:"server"`
 	Cluster     ClusterConfig   `hcl:"cluster,block" mapstructure:"cluster"`
@@ -1229,7 +1229,7 @@ func Defaults() *Config {
 		Cluster: ClusterConfig{
 			PeerPort: 8302,
 			Raft: RaftConfig{
-				DataDir:           "/var/lib/bongo-go/raft",
+				DataDir:           "/var/lib/bongo/raft",
 				Port:              8300,
 				SnapshotThreshold: 8192,
 				SnapshotInterval:  "120s",
@@ -1239,7 +1239,7 @@ func Defaults() *Config {
 			},
 		},
 		Storage: StorageConfig{
-			DataDir: "/var/lib/bongo-go/data",
+			DataDir: "/var/lib/bongo/data",
 			Pebble: PebbleConfig{
 				CacheSize: "256MB",
 			},

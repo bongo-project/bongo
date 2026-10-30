@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Bongo-Go: a mail and calendar server (IMAP, SMTP, POP3, CalDAV/CardDAV) with an HTMX web UI,
+Bongo: a mail and calendar server (IMAP, SMTP, POP3, CalDAV/CardDAV) with an HTMX web UI,
 embedded storage (no standalone database), and Raft-based clustering. Single Go binary.
 
 ## Reference Documents
@@ -43,7 +43,7 @@ See `.claude/skills/README.md` for provenance. Other assistants: see `AGENTS.md`
 
 ```bash
 make all              # generate templ + build both binaries
-make build            # generate + go build bin/bongo-go + bin/bongo-import
+make build            # generate + go build bin/bongo + bin/bongo-import
 make generate         # templ generate (required before build)
 make test             # go test ./... (unit only; integration needs make test-integration)
 make test-all         # fmt-check + test-race + test-integration
@@ -51,7 +51,7 @@ make test-race        # go test -race ./...
 make test-cover       # go test -race -cover ./...
 make lint             # golangci-lint run
 make sec              # govulncheck + gosec (medium and above)
-make run              # build + ./bin/bongo-go serve --dev
+make run              # build + ./bin/bongo serve --dev
 make dev              # build + run dev server, validate, seed test data, wait (preferred for dev)
 make seed             # seed test data into a running dev server
 make ui-shots OUT=dir # screenshot every route (light, dark, mobile); not in CI
@@ -65,7 +65,7 @@ go test -race -run TestFunctionName ./internal/store/...
 go test -race ./internal/cluster/...
 ```
 
-Two binaries: `bongo-go` (the server) and `bongo-import` (mail import from mbox/maildir/eml/IMAP/Thunderbird).
+Two binaries: `bongo` (the server) and `bongo-import` (mail import from mbox/maildir/eml/IMAP/Thunderbird).
 
 ## Architecture Overview
 
@@ -80,7 +80,7 @@ Backup = export Pebble keys + copy referenced blobs. Restore = write blobs, repl
 ### Server Startup (internal/agent/agent.go)
 
 The `Agent` struct is the central orchestrator. Config is loaded and validated in
-`cmd/bongo-go` (viper: CLI flags > the few `BONGO_*` env vars > HCL file > defaults) before
+`cmd/bongo` (viper: CLI flags > the few `BONGO_*` env vars > HCL file > defaults) before
 `NewAgent` runs. Startup order:
 1. `NewAgent`: storage (Pebble, BlobStore, MetadataManager per-user SQLite, SearchManager
    per-user Bleve), then Raft for `server` and `dev` (dev: in-memory transport and snapshots,

@@ -2,7 +2,7 @@
 
 A step-by-step guide to building, running and exploring Bongo, a mail and
 calendar server shipped as a single Go binary with an HTMX web UI. The server
-binary is `bongo-go`.
+binary is `bongo`.
 
 ---
 
@@ -34,7 +34,7 @@ make build
 
 `make build` runs `templ generate` and builds both binaries into `bin/`:
 
-- `bongo-go`: the mail and calendar server
+- `bongo`: the mail and calendar server
 - `bongo-import`: the mail, contacts and calendar import tool
 
 ---
@@ -53,7 +53,7 @@ It builds, starts a dev server, runs the validation suite, seeds test data and k
 To start the server on its own instead:
 
 ```bash
-./bin/bongo-go serve --dev
+./bin/bongo serve --dev
 ```
 
 Dev mode needs no configuration. It creates an ephemeral data directory
@@ -454,7 +454,7 @@ Bongo is a single binary that includes:
 ## Useful Commands
 
 ```bash
-make build      # templ generate + build bin/bongo-go and bin/bongo-import
+make build      # templ generate + build bin/bongo and bin/bongo-import
 make dev        # build, start a dev server, validate, seed, keep running
 make run        # build and start a dev server
 make seed       # seed test data into a running dev server

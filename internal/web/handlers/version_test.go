@@ -37,7 +37,7 @@ func TestVersion(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body.Name != "bongo-go" || body.Version != "v1.2.3" || body.Commit != "abcdef123456" || body.Date != "2026-07-08T19:30:00Z" {
+	if body.Name != "bongo" || body.Version != "v1.2.3" || body.Commit != "abcdef123456" || body.Date != "2026-07-08T19:30:00Z" {
 		t.Fatalf("body = %#v", body)
 	}
 }

@@ -6,7 +6,7 @@ shipped as a single Go binary.
 
 Bongo is a reimplementation in Go of the [Bongo project](https://bongo-project.org),
 a mail and calendar server from the Hula and Novell days. The server binary is
-`bongo-go` and the import tool is `bongo-import`.
+`bongo` and the import tool is `bongo-import`.
 
 **Status:** pre-1.0. A single-node deployment runs in production and has had
 several security reviews (see [SECURITY.md](SECURITY.md)). Multi-node clustering
@@ -49,7 +49,7 @@ Open the web UI on the printed address. See
 Common targets:
 
 ```bash
-make build      # generate templ + build bin/bongo-go and bin/bongo-import
+make build      # generate templ + build bin/bongo and bin/bongo-import
 make test       # go test ./...
 make test-race  # go test -race ./...
 make lint       # golangci-lint
@@ -69,7 +69,7 @@ same zips locally:
 make dist        # release zips for linux amd64 + arm64 under dist/
 ```
 
-Each zip contains the `bongo-go` and `bongo-import` binaries, a fully annotated
+Each zip contains the `bongo` and `bongo-import` binaries, a fully annotated
 [`bongo.example.hcl`](deploy/bongo.example.hcl), a `systemd` unit, an install
 guide, the licence and third-party notices. Follow
 [`docs/install.md`](docs/install.md) to install, configure (including an
@@ -102,7 +102,7 @@ The short version:
    ```
 6. **First admin** (production does not auto-create one):
    ```bash
-   docker compose exec bongo bongo-go user create \
+   docker compose exec bongo bongo user create \
      --email you@example.com --password 'a-strong-password' --admin \
      --session-secret "$BONGO_WEB_SESSION_SECRET"
    ```

@@ -123,7 +123,7 @@ func runAddressOrphans(cmd *cobra.Command, args []string) error {
 		}
 	}
 	fmt.Println("\nMail to address records resolves to a deleted account and is delivered")
-	fmt.Println("into an unreachable mailbox. Run 'bongo-go address repair' to remove them.")
+	fmt.Println("into an unreachable mailbox. Run 'bongo address repair' to remove them.")
 	if reportOnly {
 		fmt.Println("Legacy-alias and catchall entries are report-only: remove those keys by hand.")
 	}

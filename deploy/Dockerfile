@@ -32,7 +32,7 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     templ generate && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-project/bongo/internal/version.Version=${VERSION} -X github.com/bongo-project/bongo/internal/version.Commit=${COMMIT} -X github.com/bongo-project/bongo/internal/version.Date=${DATE}" -o /out/bongo-go     ./cmd/bongo-go && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-project/bongo/internal/version.Version=${VERSION} -X github.com/bongo-project/bongo/internal/version.Commit=${COMMIT} -X github.com/bongo-project/bongo/internal/version.Date=${DATE}" -o /out/bongo     ./cmd/bongo && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-project/bongo/internal/version.Version=${VERSION} -X github.com/bongo-project/bongo/internal/version.Commit=${COMMIT} -X github.com/bongo-project/bongo/internal/version.Date=${DATE}" -o /out/bongo-import ./cmd/bongo-import
 
 # ---- Runtime stage ----------------------------------------------------------
@@ -65,7 +65,7 @@ RUN apk add --no-cache ca-certificates tzdata && \
     # not: the host operator chowns them (deploy/README.md section 11).
     chown 10001:10001 /data /logs /certs
 
-COPY --from=build /out/bongo-go     /usr/local/bin/bongo-go
+COPY --from=build /out/bongo     /usr/local/bin/bongo
 COPY --from=build /out/bongo-import /usr/local/bin/bongo-import
 
 # Mail + web + metrics ports (host mapping is defined in compose).
@@ -75,5 +75,5 @@ VOLUME ["/data", "/logs"]
 
 USER 10001:10001
 
-ENTRYPOINT ["/usr/local/bin/bongo-go"]
+ENTRYPOINT ["/usr/local/bin/bongo"]
 CMD ["serve", "--config", "/etc/bongo/bongo.hcl"]

@@ -1,9 +1,9 @@
 .PHONY: all build dist generate test test-race test-integration test-all fmt fmt-check lint check-image-pins sec clean run dev ui-test ui-test-headed ui-test-setup ui-shots validate seed
 
-BINARY     := bongo-go
+BINARY     := bongo
 IMPORT_BIN := bongo-import
 BUILD_DIR  := bin
-SEC_GOCACHE ?= /tmp/bongo-gocache-security
+SEC_GOCACHE ?= /tmp/bongo-cache-security
 VERSION_PKG := github.com/bongo-project/bongo/internal/version
 BUILD_VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo dev)
 BUILD_COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
@@ -16,7 +16,7 @@ all: generate build
 
 build: generate
 	@mkdir -p $(BUILD_DIR)
-	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/bongo-go
+	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/bongo
 	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(IMPORT_BIN) ./cmd/bongo-import
 
 ## dist builds shareable standalone binary release zips (linux amd64 + arm64)

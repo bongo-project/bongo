@@ -6,7 +6,7 @@
 make dev
 ```
 
-`make dev` generates the templates, builds `bin/bongo-go` and `bin/bongo-import`,
+`make dev` generates the templates, builds `bin/bongo` and `bin/bongo-import`,
 starts a dev server, runs the validation suite, seeds test data
 and keeps the server running until Ctrl-C. The web UI is at
 <http://localhost:8080>.
@@ -15,7 +15,7 @@ To run the server by hand:
 
 ```bash
 make build
-./bin/bongo-go serve --dev
+./bin/bongo serve --dev
 ```
 
 Dev mode starts a single-node server with ephemeral storage (deleted on

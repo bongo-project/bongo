@@ -31,7 +31,7 @@ func GenerateSelfSigned(hosts []string) (certPEM, keyPEM []byte, err error) {
 	now := time.Now()
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "bongo-go"},
+		Subject:      pkix.Name{CommonName: "bongo"},
 		NotBefore:    now,
 		NotAfter:     now.Add(365 * 24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

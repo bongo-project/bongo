@@ -16,7 +16,7 @@ Module path: `github.com/bongo-project/bongo`.
 
 ```bash
 make generate     # templ generate - REQUIRED before build after touching .templ
-make build        # generate + build bin/bongo-go and bin/bongo-import
+make build        # generate + build bin/bongo and bin/bongo-import
 make test         # go test ./...          (fast; SKIPS integration)
 make test-race    # go test -race ./...
 make test-integration   # behind //go:build integration, ~6 min, starts real servers

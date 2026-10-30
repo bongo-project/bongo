@@ -34,8 +34,8 @@ var (
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start the bongo-go server",
-	Long:  "Start bongo-go in server, edge, dev, or agent role.",
+	Short: "Start the bongo server",
+	Long:  "Start bongo in server, edge, dev, or agent role.",
 	RunE:  runServe,
 }
 

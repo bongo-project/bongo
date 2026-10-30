@@ -120,7 +120,7 @@ func harness(ctx context.Context, outFlag, chrome string, timeout time.Duration)
 	}
 	defer func() { _ = os.RemoveAll(work) }()
 
-	fmt.Println("Building bongo-go, bongo-import and validate-server...")
+	fmt.Println("Building bongo, bongo-import and validate-server...")
 	if err := build(ctx, repo, work); err != nil {
 		return nil, "", err
 	}

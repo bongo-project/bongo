@@ -17,7 +17,7 @@ import (
 )
 
 // AgentProcessorServer is a minimal gRPC server that exposes the ProcessMessage
-// RPC so that a bongo-go server can dispatch processing stages to this agent.
+// RPC so that a bongo server can dispatch processing stages to this agent.
 // All other AgentService RPCs (Register, Heartbeat, DepositMessage, FetchBlob)
 // return Unimplemented — this server exists only to receive work from the server.
 type AgentProcessorServer struct {

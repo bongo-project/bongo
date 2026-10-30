@@ -779,7 +779,7 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 
 	cal := ical.NewCalendar()
 	cal.Props.SetText(ical.PropVersion, "2.0")
-	cal.Props.SetText(ical.PropProductID, "-//Bongo-Go//Calendar//EN")
+	cal.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
 
 	// Each VTIMEZONE a kept event references is written once, ahead of the
 	// events; the first definition of a TZID wins.
@@ -991,7 +991,7 @@ func encodeEventGroup(src *ical.Calendar, group []*ical.Component) ([]byte, erro
 
 	out := ical.NewCalendar()
 	out.Props.SetText(ical.PropVersion, "2.0")
-	out.Props.SetText(ical.PropProductID, "-//Bongo-Go//Calendar//EN")
+	out.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
 
 	added := map[string]bool{}
 	for _, vevent := range group {
@@ -1246,7 +1246,7 @@ func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time
 		cal.Props.SetText(ical.PropVersion, "2.0")
 	}
 	if cal.Props.Get(ical.PropProductID) == nil {
-		cal.Props.SetText(ical.PropProductID, "-//Bongo-Go//Calendar//EN")
+		cal.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
 	}
 
 	var buf bytes.Buffer

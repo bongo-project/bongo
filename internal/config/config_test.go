@@ -1083,7 +1083,7 @@ func TestSMTPConfigParseTrustedNetworks(t *testing.T) {
 // TestShippedConfigsPassValidate proves cfg.Validate() is actually reachable
 // against real deployment configs, not just synthetic Defaults()-based
 // fixtures: both shipped HCL files must load and validate cleanly, since
-// Validate() runs on the serve startup path (loadServeConfig in cmd/bongo-go).
+// Validate() runs on the serve startup path (loadServeConfig in cmd/bongo).
 func TestShippedConfigsPassValidate(t *testing.T) {
 	for _, path := range []string{"../../deploy/bongo.prod.hcl", "../../deploy/bongo.example.hcl"} {
 		t.Run(path, func(t *testing.T) {

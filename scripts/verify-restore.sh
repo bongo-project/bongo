@@ -8,7 +8,7 @@
 #
 # WHAT IT PROVES
 #   1. The archive extracts and contains both data/ and secrets/.
-#   2. A bongo-go server STARTS against the restored data directory and reports
+#   2. A bongo server STARTS against the restored data directory and reports
 #      ready — which means Pebble opened, the metadata and search indexes were
 #      usable, and nothing was structurally corrupt.
 #   3. The restored DKIM private key parses, and its derived public key matches
@@ -27,7 +27,7 @@
 #
 # SAFETY
 #   Read-only with respect to production. Everything is extracted into a fresh
-#   mktemp directory and removed on exit. It starts a bongo-go instance on
+#   mktemp directory and removed on exit. It starts a bongo instance on
 #   RANDOM HIGH PORTS so it cannot collide with the running server. It never
 #   writes to /mnt/data/bongo.
 #
@@ -40,7 +40,7 @@
 set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/mnt/data/backups}"
-BONGO_BIN="${BONGO_BIN:-$(command -v bongo-go || echo /usr/local/bin/bongo-go)}"
+BONGO_BIN="${BONGO_BIN:-$(command -v bongo || echo /usr/local/bin/bongo)}"
 READY_TIMEOUT="${READY_TIMEOUT:-60}"
 
 log()  { printf '%s  %s\n' "$(date -u +%H:%M:%S)" "$*"; }
@@ -62,7 +62,7 @@ else
 fi
 
 [[ -r "${ARCHIVE}" ]] || fail "cannot read ${ARCHIVE} (archives are root-only; run with sudo)"
-[[ -x "${BONGO_BIN}" ]] || fail "bongo-go binary not found or not executable at ${BONGO_BIN} (set BONGO_BIN)"
+[[ -x "${BONGO_BIN}" ]] || fail "bongo binary not found or not executable at ${BONGO_BIN} (set BONGO_BIN)"
 
 log "archive: ${ARCHIVE} ($(du -h "${ARCHIVE}" | cut -f1))"
 

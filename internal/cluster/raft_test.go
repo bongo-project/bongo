@@ -183,7 +183,7 @@ func TestApplyRaftTuningDefaults(t *testing.T) {
 
 // TestApplyRaftTuningRejectsInvalidPairing pins the enforcement point. The
 // check is defence in depth: config.Validate() also rejects the pairing on the
-// serve startup path (cmd/bongo-go/agent.go).
+// serve startup path (cmd/bongo/agent.go).
 func TestApplyRaftTuningRejectsInvalidPairing(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 

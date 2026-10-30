@@ -54,7 +54,7 @@ func TestImportKeepsRawWithProdID(t *testing.T) {
 		t.Fatalf("events = %d, want 1", len(evs))
 	}
 	raw := string(evs[0].IcalRaw)
-	for _, want := range []string{"PRODID:-//Bongo-Go//Calendar//EN", "VERSION:2.0"} {
+	for _, want := range []string{"PRODID:-//Bongo//Calendar//EN", "VERSION:2.0"} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("ical_raw lacks %q:\n%s", want, raw)
 		}

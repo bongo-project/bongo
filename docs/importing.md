@@ -1,7 +1,7 @@
-# Importing Email into Bongo-Go
+# Importing Email into Bongo
 
 The `bongo-import` tool migrates email from various sources into a running
-bongo-go server via IMAP APPEND. The `directory` subcommand can also upload
+bongo server via IMAP APPEND. The `directory` subcommand can also upload
 contacts and calendar files through the web API.
 
 ## Build
@@ -27,7 +27,7 @@ All subcommands share these flags:
 | `--dry-run` | `false` | List what would be imported without writing |
 
 The `--dst-port` default of 1143 is the plain IMAP port that
-`bongo-go serve --dev` listens on. Against a production server, use
+`bongo serve --dev` listens on. Against a production server, use
 `--dst-port 993 --dst-tls` for implicit TLS, or `--dst-port 143`.
 
 The `--state` flag enables resumable imports. If the import is interrupted,
@@ -167,7 +167,7 @@ confirmation before importing.
 | `--calendar-only` | `false` | Import only `.ics` files |
 | `--yes` | `false` | Skip the confirmation prompt |
 
-A dev server (`bongo-go serve --dev`) always serves the web UI over plain
+A dev server (`bongo serve --dev`) always serves the web UI over plain
 HTTP, so pass `--web-url http://localhost:8080`. The tool does not verify the web
 server's TLS certificate, and it logs in with the destination password over
 that connection; run it only over a network path you trust.

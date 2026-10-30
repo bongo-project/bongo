@@ -1,6 +1,6 @@
-# Deploying Bongo-Go on a single server (Docker + Traefik)
+# Deploying Bongo on a single server (Docker + Traefik)
 
-A step-by-step guide to running Bongo-Go as a real, internet-facing mail server
+A step-by-step guide to running Bongo as a real, internet-facing mail server
 for **example.com** on a single Docker host, behind an existing Traefik.
 
 > Status: this is an early-preview build. Expect rough edges. This guide gets you
@@ -22,7 +22,7 @@ for **example.com** on a single Docker host, behind an existing Traefik.
 | `website/` | Static landing page served by the `website` container on the mail domain's apex |
 | `ship-logs.sh` | Pull the JSON log file from the server to your laptop |
 | `LOGGING.md` | Where logs go and how to collect them; where `/metrics` is served |
-| `bongo-go.service` | systemd unit for the binary release (no Docker); see `docs/install.md` |
+| `bongo.service` | systemd unit for the binary release (no Docker); see `docs/install.md` |
 | `bongo.example.hcl` | Fully annotated example configuration for the binary release |
 | `release-README.md` | README shipped inside the binary release zip |
 
@@ -272,8 +272,8 @@ Some settings can change without a restart. Edit `bongo.prod.hcl`, then send
 SIGHUP to bongo:
 
 ```bash
-docker compose kill -s HUP bongo     # Docker: the entrypoint execs bongo-go, so it gets the signal
-systemctl reload bongo-go            # systemd: the unit's ExecReload sends SIGHUP
+docker compose kill -s HUP bongo     # Docker: the entrypoint execs bongo, so it gets the signal
+systemctl reload bongo            # systemd: the unit's ExecReload sends SIGHUP
 docker compose logs --tail 30 bongo  # look for "config reload complete"
 ```
 
@@ -326,7 +326,7 @@ and read the session secret:
 
 ```bash
 docker compose exec bongo \
-  bongo-go user create \
+  bongo user create \
     --email you@example.com \
     --password 'a-strong-password' \
     --admin
@@ -472,7 +472,7 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   on the first dump when certs-dumper starts, but the manual `chown` above
   remains the safe step when upgrading.)
 
-  **Debugging.** `bongo-go` is now the image ENTRYPOINT, so use
+  **Debugging.** `bongo` is now the image ENTRYPOINT, so use
   `docker exec -it bongo sh` or `docker run --entrypoint sh` for a shell.
 
   **Production (infra repo).** The live deployment is not this compose file:

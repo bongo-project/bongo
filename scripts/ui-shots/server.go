@@ -157,7 +157,7 @@ func cleanEnv(work string) []string {
 // build compiles the three binaries the harness drives into work.
 func build(ctx context.Context, repo, work string) error {
 	for _, b := range []struct{ out, pkg string }{
-		{"bongo-go", "./cmd/bongo-go"},
+		{"bongo", "./cmd/bongo"},
 		{"bongo-import", "./cmd/bongo-import"},
 		{"validate-server", "./scripts/validate-server"},
 	} {
@@ -210,7 +210,7 @@ func launch(ctx context.Context, work string, p ports) (*server, error) {
 	}
 	defer func() { _ = lf.Close() }()
 
-	cmd := exec.Command(filepath.Join(work, "bongo-go"), "serve", "-c", cfg) // #nosec G204 -- our own binary
+	cmd := exec.Command(filepath.Join(work, "bongo"), "serve", "-c", cfg) // #nosec G204 -- our own binary
 	cmd.Dir = work
 	cmd.Env = cleanEnv(work)
 	cmd.Stdout, cmd.Stderr = lf, lf
