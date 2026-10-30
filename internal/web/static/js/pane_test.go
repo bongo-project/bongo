@@ -119,3 +119,23 @@ func TestRowClickOpensMessage(t *testing.T) {
 		}
 	}
 }
+
+// #main-content's data-selected-mailbox is rendered once per full page load and
+// goes stale when the sidebar swaps in another mailbox; d, r and drag-and-drop
+// then acted on the right UID in the wrong mailbox. They must read the mailbox
+// from the list that is on screen.
+func TestKeyboardAndDragUseTheListsMailbox(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	if strings.Contains(js, "querySelector('[data-selected-mailbox]')") {
+		t.Error("bongo.js still reads the stale data-selected-mailbox")
+	}
+	if !strings.Contains(funcBody(t, js, "currentMailbox"), "'.mail-view[data-mailbox]'") {
+		t.Error("currentMailbox must read the mailbox from the list on screen")
+	}
+	if !strings.Contains(funcBody(t, js, "deleteRow"), "currentMailbox()") {
+		t.Error("deleteRow must use currentMailbox")
+	}
+	if !strings.Contains(js, "'/compose/reply/' + encodeURIComponent(mailbox)") {
+		t.Error("r must escape the mailbox in the reply URL")
+	}
+}

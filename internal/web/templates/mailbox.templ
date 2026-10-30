@@ -95,7 +95,7 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 	if flash != "" {
 		@FlashMessage(flash, "success")
 	}
-	<div class="mail-view" x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
+	<div class="mail-view" data-mailbox={ mailbox } x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
 		<div class="mail-head">
 			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
 			<h1 class="mail-head-title">{ mailboxTitle(mailbox) }</h1>

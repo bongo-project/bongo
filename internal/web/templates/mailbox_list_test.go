@@ -161,7 +161,7 @@ func TestMailboxContentKeepsStructure(t *testing.T) {
 	out := renderContent(t, "INBOX", ListCounts{1, 2}, []MessageSummary{baseMsg()})
 	for _, want := range []string{
 		`id="message-list"`, `id="reading-pane"`, `class="mail-layout"`, `class="message-list-pane"`,
-		`x-data="messageList"`, `x-bind:class="{'mail-view-panes': layoutMode !== 'list'}"`, `x-on:click="setLayout('list')"`, `x-on:click="setLayout('two-pane')"`,
+		`x-data="messageList"`, `data-mailbox="INBOX"`, `x-bind:class="{'mail-view-panes': layoutMode !== 'list'}"`, `x-on:click="setLayout('list')"`, `x-on:click="setLayout('two-pane')"`,
 		`x-on:click="setLayout('three-pane')"`, `hx-get="/mail/INBOX"`, `hx-target="#main-content"`,
 		`class="bulk-toolbar"`, `x-data="spamScan(&#39;INBOX&#39;)"`, `class="page-info"`, "1 of 1",
 		`<h1`, `INBOX`,
