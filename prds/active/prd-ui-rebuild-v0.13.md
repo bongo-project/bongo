@@ -24,7 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
-| D | Fixes from operator testing | US-016 to US-026, US-028 | 27.16 to 27.26, 27.28 |
+| D | Fixes from operator testing | US-016 to US-028 | 27.16 to 27.28 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -402,6 +402,15 @@ mode showed the light theme until Alpine set data-theme.
 - [ ] The app layouts set data-theme from the saved choice, or the OS
       preference, before the first paint, and fall back to data-theme="auto".
 
+### US-027: Deleting from a subfolder returns to the subfolder
+Added 2026-10-30 from operator testing. Deleting a message in INBOX/Important
+redirected to /mail/INBOX/Important, which the router read as message
+"Important" in INBOX, and the browser showed "Invalid UID".
+
+**Acceptance Criteria:**
+- [ ] After delete, move, and mark as spam or not spam, the redirect path-escapes
+      the mailbox name and query-escapes the flash text.
+
 ### US-028: The brand mark is the original Bongo swoosh
 Added 2026-10-30 at the operator's request, as a nod to the original Bongo
 project. The rebuild used the handoff's drum glyph.
@@ -413,7 +422,7 @@ project. The rebuild used the handoff's drum glyph.
 
 ## 4. Functional Requirements
 
-FR-1 to FR-26 are the acceptance criteria of US-001 to US-026. In every
+FR-1 to FR-28 are the acceptance criteria of US-001 to US-028. In every
 story:
 
 - Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF
