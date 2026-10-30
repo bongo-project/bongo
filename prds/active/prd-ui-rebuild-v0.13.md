@@ -24,7 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
-| D | Fixes from operator testing | US-016 to US-028 | 27.16 to 27.28 |
+| D | Fixes from operator testing | US-016 to US-029 | 27.16 to 27.29 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -420,9 +420,18 @@ project. The rebuild used the handoff's drum glyph.
       Bongo project logo next to the "Bongo·mail" wordmark, legible in light
       and dark mode.
 
+### US-029: Keyboard and drag actions use the mailbox on screen
+Added 2026-10-30 from operator testing. After moving to INBOX/Important from
+the sidebar, d did not delete the message: #main-content still named INBOX, so
+d, r and drag-and-drop acted on the same UID in INBOX instead.
+
+**Acceptance Criteria:**
+- [ ] d, r and drag-and-drop read the mailbox from the list on screen, so they
+      act on the right message after sidebar navigation; r escapes the name.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-28 are the acceptance criteria of US-001 to US-028. In every
+FR-1 to FR-29 are the acceptance criteria of US-001 to US-029. In every
 story:
 
 - Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF
