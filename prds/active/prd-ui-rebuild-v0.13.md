@@ -24,7 +24,7 @@ introduced them.
 | A | Foundation | US-001 to US-004 | 27.1 to 27.4 |
 | B | Mail screens | US-005 to US-008 | 27.5 to 27.8 |
 | C | Other screens | US-009 to US-015 | 27.9 to 27.15 |
-| D | Fixes from operator testing | US-016 to US-024 | 27.16 to 27.24 |
+| D | Fixes from operator testing | US-016 to US-026 | 27.16 to 27.26 |
 
 One PR per story or small group of stories; Phase A merges first, because
 every screen builds on the shell, tokens and icons.
@@ -380,9 +380,30 @@ replaced the whole view instead of opening it in the reading pane.
 - [ ] In the pane modes the list and the reading pane scroll separately, and
       infinite scroll still loads the next page.
 
+### US-025: Keyboard navigation follows the reading pane
+Added 2026-10-30 from operator testing. In the pane modes j and k only moved
+the highlight, so every message needed j then Enter. The d shortcut listed in
+the help did nothing.
+
+**Acceptance Criteria:**
+- [ ] In two-pane and three-pane mode, j and k open the highlighted message in
+      the reading pane after a 300 ms pause; holding the key skims without
+      opening or marking read. List mode is unchanged.
+- [ ] Clicking a message moves the keyboard highlight to it.
+- [ ] d moves the highlighted message to Trash and highlights the next one.
+      In Trash, d does nothing, because deletion there is permanent.
+
+### US-026: No light flash on load in dark mode
+Added 2026-10-30 from operator testing. A hard refresh with the OS in dark
+mode showed the light theme until Alpine set data-theme.
+
+**Acceptance Criteria:**
+- [ ] The app layouts set data-theme from the saved choice, or the OS
+      preference, before the first paint, and fall back to data-theme="auto".
+
 ## 4. Functional Requirements
 
-FR-1 to FR-24 are the acceptance criteria of US-001 to US-024. In every
+FR-1 to FR-26 are the acceptance criteria of US-001 to US-026. In every
 story:
 
 - Keep every `hx-*` attribute, `x-*` binding, form `action`/`method`, CSRF
