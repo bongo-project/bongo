@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# ship-logs.sh — pull bongo-go's JSON log file from the server to this machine
+# ship-logs.sh — pull bongo's JSON log file from the server to this machine
 # so it can be inspected locally (e.g. during a debugging session).
 #
 # Bongo writes structured JSON logs to /logs/bongo.jsonl inside the container,

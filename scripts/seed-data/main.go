@@ -166,7 +166,7 @@ var seedEmails = []seedEmail{
 	},
 	{
 		From: "noreply@github.example.com", To: "admin@localhost",
-		Subject: "[bongo-go] Issue #123: IMAP IDLE drops connection after 30 minutes",
+		Subject: "[bongo] Issue #123: IMAP IDLE drops connection after 30 minutes",
 		Body:    "New issue opened by @user42:\n\nWhen using Thunderbird with IMAP IDLE, the connection drops after exactly 30 minutes. The IMAP spec says servers should send periodic keepalives.\n\nSteps to reproduce:\n1. Configure Thunderbird with IMAP\n2. Leave it idle for 30+ minutes\n3. Connection drops, requires manual reconnect\n\nExpected: Connection stays alive with periodic EXISTS/EXPUNGE notifications.",
 		Date:    now.Add(-72 * time.Hour),
 	},

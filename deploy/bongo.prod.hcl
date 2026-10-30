@@ -1,4 +1,4 @@
-# Bongo-Go production config TEMPLATE for example.com (single-node, Docker +
+# Bongo production config TEMPLATE for example.com (single-node, Docker +
 # Traefik). This is not the live production config: that lives in the infra
 # repo, has no Traefik in front (ports are published straight to the host) and
 # runs with proxy_protocol = false.

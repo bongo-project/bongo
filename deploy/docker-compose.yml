@@ -1,4 +1,4 @@
-# Bongo-Go single-node deployment behind an existing Traefik.
+# Bongo single-node deployment behind an existing Traefik.
 #
 # Traefik already owns 80/443 and the mail entrypoints 25/587/143/993, so bongo
 # does NOT publish ports itself — Traefik routes to it over the shared

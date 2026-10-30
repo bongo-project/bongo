@@ -126,7 +126,7 @@ func (s *session) handle() {
 	// just as idle as one that never writes, and an unbounded write would hang
 	// this goroutine and socket indefinitely.
 	s.extendDeadline()
-	s.respond("+OK bongo-go POP3 ready")
+	s.respond("+OK bongo POP3 ready")
 
 	for {
 		// Drop the connection if the client goes idle between commands.
@@ -272,7 +272,7 @@ func (s *session) handleCapa() {
 	if !s.isTLS && s.tlsCfg != nil {
 		s.writeString("STLS\r\n")
 	}
-	s.writeString("IMPLEMENTATION bongo-go\r\n")
+	s.writeString("IMPLEMENTATION bongo\r\n")
 	s.writeString(".\r\n")
 	s.flushWriter()
 }

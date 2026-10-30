@@ -1,7 +1,7 @@
 # Logging
 
 Bongo writes structured JSON logs to stdout, so `docker compose logs bongo` (or
-`journalctl -u bongo-go` under systemd) shows them. It also writes a log file
+`journalctl -u bongo` under systemd) shows them. It also writes a log file
 when `telemetry.log.file` is set. The compose template sets it to
 `/logs/bongo.jsonl`, which is bind-mounted to `./logs/bongo.jsonl` on the host.
 The file is rotated in place by size: `telemetry.log.max_size_mb` (default 50),

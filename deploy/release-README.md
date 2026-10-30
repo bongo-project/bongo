@@ -2,7 +2,7 @@
 
 Bongo is a mail and calendar server that runs as a single binary: SMTP, IMAP, POP3, CalDAV and
 CardDAV, with a web interface, its own storage (no separate database to install) and full-text
-search. `bongo-go` is the server. `bongo-import` imports existing mail from mbox, maildir, .eml
+search. `bongo` is the server. `bongo-import` imports existing mail from mbox, maildir, .eml
 files, another IMAP server or Thunderbird.
 
 Bongo is pre-1.0. A single-server installation is the supported shape. Only the latest release
@@ -14,18 +14,18 @@ Source, issues and releases: <https://github.com/bongo-project/bongo>
 
 | File | Purpose |
 |---|---|
-| `bongo-go` | The server (static Linux binary) |
+| `bongo` | The server (static Linux binary) |
 | `bongo-import` | The import tool |
 | `INSTALL.md` | Installation, configuration, DNS, systemd and upgrades |
 | `bongo.example.hcl` | Annotated configuration; every option is documented in place |
-| `bongo-go.service` | systemd unit |
+| `bongo.service` | systemd unit |
 | `LICENSE` | GNU Affero General Public License v3.0 |
 | `THIRD_PARTY_NOTICES.md` | Licences of bundled third-party code |
 
 ## Try it in dev mode
 
 ```bash
-./bongo-go serve --dev
+./bongo serve --dev
 ```
 
 Dev mode needs no configuration. It uses a temporary data directory (deleted on exit), creates
@@ -68,7 +68,7 @@ The full list is in `SECURITY.md` in the repository.
 ## Reporting problems
 
 - Bugs and questions: <https://github.com/bongo-project/bongo/issues>. Include the output of
-  `./bongo-go version`, what you did, what you expected and what happened. Redact email addresses
+  `./bongo version`, what you did, what you expected and what happened. Redact email addresses
   and subject lines from logs before posting them.
 - Security issues: report privately through GitHub's private vulnerability reporting (the
   repository's **Security** tab, then **Report a vulnerability**), not in a public issue.

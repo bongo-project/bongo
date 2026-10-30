@@ -1,7 +1,7 @@
 # Config reload on SIGHUP
 
 Status: increment 1 is implemented (`internal/agent/reload.go`,
-`internal/config/diff.go`, and `watchSignals` in `cmd/bongo-go/agent.go`).
+`internal/config/diff.go`, and `watchSignals` in `cmd/bongo/agent.go`).
 Increments 2 and 3 (section 9) are not built. This document began as the
 design for backlog item B9 (task 16.7); the design rationale is kept, and
 statements of fact have been corrected to match the code.
@@ -25,7 +25,7 @@ either applied or reported as "needs restart"; none is dropped silently.
 
 ## 2. How config is loaded today
 
-`runServe` (`cmd/bongo-go/agent.go:53`) does the following, in order:
+`runServe` (`cmd/bongo/agent.go:53`) does the following, in order:
 
 1. Builds a fresh `viper.New()` (`:77`) and calls `v.Set` only for flags the
    operator actually passed: `config` (`:79`), `role` (`:82`), `bind` (`:85`),
@@ -47,7 +47,7 @@ either applied or reported as "needs restart"; none is dropped silently.
 3. Applies `--plain-http` to `cfg.Web.PlainHTTP` AFTER loading (`:116-117`).
 4. Validates. Startup now loads through `loadServeConfig`, which calls
    `config.LoadWithDiscovery` and then `cfg.Validate()`; an invalid config makes
-   `bongo-go serve` refuse to start. (At `b2eb0b9` `Validate` was not called
+   `bongo serve` refuse to start. (At `b2eb0b9` `Validate` was not called
    here; task 16.5 (B8) wired it.)
 5. Builds the logger from `cfg.Telemetry.Log` once (`:121-142`) and hands `cfg`
    to `agent.NewAgent` (`:108`).
@@ -61,7 +61,7 @@ Two facts about env handling matter for reload:
 
 - The process environment cannot change after start, so applying the
   overrides again (`config.ApplyOverrides`) with the SAME viper instance
-  reproduces the same env overrides. Under systemd, `EnvironmentFile=` (`deploy/bongo-go.service`) is
+  reproduces the same env overrides. Under systemd, `EnvironmentFile=` (`deploy/bongo.service`) is
   read at service start only, so editing `/etc/bongo/bongo.env` still needs a
   restart. This must be stated in the operator docs.
 - The `log-level` override key has no practical env form. With the replacer
@@ -265,7 +265,7 @@ TLS as well as raft transport.
 | `web.tls.cert_file`, `.key_file` | `agent.go:501,949-950` | ctor; `tls.LoadX509KeyPair` once | RESTART |
 | `web.tls.ca_file` | none | none | NO-OP |
 | `web.https_redirect`, `web.http_redirect_port` | `agent.go:1447-1448` | ctor | RESTART |
-| `web.plain_http` | `agent.go:505,947`; also forced true in dev at `agent.go:266` and by `--plain-http` (`cmd/bongo-go/agent.go:116-117`) | ctor | RESTART |
+| `web.plain_http` | `agent.go:505,947`; also forced true in dev at `agent.go:266` and by `--plain-http` (`cmd/bongo/agent.go:116-117`) | ctor | RESTART |
 | `web.behind_tls_proxy` | `agent.go:510` | ctor, decides cookie `Secure` | RESTART |
 | `web.source_url` | `agent.go` (router middleware `InjectSourceURL`) | ctor; target of the "Source code" link | RESTART |
 
@@ -318,10 +318,10 @@ TLS as well as raft transport.
 | Key | Consumer | How read today | Class |
 |---|---|---|---|
 | `telemetry.prometheus.enabled`, `.port` | none (metrics are served on the web router at `/metrics`, `agent.go:408`) | none | NO-OP |
-| `telemetry.log.level` | `cmd/bongo-go/agent.go` `runServe` (`parseLogLevel`) -> `newServeLogger`, which holds it in a `*slog.LevelVar` stored on `Agent.LogLevel` (16.7) | ctor | HOT-1 |
-| `telemetry.log.format` | `cmd/bongo-go/agent.go:186-190` | ctor, picks the handler type | RESTART |
-| `telemetry.log.file` | `cmd/bongo-go/agent.go:129` | ctor, opens a lumberjack writer | RESTART |
-| `telemetry.log.max_size_mb`, `.max_backups`, `.max_age_days`, `.compress` | `cmd/bongo-go/agent.go:130-135` | ctor | RESTART |
+| `telemetry.log.level` | `cmd/bongo/agent.go` `runServe` (`parseLogLevel`) -> `newServeLogger`, which holds it in a `*slog.LevelVar` stored on `Agent.LogLevel` (16.7) | ctor | HOT-1 |
+| `telemetry.log.format` | `cmd/bongo/agent.go:186-190` | ctor, picks the handler type | RESTART |
+| `telemetry.log.file` | `cmd/bongo/agent.go:129` | ctor, opens a lumberjack writer | RESTART |
+| `telemetry.log.max_size_mb`, `.max_backups`, `.max_age_days`, `.compress` | `cmd/bongo/agent.go:130-135` | ctor | RESTART |
 
 ### 4.2 Keys with no reader (NO-OP)
 
@@ -398,7 +398,7 @@ single atomic store each. None of the following mutates `a.Config`.
 
 ### 5.1 `telemetry.log.level`: `*slog.LevelVar`
 
-Implemented in 16.7. `newServeLogger` (`cmd/bongo-go/agent.go`) builds the
+Implemented in 16.7. `newServeLogger` (`cmd/bongo/agent.go`) builds the
 handler with a `*slog.LevelVar` (stdlib; implements `slog.Leveler`; `Set` is
 atomic), set from `parseLogLevel(...)`, instead of the fixed `slog.Level` it
 used before.
@@ -545,7 +545,7 @@ applies.
 ## 6. Reload flow
 
 Trigger: SIGHUP, on its OWN `signal.Notify` channel, built by
-`watchSignals(ctx, cancel, reload, logger)` in `cmd/bongo-go/agent.go`. It
+`watchSignals(ctx, cancel, reload, logger)` in `cmd/bongo/agent.go`. It
 registers both channels before returning: SIGINT and SIGTERM call `cancel()`,
 SIGHUP calls `Agent.Reload` and never cancels. The returned `stop` calls
 `signal.Stop` on both channels, cancels its inner context and waits for both
@@ -660,15 +660,15 @@ did not audit each). Therefore:
 - SIGHUP now reloads the config and no longer terminates the process.
   `watchSignals` registers a handler for it, so the Go runtime's default
   action (exit on SIGHUP) no longer applies. Before this change, a SIGHUP
-  terminated `bongo-go`.
-- In-container: `bongo-go` is the image's `ENTRYPOINT`, so it runs directly
+  terminated `bongo`.
+- In-container: `bongo` is the image's `ENTRYPOINT`, so it runs directly
   as the container's main process (PID 1) as uid 10001, with no wrapper
   script, and receives the signal itself.
-- Under systemd: `deploy/bongo-go.service` has
-  `ExecReload=/bin/kill -HUP $MAINPID`, so `systemctl reload bongo-go`
+- Under systemd: `deploy/bongo.service` has
+  `ExecReload=/bin/kill -HUP $MAINPID`, so `systemctl reload bongo`
   triggers a reload.
 - Docker: `docker compose kill -s HUP bongo` delivers it.
-- Terminal: a foreground `bongo-go serve` also receives SIGHUP when its
+- Terminal: a foreground `bongo serve` also receives SIGHUP when its
   controlling terminal closes. After this change that closes the terminal
   without stopping the server. That is a behaviour change worth a line in the
   release note.
@@ -831,13 +831,13 @@ mutation-check each.
   key logs shadowed and does not apply; (v) a second reload after a
   restart-required change still warns (baseline rule, step 8); (vi) a
   reload under `-race` while holders are being read.
-- **(g) SIGHUP wiring (done, 16.13; see section 6 for the final shape).** In `cmd/bongo-go/agent.go`: a separate
+- **(g) SIGHUP wiring (done, 16.13; see section 6 for the final shape).** In `cmd/bongo/agent.go`: a separate
   `signal.Notify(hupCh, syscall.SIGHUP)`, goroutine calling the reloader, torn
   down with the context. Test: send SIGHUP to the test process (via the
   extracted wiring function) and assert the reload ran and `ctx` was NOT
   cancelled; send SIGTERM and assert `ctx` is cancelled. Mutation: add SIGHUP to
   the existing channel; the first assertion goes red.
-- **(h) Deployment (done, 16.13).** `deploy/bongo-go.service`: add
+- **(h) Deployment (done, 16.13).** `deploy/bongo.service`: add
   `ExecReload=/bin/kill -HUP $MAINPID`. `deploy/README.md`: document `docker
   compose kill -s HUP bongo`, the bind-mount caveat, that env/flag overrides
   win, that `bongo.env` needs a restart, and the per-node rule. No Go test; a

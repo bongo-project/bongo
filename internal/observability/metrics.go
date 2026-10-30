@@ -1,5 +1,5 @@
 // Package observability provides metrics, tracing, and logging primitives
-// for bongo-go. All Prometheus metric definitions live here — individual
+// for bongo. All Prometheus metric definitions live here — individual
 // packages import this one and call the exported variables rather than
 // defining their own collectors.
 package observability
@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Registry is the Prometheus registry all bongo-go metrics live in.
+// Registry is the Prometheus registry all bongo metrics live in.
 var Registry = prometheus.NewRegistry()
 
 var factory = promauto.With(Registry)

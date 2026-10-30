@@ -41,7 +41,7 @@ var mailPurgeDanglingCmd = &cobra.Command{
 	Long: "Deletes the metadata for messages whose body blob is gone, together with\n" +
 		"every mailbox entry referencing them. The bodies are already unrecoverable;\n" +
 		"this removes the unreadable entries they left behind. Irreversible, so it\n" +
-		"requires --confirm. Run 'bongo-go mail dangling' first to see what it will do.",
+		"requires --confirm. Run 'bongo mail dangling' first to see what it will do.",
 	RunE: runMailPurgeDangling,
 }
 
@@ -186,7 +186,7 @@ func runMailDangling(cmd *cobra.Command, args []string) error {
 	printDanglingRecords(out.Dangling)
 	fmt.Println("\nThese bodies are unrecoverable. Each record listed with a mailbox entry is")
 	fmt.Println("visible to the user and fails to open; each with none is invisible debris.")
-	fmt.Println("Run 'bongo-go mail purge-dangling --confirm' to remove the metadata and the")
+	fmt.Println("Run 'bongo mail purge-dangling --confirm' to remove the metadata and the")
 	fmt.Println("mailbox entries that reference it.")
 	return nil
 }

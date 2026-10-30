@@ -78,7 +78,7 @@ func init() {
 	}
 }
 
-// Agent manages the bongo-go server lifecycle.
+// Agent manages the bongo server lifecycle.
 type Agent struct {
 	// blobSweepBeforeDelete, when set, runs between the sweep plan and the
 	// delete. Tests use it to land a dedup write in that window; it is nil in
@@ -211,7 +211,7 @@ type Agent struct {
 
 	// agentProcessors holds the local gRPC processor servers started for antispam
 	// and antivirus agent roles. Each server receives ProcessMessage RPCs from the
-	// bongo-go server and delegates to a pipeline.Processor.
+	// bongo server and delegates to a pipeline.Processor.
 	agentProcessors []*agentgrpc.AgentProcessorServer
 
 	httpServer            *http.Server
@@ -2004,7 +2004,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	a.ready.Store(true)
 
-	a.logger.Info("bongo-go started",
+	a.logger.Info("bongo started",
 		"role", a.Config.Server.Role,
 		"name", a.Config.Server.Name,
 		"bind", a.Config.Server.BindAddr,
@@ -3571,7 +3571,7 @@ func (a *Agent) runAgent(ctx context.Context) error {
 
 	// Separate processor roles (antispam, antivirus) from other agent roles.
 	// Processor roles each start their own local gRPC server and register
-	// separately so the bongo-go server can dial them for ProcessMessage RPCs.
+	// separately so the bongo server can dial them for ProcessMessage RPCs.
 	var nonProcessorRoles []string
 	for _, agentType := range a.Config.Server.Agents {
 		switch agentType {
@@ -3636,7 +3636,7 @@ func (a *Agent) runAgent(ctx context.Context) error {
 
 	a.ready.Store(true)
 
-	a.logger.Info("bongo-go agent started",
+	a.logger.Info("bongo agent started",
 		"name", a.Config.Server.Name,
 		"bind", a.Config.Server.BindAddr,
 		"http_addr", addr,
@@ -3700,7 +3700,7 @@ func (a *Agent) startSMTPAgent() error {
 
 // startProcessorAgent builds a pipeline.Processor for the given role (antispam
 // or antivirus), starts a local gRPC server to receive ProcessMessage RPCs, and
-// registers with the bongo-go server advertising that gRPC address.
+// registers with the bongo server advertising that gRPC address.
 func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 	var proc pipeline.Processor
 
@@ -3740,7 +3740,7 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 	}
 	a.agentProcessors = append(a.agentProcessors, procSrv)
 
-	// Register with the bongo-go server. Each processor role gets its own
+	// Register with the bongo server. Each processor role gets its own
 	// registration so the server can maintain per-role agent lists.
 	agentID := fmt.Sprintf("%s-%s", a.Config.Server.Name, role)
 	client, err := a.newAgentClient(agentID, []string{role}, procSrv.ListenAddr())
@@ -3843,7 +3843,7 @@ func (a *Agent) shutdownAgent() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("agent shutdown errors: %v", errs)
 	}
-	a.logger.Info("bongo-go agent stopped")
+	a.logger.Info("bongo agent stopped")
 	return nil
 }
 
@@ -4183,7 +4183,7 @@ func (a *Agent) Shutdown() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("shutdown errors: %v", errs)
 	}
-	a.logger.Info("bongo-go stopped")
+	a.logger.Info("bongo stopped")
 	return nil
 }
 

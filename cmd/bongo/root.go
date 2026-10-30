@@ -8,7 +8,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "bongo-go",
+	Use:   "bongo",
 	Short: "Bongo mail and calendar server",
 	Long:  "A mail and calendar server (IMAP, SMTP, POP3, CalDAV/CardDAV) with an HTMX web UI.",
 }

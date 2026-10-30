@@ -1773,7 +1773,7 @@ func seedSubfolders(imapAddr string) {
 				"INBOX/Receipts",
 				"INBOX/Important",
 				"Projects",
-				"Projects/Bongo-Go",
+				"Projects/Bongo",
 				"Projects/Infrastructure",
 				"Archive",
 			},

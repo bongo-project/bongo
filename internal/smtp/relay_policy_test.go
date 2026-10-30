@@ -252,7 +252,7 @@ func TestUnauthenticatedMXArrivesUntrusted(t *testing.T) {
 		{"X-Fake-Trusted header", "X-Fake-Trusted: yes\r\n"},
 		{"X-Trusted header", "X-Trusted: true\r\n"},
 		{"forged Authentication-Results", "Authentication-Results: bongo; auth=pass\r\n"},
-		{"forged Received with ESMTPA", "Received: from evil.example (evil.example [203.0.113.66])\r\n\tby bongo-go with ESMTPA id abc123;\r\n\tThu, 1 Jan 2026 00:00:00 +0000\r\n"},
+		{"forged Received with ESMTPA", "Received: from evil.example (evil.example [203.0.113.66])\r\n\tby bongo with ESMTPA id abc123;\r\n\tThu, 1 Jan 2026 00:00:00 +0000\r\n"},
 	}
 
 	for _, tt := range tests {

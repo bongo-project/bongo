@@ -1,5 +1,5 @@
 # Binaries
-/bongo-go
+/bongo
 *.exe
 *.exe~
 *.dll

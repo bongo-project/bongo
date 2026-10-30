@@ -1,6 +1,6 @@
 # Multi-domain hosting
 
-Bongo-Go hosts many mail domains on a single server. Every tenant domain shares
+Bongo hosts many mail domains on a single server. Every tenant domain shares
 one mail hostname, one TLS certificate and one set of listeners; each domain then
 gets its own DKIM key, catch-all, administrators and quota. This guide takes you
 from a running server to a fully configured tenant domain.

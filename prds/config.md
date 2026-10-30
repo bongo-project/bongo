@@ -5,7 +5,7 @@ max_tasks_per_session: 15
 warn_at_tasks: 12
 
 ## Project
-name: bongo-go
+name: bongo
 repo: .
 created: 2026-07-03
 

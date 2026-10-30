@@ -287,7 +287,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 
 	// Ensure required calendar properties for encoding.
 	if calendar.Props.Get(ical.PropProductID) == nil {
-		calendar.Props.SetText(ical.PropProductID, "-//Bongo-Go//Calendar//EN")
+		calendar.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
 	}
 
 	// Encode iCal to raw bytes for round-trip fidelity.
@@ -390,7 +390,7 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 	if cal == nil {
 		cal = ical.NewCalendar()
 		cal.Props.SetText(ical.PropVersion, "2.0")
-		cal.Props.SetText(ical.PropProductID, "-//Bongo-Go//Calendar//EN")
+		cal.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
 
 		vevent := ical.NewEvent()
 		vevent.Props.SetText(ical.PropUID, e.Guid)

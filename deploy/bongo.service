@@ -1,5 +1,5 @@
 [Unit]
-Description=Bongo-Go mail and calendar server
+Description=Bongo mail and calendar server
 Documentation=https://github.com/bongo-project/bongo
 After=network-online.target
 Wants=network-online.target
@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=bongo
 Group=bongo
-ExecStart=/usr/local/bin/bongo-go serve --config /etc/bongo/bongo.hcl
+ExecStart=/usr/local/bin/bongo serve --config /etc/bongo/bongo.hcl
 # SIGHUP reloads the hot config keys (docs/config-reload.md); it does not stop the server.
 ExecReload=/bin/kill -HUP $MAINPID
 
@@ -27,7 +27,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/bongo-go /var/log/bongo-go
+ReadWritePaths=/var/lib/bongo /var/log/bongo
 
 [Install]
 WantedBy=multi-user.target

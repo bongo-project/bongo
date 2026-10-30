@@ -137,7 +137,7 @@ telemetry {
 // file must be reported as needing a restart and left unchanged.
 //
 // It calls Agent.Reload directly; runServe hands that same function to
-// watchSignals, whose SIGHUP routing is covered in cmd/bongo-go
+// watchSignals, whose SIGHUP routing is covered in cmd/bongo
 // (TestWatchSignals_HUPReloadsWithoutCancel).
 func TestConfigReload_SpamThresholdAppliesRestartKeyDoesNot(t *testing.T) {
 	logs := &reloadLogBuf{}

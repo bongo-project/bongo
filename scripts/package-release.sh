@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# package-release.sh — build standalone binary release zips for Bongo-Go.
+# package-release.sh — build standalone binary release zips for Bongo.
 #
 # Produces, under dist/, one zip per target OS/arch containing the two static
 # binaries plus the example config, systemd unit and install guide — everything
@@ -36,19 +36,19 @@ templ generate >/dev/null
 for platform in ${PLATFORMS}; do
   GOOS="${platform%/*}"
   GOARCH="${platform#*/}"
-  name="bongo-go_${VERSION}_${GOOS}_${GOARCH}"
+  name="bongo_${VERSION}_${GOOS}_${GOARCH}"
   stage="${DIST}/${name}"
   mkdir -p "${stage}"
 
   echo "Building ${name}..."
   CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
-    go build -trimpath -ldflags "${LDFLAGS}" -o "${stage}/bongo-go" ./cmd/bongo-go
+    go build -trimpath -ldflags "${LDFLAGS}" -o "${stage}/bongo" ./cmd/bongo
   CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
     go build -trimpath -ldflags "${LDFLAGS}" -o "${stage}/bongo-import" ./cmd/bongo-import
 
   # Bundle the operator-facing files.
   cp "${REPO_ROOT}/deploy/bongo.example.hcl" "${stage}/bongo.example.hcl"
-  cp "${REPO_ROOT}/deploy/bongo-go.service"  "${stage}/bongo-go.service"
+  cp "${REPO_ROOT}/deploy/bongo.service"  "${stage}/bongo.service"
   cp "${REPO_ROOT}/docs/install.md"          "${stage}/INSTALL.md"
   # README: what this is, known limitations, how to report problems and the
   # licence. INSTALL.md covers installation only.

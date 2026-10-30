@@ -217,7 +217,7 @@ func applyRaftTuning(raftCfg *raft.Config, rc *config.RaftConfig, logger *slog.L
 		rc = &config.RaftConfig{}
 	}
 	// Enforced here as defence in depth; config.Validate() also checks this
-	// on the serve startup path (cmd/bongo-go/agent.go).
+	// on the serve startup path (cmd/bongo/agent.go).
 	if err := rc.Validate(); err != nil {
 		return err
 	}

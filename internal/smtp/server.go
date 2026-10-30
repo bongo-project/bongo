@@ -763,7 +763,7 @@ func (s *Session) Data(r io.Reader) error {
 	prefix.WriteString(s.buildReceivedHeader())
 	if s.spfResult != "" {
 		domain := sanitizeHeaderValue(extractDomain(s.from))
-		fmt.Fprintf(&prefix, "Received-SPF: %s (bongo-go; domain=%s)\r\n", sanitizeHeaderValue(s.spfResult), domain)
+		fmt.Fprintf(&prefix, "Received-SPF: %s (bongo; domain=%s)\r\n", sanitizeHeaderValue(s.spfResult), domain)
 	}
 	reader := io.MultiReader(strings.NewReader(prefix.String()), r)
 

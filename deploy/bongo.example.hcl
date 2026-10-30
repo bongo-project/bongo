@@ -1,5 +1,5 @@
 # =============================================================================
-# Bongo-Go example configuration
+# Bongo example configuration
 # =============================================================================
 #
 # This file documents EVERY configuration option. Uncommented lines are the
@@ -17,7 +17,7 @@
 #
 # WHERE THIS FILE GOES
 #   The server looks for its config in this order:
-#     1. --config / -c flag           (e.g. bongo-go serve -c /etc/bongo/bongo.hcl)
+#     1. --config / -c flag           (e.g. bongo serve -c /etc/bongo/bongo.hcl)
 #     2. BONGO_CONFIG environment variable
 #     3. ./bongo.hcl                   (current working directory)
 #     4. /etc/bongo/bongo.hcl          (system default)
@@ -76,7 +76,7 @@ server {
   # create, dangling mail) are served only here, never on the public web port,
   # and still require the HMAC signature derived from web.session_secret. The
   # host must be a loopback IP literal ("127.0.0.1" or "[::1]"); anything else
-  # fails validation. A bind failure fails startup. The bongo-go CLI defaults
+  # fails validation. A bind failure fails startup. The bongo CLI defaults
   # --http-addr to 127.0.0.1:8081, so pass --http-addr if you change this.
   # Needs a restart.
   control_addr = "127.0.0.1:8081"
@@ -106,7 +106,7 @@ cluster {
   raft {
     # data_dir is currently unused: nothing reads it. Raft snapshots are
     # written under storage.data_dir.
-    data_dir           = "/var/lib/bongo-go/raft"
+    data_dir           = "/var/lib/bongo/raft"
     port               = 8300
     snapshot_threshold = 8192
     # trailing_logs — raft log entries kept after a snapshot, so a lagging
@@ -157,11 +157,11 @@ cluster {
 # storage — on-disk data (Pebble metadata + content-addressed blobs)
 # -----------------------------------------------------------------------------
 storage {
-  data_dir = "/var/lib/bongo-go/data"
+  data_dir = "/var/lib/bongo/data"
 
   pebble {
     cache_size = "256MB"
-    # wal_dir  = "/var/lib/bongo-go/wal"   # currently unused: nothing reads it
+    # wal_dir  = "/var/lib/bongo/wal"   # currently unused: nothing reads it
   }
 
   # Attachments at or above this encoded size are split into their own
@@ -696,7 +696,7 @@ telemetry {
     format = "json"   # json | text
 
     # Also write logs to a file (in addition to stdout) for shipping/analysis.
-    # file = "/var/log/bongo-go/bongo.jsonl"
+    # file = "/var/log/bongo/bongo.jsonl"
     # In-place rotation of the log file (defaults shown; ignored when file empty):
     # max_size_mb  = 50   # rotate once the file reaches this size
     # max_backups  = 5    # rotated files to keep

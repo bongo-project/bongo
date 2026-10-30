@@ -1,4 +1,4 @@
-// Bongo-Go client-side JavaScript (Alpine.js components + keyboard shortcuts)
+// Bongo client-side JavaScript (Alpine.js components + keyboard shortcuts)
 
 // i18n returns a localized string exposed by the server as a JSON object on the
 // #i18n-data element (see layout.templ / i18nJSON). CSP forbids inline scripts,
