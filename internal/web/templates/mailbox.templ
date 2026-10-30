@@ -95,7 +95,7 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 	if flash != "" {
 		@FlashMessage(flash, "success")
 	}
-	<div x-data="messageList" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
+	<div class="mail-view" x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
 		<div class="mail-head">
 			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
 			<h1 class="mail-head-title">{ mailboxTitle(mailbox) }</h1>
@@ -327,7 +327,7 @@ templ InfiniteScrollSentinel(mailbox string, nextPage int) {
 	<div
 		class="msg-row"
 		hx-get={ fmt.Sprintf("/mail/%s?page=%d&partial=1", encMailbox(mailbox), nextPage) }
-		hx-trigger="revealed"
+		hx-trigger="intersect once"
 		hx-swap="outerHTML"
 		hx-indicator=".load-more-spinner"
 	>
@@ -377,8 +377,8 @@ templ layoutIcon(kind string) {
 	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="icon" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 		switch kind {
 			case "two-pane":
-				<rect x="3" y="4" width="8" height="16" rx="1"></rect>
-				<rect x="13" y="4" width="8" height="16" rx="1"></rect>
+				<rect x="3" y="4" width="18" height="7" rx="1"></rect>
+				<rect x="3" y="13" width="18" height="7" rx="1"></rect>
 			case "three-pane":
 				<rect x="3" y="4" width="5" height="16" rx="1"></rect>
 				<rect x="10" y="4" width="5" height="16" rx="1"></rect>

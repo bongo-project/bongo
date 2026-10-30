@@ -161,7 +161,7 @@ func TestMailboxContentKeepsStructure(t *testing.T) {
 	out := renderContent(t, "INBOX", ListCounts{1, 2}, []MessageSummary{baseMsg()})
 	for _, want := range []string{
 		`id="message-list"`, `id="reading-pane"`, `class="mail-layout"`, `class="message-list-pane"`,
-		`x-data="messageList"`, `x-on:click="setLayout('list')"`, `x-on:click="setLayout('two-pane')"`,
+		`x-data="messageList"`, `x-bind:class="{'mail-view-panes': layoutMode !== 'list'}"`, `x-on:click="setLayout('list')"`, `x-on:click="setLayout('two-pane')"`,
 		`x-on:click="setLayout('three-pane')"`, `hx-get="/mail/INBOX"`, `hx-target="#main-content"`,
 		`class="bulk-toolbar"`, `x-data="spamScan(&#39;INBOX&#39;)"`, `class="page-info"`, "1 of 1",
 		`<h1`, `INBOX`,
@@ -202,5 +202,10 @@ func TestInfiniteScrollSentinelUnchanged(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "msg-row-grid") {
 		t.Errorf("sentinel must not take the message grid")
+	}
+	// In the pane modes the list scrolls inside its own pane, where htmx's
+	// "revealed" (window scroll) never fires; "intersect" works in both.
+	if !strings.Contains(buf.String(), `hx-trigger="intersect once"`) {
+		t.Errorf("sentinel must load the next page on intersect: %s", buf.String())
 	}
 }

@@ -72,3 +72,35 @@ func TestMessageRowsHaveNoFixedHeight(t *testing.T) {
 		}
 	}
 }
+
+// ruleBody returns the declarations of the first rule whose selector is
+// exactly sel.
+func ruleBody(t *testing.T, css, sel string) string {
+	t.Helper()
+	i := strings.Index(css, "\n"+sel+" {")
+	if i < 0 {
+		t.Fatalf("bongo.css has no rule for %s", sel)
+	}
+	body := css[i+len(sel)+3:]
+	return body[:strings.Index(body, "}")]
+}
+
+// Two-pane and three-pane once shared one rule, so the two toggle buttons
+// produced the same layout. Two-pane stacks the list above the reading pane;
+// three-pane puts them side by side next to the sidebar.
+func TestTwoAndThreePaneLayoutsDiffer(t *testing.T) {
+	data, err := os.ReadFile("bongo.css")
+	if err != nil {
+		t.Fatalf("read bongo.css: %v", err)
+	}
+	css := string(data)
+	if two := ruleBody(t, css, ".mail-layout.layout-two-pane"); !strings.Contains(two, "flex-direction: column") {
+		t.Errorf("two-pane must stack the list above the reading pane: %s", two)
+	}
+	if three := ruleBody(t, css, ".mail-layout.layout-three-pane"); !strings.Contains(three, "grid-template-columns") {
+		t.Errorf("three-pane must place list and reading pane side by side: %s", three)
+	}
+	if !strings.Contains(css, ".mail-view.mail-view-panes {") || !strings.Contains(css, ".mail-view-panes .message-list-pane {") {
+		t.Error("pane modes must bound the view height so the list and reading pane scroll separately")
+	}
+}
