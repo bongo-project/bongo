@@ -17,10 +17,12 @@ import (
 	"net/http"
 	"net/mail"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
@@ -29,6 +31,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/cluster"
+	"github.com/bongo-project/bongo/internal/i18n"
 	internalmail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/queue"
 	"github.com/bongo-project/bongo/internal/store"
@@ -753,10 +756,28 @@ func (h *AdminHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
 	flash := r.URL.Query().Get("flash")
 
 	domains := h.loadDomains()
+	var aliasMap map[string]string
+	if h.store != nil {
+		var err error
+		if aliasMap, err = store.AliasDomains(h.store); err != nil {
+			h.logger.Error("admin: alias scan failed", "error", err)
+			http.Error(w, "failed to list domains", http.StatusInternalServerError)
+			return
+		}
+	}
+	for i := range domains {
+		domains[i].AliasOf = aliasMap[strings.ToLower(domains[i].Name)]
+	}
 	if !scope.Global {
+		// A domain admin sees the aliases of a domain they administer, but
+		// read-only: they get no manage link and no powers over the alias.
 		filtered := domains[:0]
 		for _, d := range domains {
-			if scope.HasDomain(d.Name) {
+			switch {
+			case scope.HasDomain(d.Name):
+				filtered = append(filtered, d)
+			case d.AliasOf != "" && scope.HasDomain(d.AliasOf):
+				d.ReadOnly = true
 				filtered = append(filtered, d)
 			}
 		}
@@ -784,6 +805,21 @@ func (h *AdminHandler) ShowDomain(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "domain not found", http.StatusNotFound)
 		return
 	}
+
+	aliasMap, err := store.AliasDomains(h.store)
+	if err != nil {
+		h.logger.Error("admin: alias scan failed", "domain", domain, "error", err)
+		http.Error(w, "failed to load domain", http.StatusInternalServerError)
+		return
+	}
+	lower := strings.ToLower(domain)
+	di.AliasOf = aliasMap[lower]
+	for alias, target := range aliasMap {
+		if target == lower {
+			di.Aliases = append(di.Aliases, alias)
+		}
+	}
+	slices.Sort(di.Aliases)
 
 	templ.Handler(templates.AdminDomainDetail(di, email, flash, scope.Global)).ServeHTTP(w, r)
 }
@@ -1177,8 +1213,46 @@ func extractOurDKIMPublicKey(dkimTXTRecord string) string {
 	return extractDKIMPublicKey(dkimTXTRecord)
 }
 
+// validDomainName reports whether name is usable as a domain in a Pebble key
+// and a form value: non-empty, with no "/" (which would forge sub-keys such as
+// x/owner), whitespace or control characters.
+func validDomainName(name string) bool {
+	if name == "" || strings.Contains(name, "/") {
+		return false
+	}
+	for _, c := range name {
+		if unicode.IsSpace(c) || unicode.IsControl(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// maxAliasListInFlash bounds the alias names a refusal flash lists.
+const maxAliasListInFlash = 10
+
 // CreateDomain adds a new domain.
 // This is a global-only operation: minting a new tenant is restricted to global admins.
+//
+// The optional alias_of field (global admins only, like the whole handler)
+// makes the new domain an alias of an existing, hosted, non-alias domain: mail
+// to local@alias that nothing resolves goes to local@target (see
+// store.RecipientResolver). Aliasing grants receipt only; sending as an
+// address on the alias still needs a send-as identity. A verified identity on
+// the alias domain keeps routing ahead of the rewrite, as it does for any newly
+// hosted domain.
+//
+// Creating an alias is two Raft writes, in this order after the stale-config
+// purge: alias_of, then the domain key. The purge deletes every
+// /system/domain/{d}/ sub-key, so alias_of must come after it. A failure after
+// the alias_of write leaves an inert key on a domain that is not hosted: MX
+// still refuses the domain, the resolver ignores alias_of unless the alias is
+// hosted, and the next CreateDomain or seed for that name purges it. Any
+// ApplyCommand error fails the request. There is no composite command, so two
+// check-then-write races remain: creating C as an alias of A while A is being
+// made an alias would form a chain, and deleting a target while an alias of it
+// is created leaves a dangling alias. The resolver survives both by rewriting
+// at most once and treating an unhosted target as a miss.
 func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 	scope := middleware.AdminScopeFromContext(r.Context())
 	if !requireGlobalAdmin(w, scope) {
@@ -1189,6 +1263,43 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 	if domain == "" {
 		http.Error(w, "domain is required", http.StatusBadRequest)
 		return
+	}
+	if !validDomainName(domain) {
+		http.Error(w, "invalid domain name", http.StatusBadRequest)
+		return
+	}
+
+	// Validate the alias target completely before the first side effect.
+	aliasOf := strings.ToLower(strings.TrimSpace(r.FormValue("alias_of")))
+	if aliasOf != "" {
+		if !validDomainName(aliasOf) {
+			http.Error(w, "invalid alias target", http.StatusBadRequest)
+			return
+		}
+		if aliasOf == domain {
+			http.Error(w, "a domain cannot be an alias of itself", http.StatusBadRequest)
+			return
+		}
+		hosted, err := store.DomainHosted(h.store, aliasOf)
+		if err != nil {
+			h.logger.Error("admin: alias target check failed", "domain", domain, "target", aliasOf, "error", err)
+			http.Error(w, "failed to add domain", http.StatusInternalServerError)
+			return
+		}
+		if !hosted {
+			http.Error(w, "alias target is not a hosted domain", http.StatusBadRequest)
+			return
+		}
+		_, isAlias, err := store.DomainAliasOf(h.store, aliasOf)
+		if err != nil {
+			h.logger.Error("admin: alias chain check failed", "domain", domain, "target", aliasOf, "error", err)
+			http.Error(w, "failed to add domain", http.StatusInternalServerError)
+			return
+		}
+		if isAlias {
+			http.Error(w, "alias target is itself an alias", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Re-adding a live domain must never purge: that would wipe its admins,
@@ -1226,6 +1337,21 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 		hasMX = true
 	}
 
+	// alias_of goes after the purge (which deletes it) and before the domain
+	// key (see the partial-failure note on this handler).
+	if aliasOf != "" {
+		aliasCmd := &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   store.DomainAliasOfKey(domain),
+			Value: []byte(aliasOf),
+		}
+		if err := h.applier.ApplyCommand(aliasCmd, 5*time.Second); err != nil {
+			h.logger.Error("admin: failed to write alias_of", "domain", domain, "target", aliasOf, "error", err)
+			http.Error(w, "failed to add domain", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Store in Pebble.
 	key := []byte(fmt.Sprintf("/system/domain/%s", domain))
 	data := []byte("enabled")
@@ -1249,7 +1375,7 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.logger.Info("admin: domain created", "domain", domain, "has_mx", hasMX)
+	h.logger.Info("admin: domain created", "domain", domain, "has_mx", hasMX, "alias_of", aliasOf)
 
 	flash := fmt.Sprintf("Domain+%s+added", domain)
 	if hasMX {
@@ -1327,6 +1453,29 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lower := strings.ToLower(strings.TrimSpace(domain))
+
+	// A domain that other domains alias cannot go: its aliases would dangle.
+	// Fail closed on a scan error. Deleting an alias needs nothing extra:
+	// PurgeDomainConfig removes its alias_of with the other sub-keys.
+	aliases, err := store.DomainAliases(h.store, lower)
+	if err != nil {
+		h.logger.Error("admin: domain alias scan failed", "domain", domain, "error", err)
+		http.Error(w, "failed to delete domain", http.StatusInternalServerError)
+		return
+	}
+	if len(aliases) > 0 {
+		h.logger.Warn("admin: domain delete refused: has aliases", "domain", domain, "aliases", len(aliases))
+		locale := middleware.LocaleFromContext(r.Context())
+		listed := aliases
+		names := strings.Join(listed, ", ")
+		if len(listed) > maxAliasListInFlash {
+			names = strings.Join(listed[:maxAliasListInFlash], ", ") + " " +
+				fmt.Sprintf(i18n.T(locale, "admin.domainAliasesMore"), len(listed)-maxAliasListInFlash)
+		}
+		msg := fmt.Sprintf(i18n.T(locale, "admin.domainHasAliases"), lower, names)
+		h.hxRedirect(w, "/admin/domains?flash="+url.QueryEscape(msg))
+		return
+	}
 
 	deps, err := store.DomainDependentCounts(h.store, lower)
 	if err != nil {
@@ -1534,6 +1683,17 @@ func (h *AdminHandler) SetCatchAll(w http.ResponseWriter, r *http.Request) {
 
 	scope := middleware.AdminScopeFromContext(r.Context())
 	if !requireDomainAccess(w, scope, domain) {
+		return
+	}
+
+	// An alias domain's own catch-all is never consulted (the rewrite to the
+	// target comes first), so setting one would be dead configuration.
+	if _, isAlias, aErr := store.DomainAliasOf(h.store, domain); aErr != nil {
+		h.logger.Error("admin: alias check failed", "domain", domain, "error", aErr)
+		http.Error(w, "failed to set catch-all", http.StatusInternalServerError)
+		return
+	} else if isAlias {
+		http.Error(w, "an alias domain uses the catch-all of its target", http.StatusBadRequest)
 		return
 	}
 

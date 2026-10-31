@@ -48,6 +48,14 @@ var ErrRecipientUnavailable = errors.New("recipient unavailable")
 //     with postmaster@d would grant the domain owner. A bare "postmaster" (no
 //     domain) maps to the configured account.
 //
+//     Domain alias rewrite: when email is on an alias domain (hosted, with
+//     /system/domain/{alias}/alias_of naming a hosted target) and tiers 1 to 2d
+//     found nothing, the lookup is repeated once for local@target with every tier,
+//     so the target's catch-all or refusal applies. Explicit addresses on the
+//     alias win. The alias's own catch-all is never consulted. For postmaster@
+//     and abuse@ the alias's own live owner comes first, then the rewrite.
+//     The rewrite is also applied in strict mode (ResolveAccount).
+//
 //  3. Per-domain catch-all: reads /system/catchall/{domain} from Pebble and
 //     returns the owner's user ID when configured. Only domains with an explicit
 //     catch-all entry accept unmatched mail; others are still rejected.
@@ -97,9 +105,37 @@ func isRoleLocalPart(local string) bool {
 }
 
 // postmasterTarget returns the live recipient for postmaster@/abuse@ on a
-// hosted domain: the domain owner first, then the configured account. ok is
-// false when the domain is not hosted, a read fails, or neither is live.
+// hosted domain: the domain owner first, then the configured account. For an
+// alias domain the order is the alias's own owner, the target's owner, then the
+// configured account, so an alias never falls straight to the configured
+// account. ok is false when the domain is not hosted, a read fails, or no
+// candidate is live.
 func (r *RecipientResolver) postmasterTarget(domain string) (userID string, ok bool) {
+	// A "/" would address a sub-key such as /system/domain/{d}/owner.
+	if r.pebble == nil || domain == "" || strings.Contains(domain, "/") {
+		return "", false
+	}
+	if hosted, err := DomainHosted(r.pebble, domain); err != nil || !hosted {
+		return "", false
+	}
+	if id, ok := r.postmasterOwner(domain); ok {
+		return id, true
+	}
+	if target, isAlias, err := DomainAliasOf(r.pebble, domain); err == nil && isAlias {
+		// Resolution rewrites to the target, and a disabled target refuses
+		// everything, so report no target rather than the owner or account.
+		if off, err := DomainDisabled(r.pebble, target); err == nil && off {
+			return "", false
+		}
+		if id, ok := r.postmasterOwner(target); ok {
+			return id, true
+		}
+	}
+	return r.configuredPostmaster()
+}
+
+// postmasterOwner returns the live owner of a hosted domain.
+func (r *RecipientResolver) postmasterOwner(domain string) (userID string, ok bool) {
 	// A "/" would address a sub-key such as /system/domain/{d}/owner.
 	if r.pebble == nil || domain == "" || strings.Contains(domain, "/") {
 		return "", false
@@ -114,7 +150,7 @@ func (r *RecipientResolver) postmasterTarget(domain string) (userID string, ok b
 			}
 		}
 	}
-	return r.configuredPostmaster()
+	return "", false
 }
 
 // configuredPostmaster resolves smtp.postmaster_account. Strict mode skips the
@@ -169,6 +205,13 @@ func (r *RecipientResolver) ResolveAccount(email string) (string, error) {
 
 // resolve implements both lookups. strict selects the ResolveAccount rules.
 func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
+	return r.resolveOnce(email, strict, true)
+}
+
+// resolveOnce is resolve with the domain-alias rewrite switchable. The
+// rewritten lookup passes allowRewrite=false, so the rewrite is applied at
+// most once: a chain planted by a race (A->B while B->C) follows one hop only.
+func (r *RecipientResolver) resolveOnce(email string, strict, allowRewrite bool) (string, error) {
 	// Normalize: strip angle brackets, trim whitespace, lowercase.
 	// AddressStore keys are lowercased on write; a mismatch silently misses.
 	email = strings.TrimPrefix(email, "<")
@@ -271,13 +314,28 @@ func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
 		return r.live(email, identityOwner, strict)
 	}
 
-	// Tier 2d: postmaster@ and abuse@ (see type comment).
+	// Tier 2d: postmaster@ and abuse@ (see type comment). On an alias domain
+	// only the alias's own owner counts here; the rewrite below then reaches
+	// the target's explicit address, owner and configured account.
+	aliasTarget, isAlias := r.aliasTarget(email, allowRewrite)
 	if !strict {
 		if local, domain, found := strings.Cut(email, "@"); found && isRoleLocalPart(local) {
-			if id, ok := r.postmasterTarget(domain); ok {
+			if isAlias {
+				if id, ok := r.postmasterOwner(domain); ok {
+					return id, nil
+				}
+			} else if id, ok := r.postmasterTarget(domain); ok {
 				return id, nil
 			}
 		}
+	}
+
+	// Domain alias rewrite (see type comment): nothing resolved local@alias,
+	// so retry once as local@target. The result, including the target's
+	// catch-all or its refusal, is returned as is.
+	if isAlias {
+		local, _, _ := strings.Cut(email, "@")
+		return r.resolveOnce(local+"@"+aliasTarget, strict, false)
 	}
 
 	// Tier 3: per-domain catch-all.
@@ -317,6 +375,35 @@ func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
 	}
 
 	return "", fmt.Errorf("resolve recipient: %s: not a local address", email)
+}
+
+// aliasTarget returns the target domain when email is on a hosted alias
+// domain and the rewrite is allowed. The alias must itself be hosted (an
+// alias_of left by a half-finished create is inert) and so must the target (a
+// target deleted under a live alias is a miss). Read errors count as no alias.
+func (r *RecipientResolver) aliasTarget(email string, allowRewrite bool) (string, bool) {
+	if !allowRewrite || r.pebble == nil {
+		return "", false
+	}
+	at := strings.LastIndex(email, "@")
+	if at <= 0 {
+		return "", false
+	}
+	domain := email[at+1:]
+	if !validAliasName(domain) {
+		return "", false
+	}
+	target, ok, err := DomainAliasOf(r.pebble, domain)
+	if err != nil || !ok || target == domain {
+		return "", false
+	}
+	if hosted, err := DomainHosted(r.pebble, domain); err != nil || !hosted {
+		return "", false
+	}
+	if hosted, err := DomainHosted(r.pebble, target); err != nil || !hosted {
+		return "", false
+	}
+	return target, true
 }
 
 // usersRow looks up a users-table row by username. ok is false when no row

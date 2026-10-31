@@ -436,6 +436,13 @@
   "admin.valid": "Gültig",
   "admin.missing": "Fehlt",
   "admin.noDomains": "Keine Domänen konfiguriert.",
+  "admin.aliasOf": "Alias von",
+  "admin.aliasOfNone": "Keiner (reguläre Domäne)",
+  "admin.aliasOfHelp": "Eine Alias-Domäne stellt Mail an die passenden Adressen der Domäne zu, deren Alias sie ist. Sie berechtigt nicht, als diese Adressen zu senden.",
+  "admin.aliasOfShort": "Alias von",
+  "admin.aliasOfDetailHelp": "Mail an hier nicht vorhandene Adressen wird so zugestellt, als wäre sie an diese Domäne gegangen. Zum Senden ist weiterhin eine Absenderidentität nötig.",
+  "admin.aliasesTitle": "Alias-Domänen",
+  "admin.aliasesHelp": "Diese Domänen stellen ihre Mail an diese Domäne zu. Sie können nur von globalen Administratoren verwaltet werden.",
   "admin.dkimKey": "DKIM-Schlüssel",
   "admin.dkimKeyNone": "Nicht konfiguriert",
   "admin.generateDKIMKey": "DKIM-Schlüssel generieren",
@@ -817,5 +824,7 @@
   "compose.flashSent": "Nachricht gesendet",
   "compose.flashSentLocalQueued": "Nachricht an lokale Empfänger gesendet; externe Zustellung eingereiht",
   "compose.flashQueued": "Nachricht zur Zustellung eingereiht",
-  "compose.flashDraftSaved": "Entwurf gespeichert"
+  "compose.flashDraftSaved": "Entwurf gespeichert",
+  "admin.domainHasAliases": "Die Domain %s hat die Alias-Domains %s. Löschen Sie zuerst die Alias-Domains.",
+  "admin.domainAliasesMore": "und %d weitere"
 }

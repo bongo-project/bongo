@@ -827,3 +827,8 @@ Found while implementing (2026-10-31):
   of 4h or less and the default `delay_warning_after`, no delay report can
   be sent; the agent warns at startup. Release notes: the new proto fields
   and `queue.delay_warning_after` need every node upgraded first.
+- Release notes (US-012): create alias domains only after every node is
+  upgraded; an older node never rewrites, so mail to an alias address
+  accepted there gets 550. A verified send-as identity on the alias domain
+  outranks the rewrite, as it would on any newly hosted domain. A catch-all
+  cannot be set on an alias domain (the target's applies).

@@ -114,6 +114,13 @@ type DomainInfo struct {
 	DNSGuide     []DNSGuideRow // records the owner should publish
 	DKIMPending  bool          // true when no DKIM key exists yet (guide omits the DKIM record)
 	MailHostname string        // shared server hostname the guide points MX/SRV at
+	// Domain aliasing. AliasOf is the target when this domain is an alias;
+	// Aliases lists the alias domains of this one (detail page, read-only).
+	// ReadOnly marks a row a domain admin can see but not manage (an alias of
+	// a domain they administer).
+	AliasOf  string
+	Aliases  []string
+	ReadOnly bool
 }
 
 // AliasInfo holds data for the alias management list.
@@ -542,8 +549,20 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 							<label for="domain_name" class="admin-inline-label">{ t(ctx, "admin.domainName") }</label>
 							<input type="text" name="domain" id="domain_name" placeholder="example.com" required class="form-input u-m0"/>
 						</div>
+						<div class="u-flex-1">
+							<label for="alias_of" class="admin-inline-label">{ t(ctx, "admin.aliasOf") }</label>
+							<select name="alias_of" id="alias_of" class="form-select u-m0">
+								<option value="">{ t(ctx, "admin.aliasOfNone") }</option>
+								for _, d := range domains {
+									if d.AliasOf == "" {
+										<option value={ d.Name }>{ d.Name }</option>
+									}
+								}
+							</select>
+						</div>
 						<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "admin.addDomain") }</button>
 					</form>
+					<small class="u-block u-mt-05 u-text-muted">{ t(ctx, "admin.aliasOfHelp") }</small>
 				</div>
 			}
 			<div class="card">
@@ -560,7 +579,12 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 					<tbody>
 						for _, d := range domains {
 							<tr>
-								<td><strong>{ d.Name }</strong></td>
+								<td>
+									<strong>{ d.Name }</strong>
+									if d.AliasOf != "" {
+										<small class="u-block u-text-muted">{ t(ctx, "admin.aliasOfShort") } { d.AliasOf }</small>
+									}
+								</td>
 								<td>
 									if d.Enabled {
 										@AdminStatusPill("domain", "enabled", t(ctx, "common.enabled"))
@@ -576,7 +600,9 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 									}
 								</td>
 								<td>
-									<a href={ templ.SafeURL("/admin/domains/" + d.Name) } class="btn-outline">{ t(ctx, "admin.manage") }</a>
+									if !d.ReadOnly {
+										<a href={ templ.SafeURL("/admin/domains/" + d.Name) } class="btn-outline">{ t(ctx, "admin.manage") }</a>
+									}
 								</td>
 							</tr>
 						}
@@ -642,6 +668,20 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 			</div>
 			<h1 class="admin-title">{ d.Name }</h1>
 			<p class="admin-subtitle">{ t(ctx, "admin.domainDetailSubtitle") }</p>
+			if d.AliasOf != "" {
+				<p class="u-text-muted">{ t(ctx, "admin.aliasOfShort") } <strong>{ d.AliasOf }</strong>. { t(ctx, "admin.aliasOfDetailHelp") }</p>
+			}
+			if len(d.Aliases) > 0 {
+				<div class="form-card">
+					<h3>{ t(ctx, "admin.aliasesTitle") }</h3>
+					<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.aliasesHelp") }</small>
+					<ul>
+						for _, a := range d.Aliases {
+							<li><code class="u-font-088">{ a }</code></li>
+						}
+					</ul>
+				</div>
+			}
 			<!-- DNS Configuration -->
 			<div class="form-card">
 				<h3>{ t(ctx, "admin.dnsSectionTitle") }</h3>

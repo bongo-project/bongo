@@ -150,6 +150,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /system/domain/{domain}/dkim         → per-domain DKIM key (generated in the admin UI)
 /system/domain/{domain}/quota        → per-domain quota; /usage holds the recomputed usage
 /system/domain/{domain}/owner        → domain owner user ID
+/system/domain/{domain}/alias_of     → target domain (alias domain; also a hosted domain, written before its own key)
 /system/address/{address}            → address → owning user (primary and send-as)
 /system/settings/require_2fa         → global 2FA policy flag
 /system/raft/applied_index           → last applied Raft index (replay skips up to it)

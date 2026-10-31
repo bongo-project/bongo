@@ -436,6 +436,13 @@
   "admin.valid": "Valide",
   "admin.missing": "Manquant",
   "admin.noDomains": "Aucun domaine configuré.",
+  "admin.aliasOf": "Alias de",
+  "admin.aliasOfNone": "Aucun (domaine ordinaire)",
+  "admin.aliasOfHelp": "Un domaine alias remet le courrier aux adresses correspondantes du domaine dont il est l’alias. Il ne donne pas le droit d’envoyer en tant que ces adresses.",
+  "admin.aliasOfShort": "Alias de",
+  "admin.aliasOfDetailHelp": "Le courrier destiné à des adresses inconnues ici est remis comme s’il avait été adressé à ce domaine. L’envoi nécessite toujours une identité d’expéditeur.",
+  "admin.aliasesTitle": "Domaines alias",
+  "admin.aliasesHelp": "Ces domaines remettent leur courrier à ce domaine. Seul un administrateur global peut les gérer.",
   "admin.dkimKey": "Clé DKIM",
   "admin.dkimKeyNone": "Non configurée",
   "admin.generateDKIMKey": "Générer une clé DKIM",
@@ -817,5 +824,7 @@
   "compose.flashSent": "Message envoyé",
   "compose.flashSentLocalQueued": "Message envoyé aux destinataires locaux ; remise externe en file d'attente",
   "compose.flashQueued": "Message en file d'attente pour remise",
-  "compose.flashDraftSaved": "Brouillon enregistré"
+  "compose.flashDraftSaved": "Brouillon enregistré",
+  "admin.domainHasAliases": "Le domaine %s a les domaines alias %s. Supprimez d'abord les domaines alias.",
+  "admin.domainAliasesMore": "et %d autres"
 }

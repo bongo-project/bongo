@@ -436,6 +436,13 @@
   "admin.valid": "Valid",
   "admin.missing": "Missing",
   "admin.noDomains": "No domains configured.",
+  "admin.aliasOf": "Alias of",
+  "admin.aliasOfNone": "None (a regular domain)",
+  "admin.aliasOfHelp": "An alias domain delivers mail to the matching addresses of the domain it is an alias of. It does not grant the right to send as those addresses.",
+  "admin.aliasOfShort": "Alias of",
+  "admin.aliasOfDetailHelp": "Mail to unknown addresses here is delivered as if sent to that domain. Sending still needs a send-as identity.",
+  "admin.aliasesTitle": "Alias domains",
+  "admin.aliasesHelp": "These domains deliver their mail to this domain. They can only be managed by a global administrator.",
   "admin.dkimKey": "DKIM Key",
   "admin.dkimKeyNone": "Not configured",
   "admin.generateDKIMKey": "Generate DKIM Key",
@@ -817,5 +824,7 @@
   "compose.flashSent": "Message sent",
   "compose.flashSentLocalQueued": "Message sent to local recipients; external delivery queued",
   "compose.flashQueued": "Message queued for delivery",
-  "compose.flashDraftSaved": "Draft saved"
+  "compose.flashDraftSaved": "Draft saved",
+  "admin.domainHasAliases": "Domain %s is aliased by %s. Delete the alias domains first.",
+  "admin.domainAliasesMore": "and %d more"
 }
