@@ -183,6 +183,28 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 | 27.28 | US-028: The brand mark is the original Bongo swoosh (Phase D: fixes from operator testing) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | DONE (2026-10-30) | The `logo` icon holds the four orange petals extracted from `images/Bongo-logo-yellow.svg` in bongo-project/bongo-project, with their original fills and a viewBox cropped to the mark. `testdata/icons.golden` regenerated. Checked in the browser: top bar in light and dark, login card. |
 | 27.29 | US-029: Keyboard and drag actions use the mailbox on screen (Phase D: fixes from operator testing) | [prd-ui-rebuild-v0.13.md](active/prd-ui-rebuild-v0.13.md) | DONE (2026-10-30) | `.mail-view` carries `data-mailbox`; `currentMailbox()` reads it for `deleteRow`, the r shortcut (now `encodeURIComponent`) and drag-and-drop, which no longer falls back to INBOX. The drop handler removes `.msg-row` rows instead of the old `tr`. `TestKeyboardAndDragUseTheListsMailbox` and the structure test were mutation-checked. Checked in the browser: sidebar to INBOX/Important, then d moves that message to Trash with INBOX untouched; r opens the reply. |
 
+## Phase 28: Mail delivery and rules v0.14.0
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 28.1 | US-001: `postmaster@` resolves on every hosted domain (Phase A: postmaster and submission) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. `abuse@` resolves the same way (8.1 decision 7). |
+| 28.2 | US-002: Copy bounces to the postmaster (Phase A: postmaster and submission) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. Needs 28.1. |
+| 28.3 | US-003: Implicit-TLS submission on port 465 (Phase A: postmaster and submission) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. On by default; infra must publish 465 before deploy (8.1 decision 4, 6.4). |
+| 28.4 | US-004: Vacation reply with RFC 3834 loop protection (Phase B: vacation and rules) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | M. |
+| 28.5 | US-005: Several actions per rule, and the existing actions work (Phase B: vacation and rules) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | M. Lands before 28.6 and 28.7. New rules continue after a match; existing rules migrated to first-match (8.1 decision 6). |
+| 28.6 | US-006: Match any condition (OR) (Phase B: vacation and rules) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. Needs 28.5. |
+| 28.7 | US-007: MIME-type condition and header-condition fixes (Phase B: vacation and rules) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. Needs 28.5. |
+| 28.8 | US-008: Tunable queue lifetime, retry interval and concurrency (Phase C: queue, DSN and storage) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. Default lifetime 5 days (8.1 decision 5). |
+| 28.9 | US-009: Refuse new work when the disk is nearly full (Phase C: queue, DSN and storage) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. Check the 1 GiB default against production free space before deploy (6.4). |
+| 28.10 | US-010: DSN parameters accepted and honoured (Phase C: queue, DSN and storage) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | M. Needs 28.8. |
+| 28.11 | US-012: Domain aliasing (Phase C: queue, DSN and storage) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | M. |
+| 28.12 | US-014: Archive and Unarchive (Phase D: web mail views) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. Mobile swipe archives (8.1 decision 9). |
+| 28.13 | US-015: Reply to List, and replies that respect Reply-To (Phase D: web mail views) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. |
+| 28.14 | US-017: `bongo sendmail` (Phase E: local submission and operator CLI) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | M. Prefers 28.3. Submission client with a 0600 credentials file (8.1 decision 3). |
+| 28.15 | US-018: List users, domains and aliases from the CLI (Phase E: local submission and operator CLI) | [prd-mail-delivery-v0.14.md](active/prd-mail-delivery-v0.14.md) | TODO | S. |
+
+Not in this release: v0.14 US-011 and US-016 moved to v0.15; US-013 deferred (PRD 8.1 decision 8).
+
 ## Backlog (unscheduled)
 
 | # | Task | Status | Notes |
