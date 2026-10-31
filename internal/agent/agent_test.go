@@ -650,6 +650,45 @@ func TestSweepSendLogsRemovesOnlyExpiredEntries(t *testing.T) {
 	}
 }
 
+func TestSweepVacationSentRemovesOnlyExpiredEntries(t *testing.T) {
+	a := blobGCLeaderTestAgentWithLogger(t, testLogger())
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	uid, err := auth.CreateUser(a, a.Metadata, "vacsweep@localhost", "Vac", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	now := time.Date(2030, 5, 6, 13, 7, 41, 0, time.UTC)
+	put := func(key []byte, val []byte) []byte {
+		if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: key, Value: val}, 5*time.Second); err != nil {
+			t.Fatalf("put %s: %v", key, err)
+		}
+		return key
+	}
+	// Either side of the cutoff by a second, not by a round number of days.
+	old := put(store.VacationSentKey(uid, "old@example.com"), store.EncodeVacationSent(now.Add(-store.VacationSentTTL-time.Second)))
+	fresh := put(store.VacationSentKey(uid, "fresh@example.com"), store.EncodeVacationSent(now.Add(-store.VacationSentTTL+time.Second)))
+	malformed := put(store.VacationSentKey(uid, "junk@example.com"), []byte("xyz"))
+	// A send log entry under the same user must be left to its own sweep.
+	var fp [32]byte
+	other := put(store.SendLogKey(uid, strings.Repeat("c", 32), "sent"), store.EncodeSendLogRecord(now.Add(-store.SendLogTTL-time.Hour), fp))
+
+	if got := a.sweepVacationSent(now, store.VacationSentTTL); got != 2 {
+		t.Fatalf("deleted = %d, want 2", got)
+	}
+	for _, k := range [][]byte{old, malformed} {
+		if _, err := a.Store.Get(k); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("expired key %s survived: %v", k, err)
+		}
+	}
+	for _, k := range [][]byte{fresh, other} {
+		if _, err := a.Store.Get(k); err != nil {
+			t.Errorf("key %s was swept: %v", k, err)
+		}
+	}
+}
+
 func TestSweepOrphanedMailLogsReclaimedGUID(t *testing.T) {
 	buf := &syncBuffer{}
 	a := blobGCLeaderTestAgentWithLogger(t, slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))

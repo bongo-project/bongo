@@ -88,6 +88,7 @@ const (
 	OutboundOrigin_OUTBOUND_ORIGIN_UNSPECIFIED OutboundOrigin = 0
 	OutboundOrigin_OUTBOUND_ORIGIN_LOCAL       OutboundOrigin = 1 // web compose, authenticated submission, server-generated mail
 	OutboundOrigin_OUTBOUND_ORIGIN_FORWARD     OutboundOrigin = 2 // inbound mail forwarded by a rule or ForwardAddress; never re-signed
+	OutboundOrigin_OUTBOUND_ORIGIN_AUTOREPLY   OutboundOrigin = 3 // vacation reply; DKIM-signed like LOCAL, and its sender_email is always empty (null sender)
 )
 
 // Enum value maps for OutboundOrigin.
@@ -96,11 +97,13 @@ var (
 		0: "OUTBOUND_ORIGIN_UNSPECIFIED",
 		1: "OUTBOUND_ORIGIN_LOCAL",
 		2: "OUTBOUND_ORIGIN_FORWARD",
+		3: "OUTBOUND_ORIGIN_AUTOREPLY",
 	}
 	OutboundOrigin_value = map[string]int32{
 		"OUTBOUND_ORIGIN_UNSPECIFIED": 0,
 		"OUTBOUND_ORIGIN_LOCAL":       1,
 		"OUTBOUND_ORIGIN_FORWARD":     2,
+		"OUTBOUND_ORIGIN_AUTOREPLY":   3,
 	}
 )
 
@@ -400,11 +403,12 @@ const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\x16MESSAGE_STATUS_PENDING\x10\x01\x12\x19\n" +
 	"\x15MESSAGE_STATUS_FAILED\x10\x02\x12\x1c\n" +
 	"\x18MESSAGE_STATUS_DELIVERED\x10\x03\x12\x1a\n" +
-	"\x16MESSAGE_STATUS_BOUNCED\x10\x04*i\n" +
+	"\x16MESSAGE_STATUS_BOUNCED\x10\x04*\x88\x01\n" +
 	"\x0eOutboundOrigin\x12\x1f\n" +
 	"\x1bOUTBOUND_ORIGIN_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15OUTBOUND_ORIGIN_LOCAL\x10\x01\x12\x1b\n" +
-	"\x17OUTBOUND_ORIGIN_FORWARD\x10\x02B7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"\x17OUTBOUND_ORIGIN_FORWARD\x10\x02\x12\x1d\n" +
+	"\x19OUTBOUND_ORIGIN_AUTOREPLY\x10\x03B7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_queue_proto_rawDescOnce sync.Once

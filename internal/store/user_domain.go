@@ -36,3 +36,20 @@ func (u *UserDomains) UserDomain(userID string) (string, error) {
 	}
 	return strings.ToLower(profile.Email[at+1:]), nil
 }
+
+// PrimaryEmail returns the user's profile email, trimmed. A missing profile
+// and a read error both return an error.
+func (u *UserDomains) PrimaryEmail(userID string) (string, error) {
+	if u == nil || u.Pebble == nil {
+		return "", fmt.Errorf("primary email: no profile store")
+	}
+	data, err := u.Pebble.Get([]byte("/user/" + userID + "/profile"))
+	if err != nil {
+		return "", fmt.Errorf("primary email: load profile %q: %w", userID, err)
+	}
+	var profile bongov1.UserProfile
+	if err := proto.Unmarshal(data, &profile); err != nil {
+		return "", fmt.Errorf("primary email: decode profile %q: %w", userID, err)
+	}
+	return strings.TrimSpace(profile.Email), nil
+}

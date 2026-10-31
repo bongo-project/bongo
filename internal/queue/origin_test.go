@@ -123,6 +123,11 @@ func TestShouldSign(t *testing.T) {
 		{bongov1.OutboundOrigin_OUTBOUND_ORIGIN_UNSPECIFIED, true},
 		{bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL, true},
 		{bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD, false},
+		{bongov1.OutboundOrigin_OUTBOUND_ORIGIN_AUTOREPLY, true},
+		// A value this binary does not know, as a node from before the
+		// AUTOREPLY value existed sees it: proto3 enums are open, so the number
+		// survives decoding and the worker must still sign and relay it.
+		{bongov1.OutboundOrigin(99), true},
 	}
 	for _, tt := range tests {
 		if got := shouldSign(&bongov1.OutboundMessage{Origin: tt.origin}); got != tt.want {

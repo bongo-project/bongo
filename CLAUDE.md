@@ -157,6 +157,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /system/migrations/rules-first-match-v1 → rules first-match migration done marker (sets stop_processing on pre-v0.14 rules)
 /user/{user_id}/fwdtarget/{address}  → verified forwarding target
 /user/{user_id}/fwdverify/{address}  → pending forwarding verification
+/user/{user_id}/vacation/sent/{hex(sha256(lower(sender)))} → 8-byte BE unix seconds of the last vacation reply to that sender (not a protobuf); leader sweep after 30 days; deleted on disable
 /queue/pending/{unix_ts}-{id}        → queued outbound message (zero-padded ts)
 /queue/bounced/{id}                  → bounced outbound message
 

@@ -11,6 +11,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 					<ul class="nav-list">
 						<li class="nav-item"><a href="/mail/INBOX"><span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span> { t(ctx, "nav.backToMail") }</a></li>
 						<li class="nav-item"><a href="/settings/rules"><span class="nav-icon" aria-hidden="true">@Icon("sliders", "")</span> { t(ctx, "settings.filterRules") }</a></li>
+						<li class="nav-item"><a href="/settings/vacation"><span class="nav-icon" aria-hidden="true">@Icon("reply", "")</span> { t(ctx, "settings.vacation") }</a></li>
 						<li class="nav-item"><a href="/settings/tags"><span class="nav-icon" aria-hidden="true">@Icon("tag", "")</span> { t(ctx, "nav.tags") }</a></li>
 						<li class="nav-item"><a href="/settings/security"><span class="nav-icon" aria-hidden="true">@Icon("shield", "")</span> { t(ctx, "settings.security") }</a></li>
 					</ul>

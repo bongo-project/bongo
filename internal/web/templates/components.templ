@@ -179,6 +179,12 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 					</a>
 				</li>
 				<li class="nav-item">
+					<a href="/settings/vacation">
+						<span class="nav-icon" aria-hidden="true">@Icon("reply", "")</span>
+						<span>{ t(ctx, "settings.vacation") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
 					<a href="/settings">
 						<span class="nav-icon" aria-hidden="true">@Icon("settings", "")</span>
 						<span>{ t(ctx, "nav.settings") }</span>

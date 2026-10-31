@@ -787,3 +787,13 @@ Found while implementing (2026-10-31):
   copies of spam are suppressed outside Junk and Trash. During a mixed
   window an old node treats `[copy X, flag]` as a move to X, and an old
   node's rule form drops actions after the first.
+- US-004's "Auto: " plus the original subject conflicts with 6.1 (never
+  copy original header values). The original subject is decoded, stripped
+  of control characters, cut by runes and re-encoded, not copied raw; with
+  no subject at all the reply says "Auto-reply".
+- Release notes: an older queue worker signs and relays an
+  `OUTBOUND_ORIGIN_AUTOREPLY` message and never bounces it (null sender).
+  Vacation replies are not serialised across nodes, so two nodes can each
+  answer the same sender once during the interval (US-004).
+- `queue.bounce_copy_postmaster` is a new HCL key an older binary refuses;
+  set it only after every node is upgraded (US-002).

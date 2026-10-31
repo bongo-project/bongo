@@ -7,6 +7,7 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 				<ul class="nav-list">
 					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
 					<li><a href="/settings/rules">{ t(ctx, "settings.filterRules") }</a></li>
+					<li><a href="/settings/vacation">{ t(ctx, "settings.vacation") }</a></li>
 					<li><a href="/settings">{ t(ctx, "nav.settings") }</a></li>
 					<li><a href="/settings/security" class="active">{ t(ctx, "settings.security") }</a></li>
 				</ul>

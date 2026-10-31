@@ -1,0 +1,94 @@
+package templates
+
+import "fmt"
+
+// VacationView is what the vacation settings page shows. Start and End are
+// date input values (YYYY-MM-DD) in the user's time zone, empty when open.
+type VacationView struct {
+	Enabled  bool
+	Subject  string
+	Body     string
+	Start    string
+	End      string
+	Interval int
+	Flash    string
+}
+
+templ VacationPage(v VacationView, email string) {
+	@LayoutWithContent(t(ctx, "settings.vacation"), email) {
+		<aside class="sidebar" id="sidebar">
+			<nav>
+				<ul class="nav-list">
+					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
+					<li><a href="/settings/rules">{ t(ctx, "settings.filterRules") }</a></li>
+					<li><a href="/settings/vacation" class="active">{ t(ctx, "settings.vacation") }</a></li>
+					<li><a href="/settings">{ t(ctx, "nav.settings") }</a></li>
+					<li><a href="/settings/security">{ t(ctx, "settings.security") }</a></li>
+				</ul>
+			</nav>
+		</aside>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					if v.Flash != "" {
+						@FlashMessage(v.Flash, "success")
+					}
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "settings.vacation") }</h2>
+					<p class="settings-section-desc">{ t(ctx, "settings.vacationDesc") }</p>
+					<form method="post" action="/settings/vacation">
+						<div class="settings-card">
+							<div class="settings-row">
+								<div class="settings-row-label">
+									<div class="settings-row-title">{ t(ctx, "settings.vacationEnabled") }</div>
+								</div>
+								<label class="toggle">
+									<input type="checkbox" name="vacation_enabled" value="1" aria-label={ t(ctx, "settings.vacationEnabled") } checked?={ v.Enabled }/>
+									<span class="toggle-slider"></span>
+								</label>
+							</div>
+							<div class="settings-row">
+								<div class="settings-row-label">
+									<div class="settings-row-title">{ t(ctx, "settings.vacationSubject") }</div>
+									<div class="settings-row-desc">{ t(ctx, "settings.vacationSubjectDesc") }</div>
+								</div>
+								<input type="text" name="vacation_subject" id="vacation_subject" class="settings-input" maxlength="200" value={ v.Subject }/>
+							</div>
+							<div class="settings-row settings-row-stacked">
+								<div class="settings-row-label">
+									<div class="settings-row-title">{ t(ctx, "settings.vacationBody") }</div>
+									<div class="settings-row-desc">{ t(ctx, "settings.vacationBodyDesc") }</div>
+								</div>
+								<textarea name="vacation_body" id="vacation_body" class="settings-input" rows="8" maxlength="4096">{ v.Body }</textarea>
+							</div>
+							<div class="settings-row">
+								<div class="settings-row-label">
+									<div class="settings-row-title">{ t(ctx, "settings.vacationStart") }</div>
+									<div class="settings-row-desc">{ t(ctx, "settings.vacationDateDesc") }</div>
+								</div>
+								<input type="date" name="vacation_start" id="vacation_start" class="settings-input" value={ v.Start }/>
+							</div>
+							<div class="settings-row">
+								<div class="settings-row-label">
+									<div class="settings-row-title">{ t(ctx, "settings.vacationEnd") }</div>
+									<div class="settings-row-desc">{ t(ctx, "settings.vacationDateDesc") }</div>
+								</div>
+								<input type="date" name="vacation_end" id="vacation_end" class="settings-input" value={ v.End }/>
+							</div>
+							<div class="settings-row">
+								<div class="settings-row-label">
+									<div class="settings-row-title">{ t(ctx, "settings.vacationInterval") }</div>
+									<div class="settings-row-desc">{ t(ctx, "settings.vacationIntervalDesc") }</div>
+								</div>
+								<input type="number" name="vacation_interval_days" id="vacation_interval_days" class="settings-input" min="1" max="30" value={ fmt.Sprint(v.Interval) }/>
+							</div>
+						</div>
+						<div class="settings-save">
+							<button type="submit" class="btn-primary">{ t(ctx, "settings.save") }</button>
+							<a href="/mail/INBOX" class="btn-cancel">{ t(ctx, "settings.cancel") }</a>
+						</div>
+					</form>
+				</div>
+			</div>
+		</main>
+	}
+}
