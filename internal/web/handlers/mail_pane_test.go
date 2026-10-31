@@ -42,7 +42,7 @@ func TestShowMessagePaneReceivesMailboxes(t *testing.T) {
 		t.Fatalf("status=%d: %s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	for _, want := range []string{`<option value="Projects"`, `hx-vals="{&#34;destination&#34;:&#34;Archive&#34;}"`} {
+	for _, want := range []string{`<option value="Projects"`, fmt.Sprintf(`/mail/INBOX/%d/archive"`, uid)} {
 		if !strings.Contains(body, want) {
 			t.Errorf("pane response missing %q", want)
 		}

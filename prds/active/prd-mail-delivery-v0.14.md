@@ -832,3 +832,8 @@ Found while implementing (2026-10-31):
   accepted there gets 550. A verified send-as identity on the alias domain
   outranks the rewrite, as it would on any newly hosted domain. A catch-all
   cannot be set on an alias domain (the target's applies).
+- Release notes (US-014): swiping left on a message on a phone now
+  archives it; before, it moved the message to Trash. IMAP clients see
+  `\Archive` on an existing Archive mailbox. Browsers that cached the old
+  bongo.js under the same version keep the old swipe until the cache is
+  refreshed; the asset version changes with each release.

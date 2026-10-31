@@ -33,6 +33,7 @@ type TagInfo struct {
 type MessageDetail struct {
 	UID              uint32
 	Mailbox          string
+	RealMailbox      string // the mailbox the message lives in; Mailbox may be a virtual view
 	MessageID        string
 	Subject          string
 	From             string
@@ -232,12 +233,24 @@ templ senderBar(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
 				@Icon("forward", "")
 			</a>
 			<span class="msg-act-sep" aria-hidden="true"></span>
-			if hasArchiveTarget(msg.Mailbox, mailboxes) {
+			if isInArchive(msg) {
 				<button
 					type="button"
 					class="msg-act"
-					hx-post={ fmt.Sprintf("/mail/%s/%d/move", encMailbox(msg.Mailbox), msg.UID) }
-					hx-vals={ `{"destination":"Archive"}` }
+					data-action="unarchive"
+					hx-post={ fmt.Sprintf("/mail/%s/%d/unarchive", encMailbox(msg.Mailbox), msg.UID) }
+					hx-target="#main-content"
+					aria-label={ t(ctx, "mail.unarchive") }
+					title={ t(ctx, "mail.unarchive") }
+				>
+					@Icon("archive", "")
+				</button>
+			} else {
+				<button
+					type="button"
+					class="msg-act"
+					data-action="archive"
+					hx-post={ fmt.Sprintf("/mail/%s/%d/archive", encMailbox(msg.Mailbox), msg.UID) }
 					hx-target="#main-content"
 					aria-label={ t(ctx, "mail.archive") }
 					title={ t(ctx, "mail.archive") }
@@ -375,19 +388,14 @@ func senderFirstName(from string) string {
 	return name
 }
 
-// hasArchiveTarget reports whether an Archive mailbox exists and the message
-// is not already in it. Archive is not a default mailbox, so the button must
-// not be offered to users who do not have one.
-func hasArchiveTarget(current string, mailboxes []MailboxInfo) bool {
-	if current == "Archive" {
-		return false
+// isInArchive reports whether the message lives in Archive. Mailbox can be a
+// virtual view (starred, all-mail), so the real mailbox is preferred.
+func isInArchive(msg MessageDetail) bool {
+	real := msg.RealMailbox
+	if real == "" {
+		real = msg.Mailbox
 	}
-	for _, mb := range mailboxes {
-		if mb.Name == "Archive" {
-			return true
-		}
-	}
-	return false
+	return real == "Archive"
 }
 
 // moreMenuID returns a DOM id unique per message within a thread. The mailbox

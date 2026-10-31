@@ -42,7 +42,7 @@ var jsMessageIDs = []string{
 	"js.scanFailedPrefix", "js.scanErrorPrefix", "js.scannedInfix", "js.movedToJunkSuffix", "js.scanCancelled",
 	"js.tagsLoadFailed", "js.tagNameEmpty", "js.tagSaveFailed", "js.tagDeleteFailed",
 	"js.shortcutNextMessage", "js.shortcutPrevMessage", "js.shortcutOpenMessage", "js.shortcutReply",
-	"js.shortcutDelete", "js.shortcutToggleStar", "js.shortcutFocusSearch", "js.shortcutFocusSearchK", "js.shortcutCompose",
+	"js.shortcutDelete", "js.shortcutArchive", "js.shortcutToggleStar", "js.shortcutFocusSearch", "js.shortcutFocusSearchK", "js.shortcutCompose",
 	"js.shortcutCloseModal", "js.shortcutShowHelp", "js.close", "js.contentLoaded", "js.logConnecting",
 	"js.logConnected", "js.logConnectionLost",
 }

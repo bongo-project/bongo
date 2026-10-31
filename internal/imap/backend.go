@@ -542,6 +542,8 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 			attrs = append(attrs, imap.MailboxAttrTrash)
 		case "Junk":
 			attrs = append(attrs, imap.MailboxAttrJunk)
+		case "Archive":
+			attrs = append(attrs, imap.MailboxAttrArchive)
 		}
 
 		data := &imap.ListData{

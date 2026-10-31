@@ -1362,6 +1362,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/mail/blob/{hash}", mailH.ServeBlob)
 			r.Post("/mail/{mailbox}/{uid}/flags", mailH.ToggleFlags)
 			r.Post("/mail/{mailbox}/{uid}/move", mailH.MoveMessage)
+			r.Post("/mail/{mailbox}/{uid}/archive", mailH.ArchiveMessage)
+			r.Post("/mail/{mailbox}/{uid}/unarchive", mailH.UnarchiveMessage)
 			r.Post("/mail/{mailbox}/{uid}/spam", mailH.MarkSpam)
 			r.Post("/mail/{mailbox}/{uid}/not-spam", mailH.MarkNotSpam)
 			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)

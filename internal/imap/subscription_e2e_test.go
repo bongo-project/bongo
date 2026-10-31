@@ -289,3 +289,19 @@ func TestLegacyMailboxStaysSubscribed(t *testing.T) {
 		t.Fatalf("legacy mailbox line %q is missing %s", lines["Archive"], imap.MailboxAttrSubscribed)
 	}
 }
+
+// TestListMarksArchiveSpecialUse pins RFC 6154: Archive carries \Archive and an
+// ordinary folder does not.
+func TestListMarksArchiveSpecialUse(t *testing.T) {
+	ms, ps := newSubscriptionTestStore(t, "INBOX", "Archive", "Projects")
+	addr := startPollTestServer(t, ms, ps)
+
+	raw := dialRawIMAP(t, addr)
+	lines := mailboxLines(t, raw.exec(`LIST "" "*"`), "LIST")
+	if !strings.Contains(lines["Archive"], string(imap.MailboxAttrArchive)) {
+		t.Errorf("Archive line %q is missing %s", lines["Archive"], imap.MailboxAttrArchive)
+	}
+	if strings.Contains(lines["Projects"], string(imap.MailboxAttrArchive)) {
+		t.Errorf("Projects line %q carries %s", lines["Projects"], imap.MailboxAttrArchive)
+	}
+}
