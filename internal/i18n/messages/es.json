@@ -23,6 +23,7 @@
   "mail.unreadCount": "%d mensajes sin leer",
   "mail.reply": "Responder",
   "mail.replyAll": "Responder a todos",
+  "mail.replyList": "Responder a la lista",
   "mail.forward": "Reenviar",
   "mail.delete": "Eliminar",
   "mail.emptyTrash": "Vaciar papelera",

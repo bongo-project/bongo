@@ -33,6 +33,14 @@ message MailMeta {
   // the attachments[] blobs to rebuild the exact original RFC822 message. Empty
   // means a legacy whole-raw record: raw_message is the full message.
   repeated MessageSegment layout = 20;
+
+  // Reply and mailing-list headers, stored as decoded text (CR/LF removed,
+  // capped) and validated at use. Empty on messages delivered before these
+  // fields existed or by paths that do not fill them; readers then parse the
+  // headers from the blob.
+  string reply_to = 21;   // Reply-To header
+  string list_id = 22;    // List-Id header
+  string list_post = 23;  // List-Post header
 }
 
 // MessageSegment is one step in reconstructing a split message. Segments are

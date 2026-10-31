@@ -47,6 +47,10 @@ type MessageDetail struct {
 	Seen             bool
 	Flagged          bool
 	Answered         bool
+	// HasListPost is true when the message names a valid mailto: List-Post
+	// address, which shows the Reply to list button. The address itself is not
+	// carried: the reply-list route derives it on the server.
+	HasListPost      bool
 	IsContact        bool
 	HasBlockedImages bool
 	Tags             []TagInfo
@@ -229,6 +233,11 @@ templ senderBar(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
 			<a href={ templ.SafeURL(replyURL + "?all=1") } class="msg-act" aria-label={ t(ctx, "mail.replyAll") } title={ t(ctx, "mail.replyAll") }>
 				@Icon("reply_all", "")
 			</a>
+			if msg.HasListPost {
+				<a href={ templ.SafeURL(fmt.Sprintf("/compose/reply-list/%s/%d", encMailbox(msg.Mailbox), msg.UID)) } class="msg-act" data-action="reply-list" aria-label={ t(ctx, "mail.replyList") } title={ t(ctx, "mail.replyList") }>
+					@Icon("users", "")
+				</a>
+			}
 			<a href={ templ.SafeURL(fmt.Sprintf("/compose/forward/%s/%d", encMailbox(msg.Mailbox), msg.UID)) } class="msg-act" aria-label={ t(ctx, "mail.forward") } title={ t(ctx, "mail.forward") }>
 				@Icon("forward", "")
 			</a>

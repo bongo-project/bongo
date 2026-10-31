@@ -1408,6 +1408,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			// POST carries the quick reply text from the message view.
 			r.Post("/compose/reply/{mailbox}/{uid}", composeH.Reply)
+			// GET only: the list address is derived server side from the message.
+			r.Get("/compose/reply-list/{mailbox}/{uid}", composeH.ReplyList)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
 			r.Get("/compose/draft/{mailbox}/{uid}", composeH.EditDraft)
 			r.With(refuseLowStorage).Post("/compose/send", composeH.Send)

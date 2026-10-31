@@ -1243,6 +1243,9 @@ func SanitizeMailMeta(meta *bongov1.MailMeta) {
 	meta.MessageId = sanitizeUTF8(meta.MessageId)
 	meta.InReplyTo = sanitizeUTF8(meta.InReplyTo)
 	meta.References = sanitizeUTF8(meta.References)
+	meta.ReplyTo = sanitizeUTF8(meta.ReplyTo)
+	meta.ListId = sanitizeUTF8(meta.ListId)
+	meta.ListPost = sanitizeUTF8(meta.ListPost)
 	for i, addr := range meta.To {
 		meta.To[i] = sanitizeUTF8(addr)
 	}
