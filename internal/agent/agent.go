@@ -41,6 +41,7 @@ import (
 	bongocarddav "github.com/bongo-project/bongo/internal/carddav"
 	"github.com/bongo-project/bongo/internal/cluster"
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/diskspace"
 	"github.com/bongo-project/bongo/internal/i18n"
 	bongoimap "github.com/bongo-project/bongo/internal/imap"
 	"github.com/bongo-project/bongo/internal/mail"
@@ -124,7 +125,10 @@ type Agent struct {
 	BlobSync     *cluster.BlobSyncer
 	AddressStore *store.AddressStore
 	DomainQuota  *store.DomainQuotaStore
-	logger       *slog.Logger
+	// Storage samples free disk space on the data directory. Nil when
+	// storage.min_free_mb is 0 or the role has no local storage.
+	Storage *diskspace.Monitor
+	logger  *slog.Logger
 
 	// Inbound pipeline subsystem.
 	Spool          *pipeline.SpoolStore
@@ -403,6 +407,19 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	}
 
 	a.dataDir = dataDir
+
+	// Free-space monitor. It samples a.dataDir, not cfg.Storage.DataDir: in the
+	// dev role the real files are in the temp dir. That directory holds Pebble
+	// (which also stores the Raft log), the blobs, the spool and the Raft
+	// snapshots; the snapshot directory is added in case it is a separate mount.
+	// cluster.raft.data_dir is a no-op key and is deliberately not sampled.
+	if minFree := cfg.Storage.MinFreeBytes(); minFree > 0 {
+		dirs := []string{dataDir}
+		if cfg.Server.Role == "server" {
+			dirs = append(dirs, filepath.Join(dataDir, "raft-snapshots"))
+		}
+		a.Storage = diskspace.New(dirs, minFree, logger)
+	}
 
 	// Open Pebble store.
 	pebbleDir := filepath.Join(dataDir, "pebble")
@@ -813,6 +830,7 @@ func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *st
 	if a.DomainQuota != nil {
 		backend.SetQuotaChecker(a.DomainQuota)
 	}
+	backend.SetStorageGate(a.storageGate())
 	return backend, nil
 }
 
@@ -868,6 +886,15 @@ func (a *Agent) reloadConsumers() ([]*bongosmtp.Backend, []*pipelineantivirus.Cl
 	return slices.Clone(a.smtpBackends), slices.Clone(a.clamavProcs)
 }
 
+// storageGate returns the free-space gate, or a nil interface when the check is
+// disabled, so consumers see "no gate" rather than a typed-nil monitor.
+func (a *Agent) storageGate() interface{ Low() bool } {
+	if a.Storage == nil {
+		return nil
+	}
+	return a.Storage
+}
+
 // Run starts the HTTP server and blocks until the context is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	// Validate the optional antispam.dnsbl block before anything else, so a
@@ -884,6 +911,13 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Agent role has a fundamentally different startup path.
 	if a.Config.Server.Role == "agent" {
 		return a.runAgent(ctx)
+	}
+
+	// Sample free disk space for the lifetime of the server. Only paths that add
+	// data consult it (SMTP MAIL, IMAP APPEND, web compose/import, DAV PUT); Raft
+	// apply, the queue worker, blob GC and reads never do.
+	if a.Storage != nil {
+		go a.Storage.Run(ctx)
 	}
 
 	// Build the shared recipient resolver once and share it across compose,
@@ -908,6 +942,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Set up HTTP routes.
 	r := chi.NewRouter()
+	// Refuses uploads with 507 while the disk is nearly full, before the body
+	// is parsed (a multipart parse would spool it to disk).
+	refuseLowStorage := handlers.RefuseWhenStorageLow(a.storageGate())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.InjectSourceURL(a.Config.Web.SourceURL))
 	r.Use(chimw.Compress(5, "text/html", "text/css", "application/javascript", "application/json", "text/plain", "image/svg+xml"))
@@ -1040,12 +1077,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.DomainQuota != nil {
 			carddavBackend.SetQuotaChecker(a.DomainQuota)
 		}
+		carddavBackend.SetStorageGate(a.storageGate())
 	}
 	if a.Events != nil && a.Calendars != nil {
 		caldavBackend = bongocaldav.NewBackend(a.Events, a.Calendars, a.logger)
 		if a.DomainQuota != nil {
 			caldavBackend.SetQuotaChecker(a.DomainQuota)
 		}
+		caldavBackend.SetStorageGate(a.storageGate())
 	}
 	carddavHandler, caldavHandler := newDAVHandlers(a.Auth, carddavBackend, caldavBackend, davAuthLimiter, a.logger)
 
@@ -1177,6 +1216,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Mailboxes != nil {
 			adminH.SetMailboxStore(a.Mailboxes)
 		}
+		adminH.SetStorageGate(a.storageGate())
 		// Wire the DKIM registry so GenerateDKIMKey can register signers
 		// immediately after key generation (registry was created above).
 		adminH.SetDKIMRegistry(a.DKIMRegistry)
@@ -1327,7 +1367,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)
 			r.Post("/mail/{mailbox}/{uid}/tags", mailH.UpdateMessageTags)
 			r.Get("/import", mailH.ImportPage)
-			r.Post("/import", mailH.ImportMbox)
+			r.With(refuseLowStorage).Post("/import", mailH.ImportMbox)
 
 			scanH := handlers.NewScanHandler(a.Store, a.Blobs, a.Mailboxes, a, a.logger)
 			r.Post("/api/mailbox/{mailbox}/scan", scanH.StartScan)
@@ -1368,8 +1408,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
 			r.Get("/compose/draft/{mailbox}/{uid}", composeH.EditDraft)
-			r.Post("/compose/send", composeH.Send)
-			r.Post("/compose/draft", composeH.SaveDraft)
+			r.With(refuseLowStorage).Post("/compose/send", composeH.Send)
+			r.With(refuseLowStorage).Post("/compose/draft", composeH.SaveDraft)
 			r.Get("/api/gal", composeH.GALSearch)
 		}
 
@@ -1392,7 +1432,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/contacts", contactsH.ListContacts)
 			r.Post("/contacts", contactsH.CreateContact)
 			r.Get("/contacts/export", contactsH.ExportContacts)
-			r.Post("/contacts/import", contactsH.ImportContacts)
+			r.With(refuseLowStorage).Post("/contacts/import", contactsH.ImportContacts)
 			r.Post("/contacts/quick-add", contactsH.QuickAddContact)
 			r.Get("/contacts/{guid}", contactsH.ShowContact)
 			r.Get("/contacts/{guid}/detail", contactsH.ShowContactDetail)
@@ -1428,7 +1468,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/calendar/{calendarID}/unshare", calendarH.UnshareCalendar)
 			r.Get("/calendar/freebusy", calendarH.FreeBusy)
 			r.Get("/calendar/export", calendarH.ExportCalendar)
-			r.Post("/calendar/import", calendarH.ImportCalendar)
+			r.With(refuseLowStorage).Post("/calendar/import", calendarH.ImportCalendar)
 			r.Get("/calendar/search", calendarH.SearchEvents)
 		}
 
@@ -1883,6 +1923,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.DomainQuota != nil {
 			a.IMAP.SetQuotaChecker(a.DomainQuota)
 		}
+		a.IMAP.SetStorageGate(a.storageGate())
 		a.IMAP.SetConnectionLimits(a.Config.IMAP.MaxConnections, a.Config.IMAP.MaxConnectionsPerIP)
 		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol, a.proxyTrust); err != nil {
 			return fmt.Errorf("imap listen: %w", err)

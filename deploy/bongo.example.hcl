@@ -168,6 +168,12 @@ storage {
   # deduplicated blob (identical attachments are stored once). "0" disables it.
   # attachment_dedup_min_size = "32KB"
 
+  # Free space, in MiB, on the data directory below which new work is refused:
+  # SMTP MAIL (452 4.3.1), IMAP APPEND, web compose/import and CalDAV/CardDAV
+  # PUT. Raft apply, the queue worker, blob GC and reads are never refused.
+  # Sampled every 10 seconds. 0 disables the check. Default 1024.
+  # min_free_mb = 1024
+
   # Unreferenced-blob garbage collector:
   #   "off"    (default) — never runs; blobs are retained forever
   #   "dryrun"           — logs what it WOULD delete, deletes nothing

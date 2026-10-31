@@ -188,6 +188,21 @@ type StorageConfig struct {
 	// It is opt-in so a data-deleting sweep never starts without the operator
 	// enabling it, and dryrun lets it be validated in production first.
 	BlobGC string `hcl:"blob_gc,optional" mapstructure:"blob_gc"`
+	// MinFreeMB is the free space, in MiB, below which the server refuses new
+	// mail, uploads and DAV writes (default 1024; 0 disables the check).
+	MinFreeMB int `hcl:"min_free_mb,optional" mapstructure:"min_free_mb"`
+}
+
+// maxMinFreeMB bounds storage.min_free_mb at 1 TiB so the MiB-to-bytes
+// conversion cannot overflow.
+const maxMinFreeMB = 1 << 20
+
+// MinFreeBytes returns storage.min_free_mb in bytes; 0 means disabled.
+func (s *StorageConfig) MinFreeBytes() uint64 {
+	if s.MinFreeMB <= 0 {
+		return 0
+	}
+	return uint64(s.MinFreeMB) << 20
 }
 
 // BlobGCMode returns the normalised blob-GC mode: "off" (default), "dryrun", or
@@ -852,6 +867,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if c.Storage.MinFreeMB < 0 || c.Storage.MinFreeMB > maxMinFreeMB {
+		return fmt.Errorf("storage.min_free_mb: must be between 0 and %d, got %d", maxMinFreeMB, c.Storage.MinFreeMB)
+	}
+
 	if c.Server.Role == "agent" {
 		if len(c.Server.Agents) == 0 {
 			return fmt.Errorf("server.agents: role \"agent\" requires a non-empty agents list")
@@ -1334,6 +1353,7 @@ func Defaults() *Config {
 				CacheSize: "256MB",
 			},
 			AttachmentDedupMinSize: "32KB",
+			MinFreeMB:              1024,
 		},
 		SMTP: SMTPConfig{
 			Enabled:                     true,

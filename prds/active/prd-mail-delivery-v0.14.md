@@ -812,3 +812,9 @@ Found while implementing (2026-10-31):
   (`queue.max_lifetime`) instead of bouncing after about 17 hours. The
   three new `queue.*` keys are refused by an older binary; set them only
   after every node is upgraded.
+- Release notes (US-009): below `storage.min_free_mb` (default 1024 MB)
+  the server refuses new mail and uploads with a temporary error. Check the
+  default against production free space before deploying (6.4). The
+  monitor samples `storage.data_dir` and its Raft snapshots; it does not
+  read `cluster.raft.data_dir`. A failing free-space check never refuses
+  work.

@@ -29,6 +29,12 @@ type quotaChecker interface {
 	RecipientWouldExceedQuota(userID string, addBytes int64) (bool, error)
 }
 
+// storageGate is satisfied by *diskspace.Monitor. APPEND is refused while the
+// data volume is nearly full; COPY, MOVE, STORE and EXPUNGE are not gated.
+type storageGate interface {
+	Low() bool
+}
+
 // session implements imapserver.Session and imapserver.SessionMove.
 type session struct {
 	auth      profileAuthenticator
@@ -43,6 +49,9 @@ type session struct {
 
 	// quota gates APPEND. Nil means unlimited (dev, tests, edge).
 	quota quotaChecker
+
+	// storage gates APPEND on free disk space. Nil means never refuse.
+	storage storageGate
 
 	// Brute-force defence: per-source-IP failed-LOGIN throttling. authLimiter is
 	// shared across connections; remoteIP identifies this connection's source.
@@ -624,6 +633,16 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	// implicitly. Checked before any blob work; go-imap drains the literal.
 	if err := s.requireMailbox(mailbox, errTryCreate); err != nil {
 		return nil, err
+	}
+
+	// Free disk space, checked before the quota and before any blob is written.
+	if s.storage != nil && s.storage.Low() {
+		s.logger.Debug("imap: append refused: storage low", "mailbox", mailbox, "user", s.userID)
+		return nil, &imap.Error{
+			Type: imap.StatusResponseTypeNo,
+			Code: imap.ResponseCodeUnavailable,
+			Text: "Insufficient system storage",
+		}
 	}
 
 	// Storage quota, checked before any blob or metadata is written so a

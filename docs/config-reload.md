@@ -204,6 +204,7 @@ TLS as well as raft transport.
 | `storage.pebble.cache_size` | `NewAgent` -> `PebbleConfig.CacheBytes()` -> `pebbleStoreOptions` -> `store.WithCacheSize` (16.20) | ctor | RESTART |
 | `storage.pebble.wal_dir` | none | none | NO-OP |
 | `storage.attachment_dedup_min_size` | `agent.go:818` (`composeH.SetAttachmentDedup`), `agent.go:1085` (`deliverProc.SetAttachmentDedup`) | ctor, int copied into two handlers | RESTART (HOT-3 candidate: two setters, both plain fields) |
+| `storage.min_free_mb` | `NewAgent` -> `diskspace.New` (sampled every 10 s); gates SMTP MAIL, IMAP APPEND, web compose/import, CalDAV/CardDAV PUT | ctor | RESTART |
 | `storage.blob_gc` | `agent.go:1559` (log), `agent.go:1605` (`blobGCPass`) | tick: reads `a.Config.Storage.BlobGCMode()` every 15 min (`orphanGCInterval`, `agent.go:1530`) | RESTART in increment 1 (see 4.3) |
 
 `smtp`
