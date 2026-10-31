@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bongo-project/bongo/internal/security"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 var (
@@ -32,7 +33,33 @@ var userCreateCmd = &cobra.Command{
 	RunE:  runUserCreate,
 }
 
+var userListOpts = directoryOpts{withScope: true}
+
+var userListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List accounts (read-only)",
+	Long: "Lists every account: email, display name, enabled or disabled, global admin and\n" +
+		"the domains the account administers (as owner or domain admin). Reads the\n" +
+		"node's Pebble store through the control listener. At most 100000 rows are\n" +
+		"returned; a longer list is cut, a warning is printed and the exit code is\n" +
+		"non-zero. Use --domain to narrow it.",
+	Args: cobra.NoArgs,
+	RunE: runUserList,
+}
+
+func runUserList(cmd *cobra.Command, _ []string) error {
+	items, trunc, err := fetchDirectory[store.UserSummary](&userListOpts, "/internal/users")
+	if err != nil {
+		return err
+	}
+	return printDirectory(cmd, &userListOpts, items, trunc,
+		[]string{"EMAIL", "NAME", "STATUS", "ADMIN", "ADMIN DOMAINS"}, userRow)
+}
+
 func init() {
+	userListOpts.addFlags(userListCmd)
+	userCmd.AddCommand(userListCmd)
+
 	userCreateCmd.Flags().StringVar(&userEmail, "email", "", "User email address (required)")
 	userCreateCmd.Flags().StringVar(&userPassword, "password", "", "User password (required)")
 	userCreateCmd.Flags().StringVar(&userHTTPAddr, "http-addr", "http://127.0.0.1:8081", "URL of the running node's control listener (server.control_addr)")

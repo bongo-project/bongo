@@ -18,6 +18,9 @@ func TestCLIDefaultsToControlListener(t *testing.T) {
 		{"mail", mailCmd.PersistentFlags(), "127.0.0.1:8081"},
 		{"cluster", clusterCmd.PersistentFlags(), "127.0.0.1:8081"},
 		{"address", addressCmd.PersistentFlags(), "127.0.0.1:8081"},
+		{"user list", userListCmd.Flags(), "127.0.0.1:8081"},
+		{"domain list", domainListCmd.Flags(), "127.0.0.1:8081"},
+		{"alias list", aliasListCmd.Flags(), "127.0.0.1:8081"},
 		{"user create", userCreateCmd.Flags(), "http://127.0.0.1:8081"},
 	}
 	for _, tc := range cases {

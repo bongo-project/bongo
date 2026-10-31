@@ -1880,6 +1880,18 @@ func (a *Agent) Run(ctx context.Context) error {
 			cr.Post("/internal/addresses/repair", addrRepairH.Repair)
 		})
 
+		// Read-only directory listings for the CLI (user, domain and address
+		// alias lists). Control listener only, behind the same internal gate;
+		// they read Pebble and never write. "/internal/" here is the path
+		// prefix of the loopback control router, not the public one.
+		cr.Group(func(cr chi.Router) {
+			cr.Use(middleware.RequireInternalAuth(sessionSecret))
+			dirH := handlers.NewDirectoryListHandler(a.Store, a.logger)
+			cr.Get("/internal/users", dirH.Users)
+			cr.Get("/internal/domains", dirH.Domains)
+			cr.Get("/internal/aliases", dirH.AddressAliases)
+		})
+
 		// Forced raft snapshot. Same private/internal gate: this drives the
 		// leader's state machine and truncates the raft log.
 		cr.Group(func(cr chi.Router) {

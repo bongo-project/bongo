@@ -90,6 +90,10 @@ func internalRouteTable() []internalRoute {
 		{http.MethodGet, "/internal/addresses/orphaned", ctl, false, false},
 		{http.MethodPost, "/internal/addresses/repair", ctl, false, false},
 		{http.MethodGet, "/internal/mail/dangling", ctl, false, false},
+		{http.MethodGet, "/internal/users", ctl, false, false},
+		{http.MethodGet, "/internal/users?domain=example.com", ctl, false, false},
+		{http.MethodGet, "/internal/domains", ctl, false, false},
+		{http.MethodGet, "/internal/aliases", ctl, false, false},
 		{http.MethodPost, "/internal/mail/purge-dangling", ctl, false, false},
 		// Peer routes of a node without peers: no peer listener exists, so
 		// they live on the control listener.
