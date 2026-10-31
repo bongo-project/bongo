@@ -797,3 +797,6 @@ Found while implementing (2026-10-31):
   answer the same sender once during the interval (US-004).
 - `queue.bounce_copy_postmaster` is a new HCL key an older binary refuses;
   set it only after every node is upgraded (US-002).
+- Release notes: an older node ignores `FilterRule.match`, so it evaluates
+  an any-rule as all, and saving the rule through an older node turns it
+  back into all (US-006).

@@ -39,7 +39,7 @@ func (e *Engine) Evaluate(rules []*bongov1.FilterRule, meta *bongov1.MailMeta, h
 		if !rule.Enabled {
 			continue
 		}
-		if matchAllConditions(rule.Conditions, meta, headers, bodyText) {
+		if matchConditions(rule, meta, headers, bodyText) {
 			if acts := Actions(rule); len(acts) > 0 {
 				return acts[0]
 			}
@@ -58,7 +58,7 @@ func (e *Engine) MatchingRules(rules []*bongov1.FilterRule, meta *bongov1.MailMe
 		if !rule.Enabled {
 			continue
 		}
-		if !matchAllConditions(rule.Conditions, meta, headers, bodyText) {
+		if !matchConditions(rule, meta, headers, bodyText) {
 			continue
 		}
 		matched = append(matched, rule)
@@ -69,16 +69,29 @@ func (e *Engine) MatchingRules(rules []*bongov1.FilterRule, meta *bongov1.MailMe
 	return matched
 }
 
-func matchAllConditions(conditions []*bongov1.Condition, meta *bongov1.MailMeta, headers map[string]string, bodyText string) bool {
-	if len(conditions) == 0 {
+// MatchAny is the FilterRule.Match value for "any condition". Every other
+// stored value, including "", means all conditions: an unknown value must
+// never widen what a rule fires on. Only the save path refuses unknown values.
+const MatchAny = "any"
+
+// matchConditions reports whether a rule's conditions hold for a message. Both
+// Evaluate (the rule tester) and MatchingRules (delivery) use it. A rule with
+// no conditions never matches, in either mode.
+func matchConditions(rule *bongov1.FilterRule, meta *bongov1.MailMeta, headers map[string]string, bodyText string) bool {
+	if len(rule.Conditions) == 0 {
 		return false
 	}
-	for _, cond := range conditions {
-		if !matchCondition(cond, meta, headers, bodyText) {
+	anyOf := rule.Match == MatchAny
+	for _, cond := range rule.Conditions {
+		ok := matchCondition(cond, meta, headers, bodyText)
+		if anyOf && ok {
+			return true
+		}
+		if !anyOf && !ok {
 			return false
 		}
 	}
-	return true
+	return !anyOf
 }
 
 func matchCondition(cond *bongov1.Condition, meta *bongov1.MailMeta, headers map[string]string, bodyText string) bool {
