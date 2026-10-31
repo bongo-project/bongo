@@ -900,7 +900,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Metadata != nil {
 		sharedSys = a.Metadata.System
 	}
-	sharedResolver := store.NewRecipientResolver(a.AddressStore, a.Store, sharedSys)
+	sharedResolver := a.newRecipientResolver(sharedSys)
 
 	// Forwarded headers (X-Forwarded-For, X-Forwarded-Proto) are believed only
 	// from the configured proxies.
@@ -1910,6 +1910,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// rejected, so the mail did not bounce either. Reporting only; the operator
 	// decides whether to recreate them.
 	a.reportMixedCaseAddresses()
+
+	// Warn about hosted domains where postmaster@ and abuse@ have no target.
+	a.reportPostmasterTargets()
 
 	// Revoke verified identity records that collide with another account's
 	// address or alias, and report the rest. Must run before
@@ -3128,6 +3131,60 @@ func (a *Agent) indexConfiguredDomain(domain string) {
 	}
 }
 
+// newRecipientResolver builds a resolver wired with smtp.postmaster_account.
+func (a *Agent) newRecipientResolver(sys *store.SystemIndex) *store.RecipientResolver {
+	r := store.NewRecipientResolver(a.AddressStore, a.Store, sys)
+	if a.Config != nil {
+		r.SetPostmasterAccount(a.Config.SMTP.PostmasterAccount)
+	}
+	return r
+}
+
+// maxReportedDomains bounds the domain list in the postmaster warning.
+const maxReportedDomains = 20
+
+// reportPostmasterTargets warns once about hosted, enabled domains on which
+// postmaster@ and abuse@ resolve to nobody, and about a configured
+// smtp.postmaster_account that matches no account yet. Read-only, non-fatal,
+// safe on any node.
+func (a *Agent) reportPostmasterTargets() {
+	if a.Store == nil {
+		return
+	}
+	var sys *store.SystemIndex
+	if a.Metadata != nil {
+		sys = a.Metadata.System
+	}
+	logPostmasterReport(a.newRecipientResolver(sys), a.logger)
+}
+
+// logPostmasterReport writes the warnings described on reportPostmasterTargets.
+func logPostmasterReport(r *store.RecipientResolver, logger *slog.Logger) {
+	if acct := r.PostmasterAccount(); acct != "" {
+		if _, err := r.ResolveAccount(acct); err != nil {
+			logger.Warn("startup: smtp.postmaster_account matches no enabled account",
+				"account", acct,
+				"note", "accounts may be created after startup; postmaster@ and abuse@ use the domain owner until then")
+		}
+	}
+	missing, err := r.DomainsWithoutPostmaster()
+	if err != nil {
+		logger.Warn("startup: postmaster target report failed", "error", err)
+		return
+	}
+	if len(missing) == 0 {
+		return
+	}
+	shown := missing
+	if len(shown) > maxReportedDomains {
+		shown = shown[:maxReportedDomains]
+	}
+	logger.Warn("startup: domains with no postmaster@ and abuse@ target; mail to them is refused",
+		"count", len(missing),
+		"domains", shown,
+		"fix", "give each domain an owner, or set smtp.postmaster_account")
+}
+
 // reportMixedCaseAddresses logs any alias or account address stored with
 // upper-case characters. Read-only and safe on every role: it needs nothing but
 // Pebble, so unlike migrateAddressIndex it is NOT leader-gated — a follower or
@@ -3317,7 +3374,7 @@ func (a *Agent) migrateForwardTargets() {
 	} else if done {
 		return
 	}
-	resolver := store.NewRecipientResolver(a.AddressStore, a.Store, sys)
+	resolver := a.newRecipientResolver(sys)
 	n, err := ft.MigrateForwardTargets(a.hostedForwardTarget(resolver))
 	if err != nil {
 		a.logger.Warn("startup: forward target migration failed", "written", n, "error", err)

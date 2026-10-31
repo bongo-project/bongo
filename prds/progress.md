@@ -1472,3 +1472,9 @@ PATTERN: [testing] Draw all the free ports a test needs from listeners held open
 PATTERN: [css] An alias must point at a token defined in every theme; test both blocks.
 PATTERN: [ui] Foundation work must not restyle screens; keep fallback-only properties undefined with an owner-tagged allowlist until their screen story.
 PATTERN: [workers] A background loop needs its interval as a field so a test can prove it stops on cancel and repeats.
+
+## 2026-10-31: Phase 28 batch 1 (28.1, 28.3, 28.5)
+
+- 28.1 postmaster@ and abuse@ resolver tier. Plan review returned REVISE: go-smtp v0.24.0 refuses a bare `RCPT TO:<postmaster>` at the parser, so that criterion is met in the resolver only; the PRD was amended and the limitation logged in 8.2 and SECURITY.md. Review MINOR: the orchestrator added a guard so a domain containing "/" cannot read a /system/domain/{d}/ sub-key (test red first). The owner path is tested in the resolver and SMTP RCPT tests, not end to end.
+PATTERN: [store] A resolver that builds Pebble keys from an address domain must refuse "/" in the domain, or a crafted address reads a sub-key such as /system/domain/{d}/owner.
+PATTERN: [smtp] Check what the protocol library's parser accepts before writing an acceptance criterion for an RFC edge case; go-smtp rejects some RFC-valid forms before the backend sees them.

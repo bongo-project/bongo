@@ -222,6 +222,14 @@ smtp {
   # on SRS: a node on an older binary forwards with the original sender.
   # srs_max_age_days = 21
 
+  # postmaster@ and abuse@ resolve on every hosted domain: to the domain owner,
+  # else to this account (a full address of a local account). Empty means no
+  # fallback; a domain with neither refuses the mail with 550 5.1.1, and startup
+  # logs one warning listing those domains. The account may be created after
+  # startup. Restart class. Set it only after every node runs this version: an
+  # older binary does not know the key.
+  # postmaster_account = "admin@example.org"
+
   # Anyone holding a valid SRS address can send null-sender mail to it for the
   # whole window above, and each such bounce is relayed from this host unsigned.
   # These caps bound that. srs_bounces_per_address_per_hour limits bounces to

@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -239,6 +240,10 @@ type SMTPConfig struct {
 	// stays reversible, so a bounce arriving later than this is refused.
 	// Default 21; valid range 1-365, and 0 means the default.
 	SRSMaxAgeDays int `hcl:"srs_max_age_days,optional" mapstructure:"srs_max_age_days"`
+	// PostmasterAccount is the full address of a local account that receives
+	// postmaster@ and abuse@ on any hosted domain with no live owner. Empty
+	// means no fallback. The account may be created after startup.
+	PostmasterAccount string `hcl:"postmaster_account,optional" mapstructure:"postmaster_account"`
 	// SRSBouncesPerAddressPerHour caps bounces relayed through SRS to one
 	// original sender address per hour, counted in memory per node. Over the
 	// cap the bounce is dropped. Default 5; 0 disables.
@@ -923,6 +928,9 @@ func (c *Config) Validate() error {
 	if c.SMTP.SRSMaxAgeDays < 0 || c.SMTP.SRSMaxAgeDays > 365 {
 		return fmt.Errorf("smtp.srs_max_age_days: %d is out of range (valid: 1-365; 0 means the default, 21)", c.SMTP.SRSMaxAgeDays)
 	}
+	if err := validatePostmasterAccount(c.SMTP.PostmasterAccount); err != nil {
+		return err
+	}
 	if c.SMTP.SRSBouncesPerAddressPerHour < 0 {
 		return fmt.Errorf("smtp.srs_bounces_per_address_per_hour: %d must not be negative (0 disables)", c.SMTP.SRSBouncesPerAddressPerHour)
 	}
@@ -1538,4 +1546,37 @@ func IsLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// validatePostmasterAccount accepts "" or a plain addr-spec: no display name,
+// no control characters, exactly one "@" and a non-empty domain.
+func validatePostmasterAccount(v string) error {
+	if v == "" {
+		return nil
+	}
+	bad := func(why string) error {
+		return fmt.Errorf("smtp.postmaster_account: %q is not a valid address (%s)", v, why)
+	}
+	for _, r := range v {
+		if r < 0x20 || r == 0x7f {
+			return bad("control character")
+		}
+	}
+	if v != strings.TrimSpace(v) {
+		return bad("surrounding whitespace")
+	}
+	if strings.Count(v, "@") != 1 {
+		return bad("needs exactly one @")
+	}
+	parsed, err := mail.ParseAddress(v)
+	if err != nil {
+		return bad(err.Error())
+	}
+	if parsed.Name != "" || parsed.Address != v {
+		return bad("use the bare address")
+	}
+	if _, domain, _ := strings.Cut(v, "@"); domain == "" {
+		return bad("empty domain")
+	}
+	return nil
 }

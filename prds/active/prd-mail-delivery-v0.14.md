@@ -102,8 +102,17 @@ nothing.
 - [ ] The tier wins over the domain's catch-all.
 - [ ] `postmaster@` on a domain that is not hosted is not resolved (relay
       rules are unchanged).
-- [ ] RCPT `<postmaster>` with no domain (RFC 5321 allows it) resolves to
-      `smtp.postmaster_account`, or 550 if unset.
+- [ ] The resolver maps a bare `postmaster` (no domain) to
+      `smtp.postmaster_account`, or to a not-local error if unset (unit test).
+      Over SMTP, go-smtp v0.24.0 refuses `RCPT TO:<postmaster>` with
+      `501 5.5.2` at the parser, before Bongo sees it; recorded in
+      SECURITY.md and in 8.2 as an upstream candidate. (Amended 2026-10-31
+      by the 28.1 plan review.)
+- [ ] The tier applies only when it has a live target: the owner first,
+      then `smtp.postmaster_account`. A disabled or deleted owner falls
+      through to the account. With no live target, resolution continues to
+      the catch-all, and gives 550 5.1.1 only when there is none.
+      `ResolveAccount` (strict) never uses the tier. (Added 2026-10-31.)
 - [ ] `Config.Validate` refuses a `smtp.postmaster_account` that is not a
       syntactically valid address; a valid address with no account logs a
       warning at startup rather than failing (accounts are created after
@@ -155,17 +164,31 @@ that. A third listener must be marked as submission explicitly.
 - [ ] A new key `smtp.submissions_port`, default 465, dev port 2465; 0
       disables the listener. It is included in the port-collision check
       (`internal/config/ports.go:108-161`) and is a restart key.
-- [ ] The listener stacks `LimitListener`, per-IP limit, PROXY protocol (when
-      `smtp.proxy_protocol` is on) and then TLS, in that order, and uses the
-      submission TLS configuration (TLS 1.2 floor).
+- [ ] The listener stacks `LimitListener`, PROXY protocol (when
+      `smtp.proxy_protocol` is on, honoured only from
+      `server.trusted_proxies`) and then TLS, matching the 587 listener, and
+      uses the submission TLS configuration (TLS 1.2 floor). The per-IP cap
+      is enforced per session in `Backend.NewSession`, as on 25 and 587,
+      after PROXY has supplied the real client IP. (Amended 2026-10-31 by the
+      28.3 plan review: a listener-level per-IP limit before PROXY would
+      count the proxy's address.)
+- [ ] The 465 listener uses the `smtp.tls` certificate; in dev a generated
+      self-signed certificate. In other roles with no `smtp.tls`
+      certificate it is not started and one warning is logged; it never
+      serves plaintext. A configured certificate that fails to load fails
+      startup. (Added 2026-10-31.)
+- [ ] Submission status on 465 is set per listener and does not depend on
+      the local port. (Added 2026-10-31.)
 - [ ] A session on the 465 listener is a submission session: unauthenticated
       MAIL gets 530, AUTH PLAIN and LOGIN are offered immediately, send-as
       and rate limits apply exactly as on 587 (the same tests run against
       both listeners).
 - [ ] STARTTLS is not offered on 465.
-- [ ] Autoconfig (Mozilla), Autodiscover and the Apple profile list 465 with
-      SSL first and 587 with STARTTLS second, using the effective ports
-      (dev ports in dev mode).
+- [ ] Mozilla autoconfig and Autodiscover list 465 (SSL) first and 587
+      (STARTTLS) second, using the effective ports (dev ports in dev mode).
+      The Apple profile carries one outgoing server: 465 with SSL when the
+      465 listener is enabled, 587 otherwise. When 465 is not served it is
+      omitted everywhere. (Amended 2026-10-31.)
 - [ ] The DNS guide adds `_submissions._tcp` 465 next to `_submission._tcp`.
 - [ ] A bind failure on 465 fails startup before ready.
 
@@ -742,3 +765,25 @@ Other candidates noted while checking the code:
   count.
 - The autoconfig handler advertises raw ports, not dev ports (already noted
   in the v0.12 PRD 8.2); US-003 fixes it for the ports it touches.
+
+Found while implementing (2026-10-31):
+
+- go-smtp v0.24.0 refuses `RCPT TO:<postmaster>` (no domain) with
+  `501 5.5.2` in its parser, so RFC 5321's bare postmaster cannot reach
+  Bongo. The resolver handles it; an upstream change is needed (US-001).
+- A forward to `postmaster@` or `abuse@` on a hosted domain now counts as a
+  hosted target and skips forward verification, the same trust as any
+  hosted account (US-001).
+- Release notes: an older binary cannot decode `smtp.postmaster_account`
+  or `smtp.submissions_port`; set them only after every node is upgraded.
+  With 465 on by default, a configured `smtp.tls` certificate that fails to
+  load now fails startup instead of a warning (US-003).
+- The spam-stays-in-Junk rule (US-005) holds in the default stage order
+  only. If an operator orders the rules stage before antispam, the builtin
+  backend overwrites a rule's target with Junk. Stage order is not
+  validated.
+- US-005 combinations to note in the release: delete together with copy or
+  forward keeps the copies and forwards and skips the normal destination;
+  copies of spam are suppressed outside Junk and Trash. During a mixed
+  window an old node treats `[copy X, flag]` as a move to X, and an old
+  node's rule form drops actions after the first.

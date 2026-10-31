@@ -93,6 +93,13 @@ restriction on `/metrics`.
 reflected, escaped, on many pages, so a crafted link can show misleading text but
 cannot inject markup.
 
+**`RCPT TO:<postmaster>` without a domain is refused by the SMTP library.** RFC 5321
+section 4.5.1 allows the bare form. go-smtp v0.24.0 requires an `@` in the path
+and answers `501 5.5.2` before Bongo sees the command. The recipient resolver
+maps a bare `postmaster` to `smtp.postmaster_account`, but no SMTP client can
+reach that code today. `postmaster@domain` and `abuse@domain` work on every
+hosted domain.
+
 **Shutdown waits up to 30 seconds for in-flight mail.** On shutdown the server
 waits for pipeline messages and store-touching background workers to finish
 before stopping Raft and closing storage. If a message is still running after the

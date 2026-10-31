@@ -215,6 +215,7 @@ TLS as well as raft transport.
 | `smtp.hostname` | `smtp/server.go:645` (banner and `Received`), `agent.go:571,588,697,1092,1235,1251,2416` (autoconfig, authserv-id, HELO, bounce domain) | ctor; copied into at least six components | RESTART |
 | `smtp.proxy_protocol` | `smtp/server.go:706,734-735` | ctor, wraps listeners | RESTART |
 | `smtp.srs_max_age_days` | `agent.go` `initSRS` | ctor: baked into the SRS codec in `Run` | RESTART |
+| `smtp.postmaster_account` | `agent.go` `newRecipientResolver` | ctor: `RecipientResolver.SetPostmasterAccount` before the resolver is shared; also covers `abuse@` | RESTART |
 | `smtp.srs_bounces_per_address_per_hour`, `smtp.srs_bounces_per_hour` | `agent.go` `buildPipelineStages` | ctor: `mail.NewRateLimiter` handed to `SetSRSBounceLimiters` | RESTART |
 | `smtp.trusted_networks` | `agent.go:1169-1173` (server role) and `agent.go:2747-2751` (agent role, inert: gRPC `DepositMessage` strips `Trusted`, comment at `:2742`); `smtp/server.go:76,131,139,149` | ctor: parsed once, handed to `Backend.SetTrustedNetworks`; stored in plain slice `b.trustedNets`, assigned unlocked at `:131`, read per connection in `isTrustedSource` (`:139,149`) | HOT-1 |
 | `smtp.tls.cert_file`, `.key_file` | `smtp/server.go:675-676` | ctor; loaded once, load failure only warns | RESTART |
