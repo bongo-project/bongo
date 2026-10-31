@@ -7,8 +7,8 @@ The feature-parity audit of the original Bongo
 mail-delivery and filtering features that this reimplementation lacks or only partly has.
 This PRD fixes the scope of v0.14.0 "Mail delivery and rules": the RFC 5321
 `postmaster` mailbox, implicit-TLS submission, vacation replies, richer
-rules, domain aliasing, DSN, queue and disk-space controls, three mail views
-and Reply to List, Archive, a `sendmail` command for programs on the host, and
+rules, domain aliasing, DSN, queue and disk-space controls, Reply to List,
+Archive, a `sendmail` command for programs on the host, and
 CLI commands that list users, domains and aliases.
 
 Every story was checked against `main` at `6725448` on 2026-10-26. Where the
@@ -23,15 +23,18 @@ change under review introduced it.
 |-------|-------|---------|
 | A | Postmaster and submission | US-001 to US-003 |
 | B | Vacation and rules | US-004 to US-007 |
-| C | Queue, DSN and storage | US-008 to US-013 |
-| D | Web mail views | US-014 to US-016 |
+| C | Queue, DSN and storage | US-008 to US-010, US-012 |
+| D | Web mail views | US-014, US-015 |
 | E | Local submission and operator CLI | US-017, US-018 |
 
 TASKS rows are assigned by `norman import`. Phase A merges first: US-002
 needs US-001, and US-017 prefers US-003. Phase B's US-005 lands before US-006
-and US-007, which extend the same proto and form. In Phase C, US-010 lands
-before US-011, and US-008 before US-010 (the delay warning uses the new
-queue timing).
+and US-007, which extend the same proto and form. In Phase C, US-008 lands
+before US-010 (the delay warning uses the new queue timing).
+
+Story numbers are kept from the first draft. US-011 (DSN relay) and US-016
+(mail views) moved to v0.15, where they are US-018 and US-019; US-013
+(over-quota text) is deferred (section 8.1, decision 8).
 
 ### Size key
 
@@ -54,9 +57,10 @@ cross-cutting change. This PRD has no L story.
   (RFC 3461, RFC 3464), including delay warnings.
 - The server refuses new work with a temporary error before its disk fills,
   and the operator can tune queue lifetime, retry interval and concurrency.
-- Users can archive and unarchive, reply to a mailing list, and see views of
-  mail sent to them, from their contacts and from mailing lists.
+- Users can archive and unarchive, and reply to a mailing list or to the
+  Reply-To address.
 - Programs on the host can send mail through a `sendmail`-compatible command.
+- Operators can list users, domains and aliases from the command line.
 
 ## 3. User Stories
 
@@ -414,22 +418,6 @@ reports exist; there are no delay or success reports.
 **Security:** a success report to a forged sender is backscatter; the rule
 above applies to every report type, with a test per type.
 
-### US-011: DSN parameters relayed onward
-**Source:** audit #6. **Size:** M. **Needs:** US-010.
-
-**What exists:** `Relay.Deliver` (`internal/smtp/relay.go:90`) uses the
-standard library's `net/smtp`, whose `Mail` and `Rcpt` cannot carry DSN or
-SIZE parameters.
-
-**Acceptance Criteria:**
-- [ ] The relay moves to the go-smtp client. STARTTLS, MTA-STS, DANE,
-      timeouts and error mapping are unchanged (the existing relay tests
-      pass unmodified).
-- [ ] When the remote advertises `DSN`, RET, ENVID, NOTIFY and ORCPT are
-      passed on; when it does not and NOTIFY includes SUCCESS, an
-      `Action: relayed` report is sent.
-- [ ] `SIZE=` is sent when the remote advertises SIZE.
-
 ### US-012: Domain aliasing
 **Source:** audit #35. **Size:** M.
 
@@ -462,27 +450,9 @@ documented in the handler instead of adding a new command type.
 - [ ] The rewrite is applied once; quota is charged to the target domain's
       owner as for any delivery to alice.
 
-### US-013: Configurable over-quota refusal text
-**Source:** audit #27. **Size:** S.
-
-**What exists:** RCPT answers a fixed `552 5.2.2 Mailbox quota exceeded`
-(`internal/smtp/server.go:558-566`). The audit omits that this is the domain
-quota; per-user `UserProfile.quota_bytes` is not enforced
-(`internal/web/handlers/quota.go:31`).
-
-**Acceptance Criteria:**
-- [ ] A key `smtp.quota_message` (default the current text) and an optional
-      per-domain override (`DomainQuota.over_quota_message`, field 3) set in
-      the domain quota form.
-- [ ] Both are validated: printable ASCII, at most 200 characters, no CR or
-      LF; anything else is refused with the reason.
-- [ ] The 552 reply carries the per-domain text when set, else the global
-      one; the enhanced status code stays 5.2.2.
-
 ### Phase D: Web mail views
 
-Release note: Archive and Unarchive, Reply to List, and the "To me", "From
-my contacts" and "Mailing lists" views.
+Release note: Archive and Unarchive, and Reply to List.
 
 ### US-014: Archive and Unarchive
 **Source:** audit #87 (corrected). **Size:** S.
@@ -505,8 +475,8 @@ Archive icon button only.
 - [ ] IMAP LIST returns `\Archive` on the Archive mailbox (RFC 6154).
 - [ ] The keyboard shortcut `e` archives the open message (and is listed in
       the shortcut help).
-- [ ] The swipe comment is corrected to say Trash; whether swipe should
-      archive is open question 4.
+- [ ] The mobile swipe archives the message (section 8.1, decision 9);
+      in the Archive mailbox it unarchives. The swipe comment matches.
 
 ### US-015: Reply to List, and replies that respect Reply-To
 **Source:** audit #90. **Size:** S.
@@ -528,33 +498,6 @@ user's primary address, not aliases or identities. Nothing parses
       that address only. `List-Post: NO` shows no button.
 - [ ] A `List-Post` with any other scheme, or an invalid address, shows no
       button.
-
-### US-016: "To me", "From my contacts" and "Mailing lists" views
-**Source:** audit #89. **Size:** M. **Needs:** US-015.
-
-**What exists:** none of the three views. The SQLite `maildocument` table
-has a `list_id` column (`internal/store/metadata.go:106`) that no insert
-fills. The existing virtual views (`unread`, `starred`, `all-mail`,
-`store.VirtualMailboxes`, `mailbox.go:898-958`) are Pebble scans over every
-mailbox, which does not scale to header-based views.
-
-**Acceptance Criteria:**
-- [ ] The derived index fills `list_id` and gains `to_me` (any of the user's
-      addresses in To or Cc at delivery) and the normalised sender address;
-      existing indexes are filled by the existing rebuild path, resumable
-      and rate-limited.
-- [ ] Views `/mail/to-me`, `/mail/from-contacts`, `/mail/lists` and
-      `/mail/lists/{list-id}` list messages from INBOX and user folders,
-      excluding Junk, Trash, Sent and Drafts, newest first, paginated like a
-      mailbox.
-- [ ] "From my contacts" matches the normalised sender against the user's
-      contact addresses; adding a contact changes the view without a
-      re-index.
-- [ ] `/mail/lists` groups by List-Id with the list name and count; each
-      group links to its list view.
-- [ ] Actions in a view act on the underlying message in its real mailbox.
-- [ ] A user can only see their own messages (a test with two users sharing
-      a list).
 
 ### Phase E: Local submission and operator CLI
 
@@ -643,8 +586,8 @@ by `web.session_secret`, as `user create`, `address orphans` and
 
 ## 4. Functional Requirements
 
-FR-1 to FR-18 are the acceptance criteria of US-001 to US-018. In every
-story:
+FR-1 to FR-18 are the acceptance criteria of the stories in section 3
+(US-011, US-013 and US-016 are not in this release). In every story:
 
 - Every new cookie-authenticated mutating route sits behind the existing
   CSRF middleware and same-origin check.
@@ -698,7 +641,6 @@ The server is internet-facing. In addition to section 4:
 - Multi-key writes: US-012 documents its write order and partial-failure
   result. US-005's migration is idempotent and resumable.
 - All proto changes are additive fields or enum values.
-- US-016 adds derived SQLite columns only; they are rebuildable.
 
 ### 6.3 Mixed-version clusters
 
@@ -728,18 +670,7 @@ checked against production's free space before deploying.
 
 ## 8. Open Questions
 
-1. US-017: the submission-client design (credentials in a 0600 file) is
-   proposed, not decided. Confirm, or choose the signed control route and
-   accept that the session secret must be readable by the sending program.
-2. US-001: should `abuse@` (RFC 2142) resolve the same way as `postmaster@`?
-3. US-003: port 465 is on by default. If production cannot publish 465 at
-   upgrade time, should the default be 0 instead?
-4. US-014: should the mobile swipe archive rather than delete?
-5. US-008: the default lifetime moves from about 17 hours (accidental) to 5
-   days. Confirm 5 days, or choose another value.
-6. US-005: existing rules keep first-match behaviour through the migration;
-   new rules run until a stop. Confirm that new rules should default to
-   `stop_processing = false`.
+None. The questions raised while drafting are answered in 8.1.
 
 ### 8.1 Decisions
 
@@ -763,6 +694,11 @@ checked against production's free space before deploying.
    and US-011 (DSN relay) move to v0.15, and US-013 (custom over-quota
    text) is deferred. The defects in rules, queue lifetime and greylisting
    found by this PRD are fixed first.
+9. (operator, 2026-10-31) The mobile swipe archives rather than deletes
+   (US-014).
+10. (operator, 2026-10-31) US-018, CLI listing of users, domains and
+    aliases, is added after production operations found no way to list
+    them.
 
 ### 8.2 Candidates for the next release
 
@@ -780,17 +716,22 @@ Audit corrections found while writing this PRD (2026-10-26):
 - #6 is understated: `RET`/`ENVID`/`NOTIFY` are refused outright today, and
   the relay cannot pass DSN or SIZE parameters.
 
-Release size: 17 stories (10 S, 7 M, no L) is above the ~15-story guide. Proposed moves if the operator
-wants a smaller release:
+Release size: the first draft had 17 stories (10 S, 7 M, no L), above the
+~15-story guide. The moves below were accepted (8.1, decision 8) and US-018
+was added, so the release has 15 stories (10 S, 5 M). Done:
 
-| Story | Size | Proposal |
-|-------|------|----------|
-| US-016 views | M | Move to v0.15 next to the Summary page (v0.15 US for #88), which needs the same "to me" index. |
-| US-011 DSN relay | M | Move to v0.15 or later; US-010 stands without it. |
-| US-013 quota text | S | Low value; drop or defer. |
+| Story | Size | Outcome |
+|-------|------|---------|
+| US-016 views | M | Moved to v0.15 as US-019, next to the Summary page that uses its "to me" index. |
+| US-011 DSN relay | M | Moved to v0.15 as US-018; US-010 stands without it. |
+| US-013 quota text | S | Deferred; listed under other candidates below. |
 
 Other candidates noted while checking the code:
 
+- Configurable over-quota refusal text (former US-013, deferred; audit
+  #27). RCPT answers a fixed `552 5.2.2 Mailbox quota exceeded`. Proposed
+  then: a global `smtp.quota_message` and a per-domain override, printable
+  ASCII, at most 200 characters, no CR or LF, status code kept at 5.2.2.
 - Per-user storage quota enforcement and a per-user usage figure (also
   needed by v0.16 IMAP QUOTA).
 - A DSN for an authenticated forward whose sender was not SRS-rewritten is
