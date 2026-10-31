@@ -116,7 +116,7 @@ var restartKeys = []string{
 	"pipeline.forward_max_per_hour", "pipeline.forward_verify_max_per_hour",
 	"pipeline.stage.name", "pipeline.stage.enabled", "pipeline.stage.backend",
 	"queue.poll_interval", "queue.bounce_copy_postmaster",
-	"queue.max_lifetime", "queue.max_retry_interval", "queue.concurrency",
+	"queue.max_lifetime", "queue.max_retry_interval", "queue.delay_warning_after", "queue.concurrency",
 	"telemetry.log.format", "telemetry.log.file", "telemetry.log.max_size_mb",
 	"telemetry.log.max_backups", "telemetry.log.max_age_days", "telemetry.log.compress",
 	"agent_server.address",

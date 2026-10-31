@@ -602,7 +602,7 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
-  // Combined component for message list: merges messageSelect + swipeHandler.
+  // Combined component for message list: row selection and mobile swipe.
   // Used as x-data="messageList" (Alpine.data registered names cannot be
   // called as functions inside inline x-data expressions).
   Alpine.data('messageList', () => ({
@@ -733,7 +733,7 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    // swipeHandler state
+    // Swipe state (touch devices only)
     startX: 0,
     startY: 0,
     currentX: 0,
@@ -769,12 +769,14 @@ document.addEventListener('alpine:init', () => {
       }
       var deltaX = this.currentX;
       if (deltaX < -60) {
+        // Swipe left: archive (move to Archive); in Archive, unarchive (move
+        // to INBOX). The list reloads only when the move succeeded.
         finalizeSwipeState(this.swipeTarget, 'left');
-        var params = new URLSearchParams();
-        params.set('destination', 'Trash');
-        fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/move', {
-          method: 'POST', body: params
-        }).then(function() {
+        var verb = mailbox === 'Archive' ? 'unarchive' : 'archive';
+        fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/' + verb, {
+          method: 'POST'
+        }).then(function(resp) {
+          if (!resp.ok) return;
           htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
         }).catch(function() {});
       } else if (deltaX > 60) {
@@ -936,78 +938,6 @@ document.addEventListener('alpine:init', () => {
         this.eventSource.close();
         this.eventSource = null;
       }
-    }
-  }));
-
-  // Mobile swipe gestures (touch devices only)
-  Alpine.data('swipeHandler', () => ({
-    startX: 0,
-    startY: 0,
-    currentX: 0,
-    swiping: false,
-    swipeTarget: null,
-
-    start(event, uid) {
-      if (!window.matchMedia('(pointer: coarse)').matches) return;
-      const touch = event.touches[0];
-      this.startX = touch.clientX;
-      this.startY = touch.clientY;
-      this.currentX = 0;
-      this.swiping = false;
-      this.swipeTarget = event.currentTarget;
-    },
-
-    move(event) {
-      if (!this.swipeTarget) return;
-      const touch = event.touches[0];
-      const deltaX = touch.clientX - this.startX;
-      const deltaY = touch.clientY - this.startY;
-      if (Math.abs(deltaX) > 20 && Math.abs(deltaY) < 30) {
-        this.swiping = true;
-        this.currentX = deltaX;
-        setSwipeDragState(this.swipeTarget, deltaX);
-      }
-    },
-
-    end(event, uid, mailbox) {
-      if (!this.swipeTarget || !this.swiping) {
-        this.reset();
-        return;
-      }
-      const deltaX = this.currentX;
-      if (deltaX < -60) {
-        // Swipe left: archive (move to Trash)
-        finalizeSwipeState(this.swipeTarget, 'left');
-        const params = new URLSearchParams();
-        params.set('destination', 'Trash');
-        fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/move', {
-          method: 'POST', body: params
-        }).then(() => {
-          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
-        }).catch(() => {});
-      } else if (deltaX > 60) {
-        // Swipe right: delete
-        finalizeSwipeState(this.swipeTarget, 'right');
-        const params = new URLSearchParams();
-        params.set('action', 'delete');
-        params.append('uids', uid.toString());
-        fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
-          method: 'POST', body: params
-        }).then(() => {
-          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
-        }).catch(() => {});
-      } else {
-        this.reset();
-      }
-    },
-
-    reset() {
-      if (this.swipeTarget) {
-        resetSwipeState(this.swipeTarget);
-      }
-      this.swipeTarget = null;
-      this.swiping = false;
-      this.currentX = 0;
     }
   }));
 
@@ -2176,6 +2106,41 @@ function deleteRow(row, idx) {
     .catch(() => {});
 }
 
+// archiveRow archives a message from the list (unarchives it when the list is
+// Archive), reloads the list and highlights the message that took its place.
+function archiveRow(row, idx) {
+  const mailbox = currentMailbox();
+  const uid = row.dataset.uid;
+  if (!mailbox || !uid) return;
+  const verb = mailbox === 'Archive' ? 'unarchive' : 'archive';
+  const url = '/mail/' + encodeURIComponent(mailbox);
+  fetch(url + '/' + uid + '/' + verb, { method: 'POST' })
+    .then(resp => {
+      if (!resp.ok) return;
+      return htmx.ajax('GET', url, '#main-content').then(() => {
+        const rows = document.querySelectorAll('.msg-list .msg-row[data-uid]');
+        if (rows.length > 0) moveKeyboardFocus(rows[Math.min(idx, rows.length - 1)]);
+      });
+    })
+    .catch(() => {});
+}
+
+// archiveOpenMessage clicks the archive (or unarchive) button of the message
+// being read, in the full view or the reading pane, so htmx, the CSRF header
+// and the redirect are reused. A hidden reading pane can still hold a message
+// loaded earlier, so only a visible button counts; otherwise the shortcut
+// falls through to the focused row. It reports whether a button was clicked.
+function archiveOpenMessage() {
+  const btns = document.querySelectorAll('#main-content button[data-action="archive"], #main-content button[data-action="unarchive"]');
+  for (const btn of btns) {
+    if (btn.offsetParent !== null) {
+      btn.click();
+      return true;
+    }
+  }
+  return false;
+}
+
 // Keyboard shortcut help modal
 var shortcutModalOpen = false;
 
@@ -2196,6 +2161,7 @@ function toggleShortcutModal() {
           '<dt><kbd>Enter</kbd></dt><dd>' + i18n('js.shortcutOpenMessage') + '</dd>' +
           '<dt><kbd>r</kbd></dt><dd>' + i18n('js.shortcutReply') + '</dd>' +
           '<dt><kbd>d</kbd></dt><dd>' + i18n('js.shortcutDelete') + '</dd>' +
+          '<dt><kbd>e</kbd></dt><dd>' + i18n('js.shortcutArchive') + '</dd>' +
           '<dt><kbd>s</kbd></dt><dd>' + i18n('js.shortcutToggleStar') + '</dd>' +
           '<dt><kbd>/</kbd></dt><dd>' + i18n('js.shortcutFocusSearch') + '</dd>' +
           '<dt><kbd>Ctrl/\u2318 K</kbd></dt><dd>' + i18n('js.shortcutFocusSearchK') + '</dd>' +
@@ -2313,6 +2279,14 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
+  // e: archive the open message. This sits before the empty-list return
+  // because the full message view has no list rows. With no message open it
+  // falls through to the keyboard-focused row below.
+  if (e.key === 'e' && archiveOpenMessage()) {
+    e.preventDefault();
+    return;
+  }
+
   const messageRows = document.querySelectorAll('.msg-list .msg-row[data-uid]');
   if (messageRows.length === 0) return;
 
@@ -2353,6 +2327,13 @@ document.addEventListener('keydown', (e) => {
       if (current) {
         e.preventDefault();
         deleteRow(current, idx);
+      }
+      break;
+
+    case 'e': // Archive (unarchive in Archive) the focused row
+      if (current) {
+        e.preventDefault();
+        archiveRow(current, idx);
       }
       break;
 

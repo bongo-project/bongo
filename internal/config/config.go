@@ -1005,6 +1005,7 @@ func (c *Config) Validate() error {
 		for _, k := range []struct{ key, v string }{
 			{"queue.max_lifetime", q.MaxLifetime},
 			{"queue.max_retry_interval", q.MaxRetryInterval},
+			{"queue.delay_warning_after", q.DelayWarningAfter},
 		} {
 			if k.v == "" {
 				continue
@@ -1012,6 +1013,12 @@ func (c *Config) Validate() error {
 			if _, err := parseRetention(k.v); err != nil {
 				return fmt.Errorf("%s: invalid value %q (use whole days like \"5d\" or a duration like \"1h\", must be positive): %w", k.key, k.v, err)
 			}
+		}
+		// A delay report is sent on a failed attempt after delay_warning_after
+		// and before the message expires, so a value at or above the lifetime
+		// could never send one. Refuse it rather than accept a dead setting.
+		if q.DelayWarningAfter != "" && q.QueueDelayWarningAfter() >= q.QueueMaxLifetime() {
+			return fmt.Errorf("queue.delay_warning_after: %q is not before queue.max_lifetime (%s), so no delay report could ever be sent", q.DelayWarningAfter, q.QueueMaxLifetime())
 		}
 		// Zero is "unset" (default 5): a queue block replaces the defaults.
 		if q.Concurrency < 0 || q.Concurrency > maxQueueConcurrency {
@@ -1073,6 +1080,11 @@ type QueueConfig struct {
 	MaxLifetime string `hcl:"max_lifetime,optional" mapstructure:"max_lifetime"`
 	// MaxRetryInterval caps the doubling retry delay. Empty means 1h.
 	MaxRetryInterval string `hcl:"max_retry_interval,optional" mapstructure:"max_retry_interval"`
+	// DelayWarningAfter is how long a message may stay queued, from created_at,
+	// before a recipient that asked for NOTIFY=DELAY gets one delay report.
+	// Whole days or any Go duration. Empty means 4h. It must be shorter than
+	// MaxLifetime.
+	DelayWarningAfter string `hcl:"delay_warning_after,optional" mapstructure:"delay_warning_after"`
 	// Concurrency is the number of simultaneous outbound deliveries, 1 to 64.
 	// Zero means unset (5): a queue block replaces the defaults wholesale.
 	Concurrency int `hcl:"concurrency,optional" mapstructure:"concurrency"`
@@ -1081,6 +1093,7 @@ type QueueConfig struct {
 const (
 	defaultQueueMaxLifetime      = 5 * 24 * time.Hour
 	defaultQueueMaxRetryInterval = time.Hour
+	defaultQueueDelayWarning     = 4 * time.Hour
 	defaultQueueConcurrency      = 5
 	maxQueueConcurrency          = 64
 )
@@ -1107,6 +1120,27 @@ func (c *QueueConfig) QueueMaxRetryInterval() time.Duration {
 	d, err := parseRetention(c.MaxRetryInterval)
 	if err != nil {
 		return defaultQueueMaxRetryInterval
+	}
+	return d
+}
+
+// DelayWarningUnreachable reports whether no delay report can ever be sent
+// because a message is bounced before it is due. Validate refuses this when
+// delay_warning_after is set explicitly; with the 4h default and a short
+// max_lifetime it is accepted, and the agent warns at startup instead.
+func (c *QueueConfig) DelayWarningUnreachable() bool {
+	return c.QueueDelayWarningAfter() >= c.QueueMaxLifetime()
+}
+
+// QueueDelayWarningAfter returns the age at which a delay report is due.
+// Nil-safe; returns 4h when unset or unparseable.
+func (c *QueueConfig) QueueDelayWarningAfter() time.Duration {
+	if c == nil || c.DelayWarningAfter == "" {
+		return defaultQueueDelayWarning
+	}
+	d, err := parseRetention(c.DelayWarningAfter)
+	if err != nil {
+		return defaultQueueDelayWarning
 	}
 	return d
 }

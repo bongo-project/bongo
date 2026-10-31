@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html"
@@ -47,16 +48,38 @@ var importMboxReader = func(r io.Reader) io.Reader { return r }
 // that is already in Trash removes it permanently.
 const trashMailbox = "Trash"
 
-// ensureTrash makes sure the Trash mailbox exists before a message is moved
-// into it (the move FSM does not auto-create the destination). It is cheap on
-// the common path: CreateMailbox does an existence check and only writes when
-// Trash is missing.
-func (h *MailHandler) ensureTrash(userID string) error {
-	if err := h.mailboxes.CreateMailbox(userID, trashMailbox); err != nil &&
+// archiveMailbox is the folder archived messages are moved to.
+const archiveMailbox = "Archive"
+
+// ensureMailbox makes sure a mailbox exists before a message is moved into it
+// (the move FSM does not auto-create the destination). It is cheap on the
+// common path: CreateMailbox does an existence check and only writes when the
+// mailbox is missing.
+//
+// The check and the write are separate steps and the FSM has no create-if-
+// absent guard, so two concurrent first creates would both write UidNext=1
+// and the second move could overwrite the first message's key. ensureMailboxMu
+// serialises creation within this process. Two nodes creating the same mailbox
+// at the same instant remain a small residual window.
+func (h *MailHandler) ensureMailbox(userID, name string) error {
+	h.ensureMailboxMu.Lock()
+	defer h.ensureMailboxMu.Unlock()
+	if err := h.mailboxes.CreateMailbox(userID, name); err != nil &&
 		!strings.Contains(err.Error(), "already exists") {
 		return err
 	}
 	return nil
+}
+
+// ensureTrash makes sure the Trash mailbox exists.
+func (h *MailHandler) ensureTrash(userID string) error {
+	return h.ensureMailbox(userID, trashMailbox)
+}
+
+// ensureArchive makes sure the Archive mailbox exists. Archive is not a
+// default mailbox, so the first archive creates it.
+func (h *MailHandler) ensureArchive(userID string) error {
+	return h.ensureMailbox(userID, archiveMailbox)
 }
 
 // MailHandler handles mail browsing endpoints.
@@ -76,6 +99,9 @@ type MailHandler struct {
 	metadata     *store.MetadataManager
 	search       *store.SearchManager
 	tags         *store.TagStore
+
+	// ensureMailboxMu serialises lazy mailbox creation (see ensureMailbox).
+	ensureMailboxMu sync.Mutex
 }
 
 // SetThreadStore sets the thread store for conversation grouping.
@@ -418,14 +444,15 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	detail := templates.MessageDetail{
-		UID:     msg.Uid,
-		Mailbox: mailbox,
-		Subject: meta.Subject,
-		From:    meta.From,
-		To:      meta.To,
-		Date:    time.Unix(meta.ReceivedAt, 0),
-		Seen:    msg.Flags&store.FlagSeen != 0,
-		Flagged: msg.Flags&store.FlagFlagged != 0,
+		UID:         msg.Uid,
+		Mailbox:     mailbox,
+		RealMailbox: realMailbox,
+		Subject:     meta.Subject,
+		From:        meta.From,
+		To:          meta.To,
+		Date:        time.Unix(meta.ReceivedAt, 0),
+		Seen:        msg.Flags&store.FlagSeen != 0,
+		Flagged:     msg.Flags&store.FlagFlagged != 0,
 	}
 
 	// Populate current message tags with colour info.
@@ -656,14 +683,15 @@ func (h *MailHandler) attachmentURL(mailbox string, uid uint32, index int, hash 
 
 func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1.MailboxMessage, meta *bongov1.MailMeta) templates.MessageDetail {
 	detail := templates.MessageDetail{
-		UID:     msg.Uid,
-		Mailbox: mailbox,
-		Subject: meta.Subject,
-		From:    meta.From,
-		To:      meta.To,
-		Date:    time.Unix(meta.ReceivedAt, 0),
-		Seen:    msg.Flags&store.FlagSeen != 0,
-		Flagged: msg.Flags&store.FlagFlagged != 0,
+		UID:         msg.Uid,
+		Mailbox:     mailbox,
+		RealMailbox: mailbox,
+		Subject:     meta.Subject,
+		From:        meta.From,
+		To:          meta.To,
+		Date:        time.Unix(meta.ReceivedAt, 0),
+		Seen:        msg.Flags&store.FlagSeen != 0,
+		Flagged:     msg.Flags&store.FlagFlagged != 0,
 	}
 
 	if len(meta.Tags) > 0 && h.tags != nil {
@@ -699,11 +727,40 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if action == "archive" {
+		// Archive is created once, before the loop. A bulk move is not atomic
+		// across messages: each move is its own Raft command, so a failure
+		// part-way leaves the earlier messages archived.
+		if err := h.ensureArchive(userID); err != nil {
+			h.logger.Warn("web: bulk archive failed to prepare Archive", "user", userID, "error", err)
+			http.Error(w, "Bulk archive failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	for _, target := range targets {
 		uid := target.uid
 		targetMailbox := target.mailbox
 
 		switch action {
+		case "archive":
+			if targetMailbox == archiveMailbox {
+				continue
+			}
+			if err := h.mailboxes.MoveMessage(userID, targetMailbox, uid, archiveMailbox); err != nil {
+				h.logger.Warn("web: bulk archive failed", "mailbox", targetMailbox, "uid", uid, "user", userID, "error", err)
+				http.Error(w, "Bulk archive failed", http.StatusInternalServerError)
+				return
+			}
+		case "unarchive":
+			if targetMailbox != archiveMailbox {
+				continue
+			}
+			if err := h.mailboxes.MoveMessage(userID, targetMailbox, uid, "INBOX"); err != nil {
+				h.logger.Warn("web: bulk unarchive failed", "uid", uid, "user", userID, "error", err)
+				http.Error(w, "Bulk unarchive failed", http.StatusInternalServerError)
+				return
+			}
 		case "mark-read":
 			if err := h.mailboxes.AddFlags(userID, targetMailbox, uid, store.FlagSeen); err != nil {
 				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
@@ -808,6 +865,16 @@ func (h *MailHandler) bulkActionTargets(userID, mailbox string, uidStrs []string
 			continue
 		}
 		uid := uint32(uid64)
+
+		if action == "archive" || action == "unarchive" {
+			// A virtual view (starred, unread, all-mail) is not a source
+			// mailbox; resolve the message's real one. An unresolvable
+			// UID is dropped so a request with no valid target fails.
+			if _, realMailbox, err := h.messageForMailboxUID(userID, mailbox, uid); err == nil {
+				addTarget(realMailbox, uid)
+			}
+			continue
+		}
 
 		if action != "delete" || h.threads == nil {
 			addTarget(mailbox, uid)
@@ -1484,6 +1551,69 @@ func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect back to mailbox with flash.
 	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, "Moved to "+dest))
+	w.WriteHeader(http.StatusOK)
+}
+
+// ArchiveMessage handles POST /mail/{mailbox}/{uid}/archive: it moves the
+// message to Archive, creating the mailbox first when it is absent. Creating
+// and moving are two Raft commands, not one atomic step; a failed move after a
+// successful create leaves an empty Archive mailbox, which is harmless. The
+// move itself is a single composite command.
+//
+// Archive and unarchive are separate endpoints rather than one toggle so a
+// double click or an htmx retry cannot undo itself.
+func (h *MailHandler) ArchiveMessage(w http.ResponseWriter, r *http.Request) {
+	h.archiveOrUnarchive(w, r, true)
+}
+
+// UnarchiveMessage handles POST /mail/{mailbox}/{uid}/unarchive: it moves a
+// message out of Archive into INBOX. Any other source mailbox is a 400.
+func (h *MailHandler) UnarchiveMessage(w http.ResponseWriter, r *http.Request) {
+	h.archiveOrUnarchive(w, r, false)
+}
+
+func (h *MailHandler) archiveOrUnarchive(w http.ResponseWriter, r *http.Request, archive bool) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
+	uid, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid UID", http.StatusBadRequest)
+		return
+	}
+
+	_, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+
+	dest, flashID := archiveMailbox, "mail.archived"
+	if archive {
+		if realMailbox == archiveMailbox {
+			http.Error(w, "Already archived", http.StatusBadRequest)
+			return
+		}
+		if err := h.ensureArchive(userID); err != nil {
+			h.logger.Warn("web: archive failed to prepare Archive", "mailbox", mailbox, "uid", uid, "user", userID, "error", err)
+			http.Error(w, "Archive failed", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		if realMailbox != archiveMailbox {
+			http.Error(w, "Not in Archive", http.StatusBadRequest)
+			return
+		}
+		dest, flashID = "INBOX", "mail.unarchived"
+	}
+
+	if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), dest); err != nil {
+		h.logger.Warn("web: archive move failed", "mailbox", realMailbox, "dest", dest, "uid", uid, "user", userID, "error", err)
+		http.Error(w, "Move failed", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("web: message moved", "src", realMailbox, "dest", dest, "uid", uid, "user", userID)
+	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, composeText(r, flashID)))
 	w.WriteHeader(http.StatusOK)
 }
 

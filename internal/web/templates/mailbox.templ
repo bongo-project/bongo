@@ -202,6 +202,11 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 					</div>
 				</div>
 			</div>
+			if mailbox == "Archive" {
+				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'unarchive')" }>{ t(ctx, "mail.unarchive") }</button>
+			} else {
+				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'archive')" }>{ t(ctx, "mail.archive") }</button>
+			}
 			<button type="button" class="tool-btn danger" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>{ t(ctx, "mail.delete") }</button>
 			</div>
 			if len(messages) == 0 {

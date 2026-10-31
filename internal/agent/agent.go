@@ -1362,6 +1362,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/mail/blob/{hash}", mailH.ServeBlob)
 			r.Post("/mail/{mailbox}/{uid}/flags", mailH.ToggleFlags)
 			r.Post("/mail/{mailbox}/{uid}/move", mailH.MoveMessage)
+			r.Post("/mail/{mailbox}/{uid}/archive", mailH.ArchiveMessage)
+			r.Post("/mail/{mailbox}/{uid}/unarchive", mailH.UnarchiveMessage)
 			r.Post("/mail/{mailbox}/{uid}/spam", mailH.MarkSpam)
 			r.Post("/mail/{mailbox}/{uid}/not-spam", mailH.MarkNotSpam)
 			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)
@@ -1817,6 +1819,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			bounceDomain := mail.ResolveServerDomain(a.Config.SMTP.DKIM.Domain, a.Config.SMTP.Hostname)
 			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger, bounceDomain, a.DKIMRegistry)
 			a.configureBouncePostmasterCopy(a.BounceGen)
+			// NOTIFY=SUCCESS reports go out through the same generator, and so
+			// the same local inbound pipeline, as bounces.
+			if deliverProc != nil {
+				deliverProc.SetDeliveryReporter(a.BounceGen)
+			}
 		}
 
 		// Vacation replies: to an external sender through the outbound queue
@@ -1836,11 +1843,18 @@ func (a *Agent) Run(ctx context.Context) error {
 			})
 		}
 
+		if a.Config.Queue.DelayWarningUnreachable() {
+			a.logger.Warn("queue: delay reports can never be sent, queue.delay_warning_after is not below queue.max_lifetime",
+				"delay_warning_after", a.Config.Queue.QueueDelayWarningAfter().String(),
+				"max_lifetime", a.Config.Queue.QueueMaxLifetime().String())
+		}
+
 		// Queue worker (leader-only processing).
 		a.QueueWorker = queue.NewWorker(a.QueueStore, a.Relay, a.DKIMRegistry, a, a.BounceGen, a.Blobs, a.logger,
 			queue.WithPollInterval(a.Config.Queue.QueuePollInterval()),
 			queue.WithMaxLifetime(a.Config.Queue.QueueMaxLifetime()),
 			queue.WithMaxRetryInterval(a.Config.Queue.QueueMaxRetryInterval()),
+			queue.WithDelayWarningAfter(a.Config.Queue.QueueDelayWarningAfter()),
 			queue.WithConcurrency(a.Config.Queue.QueueConcurrency()))
 		queueCtx, queueCancel := context.WithCancel(ctx)
 		a.queueWorkerCancel = queueCancel

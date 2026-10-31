@@ -274,21 +274,35 @@ func TestMoreMenuIsKeyboardAccessibleAndHiddenByDefault(t *testing.T) {
 	}
 }
 
-func TestArchiveOnlyWhenArchiveMailboxExists(t *testing.T) {
-	msg := viewFixture()
-	without := renderToString(t, MessagePage(msg, []MailboxInfo{{Name: "INBOX"}, {Name: "Sent"}}))
-	if strings.Contains(without, `hx-vals`) {
-		t.Error("Archive rendered although the user has no Archive mailbox")
+func TestArchiveButtonLabelFollowsRealMailbox(t *testing.T) {
+	boxes := []MailboxInfo{{Name: "INBOX"}}
+	tests := []struct {
+		name          string
+		mailbox, real string
+		want, notWant string
+	}{
+		{"inbox archives", "INBOX", "INBOX", "/mail/INBOX/7/archive", "/unarchive"},
+		{"archive unarchives", "Archive", "Archive", "/mail/Archive/7/unarchive", "/archive\""},
+		{"virtual view of an archived message", "starred", "Archive", "/mail/starred/7/unarchive", "/archive\""},
+		{"virtual view of an inbox message", "starred", "INBOX", "/mail/starred/7/archive", "/unarchive"},
+		{"real mailbox unset falls back to the URL mailbox", "Archive", "", "/mail/Archive/7/unarchive", "/archive\""},
 	}
-	with := renderToString(t, MessagePage(msg, []MailboxInfo{{Name: "INBOX"}, {Name: "Archive"}}))
-	if !strings.Contains(with, `hx-vals="{&#34;destination&#34;:&#34;Archive&#34;}"`) {
-		t.Errorf("Archive button missing or wrong vals:\n%s", with)
-	}
-	msg.Mailbox = "Archive"
-	msg.Thread = nil
-	inArchive := renderToString(t, MessagePage(msg, []MailboxInfo{{Name: "INBOX"}, {Name: "Archive"}}))
-	if strings.Contains(inArchive, `hx-vals`) {
-		t.Error("Archive offered for a message already in Archive")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := viewFixture()
+			msg.Thread = nil
+			msg.Mailbox, msg.RealMailbox = tt.mailbox, tt.real
+			out := renderToString(t, MessagePage(msg, boxes))
+			if !strings.Contains(out, tt.want) {
+				t.Errorf("missing %s", tt.want)
+			}
+			if strings.Contains(out, tt.notWant) {
+				t.Errorf("unexpected %s", tt.notWant)
+			}
+			if !strings.Contains(out, `data-action="archive"`) && !strings.Contains(out, `data-action="unarchive"`) {
+				t.Error("no data-action hook for the e shortcut")
+			}
+		})
 	}
 }
 

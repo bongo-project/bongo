@@ -25,6 +25,13 @@ type InboundMeta struct {
 	// AuthUserID is the SMTP AUTH user, set only for authenticated sessions.
 	// Empty for trusted-network and unauthenticated sources.
 	AuthUserID string
+
+	// DSN parameters (RFC 3461) of the transaction. DSNRcpts lines up with the
+	// recipients handed to EnqueueLocal; it may be nil or shorter, in which
+	// case the missing recipients carry no NOTIFY or ORCPT.
+	DSNRet   string
+	DSNEnvID string
+	DSNRcpts []RcptDSN
 }
 
 // RaftApplier applies commands through Raft consensus.
@@ -131,7 +138,7 @@ func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHa
 	receivedAt := time.Now().Unix()
 	envs := make([]*bongov1.QueueEnvelope, 0, len(recipients))
 	ids := make([]string, 0, len(recipients))
-	for _, rcpt := range recipients {
+	for i, rcpt := range recipients {
 		env := &bongov1.QueueEnvelope{
 			Id:         uuid.New().String(),
 			Sender:     from,
@@ -142,6 +149,14 @@ func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHa
 			SourceIp:   meta.SourceIP,
 			Trusted:    meta.Trusted,
 			AuthUserId: meta.AuthUserID,
+			DsnRet:     meta.DSNRet,
+			DsnEnvid:   meta.DSNEnvID,
+		}
+		if i < len(meta.DSNRcpts) {
+			d := meta.DSNRcpts[i]
+			env.DsnNotify = d.Notify
+			env.DsnOrcptType = d.ORCPTType
+			env.DsnOrcpt = d.ORCPT
 		}
 		envs = append(envs, env)
 		ids = append(ids, env.Id)

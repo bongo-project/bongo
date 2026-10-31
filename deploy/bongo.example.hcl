@@ -703,6 +703,10 @@ pipeline {
 #   # Retries back off from 2 minutes, doubling, up to this interval.
 #   # Restart to change.
 #   max_retry_interval = "1h"
+#   # A recipient that asked for NOTIFY=DELAY (RFC 3461) gets one "delayed"
+#   # report once a message has been queued this long. Must be shorter than
+#   # max_lifetime. Restart to change.
+#   delay_warning_after = "4h"
 #   # Simultaneous outbound deliveries, 1 to 64. Restart to change.
 #   concurrency = 5
 # }

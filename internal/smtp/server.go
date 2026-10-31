@@ -324,6 +324,81 @@ type Session struct {
 	spfResult     string
 	authFailures  int   // failed AUTH attempts on this connection
 	declaredSize  int64 // MAIL FROM SIZE parameter (RFC 1870); 0 when absent
+
+	// DSN parameters (RFC 3461) of the current transaction. localDSN and
+	// externalDSN line up index for index with localRcpts and externalRcpts;
+	// always append through addLocal and addExternal so they cannot drift.
+	dsnRet      string
+	dsnEnvID    string
+	localDSN    []RcptDSN
+	externalDSN []RcptDSN
+}
+
+// Limits on the DSN parameters, from RFC 3461 sections 4.4 (ENVID: 100
+// characters) and 4.2 (ORCPT: 500 characters).
+const (
+	maxDSNEnvelopeIDLen = 100
+	maxDSNOriginalRcpt  = 500
+)
+
+// RcptDSN is one recipient's NOTIFY and ORCPT. Notify is a bitmask of the
+// mail.Notify* values; 0 means the client gave no NOTIFY.
+type RcptDSN struct {
+	Notify    uint32
+	ORCPTType string // "rfc822" or "utf-8"; empty when no ORCPT
+	ORCPT     string
+}
+
+// rcptDSNFrom converts go-smtp's parsed RCPT options. go-smtp has already
+// rejected unknown, duplicated and NEVER-combined NOTIFY values and a
+// malformed ORCPT; what is left is the length limit and a defensive check for
+// control characters (a UTF-8 ORCPT decodes to arbitrary Unicode).
+func rcptDSNFrom(opts *gosmtp.RcptOptions) (RcptDSN, error) {
+	var d RcptDSN
+	if opts == nil {
+		return d, nil
+	}
+	for _, n := range opts.Notify {
+		switch n {
+		case gosmtp.DSNNotifySuccess:
+			d.Notify |= mail.NotifySuccess
+		case gosmtp.DSNNotifyFailure:
+			d.Notify |= mail.NotifyFailure
+		case gosmtp.DSNNotifyDelayed:
+			d.Notify |= mail.NotifyDelay
+		case gosmtp.DSNNotifyNever:
+			d.Notify |= mail.NotifyNever
+		}
+	}
+	if opts.OriginalRecipient != "" {
+		if len(opts.OriginalRecipient) > maxDSNOriginalRcpt || hasControlChar(opts.OriginalRecipient) {
+			return d, &gosmtp.SMTPError{Code: 501, EnhancedCode: gosmtp.EnhancedCode{5, 5, 4}, Message: "Malformed ORCPT parameter value"}
+		}
+		d.ORCPTType = strings.ToLower(string(opts.OriginalRecipientType))
+		d.ORCPT = opts.OriginalRecipient
+	}
+	return d, nil
+}
+
+func hasControlChar(v string) bool {
+	for _, r := range v {
+		if r < ' ' || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+			return true
+		}
+	}
+	return false
+}
+
+// addLocal records an accepted local recipient and its DSN parameters.
+func (s *Session) addLocal(to string, d RcptDSN) {
+	s.localRcpts = append(s.localRcpts, to)
+	s.localDSN = append(s.localDSN, d)
+}
+
+// addExternal records an accepted relay recipient and its DSN parameters.
+func (s *Session) addExternal(to string, d RcptDSN) {
+	s.externalRcpts = append(s.externalRcpts, to)
+	s.externalDSN = append(s.externalDSN, d)
 }
 
 // profileAuthenticator is what AUTH needs: credentials checked and the profile
@@ -500,8 +575,12 @@ func (l *loginServer) Next(response []byte) (challenge []byte, done bool, err er
 // Mail is called with the MAIL FROM command.
 func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 	s.declaredSize = 0
+	s.dsnRet, s.dsnEnvID = "", ""
 	if opts != nil && opts.Size > 0 {
 		s.declaredSize = opts.Size
+	}
+	if opts != nil && (len(opts.EnvelopeID) > maxDSNEnvelopeIDLen || hasControlChar(opts.EnvelopeID)) {
+		return &gosmtp.SMTPError{Code: 501, EnhancedCode: gosmtp.EnhancedCode{5, 5, 4}, Message: "Malformed ENVID parameter value"}
 	}
 	// Submission requires authentication before mail can be sent.
 	if s.submission && !s.authed {
@@ -532,6 +611,10 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 	}
 
 	s.from = from
+	if opts != nil {
+		s.dsnRet = string(opts.Return)
+		s.dsnEnvID = opts.EnvelopeID
+	}
 	s.logger.Debug("smtp: MAIL FROM", "from", from)
 
 	// SPF check.
@@ -557,6 +640,10 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 // external recipients is only allowed for authenticated sessions (submission).
 // This is the explicit open-relay guard.
 func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
+	dsn, dsnErr := rcptDSNFrom(opts)
+	if dsnErr != nil {
+		return dsnErr
+	}
 	// Re-check revocation: a transaction started before a disable must not
 	// keep adding recipients. Cheap: one Pebble read, no bcrypt.
 	if s.submission && s.authed {
@@ -571,20 +658,20 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	// are also checked before the no-resolver shortcut: an agent has no
 	// resolver yet still verifies them. Every refusal is the same 550 as an
 	// unavailable mailbox: no oracle beyond accept or refuse.
-	if handled, err := s.rcptSRS(to); handled {
+	if handled, err := s.rcptSRS(to, dsn); handled {
 		return err
 	}
 
 	// Without a resolver (dev/agent role) fall back to accepting locally; the
 	// server-role deployment always wires a resolver.
 	if s.backend.resolver == nil {
-		s.localRcpts = append(s.localRcpts, to)
+		s.addLocal(to, dsn)
 		return nil
 	}
 
 	// The no-relay sender used for forwards of unauthenticated mail is checked
 	// at the same point, for the same reasons.
-	if handled, err := s.rcptNoRelay(to); handled {
+	if handled, err := s.rcptNoRelay(to, dsn); handled {
 		return err
 	}
 
@@ -611,7 +698,7 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 				return &gosmtp.SMTPError{Code: 552, EnhancedCode: gosmtp.EnhancedCode{5, 2, 2}, Message: "Mailbox quota exceeded"}
 			}
 		}
-		s.localRcpts = append(s.localRcpts, to)
+		s.addLocal(to, dsn)
 		s.logger.Debug("smtp: RCPT TO (local)", "to", to)
 		return nil
 	}
@@ -638,7 +725,7 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		s.logger.Warn("smtp: outbound recipient limit reached", "user", s.userID)
 		return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 5, 3}, Message: "Too many recipients, try again later"}
 	}
-	s.externalRcpts = append(s.externalRcpts, to)
+	s.addExternal(to, dsn)
 	s.logger.Debug("smtp: RCPT TO (relay)", "to", to)
 	return nil
 }
@@ -646,7 +733,7 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 // rcptSRS handles a recipient that is an SRS address on a hosted domain (any
 // domain in agent mode). It
 // reports handled=false for any other address.
-func (s *Session) rcptSRS(to string) (handled bool, err error) {
+func (s *Session) rcptSRS(to string, dsn RcptDSN) (handled bool, err error) {
 	b := s.backend
 	if b.srs == nil || (!b.srsAllDomains && b.hostedDomain == nil) {
 		return false, nil
@@ -659,7 +746,7 @@ func (s *Session) rcptSRS(to string) (handled bool, err error) {
 	}
 	if s.from == "" {
 		if _, verr := b.srs.Reverse(addr); verr == nil {
-			s.localRcpts = append(s.localRcpts, to)
+			s.addLocal(to, dsn)
 			s.logger.Debug("smtp: RCPT TO (SRS bounce)")
 			return true, nil
 		}
@@ -673,7 +760,7 @@ func (s *Session) rcptSRS(to string) (handled bool, err error) {
 // to it with a null MAIL FROM and are accepted so the sending MTA is satisfied;
 // the deliver stage then discards them. Anything else is the same 550 as an
 // unavailable mailbox. It reports handled=false for any other address.
-func (s *Session) rcptNoRelay(to string) (handled bool, err error) {
+func (s *Session) rcptNoRelay(to string, dsn RcptDSN) (handled bool, err error) {
 	b := s.backend
 	if b.hostedDomain == nil {
 		return false, nil
@@ -684,7 +771,7 @@ func (s *Session) rcptNoRelay(to string) (handled bool, err error) {
 		return false, nil
 	}
 	if s.from == "" {
-		s.localRcpts = append(s.localRcpts, to)
+		s.addLocal(to, dsn)
 		s.logger.Debug("smtp: RCPT TO (no-relay bounce sink)")
 		return true, nil
 	}
@@ -720,6 +807,9 @@ func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
 	if s.authed {
 		meta.AuthUserID = s.userID
 	}
+	meta.DSNRet = s.dsnRet
+	meta.DSNEnvID = s.dsnEnvID
+	meta.DSNRcpts = s.localDSN
 	return meta
 }
 
@@ -844,6 +934,20 @@ func (s *Session) Data(r io.Reader) error {
 				Recipients:  s.externalRcpts,
 				BlobHash:    blobHash,
 				Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
+				DsnRet:      s.dsnRet,
+				DsnEnvid:    s.dsnEnvID,
+			}
+			for i, to := range s.externalRcpts {
+				d := s.externalDSN[i]
+				if d == (RcptDSN{}) {
+					continue
+				}
+				out.RecipientDsn = append(out.RecipientDsn, &bongov1.RecipientDSN{
+					Address:   to,
+					Notify:    d.Notify,
+					OrcptType: d.ORCPTType,
+					Orcpt:     d.ORCPT,
+				})
 			}
 			// Partial failure: EnqueueLocal above has already committed its
 			// N envelopes (one per local recipient), so returning 451 here
@@ -1018,6 +1122,10 @@ func (s *Session) Reset() {
 	s.declaredSize = 0
 	s.localRcpts = nil
 	s.externalRcpts = nil
+	s.localDSN = nil
+	s.externalDSN = nil
+	s.dsnRet = ""
+	s.dsnEnvID = ""
 	s.spfResult = ""
 }
 
@@ -1138,6 +1246,7 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 		mx.MaxRecipients = 100
 	}
 	mx.AllowInsecureAuth = isDev
+	mx.EnableDSN = true
 	mx.ErrorLog = observability.SMTPLibraryLogger(logger)
 
 	submission := gosmtp.NewServer(backend)
@@ -1148,6 +1257,7 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 	submission.MaxMessageBytes = mx.MaxMessageBytes
 	submission.MaxRecipients = mx.MaxRecipients
 	submission.AllowInsecureAuth = isDev
+	submission.EnableDSN = true
 	submission.ErrorLog = mx.ErrorLog
 
 	// Configure TLS if cert files are provided. Pin TLS 1.2 as the floor so it
@@ -1197,6 +1307,7 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 		submissions.MaxMessageBytes = mx.MaxMessageBytes
 		submissions.MaxRecipients = mx.MaxRecipients
 		submissions.ErrorLog = mx.ErrorLog
+		submissions.EnableDSN = true
 	}
 
 	maxConn := cfg.Limits.MaxConnections

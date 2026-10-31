@@ -57,6 +57,29 @@ message OutboundMessage {
   // receives backscatter. Records queued before this field existed read as
   // false and therefore default to no DSN. Ignored for other origins.
   bool sender_authenticated = 16;
+
+  // DSN parameters (RFC 3461). dsn_ret is "FULL" or "HDRS", empty when the
+  // sender gave no RET. dsn_envid is the decoded ENVID. recipient_dsn holds
+  // per-recipient NOTIFY/ORCPT, looked up by address (case-insensitively)
+  // because recipients is pruned as addresses permanently fail.
+  string dsn_ret = 17;
+  string dsn_envid = 18;
+  repeated RecipientDSN recipient_dsn = 19;
+
+  // delay_report_sent is set, and persisted, before the Action: delayed report
+  // is generated, so a delay report is sent at most once.
+  bool delay_report_sent = 20;
+}
+
+// RecipientDSN is one recipient's NOTIFY and ORCPT.
+message RecipientDSN {
+  string address = 1;
+  // notify is a bitmask: 1 SUCCESS, 2 FAILURE, 4 DELAY, 8 NEVER. 0 means the
+  // sender gave no NOTIFY, which keeps the pre-DSN behaviour (a failure report,
+  // no delay report).
+  uint32 notify = 2;
+  string orcpt_type = 3;  // "rfc822" or "utf-8"; empty when no ORCPT
+  string orcpt = 4;       // decoded original recipient
 }
 
 message QueueStats {

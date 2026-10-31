@@ -139,3 +139,33 @@ func TestKeyboardAndDragUseTheListsMailbox(t *testing.T) {
 		t.Error("r must escape the mailbox in the reply URL")
 	}
 }
+
+// The mobile swipe, the e shortcut and the shortcut help all depend on the
+// archive endpoints; a comment that still says "Trash" is the bug being fixed.
+func TestArchiveSwipeAndShortcut(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	// messageList is the component the mailbox template binds the touch
+	// handlers to (x-data="messageList"); check the swipe there.
+	swipe := js[strings.Index(js, "Alpine.data('messageList'"):]
+	swipe = swipe[strings.Index(swipe, "end(event, uid, mailbox)"):]
+	swipe = swipe[:strings.Index(swipe, "_resetSwipe() {")]
+	for _, want := range []string{"'unarchive' : 'archive'", "resp.ok", "Swipe left: archive (move to Archive)"} {
+		if !strings.Contains(swipe, want) {
+			t.Errorf("swipe handler missing %q", want)
+		}
+	}
+	if strings.Contains(swipe, "archive (move to Trash)") {
+		t.Error("swipe comment still claims archive moves to Trash")
+	}
+	if strings.Contains(js, "'destination', 'Trash'") {
+		t.Error("a swipe still moves to Trash")
+	}
+
+	keydown := js[strings.Index(js, "if (e.key === 'e' && archiveOpenMessage())"):]
+	if i, j := strings.Index(keydown, "archiveOpenMessage"), strings.Index(keydown, "if (messageRows.length === 0) return;"); i < 0 || j < 0 || i > j {
+		t.Error("e must be handled before the empty-list early return so the open-message view gets it")
+	}
+	if !strings.Contains(js, "case 'e':") || !strings.Contains(js, "<kbd>e</kbd>") || !strings.Contains(js, "js.shortcutArchive") {
+		t.Error("e shortcut or its help entry is missing")
+	}
+}

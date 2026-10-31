@@ -161,8 +161,18 @@ type OutboundMessage struct {
 	// receives backscatter. Records queued before this field existed read as
 	// false and therefore default to no DSN. Ignored for other origins.
 	SenderAuthenticated bool `protobuf:"varint,16,opt,name=sender_authenticated,json=senderAuthenticated,proto3" json:"sender_authenticated,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// DSN parameters (RFC 3461). dsn_ret is "FULL" or "HDRS", empty when the
+	// sender gave no RET. dsn_envid is the decoded ENVID. recipient_dsn holds
+	// per-recipient NOTIFY/ORCPT, looked up by address (case-insensitively)
+	// because recipients is pruned as addresses permanently fail.
+	DsnRet       string          `protobuf:"bytes,17,opt,name=dsn_ret,json=dsnRet,proto3" json:"dsn_ret,omitempty"`
+	DsnEnvid     string          `protobuf:"bytes,18,opt,name=dsn_envid,json=dsnEnvid,proto3" json:"dsn_envid,omitempty"`
+	RecipientDsn []*RecipientDSN `protobuf:"bytes,19,rep,name=recipient_dsn,json=recipientDsn,proto3" json:"recipient_dsn,omitempty"`
+	// delay_report_sent is set, and persisted, before the Action: delayed report
+	// is generated, so a delay report is sent at most once.
+	DelayReportSent bool `protobuf:"varint,20,opt,name=delay_report_sent,json=delayReportSent,proto3" json:"delay_report_sent,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *OutboundMessage) Reset() {
@@ -307,6 +317,106 @@ func (x *OutboundMessage) GetSenderAuthenticated() bool {
 	return false
 }
 
+func (x *OutboundMessage) GetDsnRet() string {
+	if x != nil {
+		return x.DsnRet
+	}
+	return ""
+}
+
+func (x *OutboundMessage) GetDsnEnvid() string {
+	if x != nil {
+		return x.DsnEnvid
+	}
+	return ""
+}
+
+func (x *OutboundMessage) GetRecipientDsn() []*RecipientDSN {
+	if x != nil {
+		return x.RecipientDsn
+	}
+	return nil
+}
+
+func (x *OutboundMessage) GetDelayReportSent() bool {
+	if x != nil {
+		return x.DelayReportSent
+	}
+	return false
+}
+
+// RecipientDSN is one recipient's NOTIFY and ORCPT.
+type RecipientDSN struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Address string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	// notify is a bitmask: 1 SUCCESS, 2 FAILURE, 4 DELAY, 8 NEVER. 0 means the
+	// sender gave no NOTIFY, which keeps the pre-DSN behaviour (a failure report,
+	// no delay report).
+	Notify        uint32 `protobuf:"varint,2,opt,name=notify,proto3" json:"notify,omitempty"`
+	OrcptType     string `protobuf:"bytes,3,opt,name=orcpt_type,json=orcptType,proto3" json:"orcpt_type,omitempty"` // "rfc822" or "utf-8"; empty when no ORCPT
+	Orcpt         string `protobuf:"bytes,4,opt,name=orcpt,proto3" json:"orcpt,omitempty"`                          // decoded original recipient
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecipientDSN) Reset() {
+	*x = RecipientDSN{}
+	mi := &file_proto_bongo_v1_queue_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecipientDSN) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecipientDSN) ProtoMessage() {}
+
+func (x *RecipientDSN) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bongo_v1_queue_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecipientDSN.ProtoReflect.Descriptor instead.
+func (*RecipientDSN) Descriptor() ([]byte, []int) {
+	return file_proto_bongo_v1_queue_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RecipientDSN) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *RecipientDSN) GetNotify() uint32 {
+	if x != nil {
+		return x.Notify
+	}
+	return 0
+}
+
+func (x *RecipientDSN) GetOrcptType() string {
+	if x != nil {
+		return x.OrcptType
+	}
+	return ""
+}
+
+func (x *RecipientDSN) GetOrcpt() string {
+	if x != nil {
+		return x.Orcpt
+	}
+	return ""
+}
+
 type QueueStats struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	PendingCount         int32                  `protobuf:"varint,1,opt,name=pending_count,json=pendingCount,proto3" json:"pending_count,omitempty"`
@@ -318,7 +428,7 @@ type QueueStats struct {
 
 func (x *QueueStats) Reset() {
 	*x = QueueStats{}
-	mi := &file_proto_bongo_v1_queue_proto_msgTypes[1]
+	mi := &file_proto_bongo_v1_queue_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -330,7 +440,7 @@ func (x *QueueStats) String() string {
 func (*QueueStats) ProtoMessage() {}
 
 func (x *QueueStats) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bongo_v1_queue_proto_msgTypes[1]
+	mi := &file_proto_bongo_v1_queue_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -343,7 +453,7 @@ func (x *QueueStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueueStats.ProtoReflect.Descriptor instead.
 func (*QueueStats) Descriptor() ([]byte, []int) {
-	return file_proto_bongo_v1_queue_proto_rawDescGZIP(), []int{1}
+	return file_proto_bongo_v1_queue_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *QueueStats) GetPendingCount() int32 {
@@ -371,7 +481,7 @@ var File_proto_bongo_v1_queue_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\n" +
-	"\x1aproto/bongo/v1/queue.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\x1a\x19proto/bongo/v1/mail.proto\"\xf8\x04\n" +
+	"\x1aproto/bongo/v1/queue.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\x1a\x19proto/bongo/v1/mail.proto\"\x97\x06\n" +
 	"\x0fOutboundMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tsender_id\x18\x02 \x01(\tR\bsenderId\x12!\n" +
@@ -392,7 +502,17 @@ const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\x06layout\x18\r \x03(\v2\x18.bongo.v1.MessageSegmentR\x06layout\x123\n" +
 	"\vattachments\x18\x0e \x03(\v2\x11.bongo.v1.BlobRefR\vattachments\x120\n" +
 	"\x06origin\x18\x0f \x01(\x0e2\x18.bongo.v1.OutboundOriginR\x06origin\x121\n" +
-	"\x14sender_authenticated\x18\x10 \x01(\bR\x13senderAuthenticated\"\x8a\x01\n" +
+	"\x14sender_authenticated\x18\x10 \x01(\bR\x13senderAuthenticated\x12\x17\n" +
+	"\adsn_ret\x18\x11 \x01(\tR\x06dsnRet\x12\x1b\n" +
+	"\tdsn_envid\x18\x12 \x01(\tR\bdsnEnvid\x12;\n" +
+	"\rrecipient_dsn\x18\x13 \x03(\v2\x16.bongo.v1.RecipientDSNR\frecipientDsn\x12*\n" +
+	"\x11delay_report_sent\x18\x14 \x01(\bR\x0fdelayReportSent\"u\n" +
+	"\fRecipientDSN\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x16\n" +
+	"\x06notify\x18\x02 \x01(\rR\x06notify\x12\x1d\n" +
+	"\n" +
+	"orcpt_type\x18\x03 \x01(\tR\torcptType\x12\x14\n" +
+	"\x05orcpt\x18\x04 \x01(\tR\x05orcpt\"\x8a\x01\n" +
 	"\n" +
 	"QueueStats\x12#\n" +
 	"\rpending_count\x18\x01 \x01(\x05R\fpendingCount\x12!\n" +
@@ -423,25 +543,27 @@ func file_proto_bongo_v1_queue_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_bongo_v1_queue_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_proto_bongo_v1_queue_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_proto_bongo_v1_queue_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_proto_bongo_v1_queue_proto_goTypes = []any{
 	(MessageStatus)(0),      // 0: bongo.v1.MessageStatus
 	(OutboundOrigin)(0),     // 1: bongo.v1.OutboundOrigin
 	(*OutboundMessage)(nil), // 2: bongo.v1.OutboundMessage
-	(*QueueStats)(nil),      // 3: bongo.v1.QueueStats
-	(*MessageSegment)(nil),  // 4: bongo.v1.MessageSegment
-	(*BlobRef)(nil),         // 5: bongo.v1.BlobRef
+	(*RecipientDSN)(nil),    // 3: bongo.v1.RecipientDSN
+	(*QueueStats)(nil),      // 4: bongo.v1.QueueStats
+	(*MessageSegment)(nil),  // 5: bongo.v1.MessageSegment
+	(*BlobRef)(nil),         // 6: bongo.v1.BlobRef
 }
 var file_proto_bongo_v1_queue_proto_depIdxs = []int32{
 	0, // 0: bongo.v1.OutboundMessage.status:type_name -> bongo.v1.MessageStatus
-	4, // 1: bongo.v1.OutboundMessage.layout:type_name -> bongo.v1.MessageSegment
-	5, // 2: bongo.v1.OutboundMessage.attachments:type_name -> bongo.v1.BlobRef
+	5, // 1: bongo.v1.OutboundMessage.layout:type_name -> bongo.v1.MessageSegment
+	6, // 2: bongo.v1.OutboundMessage.attachments:type_name -> bongo.v1.BlobRef
 	1, // 3: bongo.v1.OutboundMessage.origin:type_name -> bongo.v1.OutboundOrigin
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3, // 4: bongo.v1.OutboundMessage.recipient_dsn:type_name -> bongo.v1.RecipientDSN
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_proto_bongo_v1_queue_proto_init() }
@@ -457,7 +579,7 @@ func file_proto_bongo_v1_queue_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bongo_v1_queue_proto_rawDesc), len(file_proto_bongo_v1_queue_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
