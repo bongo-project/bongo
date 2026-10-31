@@ -688,6 +688,9 @@ pipeline {
 # -----------------------------------------------------------------------------
 # queue {
 #   poll_interval = "5s"
+#   # Also deliver a headers-only copy of every bounce to postmaster@ the
+#   # sender's hosted domain, else smtp.postmaster_account. Restart to change.
+#   bounce_copy_postmaster = false
 # }
 
 

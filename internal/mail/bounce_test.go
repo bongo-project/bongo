@@ -202,7 +202,7 @@ func TestBuildBounceHeaderInjection(t *testing.T) {
 				SenderEmail: tt.senderEmail,
 				MessageGuid: tt.messageGuid,
 			}
-			out := buildBounce(original, tt.failedRecipients, tt.reason, "test.local", "")
+			out := BuildBounceMessage(original, tt.failedRecipients, tt.reason, "test.local", "")
 
 			// Split on CRLF and check that no line equals a forbidden header.
 			lines := bytes.Split(out, []byte("\r\n"))

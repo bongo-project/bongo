@@ -1026,6 +1026,16 @@ type PipelineConfig struct {
 // QueueConfig controls the outbound-delivery queue worker.
 type QueueConfig struct {
 	PollInterval string `hcl:"poll_interval,optional" mapstructure:"poll_interval"`
+	// BounceCopyPostmaster delivers a headers-only copy of each generated
+	// bounce to postmaster@ the sender's hosted domain, else to
+	// smtp.postmaster_account. Default false. A bool needs no Validate check.
+	BounceCopyPostmaster bool `hcl:"bounce_copy_postmaster,optional" mapstructure:"bounce_copy_postmaster"`
+}
+
+// BounceCopyToPostmaster reports whether bounces are copied to the postmaster.
+// Nil-safe: the queue block is optional.
+func (c *QueueConfig) BounceCopyToPostmaster() bool {
+	return c != nil && c.BounceCopyPostmaster
 }
 
 // QueuePollInterval parses PollInterval into a time.Duration. Returns 5s if the

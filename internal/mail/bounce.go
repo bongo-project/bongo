@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -31,6 +32,24 @@ type BounceGenerator struct {
 	logger    *slog.Logger
 	domain    string
 	dkim      *DKIMRegistry
+
+	// Postmaster copy (queue.bounce_copy_postmaster). Set once through
+	// SetPostmasterCopy before the generator is shared; read-only afterwards.
+	copyPostmaster  bool
+	hostedDomain    func(domain string) bool
+	postmasterAcct  string
+	noTargetLogOnce sync.Once
+}
+
+// SetPostmasterCopy enables the best-effort postmaster copy of each bounce.
+// hosted reports whether a domain is hosted here and able to receive mail
+// (a nil func treats every domain as not hosted); fallback is the address
+// used for senders on other domains (smtp.postmaster_account), "" for none.
+// Call before the generator is shared with the queue worker.
+func (bg *BounceGenerator) SetPostmasterCopy(enabled bool, hosted func(domain string) bool, fallback string) {
+	bg.copyPostmaster = enabled
+	bg.hostedDomain = hosted
+	bg.postmasterAcct = strings.ToLower(strings.TrimSpace(fallback))
 }
 
 // NewBounceGenerator creates a new BounceGenerator. domain is the server's
@@ -83,7 +102,11 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 	// A configured hostname may carry a trailing dot; an address with one is
 	// not valid RFC 5322, and the strict DKIM signer-domain parse would refuse
 	// to sign the DSN.
-	bounceMsg := buildBounce(original, failedRecipients, reason, strings.TrimSuffix(bg.domain, "."), originalHeaders)
+	domain := strings.TrimSuffix(bg.domain, ".")
+	bounceMsg := buildBounce(original, failedRecipients, reason, domain, originalHeaders, bounceOptions{
+		to:      original.SenderEmail,
+		subject: "Undelivered Mail Returned to Sender",
+	})
 
 	bg.logger.Info("bounce: generating DSN",
 		"sender", original.SenderEmail,
@@ -91,6 +114,34 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 		"reason", reason,
 	)
 
+	signed := bg.signBounce(bounceMsg)
+
+	// RFC 5321 s6.1: a DSN's envelope sender (MAIL FROM) must be null (<>) so
+	// a failure to deliver this bounce itself cannot generate another bounce
+	// (bounce-of-a-bounce loop). The From: header still identifies the
+	// sender as `MAILER-DAEMON <postmaster@<domain>>` (set by buildBounce
+	// above) — MAILER-DAEMON is the display name and postmaster@<domain> is
+	// the addr-spec that DKIM/DMARC alignment is computed from. Only the
+	// envelope sender is null.
+	senderErr := bg.deliverer.Deliver(
+		"",
+		[]string{original.SenderEmail},
+		bytes.NewReader(signed),
+	)
+
+	// The postmaster copy is independent of the sender's bounce: it is
+	// attempted even when that delivery failed, and never changes the result.
+	// It sits after Worker.generateBounce's suppression (null sender,
+	// unauthenticated forward), so a suppressed bounce is never copied.
+	if bg.copyPostmaster {
+		bg.deliverPostmasterCopy(original, failedRecipients, reason, domain, originalHeaders)
+	}
+	return senderErr
+}
+
+// signBounce DKIM-signs a built DSN. Never fails the bounce: on a signing
+// error it returns the unsigned message.
+func (bg *BounceGenerator) signBounce(bounceMsg []byte) []byte {
 	// DKIMRegistry.Sign only logs at Info and returns the message unsigned
 	// (nil error) on the no-key path, so this pre-check is the only thing that
 	// surfaces a warning naming the domain — the caller cannot otherwise
@@ -123,26 +174,92 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 	}
 
 	// Sign the DSN so it passes our own DMARC check on delivery (mirrors
-	// internal/queue/worker.go's outbound signing step). Never fails the
-	// bounce: on a signing error, fall back to the unsigned message.
+	// internal/queue/worker.go's outbound signing step).
 	signed, err := bg.dkim.Sign(bounceMsg, bg.logger)
 	if err != nil {
 		bg.logger.Error("bounce: DKIM signing failed, sending unsigned", "error", err)
-		signed = bounceMsg
+		return bounceMsg
 	}
+	return signed
+}
 
-	// RFC 5321 s6.1: a DSN's envelope sender (MAIL FROM) must be null (<>) so
-	// a failure to deliver this bounce itself cannot generate another bounce
-	// (bounce-of-a-bounce loop). The From: header still identifies the
-	// sender as `MAILER-DAEMON <postmaster@<domain>>` (set by buildBounce
-	// above) — MAILER-DAEMON is the display name and postmaster@<domain> is
-	// the addr-spec that DKIM/DMARC alignment is computed from. Only the
-	// envelope sender is null.
-	return bg.deliverer.Deliver(
-		"",
-		[]string{original.SenderEmail},
-		bytes.NewReader(signed),
-	)
+// postmasterCopyTarget picks the recipient of the postmaster copy: postmaster@
+// the sender's domain when that domain is hosted here, else the configured
+// fallback account. ok is false when neither exists. The deliver stage then
+// resolves postmaster@<domain> through the RecipientResolver postmaster tier.
+func (bg *BounceGenerator) postmasterCopyTarget(senderEmail string) (target string, ok bool) {
+	sender := strings.ToLower(strings.TrimSpace(senderEmail))
+	if at := strings.LastIndexByte(sender, '@'); at >= 0 {
+		d := strings.TrimSuffix(sender[at+1:], ".")
+		// A domain that could not have come from a hosted-domain key (and that
+		// could smuggle header or key syntax) is treated as not hosted.
+		if validPostmasterDomain(d) && bg.hostedDomain != nil && bg.hostedDomain(d) {
+			return "postmaster@" + d, true
+		}
+	}
+	if bg.postmasterAcct != "" {
+		return bg.postmasterAcct, true
+	}
+	return "", false
+}
+
+// validPostmasterDomain reports whether d is a plausible bare domain: non-empty
+// and free of whitespace, control characters, '/', '@' and address punctuation.
+func validPostmasterDomain(d string) bool {
+	if d == "" {
+		return false
+	}
+	for _, r := range d {
+		if r <= ' ' || r == 0x7f || r == '/' || r == '@' || r == '<' || r == '>' || r == ',' || r == ';' {
+			return false
+		}
+	}
+	return true
+}
+
+// deliverPostmasterCopy delivers a copy of the DSN to the postmaster. It is
+// best-effort: every failure is logged here and nothing is returned, so the
+// bounce to the sender is never affected. It only covers failures to enqueue;
+// if the target resolves to nobody the deliver stage drops it with its own
+// warning.
+//
+// The copy is built from the header block alone (originalHeaders), never from
+// the sender's built bytes, so a later RET=FULL on the sender's bounce cannot
+// put the original body into a postmaster copy. "Delivery-status part and
+// headers only" is read as: the DSN's own human-readable first part (required
+// by RFC 6522, and not the original body), the message/delivery-status part
+// and the text/rfc822-headers part.
+func (bg *BounceGenerator) deliverPostmasterCopy(original *bongov1.OutboundMessage, failedRecipients []string, reason, domain, originalHeaders string) {
+	target, ok := bg.postmasterCopyTarget(original.SenderEmail)
+	if !ok {
+		bg.noTargetLogOnce.Do(func() {
+			bg.logger.Info("bounce: postmaster copy skipped, sender domain not hosted and smtp.postmaster_account unset")
+		})
+		return
+	}
+	// Compare without a trailing root dot: postmaster@d. is postmaster@d. The
+	// domain owner can still get both the bounce and the copy when postmaster@
+	// resolves to them; that is intended, they are two different messages.
+	if strings.EqualFold(strings.TrimSuffix(strings.TrimSpace(original.SenderEmail), "."), target) {
+		bg.logger.Debug("bounce: postmaster copy skipped, sender is the copy target", "target", target)
+		return
+	}
+	msg := buildBounce(original, failedRecipients, reason, domain, originalHeaders, bounceOptions{
+		to:      target,
+		subject: "Postmaster Copy: Undelivered Mail",
+	})
+	signed := bg.signBounce(msg)
+	if err := bg.deliverer.Deliver("", []string{target}, bytes.NewReader(signed)); err != nil {
+		bg.logger.Warn("bounce: postmaster copy failed (best-effort, sender bounce unaffected)",
+			"target", target, "error", err)
+	}
+}
+
+// bounceOptions varies the parts of a DSN that differ between the sender's
+// bounce and the postmaster copy. Neither ever carries the original body.
+type bounceOptions struct {
+	to      string
+	subject string
 }
 
 // originalHeaderBlock returns the header block (normalized to CRLF, with a
@@ -292,12 +409,12 @@ func writeQuotedPrintable(w io.Writer, s string) error {
 	return qw.Close()
 }
 
-func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, reason, domain, originalHeaders string) []byte {
+func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, reason, domain, originalHeaders string, opts bounceOptions) []byte {
 	boundary := fmt.Sprintf("bounce-%s", uuid.New().String()[:8])
 	now := time.Now()
 
 	// Sanitize all user-controlled values before writing them into headers.
-	senderEmail := SanitizeHeaderValue(original.SenderEmail)
+	toAddr := SanitizeHeaderValue(opts.to)
 	safeReason := SanitizeHeaderValue(reason)
 	safeRecipients := make([]string, len(failedRecipients))
 	for i, r := range failedRecipients {
@@ -307,8 +424,8 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: MAILER-DAEMON <postmaster@%s>\r\n", domain)
-	fmt.Fprintf(&buf, "To: %s\r\n", senderEmail)
-	buf.WriteString("Subject: Undelivered Mail Returned to Sender\r\n")
+	fmt.Fprintf(&buf, "To: %s\r\n", toAddr)
+	fmt.Fprintf(&buf, "Subject: %s\r\n", SanitizeHeaderValue(opts.subject))
 	fmt.Fprintf(&buf, "Date: %s\r\n", now.Format(time.RFC1123Z))
 	fmt.Fprintf(&buf, "Message-ID: <bounce-%s@%s>\r\n", uuid.New().String(), domain)
 	// RFC 3834 section 5: mark this message as machine-generated so
@@ -432,7 +549,10 @@ func isASCII(s string) bool {
 // originalHeaders is the original message's header block for the
 // text/rfc822-headers MIME part; pass "" to omit that part.
 func BuildBounceMessage(original *bongov1.OutboundMessage, failedRecipients []string, reason, domain, originalHeaders string) []byte {
-	return buildBounce(original, failedRecipients, reason, domain, originalHeaders)
+	return buildBounce(original, failedRecipients, reason, domain, originalHeaders, bounceOptions{
+		to:      original.SenderEmail,
+		subject: "Undelivered Mail Returned to Sender",
+	})
 }
 
 // FormatRecipientList formats failed recipients for display.

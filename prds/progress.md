@@ -1484,3 +1484,8 @@ PATTERN: [config] Share one predicate between the code that binds a listener and
 - 28.5 several actions per rule. Plan PROCEED, review MINOR; the worker had not run the full gate, the orchestrator did (green). Logged: spam-stays-in-Junk holds in the default stage order only (in 8.2); a copy dropping its flags is caught only by the integration test, not a deliver unit test; FETCH FLAGS is checked through the store, not a real IMAP FETCH; stage reasons still say move/copy when spam suppresses them. The installed protoc-gen-go is the old golang/protobuf plugin; the worker built v1.36.11 into a scratch GOBIN to regenerate.
 PATTERN: [proto] Regenerate .pb.go with the protoc-gen-go version named in the existing generated header; the plugin on PATH may be older.
 PATTERN: [rules] Read and write a field that grew from singular to repeated through one helper pair (store.RuleActions/SetRuleActions) so every consumer sees the same compatibility rule.
+
+## 2026-10-31: Phase 28 batch 2 (28.2, 28.4, 28.6)
+
+- 28.2 bounce copy to the postmaster. Plan PROCEED, review MINOR. The orchestrator moved the agent's hosted-domain closure into a tested method (a disabled domain falls back to the account; mutant killed) and made the "sender is the target" skip ignore a trailing root dot (test red first). Logged: the CRLF case tests the domain check, not the copy's header sanitising, which is covered through buildBounce.
+PATTERN: [mail] Build a best-effort side message as its own Deliver call, so it cannot fail the primary all-or-nothing delivery, and build it from the header block rather than the primary's bytes so a later RET=FULL cannot leak the body into it.

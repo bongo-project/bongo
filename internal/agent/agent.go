@@ -1770,6 +1770,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if smtpPipeline != nil {
 			bounceDomain := mail.ResolveServerDomain(a.Config.SMTP.DKIM.Domain, a.Config.SMTP.Hostname)
 			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger, bounceDomain, a.DKIMRegistry)
+			a.configureBouncePostmasterCopy(a.BounceGen)
 		}
 
 		// Queue worker (leader-only processing).
@@ -3155,6 +3156,31 @@ func (a *Agent) newRecipientResolver(sys *store.SystemIndex) *store.RecipientRes
 		r.SetPostmasterAccount(a.Config.SMTP.PostmasterAccount)
 	}
 	return r
+}
+
+// configureBouncePostmasterCopy applies queue.bounce_copy_postmaster to g. The
+// hosted check is read-only. A disabled domain counts as not hosted: it
+// receives no mail, so postmaster@ there would be dropped; the copy goes to
+// smtp.postmaster_account instead. A store error also counts as not hosted.
+func (a *Agent) configureBouncePostmasterCopy(g *mail.BounceGenerator) {
+	if !a.Config.Queue.BounceCopyToPostmaster() {
+		return
+	}
+	g.SetPostmasterCopy(true, a.bounceCopyHostedDomain, a.newRecipientResolver(nil).PostmasterAccount())
+}
+
+// bounceCopyHostedDomain reports whether a bounce copy may go to postmaster@
+// domain: the domain is hosted here and not disabled.
+func (a *Agent) bounceCopyHostedDomain(domain string) bool {
+	if a.Store == nil {
+		return false
+	}
+	ok, err := store.DomainHosted(a.Store, domain)
+	if err != nil || !ok {
+		return false
+	}
+	disabled, err := store.DomainDisabled(a.Store, domain)
+	return err == nil && !disabled
 }
 
 // maxReportedDomains bounds the domain list in the postmaster warning.
