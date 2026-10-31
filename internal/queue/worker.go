@@ -16,10 +16,13 @@ import (
 )
 
 const (
-	maxAttempts         = 10
 	defaultPollInterval = 5 * time.Second
 	batchSize           = 100
-	concurrency         = 5
+
+	defaultMaxLifetime      = 5 * 24 * time.Hour
+	defaultMaxRetryInterval = time.Hour
+	defaultConcurrency      = 5
+	maxConcurrency          = 64
 )
 
 // LeaderChecker returns whether this node is the Raft leader.
@@ -37,7 +40,11 @@ type Worker struct {
 	blobs    *store.BlobStore
 	logger   *slog.Logger
 
-	pollInterval time.Duration
+	pollInterval     time.Duration
+	maxLifetime      time.Duration
+	maxRetryInterval time.Duration
+	concurrency      int
+	now              func() time.Time
 }
 
 // Option is a functional option for Worker.
@@ -49,6 +56,36 @@ func WithPollInterval(d time.Duration) Option {
 	return func(w *Worker) {
 		if d > 0 {
 			w.pollInterval = d
+		}
+	}
+}
+
+// WithMaxLifetime sets how long a message may stay queued, from created_at,
+// before it is bounced. Non-positive values are ignored.
+func WithMaxLifetime(d time.Duration) Option {
+	return func(w *Worker) {
+		if d > 0 {
+			w.maxLifetime = d
+		}
+	}
+}
+
+// WithMaxRetryInterval caps the doubling retry delay. Non-positive values are
+// ignored.
+func WithMaxRetryInterval(d time.Duration) Option {
+	return func(w *Worker) {
+		if d > 0 {
+			w.maxRetryInterval = d
+		}
+	}
+}
+
+// WithConcurrency sets the number of simultaneous deliveries. Values outside
+// 1 to 64 are ignored.
+func WithConcurrency(n int) Option {
+	return func(w *Worker) {
+		if n >= 1 && n <= maxConcurrency {
+			w.concurrency = n
 		}
 	}
 }
@@ -86,6 +123,11 @@ func NewWorker(
 		blobs:        blobs,
 		logger:       logger,
 		pollInterval: defaultPollInterval,
+
+		maxLifetime:      defaultMaxLifetime,
+		maxRetryInterval: defaultMaxRetryInterval,
+		concurrency:      defaultConcurrency,
+		now:              time.Now,
 	}
 	for _, o := range opts {
 		o(w)
@@ -122,7 +164,7 @@ func (w *Worker) poll(ctx context.Context) {
 		observability.QueueOldestPendingSeconds.Set(float64(stats.OldestPendingSeconds))
 	}
 
-	msgs, err := w.store.GetReady(time.Now(), batchSize)
+	msgs, err := w.store.GetReady(w.now(), batchSize)
 	if err != nil {
 		w.logger.Error("queue: failed to get ready messages", "error", err)
 		return
@@ -134,7 +176,7 @@ func (w *Worker) poll(ctx context.Context) {
 
 	w.logger.Info("queue: processing messages", "count", len(msgs))
 
-	sem := make(chan struct{}, concurrency)
+	sem := make(chan struct{}, w.concurrency)
 	var wg sync.WaitGroup
 
 	for _, msg := range msgs {
@@ -237,7 +279,7 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 	// recipients 5xx at RCPT, then the transaction fails for the rest. Pruning
 	// the dead recipients here is what stops the retry below re-sending to
 	// them. Without it they were relayed again on every attempt, each one
-	// producing another DSN, so the sender received up to maxAttempts copies of
+	// producing another DSN, so the sender received one copy per attempt of
 	// the same bounce for the same address.
 	//
 	// Pruning is not conditional on having a bouncer: retrying an address that
@@ -287,16 +329,17 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 	}
 }
 
-// handlePermanentFailure bounces a message immediately, without consuming the
-// remaining retries, for a condition no later attempt can change.
+// handlePermanentFailure bounces a message immediately, without waiting out
+// queue.max_lifetime, for a condition no later attempt can change.
 //
 // The case this exists for is a body blob that no longer exists. A message
-// enqueued before the 2026-08-30 blob-GC incident spent seven days cycling
-// through attempts that each failed identically, because handleFailure treats
-// every error as worth retrying and only bounces once maxAttempts is spent.
-// Nine wasted deliveries is the smaller cost; the larger one is that the DSN
-// the sender eventually receives blames delivery, when the truth is that the
-// body is gone and resending is the only remedy.
+// enqueued before the 2026-08-30 blob-GC incident kept cycling through
+// attempts that each failed identically, because handleFailure treats every
+// error as worth retrying and only bounces once the next attempt would fall
+// past created_at + max_lifetime. The wasted deliveries are the smaller cost;
+// the larger one is that the DSN the sender eventually receives blames
+// delivery, when the truth is that the body is gone and resending is the only
+// remedy.
 //
 // Reserve this for genuinely unrecoverable conditions. Anything that might
 // succeed later -- a peer that is down, a blob store mid-startup, a transient
@@ -315,10 +358,23 @@ func (w *Worker) handlePermanentFailure(msg *bongov1.OutboundMessage, reason str
 	observability.QueueMessagesTotal.WithLabelValues("bounced").Inc()
 }
 
+// handleFailure reschedules a failed message with a doubling delay capped at
+// max_retry_interval, or bounces it when the next attempt would fall after
+// created_at + max_lifetime. The attempt count is still incremented and shown
+// in /admin/queue but is no longer the bounce criterion, so messages queued
+// before the upgrade are judged by their created_at.
 func (w *Worker) handleFailure(msg *bongov1.OutboundMessage, reason string) {
-	if msg.AttemptCount >= maxAttempts-1 {
-		// Max retries exhausted — bounce.
-		w.logger.Warn("queue: max retries exhausted, bouncing", "id", msg.Id)
+	now := w.now()
+	if msg.CreatedAt == 0 {
+		// Predates enqueue-time tracking. Judged against epoch 0 it would bounce
+		// at once; stamp it so it gets a full lifetime (MarkFailed persists it).
+		msg.CreatedAt = now.Unix()
+	}
+	next := now.Add(retryDelay(msg.AttemptCount+1, w.maxRetryInterval))
+	deadline := time.Unix(msg.CreatedAt, 0).Add(w.maxLifetime)
+	if next.After(deadline) {
+		w.logger.Warn("queue: queue lifetime exceeded, bouncing", "id", msg.Id,
+			"attempts", msg.AttemptCount, "age", now.Sub(time.Unix(msg.CreatedAt, 0)).Round(time.Second).String())
 		if w.bouncer != nil {
 			w.generateBounce(msg, msg.Recipients, reason)
 		}
@@ -331,11 +387,11 @@ func (w *Worker) handleFailure(msg *bongov1.OutboundMessage, reason string) {
 	}
 
 	msg.StatusReason = reason
-	if err := w.store.MarkFailed(msg); err != nil {
+	if err := w.store.MarkFailed(msg, next.Unix()); err != nil {
 		w.logger.Error("queue: marking failed", "id", msg.Id, "error", err)
 	} else {
 		observability.QueueMessagesTotal.WithLabelValues("failed").Inc()
-		w.logger.Info("queue: message retry scheduled", "id", msg.Id, "attempt", msg.AttemptCount+1)
+		w.logger.Info("queue: message retry scheduled", "id", msg.Id, "attempt", msg.AttemptCount)
 	}
 }
 

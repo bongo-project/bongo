@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"testing"
+	"time"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -33,7 +34,8 @@ func TestWorkerSuppressedBounceHasNoPostmasterCopy(t *testing.T) {
 				SenderEmail:  tt.sender,
 				Recipients:   []string{"bob@external.com"},
 				BlobHash:     hash,
-				AttemptCount: 9,
+				AttemptCount: 3,
+				CreatedAt:    time.Now().Add(-6 * 24 * time.Hour).Unix(),
 				Origin:       tt.origin,
 			}
 			if err := qs.Enqueue(msg); err != nil {

@@ -982,6 +982,24 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if q := c.Queue; q != nil {
+		for _, k := range []struct{ key, v string }{
+			{"queue.max_lifetime", q.MaxLifetime},
+			{"queue.max_retry_interval", q.MaxRetryInterval},
+		} {
+			if k.v == "" {
+				continue
+			}
+			if _, err := parseRetention(k.v); err != nil {
+				return fmt.Errorf("%s: invalid value %q (use whole days like \"5d\" or a duration like \"1h\", must be positive): %w", k.key, k.v, err)
+			}
+		}
+		// Zero is "unset" (default 5): a queue block replaces the defaults.
+		if q.Concurrency < 0 || q.Concurrency > maxQueueConcurrency {
+			return fmt.Errorf("queue.concurrency: invalid value %d (use 1 to %d, or omit for the default of %d)", q.Concurrency, maxQueueConcurrency, defaultQueueConcurrency)
+		}
+	}
+
 	if _, err := c.Storage.Pebble.CacheBytes(); err != nil {
 		return fmt.Errorf("storage.pebble.cache_size: invalid value %q (use a positive size like \"256MB\" or \"1GB\"): %w", c.Storage.Pebble.CacheSize, err)
 	}
@@ -1030,6 +1048,57 @@ type QueueConfig struct {
 	// bounce to postmaster@ the sender's hosted domain, else to
 	// smtp.postmaster_account. Default false. A bool needs no Validate check.
 	BounceCopyPostmaster bool `hcl:"bounce_copy_postmaster,optional" mapstructure:"bounce_copy_postmaster"`
+	// MaxLifetime is how long a message may stay queued, measured from its
+	// created_at, before it is bounced. Whole days ("5d") or any Go duration.
+	// Empty means 5d.
+	MaxLifetime string `hcl:"max_lifetime,optional" mapstructure:"max_lifetime"`
+	// MaxRetryInterval caps the doubling retry delay. Empty means 1h.
+	MaxRetryInterval string `hcl:"max_retry_interval,optional" mapstructure:"max_retry_interval"`
+	// Concurrency is the number of simultaneous outbound deliveries, 1 to 64.
+	// Zero means unset (5): a queue block replaces the defaults wholesale.
+	Concurrency int `hcl:"concurrency,optional" mapstructure:"concurrency"`
+}
+
+const (
+	defaultQueueMaxLifetime      = 5 * 24 * time.Hour
+	defaultQueueMaxRetryInterval = time.Hour
+	defaultQueueConcurrency      = 5
+	maxQueueConcurrency          = 64
+)
+
+// QueueMaxLifetime returns the maximum time a message stays queued. Nil-safe;
+// returns 5d when unset or unparseable.
+func (c *QueueConfig) QueueMaxLifetime() time.Duration {
+	if c == nil || c.MaxLifetime == "" {
+		return defaultQueueMaxLifetime
+	}
+	d, err := parseRetention(c.MaxLifetime)
+	if err != nil {
+		return defaultQueueMaxLifetime
+	}
+	return d
+}
+
+// QueueMaxRetryInterval returns the retry delay cap. Nil-safe; returns 1h when
+// unset or unparseable.
+func (c *QueueConfig) QueueMaxRetryInterval() time.Duration {
+	if c == nil || c.MaxRetryInterval == "" {
+		return defaultQueueMaxRetryInterval
+	}
+	d, err := parseRetention(c.MaxRetryInterval)
+	if err != nil {
+		return defaultQueueMaxRetryInterval
+	}
+	return d
+}
+
+// QueueConcurrency returns the outbound delivery concurrency. Nil-safe;
+// returns 5 when unset or outside 1 to 64.
+func (c *QueueConfig) QueueConcurrency() int {
+	if c == nil || c.Concurrency < 1 || c.Concurrency > maxQueueConcurrency {
+		return defaultQueueConcurrency
+	}
+	return c.Concurrency
 }
 
 // BounceCopyToPostmaster reports whether bounces are copied to the postmaster.

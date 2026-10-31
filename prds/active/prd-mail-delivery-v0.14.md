@@ -808,3 +808,7 @@ Found while implementing (2026-10-31):
   until the condition is corrected. The rule tester now uses the delivery
   parser, so its body text is capped at 8192 bytes and messages with a
   missing blob are skipped.
+- Release notes (US-008): failed outbound mail is now retried for 5 days
+  (`queue.max_lifetime`) instead of bouncing after about 17 hours. The
+  three new `queue.*` keys are refused by an older binary; set them only
+  after every node is upgraded.

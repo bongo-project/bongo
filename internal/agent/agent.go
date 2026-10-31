@@ -1798,7 +1798,10 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		// Queue worker (leader-only processing).
 		a.QueueWorker = queue.NewWorker(a.QueueStore, a.Relay, a.DKIMRegistry, a, a.BounceGen, a.Blobs, a.logger,
-			queue.WithPollInterval(a.Config.Queue.QueuePollInterval()))
+			queue.WithPollInterval(a.Config.Queue.QueuePollInterval()),
+			queue.WithMaxLifetime(a.Config.Queue.QueueMaxLifetime()),
+			queue.WithMaxRetryInterval(a.Config.Queue.QueueMaxRetryInterval()),
+			queue.WithConcurrency(a.Config.Queue.QueueConcurrency()))
 		queueCtx, queueCancel := context.WithCancel(ctx)
 		a.queueWorkerCancel = queueCancel
 		a.goWorker("queue-worker", func() { a.QueueWorker.Run(queueCtx) })

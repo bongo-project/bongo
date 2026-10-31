@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -43,7 +44,8 @@ func TestWorkerForwardDSNSuppression(t *testing.T) {
 				SenderEmail:         "SRS0=aaaaaaaa=bb=forged.example=mallory@hosted.example",
 				Recipients:          []string{"bob@external.com"},
 				BlobHash:            hash,
-				AttemptCount:        9, // next failure is the last: whole-message bounce path
+				AttemptCount:        3,
+				CreatedAt:           time.Now().Add(-6 * 24 * time.Hour).Unix(), // past lifetime: whole-message bounce path
 				Origin:              tt.origin,
 				SenderAuthenticated: tt.authenticated,
 			}

@@ -691,6 +691,14 @@ pipeline {
 #   # Also deliver a headers-only copy of every bounce to postmaster@ the
 #   # sender's hosted domain, else smtp.postmaster_account. Restart to change.
 #   bounce_copy_postmaster = false
+#   # A message is bounced when its next retry would fall after created_at plus
+#   # max_lifetime. Whole days ("5d") or a duration ("120h"). Restart to change.
+#   max_lifetime = "5d"
+#   # Retries back off from 2 minutes, doubling, up to this interval.
+#   # Restart to change.
+#   max_retry_interval = "1h"
+#   # Simultaneous outbound deliveries, 1 to 64. Restart to change.
+#   concurrency = 5
 # }
 
 
