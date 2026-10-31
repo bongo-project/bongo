@@ -231,11 +231,14 @@ type TLSConfig struct {
 }
 
 type SMTPConfig struct {
-	Enabled        bool   `hcl:"enabled,optional" mapstructure:"enabled"`
-	Port           int    `hcl:"port,optional" mapstructure:"port"`
-	SubmissionPort int    `hcl:"submission_port,optional" mapstructure:"submission_port"`
-	Hostname       string `hcl:"hostname,optional" mapstructure:"hostname"`
-	ProxyProtocol  bool   `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
+	Enabled        bool `hcl:"enabled,optional" mapstructure:"enabled"`
+	Port           int  `hcl:"port,optional" mapstructure:"port"`
+	SubmissionPort int  `hcl:"submission_port,optional" mapstructure:"submission_port"`
+	// SubmissionsPort is the implicit-TLS submission port (RFC 8314, 465).
+	// 0 disables the listener. It needs smtp.tls (or dev mode).
+	SubmissionsPort int    `hcl:"submissions_port,optional" mapstructure:"submissions_port"`
+	Hostname        string `hcl:"hostname,optional" mapstructure:"hostname"`
+	ProxyProtocol   bool   `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
 	// SRSMaxAgeDays is how many days a rewritten forward sender (SRS address)
 	// stays reversible, so a bounce arriving later than this is refused.
 	// Default 21; valid range 1-365, and 0 means the default.
@@ -1257,6 +1260,7 @@ func Defaults() *Config {
 			Enabled:                     true,
 			Port:                        25,
 			SubmissionPort:              587,
+			SubmissionsPort:             465,
 			SRSMaxAgeDays:               21,
 			SRSBouncesPerAddressPerHour: 5,
 			SRSBouncesPerHour:           200,

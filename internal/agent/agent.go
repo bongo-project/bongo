@@ -1068,11 +1068,23 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Mail-client autoconfiguration (public: clients fetch these before any
 	// credentials exist). Advertises the mail hostname + standard ports so
 	// Thunderbird/Outlook/Apple Mail can self-configure from an email address.
+	// Advertise the ports the listeners really bind (dev substitutes its own),
+	// and 465 only when the SMTP server will serve it: the same predicate
+	// NewServer uses, evaluated here because the router is built before SMTP
+	// starts.
+	isDevRole := a.Config.Server.Role == "dev"
+	imapPort, imapsPort := a.Config.IMAP.ListenPorts(isDevRole)
+	_, submissionPort := a.Config.SMTP.ListenPorts(isDevRole)
+	submissionsPort := 0
+	if a.Config.SMTP.SubmissionsEnabled(isDevRole) {
+		submissionsPort = a.Config.SMTP.SubmissionsListenPort(isDevRole)
+	}
 	autoconfigH := handlers.NewAutoconfigHandler(
 		a.Config.SMTP.Hostname,
-		a.Config.IMAP.Port,
-		a.Config.IMAP.PortTLS,
-		a.Config.SMTP.SubmissionPort,
+		imapPort,
+		imapsPort,
+		submissionPort,
+		submissionsPort,
 	)
 	// Outside dev, only answer for domains this server actually handles, so the
 	// endpoint cannot be used as an open autoconfig generator for arbitrary

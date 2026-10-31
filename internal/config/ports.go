@@ -19,6 +19,9 @@ const (
 	devSMTPPort           = 2525
 	devSubmissionPort     = 2587
 
+	defaultSubmissionsPort = 465
+	devSubmissionsPort     = 2465
+
 	defaultIMAPPort    = 143
 	defaultIMAPTLSPort = 993
 	devIMAPPort        = 1143
@@ -49,6 +52,25 @@ func substituteDev(port, prodDefault, devDefault int, dev bool) int {
 func (s *SMTPConfig) ListenPorts(dev bool) (mx, submission int) {
 	return substituteDev(s.Port, defaultSMTPPort, devSMTPPort, dev),
 		substituteDev(s.SubmissionPort, defaultSubmissionPort, devSubmissionPort, dev)
+}
+
+// SubmissionsListenPort returns the implicit-TLS submission port; 0 means the
+// listener is disabled.
+func (s *SMTPConfig) SubmissionsListenPort(dev bool) int {
+	return substituteDev(s.SubmissionsPort, defaultSubmissionsPort, devSubmissionsPort, dev)
+}
+
+// SubmissionsEnabled reports whether the implicit-TLS submission listener is
+// served: the port is not 0 and either this is a dev node (which generates a
+// self-signed certificate) or smtp.tls names a certificate and key. The
+// listener never serves plaintext, so without a certificate it is off. The
+// SMTP server and the autoconfig handler both call this so they cannot
+// disagree about whether port 465 is live.
+func (s *SMTPConfig) SubmissionsEnabled(dev bool) bool {
+	if s.SubmissionsListenPort(dev) == 0 {
+		return false
+	}
+	return dev || (s.TLS.CertFile != "" && s.TLS.KeyFile != "")
 }
 
 // ListenPorts returns the plain and implicit-TLS ports the IMAP server binds.
@@ -133,12 +155,18 @@ func (c *Config) enabledListenerPorts() ([]listenerPort, error) {
 		mx, sub := c.SMTP.ListenPorts(false)
 		add("smtp.port", mx)
 		add("smtp.submission_port", sub)
+		if p := c.SMTP.SubmissionsListenPort(false); p != 0 {
+			add("smtp.submissions_port", p)
+		}
 	}
 	if mailNode {
 		if c.SMTP.Enabled {
 			mx, sub := c.SMTP.ListenPorts(dev)
 			add("smtp.port", mx)
 			add("smtp.submission_port", sub)
+			if p := c.SMTP.SubmissionsListenPort(dev); p != 0 {
+				add("smtp.submissions_port", p)
+			}
 		}
 		if c.IMAP.Enabled {
 			plain, tlsPort := c.IMAP.ListenPorts(dev)

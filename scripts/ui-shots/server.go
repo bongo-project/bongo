@@ -15,10 +15,10 @@ import (
 	"time"
 )
 
-// ports holds the nine listeners a dev server needs, all set explicitly so
+// ports holds the ten listeners a dev server needs, all set explicitly so
 // nothing falls back to a fixed default.
 type ports struct {
-	web, smtp, submission, imap, imapTLS, pop3, pop3TLS, gossip, control int
+	web, smtp, submission, submissions, imap, imapTLS, pop3, pop3TLS, gossip, control int
 }
 
 // allocPorts returns n distinct free ports. Every listener is held until all
@@ -43,11 +43,11 @@ func allocPorts(n int) ([]int, error) {
 }
 
 func newPorts() (ports, error) {
-	p, err := allocPorts(9)
+	p, err := allocPorts(10)
 	if err != nil {
 		return ports{}, err
 	}
-	return ports{p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8]}, nil
+	return ports{p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9]}, nil
 }
 
 func (p ports) origin() string { return "http://127.0.0.1:" + strconv.Itoa(p.web) }
@@ -93,6 +93,7 @@ storage {
 smtp {
   port            = %d
   submission_port = %d
+  submissions_port = %d
   tls {}
   relay {}
   dkim {}
@@ -116,7 +117,7 @@ web {
 }
 
 caldav {}
-`, p.control, p.gossip, p.smtp, p.submission, p.imap, p.imapTLS, p.pop3, p.pop3TLS, p.web)
+`, p.control, p.gossip, p.smtp, p.submission, p.submissions, p.imap, p.imapTLS, p.pop3, p.pop3TLS, p.web)
 }
 
 // run executes a command, returning its combined output in the error.

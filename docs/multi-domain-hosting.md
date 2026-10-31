@@ -72,7 +72,7 @@ The record set is:
 | TXT (SPF) | `@` | `v=spf1 mx ~all` | authorise the MX host to send |
 | TXT (DMARC) | `_dmarc` | `v=DMARC1; p=none; rua=mailto:postmaster@tenant.com` | reporting, policy `none` to start |
 | TXT (DKIM) | `mail._domainkey` | `v=DKIM1; k=rsa; p=...` | shown only after you generate a key (step 4) |
-| SRV | `_imaps._tcp`, `_submission._tcp`, `_autodiscover._tcp`, `_caldavs._tcp`, `_carddavs._tcp` | target `mail.example.com.` | RFC 6186 client autodiscovery |
+| SRV | `_imaps._tcp`, `_submissions._tcp` (465), `_submission._tcp` (587), `_autodiscover._tcp`, `_caldavs._tcp`, `_carddavs._tcp` | target `mail.example.com.` | RFC 6186 client autodiscovery |
 | TXT | `_caldavs._tcp`, `_carddavs._tcp` | `path=/caldav/`, `path=/carddav/` | CalDAV/CardDAV discovery path |
 
 Start DMARC at `p=none` so you can watch the `rua` reports before you enforce.
@@ -164,7 +164,9 @@ address and password. Bongo serves:
 - **Apple Mail (iOS/macOS)** — `https://mail.example.com/.well-known/mobileconfig`
 
 All of them advertise the shared host `mail.example.com` with IMAPS on 993 and
-submission on 587. In production, bongo only answers autoconfig for domains it
+submission on 465 (implicit TLS) first, then 587 (STARTTLS). The Apple profile
+carries a single outgoing server, so it uses 465. When `smtp.submissions_port`
+is 0, or no `smtp.tls` certificate is configured, 465 is left out of all three. In production, bongo only answers autoconfig for domains it
 actually hosts, so a domain must exist (and be enabled) before autoconfig works
 for it.
 

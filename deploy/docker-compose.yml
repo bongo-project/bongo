@@ -1,10 +1,10 @@
 # Bongo single-node deployment behind an existing Traefik.
 #
-# Traefik already owns 80/443 and the mail entrypoints 25/587/143/993, so bongo
+# Traefik already owns 80/443 and the mail entrypoints 25/587/465/143/993, so bongo
 # does NOT publish ports itself — Traefik routes to it over the shared
 # `traefik_web` network:
 #   - Web UI  : HTTP router  (mail.example.com -> bongo:8080), Traefik terminates TLS
-#   - Mail    : TCP routers on the smtp/submission/imap/imaps entrypoints,
+#   - Mail    : TCP routers on the smtp/submission/submissions/imap/imaps entrypoints,
 #               passed through to bongo, which terminates TLS itself using the
 #               Let's Encrypt cert extracted from Traefik's acme.json.
 #
@@ -30,7 +30,7 @@ services:
 
     # Hardening: the container runs as uid/gid 10001 from the start (the image
     # has no root entrypoint), with every Linux capability dropped and
-    # no-new-privileges set. Privileged mail ports (25, 587, 143, 993) bind
+    # no-new-privileges set. Privileged mail ports (25, 587, 465, 143, 993) bind
     # without NET_BIND_SERVICE because the sysctl below lowers the unprivileged
     # port floor inside the container's own network namespace. Data-directory
     # ownership is a host operator step (README section 11).
@@ -146,6 +146,16 @@ services:
       - "traefik.tcp.routers.bongo-submission.service=bongo-submission"
       - "traefik.tcp.services.bongo-submission.loadbalancer.server.port=587"
       - "traefik.tcp.services.bongo-submission.loadbalancer.proxyProtocol.version=2"
+
+      # SMTPS submission (465) is implicit TLS: passthrough so bongo presents its
+      # own cert. Needs a "submissions" entrypoint on :465 in Traefik, or set
+      # smtp.submissions_port = 0 in bongo.hcl.
+      - "traefik.tcp.routers.bongo-submissions.rule=HostSNI(`${WEB_HOST}`)"
+      - "traefik.tcp.routers.bongo-submissions.entrypoints=submissions"
+      - "traefik.tcp.routers.bongo-submissions.tls.passthrough=true"
+      - "traefik.tcp.routers.bongo-submissions.service=bongo-submissions"
+      - "traefik.tcp.services.bongo-submissions.loadbalancer.server.port=465"
+      - "traefik.tcp.services.bongo-submissions.loadbalancer.proxyProtocol.version=2"
 
       - "traefik.tcp.routers.bongo-imap.rule=HostSNI(`*`)"
       - "traefik.tcp.routers.bongo-imap.entrypoints=imap"

@@ -144,7 +144,8 @@ storage {
 smtp {
   enabled         = true
   port            = 25    # inbound MX
-  submission_port = 587   # authenticated submission
+  submission_port = 587   # authenticated submission (STARTTLS)
+  submissions_port = 465  # authenticated submission, implicit TLS; needs smtp.tls and port 465 published; 0 disables
   hostname        = "mail.example.com"   # EHLO/HELO name, inbound banner AND outbound relay (align with rDNS/SPF; must be an FQDN)
   proxy_protocol  = true  # read PROXY header from Traefik to see the real client IP (SPF)
 

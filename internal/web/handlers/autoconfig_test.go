@@ -8,7 +8,7 @@ import (
 )
 
 func newTestAutoconfig() *AutoconfigHandler {
-	h := NewAutoconfigHandler("mail.example.com", 143, 993, 587)
+	h := NewAutoconfigHandler("mail.example.com", 143, 993, 587, 465)
 	h.SetDomainChecker(func(d string) bool { return d == "example.com" })
 	return h
 }
@@ -155,7 +155,7 @@ func TestAppleMobileconfig(t *testing.T) {
 			"<key>IncomingMailServerPortNumber</key>",
 			"<integer>993</integer>",
 			"<key>OutgoingMailServerPortNumber</key>",
-			"<integer>587</integer>",
+			"<integer>465</integer>",
 			"<string>alice@example.com</string>",
 			"com.example.mail",
 		} {
@@ -190,7 +190,7 @@ func TestAppleMobileconfig(t *testing.T) {
 
 func TestXMLEscaping(t *testing.T) {
 	// A checker that accepts anything plausible, to exercise escaping of a crafted domain.
-	h := NewAutoconfigHandler("mail.example.com", 143, 993, 587)
+	h := NewAutoconfigHandler("mail.example.com", 143, 993, 587, 465)
 	h.SetDomainChecker(func(string) bool { return true })
 
 	req := httptest.NewRequest(http.MethodGet,
@@ -233,5 +233,71 @@ func TestIsPlausibleDomain(t *testing.T) {
 		if isPlausibleDomain(d) {
 			t.Errorf("isPlausibleDomain(%q) = true, want false", d)
 		}
+	}
+}
+
+// submissionsDoc fetches one autoconfig document from a handler.
+func submissionsDoc(t *testing.T, h *AutoconfigHandler, doc string) string {
+	t.Helper()
+	var req *http.Request
+	rec := httptest.NewRecorder()
+	switch doc {
+	case "mozilla":
+		req = httptest.NewRequest(http.MethodGet, "/.well-known/autoconfig/mail/config-v1.1.xml?emailaddress=alice@example.com", nil)
+		h.MozillaConfig(rec, req)
+	case "autodiscover":
+		req = httptest.NewRequest(http.MethodGet, "/autodiscover/autodiscover.xml", nil)
+		req.Host = "autodiscover.example.com"
+		h.Autodiscover(rec, req)
+	default:
+		req = httptest.NewRequest(http.MethodGet, "/.well-known/mobileconfig?email=alice@example.com", nil)
+		h.AppleMobileconfig(rec, req)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s status = %d", doc, rec.Code)
+	}
+	return rec.Body.String()
+}
+
+func TestAutoconfigImplicitTLSSubmission(t *testing.T) {
+	tests := []struct {
+		name            string
+		submissionsPort int
+		doc             string
+		wantInOrder     []string
+		wantAbsent      []string
+	}{
+		{"mozilla lists 465 SSL before 587 STARTTLS", 465, "mozilla",
+			[]string{"<port>465</port>", "<socketType>SSL</socketType>", "<port>587</port>", "<socketType>STARTTLS</socketType>"}, nil},
+		{"mozilla omits 465 when disabled", 0, "mozilla",
+			[]string{"<port>587</port>"}, []string{"<port>465</port>"}},
+		{"autodiscover lists 465 SSL before 587 TLS", 465, "autodiscover",
+			[]string{"<Port>465</Port>", "<Encryption>SSL</Encryption>", "<Port>587</Port>", "<Encryption>TLS</Encryption>"}, nil},
+		{"autodiscover omits 465 when disabled", 0, "autodiscover",
+			[]string{"<Port>587</Port>"}, []string{"<Port>465</Port>"}},
+		{"apple uses 465 when served", 465, "apple",
+			[]string{"<integer>465</integer>"}, []string{"<integer>587</integer>"}},
+		{"apple falls back to 587 when 465 is off", 0, "apple",
+			[]string{"<integer>587</integer>"}, []string{"<integer>465</integer>"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := NewAutoconfigHandler("mail.example.com", 143, 993, 587, tc.submissionsPort)
+			h.SetDomainChecker(func(d string) bool { return d == "example.com" })
+			body := submissionsDoc(t, h, tc.doc)
+			pos := 0
+			for _, want := range tc.wantInOrder {
+				i := strings.Index(body[pos:], want)
+				if i < 0 {
+					t.Fatalf("%q missing or out of order after offset %d in:\n%s", want, pos, body)
+				}
+				pos += i + len(want)
+			}
+			for _, bad := range tc.wantAbsent {
+				if strings.Contains(body, bad) {
+					t.Errorf("unexpected %q in:\n%s", bad, body)
+				}
+			}
+		})
 	}
 }

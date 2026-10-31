@@ -190,12 +190,17 @@ storage {
 
 
 # -----------------------------------------------------------------------------
-# smtp — inbound MX (25) + authenticated submission (587)
+# smtp — inbound MX (25) + authenticated submission (587, and 465 over TLS)
 # -----------------------------------------------------------------------------
 smtp {
   enabled         = true
   port            = 25   # inbound mail from other servers (MX)
-  submission_port = 587  # authenticated submission from your users
+  submission_port = 587  # authenticated submission from your users (STARTTLS)
+
+  # Implicit-TLS submission (RFC 8314). Needs the smtp.tls certificate below and
+  # the port published; never served in plaintext. 0 disables it. Upgrading from
+  # a version without this key binds 465 by default: publish it or set 0.
+  submissions_port = 465
 
   # EHLO/HELO hostname, used in BOTH directions: the banner we present to
   # inbound connections, and the EHLO name we send when relaying mail out.

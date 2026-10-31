@@ -29,7 +29,9 @@ for **example.com** on a single Docker host, behind an existing Traefik.
 ### How mail reaches bongo (important)
 
 Your existing Traefik already owns 80/443 **and** the mail entrypoints
-`smtp` (25), `submission` (587), `imap` (143), `imaps` (993). So bongo does
+`smtp` (25), `submission` (587), `submissions` (465), `imap` (143), `imaps` (993).
+The `submissions` entrypoint is new in this release: add it to Traefik, or set
+`smtp.submissions_port = 0` in `bongo.hcl`, before upgrading. So bongo does
 **not** publish those ports — Traefik routes to it over the `traefik_web` network:
 
 - **Web UI:** HTTP router, `mail.example.com` → `bongo:8080`. Traefik terminates
@@ -94,6 +96,7 @@ _dmarc.example.com.      IN  TXT    "v=DMARC1; p=none; rua=mailto:postmaster@exa
 ; SRV records let clients discover servers from just an email address (RFC 6186)
 _imaps._tcp.example.com.       IN  SRV  0 1 993 mail.example.com.
 _submission._tcp.example.com.  IN  SRV  0 1 587 mail.example.com.
+_submissions._tcp.example.com. IN  SRV  0 1 465 mail.example.com.
 _autodiscover._tcp.example.com. IN SRV  0 1 443 mail.example.com.
 
 ; Optional subdomains that Thunderbird/Outlook probe before the .well-known path.
@@ -558,6 +561,6 @@ curl -s https://example.com/.well-known/mobileconfig?email=you@example.com
 ```
 
 Only configured (enabled) domains are answered; an unknown domain returns 404.
-The documents advertise `mail.example.com` on 993 (IMAPS) and 587 (submission
-STARTTLS) and contain no secrets. The Apple profile is intentionally unsigned;
+The documents advertise `mail.example.com` on 993 (IMAPS), 465 (submission over
+TLS) and 587 (submission STARTTLS) and contain no secrets. The Apple profile is intentionally unsigned;
 signing it with the Let's Encrypt certificate is possible future work.

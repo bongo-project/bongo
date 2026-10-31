@@ -212,6 +212,7 @@ TLS as well as raft transport.
 |---|---|---|---|
 | `smtp.enabled` | `agent.go:1142` | ctor, gates listener creation | RESTART |
 | `smtp.port`, `smtp.submission_port` | `smtp/server.go:623-624` (`NewServer`); `agent.go:574` (autoconfig) | ctor | RESTART |
+| `smtp.submissions_port` | `smtp/server.go` (`NewServer`); `agent.go` (autoconfig) | ctor | RESTART |
 | `smtp.hostname` | `smtp/server.go:645` (banner and `Received`), `agent.go:571,588,697,1092,1235,1251,2416` (autoconfig, authserv-id, HELO, bounce domain) | ctor; copied into at least six components | RESTART |
 | `smtp.proxy_protocol` | `smtp/server.go:706,734-735` | ctor, wraps listeners | RESTART |
 | `smtp.srs_max_age_days` | `agent.go` `initSRS` | ctor: baked into the SRS codec in `Run` | RESTART |

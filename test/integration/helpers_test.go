@@ -217,7 +217,7 @@ func sharedAssignFreePorts(t *testing.T, cfg *config.Config) {
 	// would abort before marking itself ready, and the test would fail on the
 	// readiness deadline looking exactly like the contention this helper exists
 	// to remove.
-	ports := sharedFreePorts(t, 9)
+	ports := sharedFreePorts(t, 10)
 	cfg.Web.Port = ports[0]
 	cfg.SMTP.Port = ports[1]
 	cfg.SMTP.SubmissionPort = ports[2]
@@ -227,6 +227,7 @@ func sharedAssignFreePorts(t *testing.T, cfg *config.Config) {
 	cfg.POP3.PortTLS = ports[6]
 	cfg.Cluster.Gossip.Port = ports[7]
 	cfg.Server.ControlAddr = net.JoinHostPort("127.0.0.1", strconv.Itoa(ports[8]))
+	cfg.SMTP.SubmissionsPort = ports[9]
 }
 
 // sharedFreePorts returns n distinct free ports; see testutil.FreePorts.

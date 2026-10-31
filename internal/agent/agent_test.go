@@ -52,7 +52,7 @@ func isolatePorts(t *testing.T, cfg *config.Config) {
 // batch as the rest, so none can repeat one already assigned.
 func isolatePortsExtra(t *testing.T, cfg *config.Config, extra int) []int {
 	t.Helper()
-	ports := testutil.FreePorts(t, 10+extra)
+	ports := testutil.FreePorts(t, 11+extra)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.Port = ports[0]
 	cfg.Server.ControlAddr = net.JoinHostPort("127.0.0.1", strconv.Itoa(ports[1]))
@@ -64,8 +64,9 @@ func isolatePortsExtra(t *testing.T, cfg *config.Config, extra int) []int {
 	cfg.POP3.PortTLS = ports[7]
 	cfg.Cluster.Raft.Port = ports[8]
 	cfg.Cluster.PeerPort = ports[9]
+	cfg.SMTP.SubmissionsPort = ports[10]
 	cfg.Cluster.Gossip.Port = 0
-	return ports[10:]
+	return ports[11:]
 }
 
 func TestWebDAVMethodsRegistered(t *testing.T) {

@@ -33,6 +33,7 @@ commit, reload open tabs to pick up changed JavaScript and CSS.
 | Control    | 8081 | /internal, loopback only |
 | SMTP MX    | 2525 | Inbound mail             |
 | SMTP Sub   | 2587 | Submission (auth)        |
+| SMTPS Sub  | 2465 | Submission, implicit TLS |
 | IMAP       | 1143 | Plaintext/STARTTLS       |
 | IMAPS      | 1993 | Implicit TLS             |
 | POP3       | 1110 | Plaintext/STARTTLS       |

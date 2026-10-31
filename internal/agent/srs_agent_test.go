@@ -48,9 +48,10 @@ func agentSMTPRcpt(t *testing.T, secret string, logger *slog.Logger) func(from, 
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.SessionSecret = secret
 	cfg.SMTP.Enabled = true
-	smtpPorts := testutil.FreePorts(t, 2)
+	smtpPorts := testutil.FreePorts(t, 3)
 	cfg.SMTP.Port = smtpPorts[0]
 	cfg.SMTP.SubmissionPort = smtpPorts[1]
+	cfg.SMTP.SubmissionsPort = smtpPorts[2]
 	a := &Agent{Config: cfg, logger: logger}
 	backend, err := a.newAgentSMTPBackend(discardDeliverer{})
 	if err != nil {

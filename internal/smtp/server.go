@@ -28,6 +28,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/observability"
+	"github.com/bongo-project/bongo/internal/security"
 	"github.com/bongo-project/bongo/internal/srs"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -239,6 +240,30 @@ func (b *Backend) IsTrustedSource(ip string) bool {
 
 // NewSession is called when a new SMTP connection is established.
 func (b *Backend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
+	// Detect whether this connection landed on the submission listener.
+	submission := false
+	if b.subPort != 0 {
+		if la, ok := c.Conn().LocalAddr().(*net.TCPAddr); ok && la.Port == b.subPort {
+			submission = true
+		}
+	}
+	return b.newSession(c, submission)
+}
+
+// implicitTLSBackend is the backend of the implicit-TLS submission listener
+// (465). It marks every session as submission explicitly, so the result does
+// not depend on the local port, which behind PROXY protocol is the address in
+// the proxy's header rather than the port this process bound.
+type implicitTLSBackend struct{ *Backend }
+
+// NewSession starts a submission session.
+func (b implicitTLSBackend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
+	return b.newSession(c, true)
+}
+
+// newSession builds a session. The per-IP connection slot taken here is
+// released by Session.Logout.
+func (b *Backend) newSession(c *gosmtp.Conn, submission bool) (gosmtp.Session, error) {
 	var remoteIP net.IP
 	if addr := c.Conn().RemoteAddr(); addr != nil {
 		if tcpAddr, ok := addr.(*net.TCPAddr); ok {
@@ -252,14 +277,6 @@ func (b *Backend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
 	if !b.connLimit.Acquire(remoteIP) {
 		b.logger.Warn("smtp: too many connections from source, rejecting", "ip", remoteIP.String())
 		return nil, &gosmtp.SMTPError{Code: 421, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many connections from your address"}
-	}
-
-	// Detect whether this connection landed on the submission listener.
-	submission := false
-	if b.subPort != 0 {
-		if la, ok := c.Conn().LocalAddr().(*net.TCPAddr); ok && la.Port == b.subPort {
-			submission = true
-		}
 	}
 
 	return &Session{
@@ -1018,19 +1035,30 @@ func (s *Session) Logout() error {
 	return nil
 }
 
-// Server wraps two go-smtp server instances: MX and submission.
+// Server wraps up to three go-smtp server instances: MX, submission (STARTTLS)
+// and submissions (implicit TLS).
 type Server struct {
-	mx            *gosmtp.Server
-	submission    *gosmtp.Server
-	backend       *Backend
-	maxConn       int
-	proxyProtocol bool
+	mx         *gosmtp.Server
+	submission *gosmtp.Server
+	// submissions is the implicit-TLS submission server; nil when disabled.
+	submissions *gosmtp.Server
+	// submissionsTLS is the certificate the 465 listener serves; non-nil
+	// whenever submissions is non-nil and submissionsErr is nil.
+	submissionsTLS *tls.Config
+	// submissionsErr is a configured-but-unloadable smtp.tls certificate.
+	// Listen returns it: 465 must never fall back to plaintext, and an
+	// operator who configured a certificate wants to hear it is broken.
+	submissionsErr error
+	backend        *Backend
+	maxConn        int
+	proxyProtocol  bool
 	// trustedProxies lists the peers whose PROXY header is honoured.
 	trustedProxies *netx.TrustedProxies
 	logger         *slog.Logger
 
-	mxListener  net.Listener
-	subListener net.Listener
+	mxListener          net.Listener
+	subListener         net.Listener
+	submissionsListener net.Listener
 }
 
 // SetRelayQueue wires the outbound relay queue used for authenticated
@@ -1061,6 +1089,7 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 
 	// Let the backend detect submission connections by local port.
 	backend.subPort = subPort
+	submissionsPort := cfg.SubmissionsListenPort(isDev)
 
 	// EHLO/HELO banner hostname: use the configured public hostname so it aligns
 	// with rDNS/SPF; fall back to localhost only when unset.
@@ -1108,6 +1137,39 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 		}
 	}
 
+	// Implicit-TLS submission. Never plaintext: with no certificate the
+	// listener is not built (dev generates a self-signed one).
+	var submissions *gosmtp.Server
+	var submissionsTLS *tls.Config
+	var submissionsErr error
+	switch {
+	case submissionsPort == 0:
+		// Disabled by configuration.
+	case !cfg.SubmissionsEnabled(isDev):
+		logger.Warn("smtp: submissions_port is set but smtp.tls has no certificate; implicit-TLS submission is not started",
+			"port", submissionsPort)
+	default:
+		if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
+			submissionsTLS, submissionsErr = security.LoadCert(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+		} else {
+			submissionsTLS, submissionsErr = security.SelfSignedTLSConfig([]string{banner})
+		}
+		if submissionsErr != nil {
+			submissionsErr = fmt.Errorf("smtp submissions TLS: %w", submissionsErr)
+		}
+		// TLSConfig stays nil on purpose: the connection is already TLS, so
+		// go-smtp must not advertise STARTTLS. AllowInsecureAuth stays false;
+		// it is not needed because the connection is a *tls.Conn.
+		submissions = gosmtp.NewServer(implicitTLSBackend{backend})
+		submissions.Addr = listenAddr(bindAddr, submissionsPort)
+		submissions.Domain = banner
+		submissions.ReadTimeout = 60 * time.Second
+		submissions.WriteTimeout = 60 * time.Second
+		submissions.MaxMessageBytes = mx.MaxMessageBytes
+		submissions.MaxRecipients = mx.MaxRecipients
+		submissions.ErrorLog = mx.ErrorLog
+	}
+
 	maxConn := cfg.Limits.MaxConnections
 	if maxConn <= 0 {
 		maxConn = 1024
@@ -1123,10 +1185,14 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 	return &Server{
 		mx:            mx,
 		submission:    submission,
+		submissions:   submissions,
 		backend:       backend,
 		maxConn:       maxConn,
 		proxyProtocol: cfg.ProxyProtocol,
 		logger:        logger,
+
+		submissionsTLS: submissionsTLS,
+		submissionsErr: submissionsErr,
 	}
 }
 
@@ -1134,10 +1200,17 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 // (server.trusted_proxies). Call before Listen. nil trusts nobody.
 func (s *Server) SetTrustedProxies(t *netx.TrustedProxies) { s.trustedProxies = t }
 
-// Listen binds the MX and submission ports. Call Serve() after to start handling.
-// Both listeners are wrapped with a global concurrent-connection cap to bound
-// goroutine/memory use under a connection flood.
+// Listen binds the MX, submission and (when enabled) implicit-TLS submission
+// ports. Call Serve() after to start handling. Every listener is wrapped with a
+// global concurrent-connection cap to bound goroutine/memory use under a
+// connection flood. If any bind fails, the listeners already bound are closed.
+//
+// The per-IP cap is not a listener wrapper: it is enforced per session in
+// Backend.NewSession, after PROXY protocol has supplied the real client IP.
 func (s *Server) Listen() error {
+	if s.submissionsErr != nil {
+		return s.submissionsErr
+	}
 	mxl, err := net.Listen("tcp", s.mx.Addr)
 	if err != nil {
 		return fmt.Errorf("smtp mx listen: %w", err)
@@ -1151,9 +1224,26 @@ func (s *Server) Listen() error {
 		return fmt.Errorf("smtp submission listen: %w", err)
 	}
 
+	var tlsl net.Listener
+	if s.submissions != nil {
+		tlsl, err = net.Listen("tcp", s.submissions.Addr)
+		if err != nil {
+			err = fmt.Errorf("smtp submissions listen: %w", err)
+			for _, l := range []net.Listener{mxl, subl} {
+				if closeErr := l.Close(); closeErr != nil {
+					err = errors.Join(err, closeErr)
+				}
+			}
+			return err
+		}
+	}
+
 	if s.maxConn > 0 {
 		mxl = netutil.LimitListener(mxl, s.maxConn)
 		subl = netutil.LimitListener(subl, s.maxConn)
+		if tlsl != nil {
+			tlsl = netutil.LimitListener(tlsl, s.maxConn)
+		}
 	}
 	// Read the PROXY protocol header (from a TCP-terminating proxy) so the real
 	// client IP is available for SPF and logging.
@@ -1161,6 +1251,14 @@ func (s *Server) Listen() error {
 	subl = netx.MaybeProxyProtocol(subl, s.proxyProtocol, s.trustedProxies, netx.WithRejectLogger(s.logger))
 	s.mxListener = mxl
 	s.subListener = subl
+	if tlsl != nil {
+		// PROXY goes before TLS: the header is plaintext ahead of the handshake.
+		tlsl = netx.MaybeProxyProtocol(tlsl, s.proxyProtocol, s.trustedProxies, netx.WithRejectLogger(s.logger))
+		s.submissionsListener = tls.NewListener(tlsl, s.submissionsTLS)
+		s.logger.Info("smtp: listening", "mx", s.mxListener.Addr(), "submission", s.subListener.Addr(),
+			"submissions", s.submissionsListener.Addr(), "max_conn", s.maxConn, "proxy_protocol", s.proxyProtocol)
+		return nil
+	}
 
 	s.logger.Info("smtp: listening", "mx", s.mxListener.Addr(), "submission", s.subListener.Addr(), "max_conn", s.maxConn, "proxy_protocol", s.proxyProtocol)
 	return nil
@@ -1168,9 +1266,12 @@ func (s *Server) Listen() error {
 
 // Serve starts accepting connections on already-bound listeners. Blocks until error.
 func (s *Server) Serve() error {
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() { errCh <- s.mx.Serve(s.mxListener) }()
 	go func() { errCh <- s.submission.Serve(s.subListener) }()
+	if s.submissions != nil {
+		go func() { errCh <- s.submissions.Serve(s.submissionsListener) }()
+	}
 	return <-errCh
 }
 
@@ -1182,7 +1283,7 @@ func (s *Server) ListenAndServe() error {
 	return s.Serve()
 }
 
-// Close stops both servers.
+// Close stops all servers.
 func (s *Server) Close() error {
 	var errs []error
 	if err := s.mx.Close(); err != nil {
@@ -1190,6 +1291,11 @@ func (s *Server) Close() error {
 	}
 	if err := s.submission.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("closing submission: %w", err))
+	}
+	if s.submissions != nil {
+		if err := s.submissions.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing submissions: %w", err))
+		}
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("smtp close: %v", errs)
@@ -1211,4 +1317,20 @@ func (s *Server) SubmissionAddr() string {
 		return s.subListener.Addr().String()
 	}
 	return s.submission.Addr
+}
+
+// SubmissionsEnabled reports whether the implicit-TLS submission listener is
+// built for this server.
+func (s *Server) SubmissionsEnabled() bool { return s.submissions != nil }
+
+// SubmissionsAddr returns the implicit-TLS submission listener address, or ""
+// when that listener is disabled.
+func (s *Server) SubmissionsAddr() string {
+	if s.submissions == nil {
+		return ""
+	}
+	if s.submissionsListener != nil {
+		return s.submissionsListener.Addr().String()
+	}
+	return s.submissions.Addr
 }

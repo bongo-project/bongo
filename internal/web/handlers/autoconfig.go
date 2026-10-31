@@ -25,6 +25,9 @@ type AutoconfigHandler struct {
 	imapPort       int    // IMAP STARTTLS port (143)
 	imapsPort      int    // IMAP implicit-TLS port (993)
 	submissionPort int    // SMTP submission STARTTLS port (587)
+	// submissionsPort is the SMTP implicit-TLS port (465); 0 means the
+	// listener is not served and 465 is left out of every document.
+	submissionsPort int
 
 	// hostsDomain reports whether we serve mail for the given domain. When nil,
 	// every plausibly-formed domain is answered (dev convenience). Wiring it in
@@ -34,8 +37,9 @@ type AutoconfigHandler struct {
 }
 
 // NewAutoconfigHandler builds an AutoconfigHandler. Zero ports fall back to the
-// IANA-registered defaults (143/993/587).
-func NewAutoconfigHandler(mailHost string, imapPort, imapsPort, submissionPort int) *AutoconfigHandler {
+// IANA-registered defaults (143/993/587), except submissionsPort, where 0 means
+// implicit-TLS submission is not served and is omitted.
+func NewAutoconfigHandler(mailHost string, imapPort, imapsPort, submissionPort, submissionsPort int) *AutoconfigHandler {
 	if imapPort == 0 {
 		imapPort = 143
 	}
@@ -50,6 +54,8 @@ func NewAutoconfigHandler(mailHost string, imapPort, imapsPort, submissionPort i
 		imapPort:       imapPort,
 		imapsPort:      imapsPort,
 		submissionPort: submissionPort,
+
+		submissionsPort: submissionsPort,
 	}
 }
 
@@ -110,13 +116,25 @@ func (h *AutoconfigHandler) MozillaConfig(w http.ResponseWriter, r *http.Request
 				Type: "imap", Hostname: host, Port: h.imapsPort,
 				SocketType: "SSL", Authentication: "password-cleartext", Username: user,
 			},
-			Outgoing: outgoingServer{
-				Type: "smtp", Hostname: host, Port: h.submissionPort,
-				SocketType: "STARTTLS", Authentication: "password-cleartext", Username: user,
-			},
+			Outgoing: h.outgoingServers(host, user),
 		},
 	}
 	writeXML(w, "application/xml; charset=utf-8", cfg)
+}
+
+// outgoingServers lists the SMTP submission endpoints, implicit TLS first.
+func (h *AutoconfigHandler) outgoingServers(host, user string) []outgoingServer {
+	var out []outgoingServer
+	if h.submissionsPort != 0 {
+		out = append(out, outgoingServer{
+			Type: "smtp", Hostname: host, Port: h.submissionsPort,
+			SocketType: "SSL", Authentication: "password-cleartext", Username: user,
+		})
+	}
+	return append(out, outgoingServer{
+		Type: "smtp", Hostname: host, Port: h.submissionPort,
+		SocketType: "STARTTLS", Authentication: "password-cleartext", Username: user,
+	})
 }
 
 // Autodiscover serves the Microsoft Outlook POX Autodiscover response. Outlook
@@ -141,21 +159,26 @@ func (h *AutoconfigHandler) Autodiscover(w http.ResponseWriter, r *http.Request)
 
 	login := email // Outlook uses the full address as the login name
 	host := h.host(r)
+	protocols := []autodiscoverProtocol{{
+		Type: "IMAP", Server: host, Port: h.imapsPort,
+		SSL: "on", Encryption: "SSL", SPA: "off", AuthRequired: "on", LoginName: login,
+	}}
+	if h.submissionsPort != 0 {
+		protocols = append(protocols, autodiscoverProtocol{
+			Type: "SMTP", Server: host, Port: h.submissionsPort,
+			SSL: "on", Encryption: "SSL", SPA: "off", AuthRequired: "on", LoginName: login,
+		})
+	}
+	protocols = append(protocols, autodiscoverProtocol{
+		Type: "SMTP", Server: host, Port: h.submissionPort,
+		SSL: "on", Encryption: "TLS", SPA: "off", AuthRequired: "on", LoginName: login,
+	})
 	resp := autodiscoverResponse{
 		Response: autodiscoverInner{
 			Account: autodiscoverAccount{
 				AccountType: "email",
 				Action:      "settings",
-				Protocols: []autodiscoverProtocol{
-					{
-						Type: "IMAP", Server: host, Port: h.imapsPort,
-						SSL: "on", Encryption: "SSL", SPA: "off", AuthRequired: "on", LoginName: login,
-					},
-					{
-						Type: "SMTP", Server: host, Port: h.submissionPort,
-						SSL: "on", Encryption: "TLS", SPA: "off", AuthRequired: "on", LoginName: login,
-					},
-				},
+				Protocols:   protocols,
 			},
 		},
 	}
@@ -195,7 +218,12 @@ func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Req
 	plistStr(&b, "IncomingMailServerUsername", email)
 	plistStr(&b, "OutgoingMailServerAuthentication", "EmailAuthPassword")
 	plistStr(&b, "OutgoingMailServerHostName", host)
-	plistInt(&b, "OutgoingMailServerPortNumber", h.submissionPort)
+	// The profile carries one outgoing server: implicit TLS when it is served.
+	outPort := h.submissionPort
+	if h.submissionsPort != 0 {
+		outPort = h.submissionsPort
+	}
+	plistInt(&b, "OutgoingMailServerPortNumber", outPort)
 	plistBool(&b, "OutgoingMailServerUseSSL", true)
 	plistStr(&b, "OutgoingMailServerUsername", email)
 	plistBool(&b, "OutgoingPasswordSameAsIncoming", true)
@@ -228,12 +256,12 @@ type clientConfig struct {
 }
 
 type emailProvider struct {
-	ID               string         `xml:"id,attr"`
-	Domain           string         `xml:"domain"`
-	DisplayName      string         `xml:"displayName"`
-	DisplayShortName string         `xml:"displayShortName"`
-	Incoming         incomingServer `xml:"incomingServer"`
-	Outgoing         outgoingServer `xml:"outgoingServer"`
+	ID               string           `xml:"id,attr"`
+	Domain           string           `xml:"domain"`
+	DisplayName      string           `xml:"displayName"`
+	DisplayShortName string           `xml:"displayShortName"`
+	Incoming         incomingServer   `xml:"incomingServer"`
+	Outgoing         []outgoingServer `xml:"outgoingServer"`
 }
 
 type incomingServer struct {

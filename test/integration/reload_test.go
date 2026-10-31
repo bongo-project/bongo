@@ -84,6 +84,7 @@ smtp {
   enabled          = true
   port             = %d
   submission_port  = %d
+  submissions_port = %d
   # The MX listener is dual-stack, so loopback may arrive as ::1.
   trusted_networks = ["127.0.0.1/32", "::1/128"]
   tls {}
@@ -125,7 +126,7 @@ telemetry {
   prometheus {}
   log {}
 }
-`, cfg.Cluster.Gossip.Port, smtpPort, cfg.SMTP.SubmissionPort,
+`, cfg.Cluster.Gossip.Port, smtpPort, cfg.SMTP.SubmissionPort, cfg.SMTP.SubmissionsPort,
 		cfg.IMAP.Port, cfg.IMAP.PortTLS, cfg.POP3.Port, cfg.POP3.PortTLS,
 		cfg.Web.Port, threshold, high)
 }

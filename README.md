@@ -13,7 +13,7 @@ several security reviews (see [SECURITY.md](SECURITY.md)). Multi-node clustering
 is implemented but less tested; the `edge` and `agent` roles are incomplete.
 Only the latest release receives fixes.
 
-- **Protocols:** SMTP (25/587), IMAP (143/993), POP3 (110/995), CalDAV/CardDAV,
+- **Protocols:** SMTP (25/587/465), IMAP (143/993), POP3 (110/995), CalDAV/CardDAV,
   plus client autoconfig (Thunderbird/Outlook/Apple).
 - **Multi-tenant:** host many domains on one server, each with its own DKIM key,
   catch-all, administrators and quota.
