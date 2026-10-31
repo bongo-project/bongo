@@ -692,8 +692,9 @@ None. The questions raised while drafting are answered in 8.1.
    `postmaster@`.
 8. (operator, 2026-10-27) The proposed split is accepted: US-016 (views)
    and US-011 (DSN relay) move to v0.15, and US-013 (custom over-quota
-   text) is deferred. The defects in rules, queue lifetime and greylisting
-   found by this PRD are fixed first.
+   text) is deferred. The defects in rules and queue lifetime found by this
+   PRD are fixed first. (A mention of greylisting here was a leftover and
+   was removed on 2026-10-31; no greylisting work is in this release.)
 9. (operator, 2026-10-31) The mobile swipe archives rather than deletes
    (US-014).
 10. (operator, 2026-10-31) US-018, CLI listing of users, domains and
