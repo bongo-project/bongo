@@ -268,6 +268,13 @@ func (it *pebbleIterator) Value() ([]byte, error) {
 	return out, nil
 }
 
+// Close releases the iterator. A repeated Close is a no-op: Pebble pools
+// iterators, so closing one twice would act on whichever iterator reused it.
 func (it *pebbleIterator) Close() error {
-	return it.iter.Close()
+	if it.iter == nil {
+		return nil
+	}
+	err := it.iter.Close()
+	it.iter = nil
+	return err
 }

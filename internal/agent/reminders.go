@@ -81,7 +81,6 @@ func (a *Agent) checkReminders(now time.Time, mu *sync.Mutex, sent map[string]bo
 	if err != nil {
 		return
 	}
-	defer iter.Close()
 
 	usersSeen := make(map[string]bool)
 	for iter.Next() {
