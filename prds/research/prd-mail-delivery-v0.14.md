@@ -4,12 +4,12 @@
 
 The feature-parity audit of the original Bongo
 (`prds/research/parity-audit-original-bongo.md`, rows cited as #N) lists
-mail-delivery and filtering features that Bongo-Go lacks or only partly has.
+mail-delivery and filtering features that this reimplementation lacks or only partly has.
 This PRD fixes the scope of v0.14.0 "Mail delivery and rules": the RFC 5321
 `postmaster` mailbox, implicit-TLS submission, vacation replies, richer
 rules, domain aliasing, DSN, queue and disk-space controls, three mail views
-and Reply to List, Archive, and a `sendmail` command for programs on the
-host.
+and Reply to List, Archive, a `sendmail` command for programs on the host, and
+CLI commands that list users, domains and aliases.
 
 Every story was checked against `main` at `6725448` on 2026-10-26. Where the
 code disagrees with the audit, the story says so; section 8.2 lists the
@@ -25,7 +25,7 @@ change under review introduced it.
 | B | Vacation and rules | US-004 to US-007 |
 | C | Queue, DSN and storage | US-008 to US-013 |
 | D | Web mail views | US-014 to US-016 |
-| E | Local submission | US-017 |
+| E | Local submission and operator CLI | US-017, US-018 |
 
 TASKS rows are assigned by `norman import`. Phase A merges first: US-002
 needs US-001, and US-017 prefers US-003. Phase B's US-005 lands before US-006
@@ -556,9 +556,9 @@ mailbox, which does not scale to header-based views.
 - [ ] A user can only see their own messages (a test with two users sharing
       a list).
 
-### Phase E: Local submission
+### Phase E: Local submission and operator CLI
 
-### US-017: `bongo-go sendmail`
+### US-017: `bongo sendmail`
 **Source:** audit #21. **Size:** M. **Prefers:** US-003.
 
 **What exists:** nothing; the audit is correct. The CLI talks to the control
@@ -582,7 +582,7 @@ quota) with no new trust boundary, works from other hosts too, and can later
 use app passwords (`prds/research/prd-app-passwords.md`).
 
 **Acceptance Criteria:**
-- [ ] `bongo-go sendmail [flags] [recipient...]`, and the same behaviour when
+- [ ] `bongo sendmail [flags] [recipient...]`, and the same behaviour when
       the binary is invoked through a link named `sendmail`.
 - [ ] Flags: `-t` (recipients from To, Cc and Bcc, added to any on the
       command line), `-f sender` (envelope sender), `-F name` (full name for
@@ -608,9 +608,42 @@ use app passwords (`prds/research/prd-app-passwords.md`).
 - [ ] The password is never logged or echoed, including in `-v` output.
 - [ ] `docs/` gains a page on configuring cron and PHP's `sendmail_path`.
 
+### US-018: List users, domains and aliases from the CLI
+**Source:** production operations, 2026-10-31. **Size:** S.
+
+**What exists:** `bongo user` has only `create`. There is no `domain` or
+`alias` command. An operator on the host cannot list accounts, hosted domains
+or aliases without the web UI. The CLI reaches the server through the control
+listener (`server.control_addr`, default 127.0.0.1:8081) with requests signed
+by `web.session_secret`, as `user create`, `address orphans` and
+`mail dangling` already do.
+
+**Acceptance Criteria:**
+- [ ] `bongo user list` prints one line per account: email, display name,
+      enabled or disabled, global admin, and the domains it administers.
+      `--domain example.com` limits the list to that domain.
+- [ ] `bongo domain list` prints one line per hosted domain: name, enabled or
+      disabled, catch-all target if set, quota and usage, and whether a DKIM
+      key exists.
+- [ ] `bongo alias list` prints one line per alias: alias address and target.
+      `--domain` limits it as for users.
+- [ ] Each command accepts `--json` and then prints a JSON array with the same
+      fields, for scripts.
+- [ ] The data comes from new read-only GET routes on the control listener
+      only, signed like the existing control routes; nothing is added to the
+      public web router. An unsigned or wrongly signed request gets 401.
+- [ ] Results are read from Pebble (the source of truth), not the per-node
+      SQLite users table, so a follower lists the same accounts as the leader.
+- [ ] No password hash, TOTP secret, recovery code, DKIM private key or
+      session material appears in any output.
+- [ ] A server that is not running or not reachable gives a one-line error
+      naming the control address and a non-zero exit code.
+- [ ] `docs/install.md` lists the commands under creating the first
+      administrator.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-17 are the acceptance criteria of US-001 to US-017. In every
+FR-1 to FR-18 are the acceptance criteria of US-001 to US-018. In every
 story:
 
 - Every new cookie-authenticated mutating route sits behind the existing
@@ -627,7 +660,7 @@ story:
 
 - Sieve and ManageSieve. Rules stay Bongo's own format.
 - A rule action that bounces or rejects to the sender (#58): backscatter.
-- `bongo-go sendmail -bs` (an SMTP dialogue on standard input); a candidate
+- `bongo sendmail -bs` (an SMTP dialogue on standard input); a candidate
   for a later release.
 - Copying the whole bounced message to the postmaster.
 - Obsolete audit rows that relate to this release, not to be built:
@@ -711,10 +744,10 @@ checked against production's free space before deploying.
 ### 8.1 Decisions
 
 1. (operator, 2026-10-26) Scope as listed in section 3, including a
-   `bongo-go sendmail` subcommand with the common sendmail and LSB flags.
+   `bongo sendmail` subcommand with the common sendmail and LSB flags.
 2. (operator, 2026-10-26) POP3 SASL (#19) and IMAP PROXYAUTH (#16) are
    dropped; neither is in this or any planned release.
-3. (operator, 2026-10-27) `bongo-go sendmail` authenticates as a mail
+3. (operator, 2026-10-27) `bongo sendmail` authenticates as a mail
    client over submission, reading its credentials from a file only it can
    read (mode 0600). The signed control route is rejected.
 4. (operator, 2026-10-27) Port 465 (implicit TLS) is on by default.
