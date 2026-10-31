@@ -259,6 +259,10 @@ the config file.
 `bongo-import` ingests mail from mbox, maildir, `.eml`, IMAP and Thunderbird
 profiles. See [`importing.md`](importing.md).
 
+Cron jobs and web applications on the same host can send mail through
+`bongo sendmail`, a sendmail-compatible submission client. See
+[`sendmail.md`](sendmail.md).
+
 ---
 
 ## 10. Upgrading
