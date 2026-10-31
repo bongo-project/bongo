@@ -1947,6 +1947,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.migrateForwardTargets()
 	a.reportGrandfatheredForwards()
 
+	// Rules written before several-actions-per-rule keep their first-match
+	// behaviour. Leader-only and before the listeners open, so it cannot race
+	// a user editing a rule.
+	a.migrateRulesFirstMatch()
+
 	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
 	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
 	// self-gating; conservative two-pass sweep.
@@ -3397,6 +3402,35 @@ func (a *Agent) migrateForwardTargets() {
 	}
 	if err := ft.MarkMigrationDone(); err != nil {
 		a.logger.Warn("startup: forward target migration marker not written", "error", err)
+	}
+}
+
+// migrateRulesFirstMatch sets stop_processing on every rule written before
+// several actions per rule existed, so a message still fires only the first
+// matching rule as it did. Each rule is one idempotent PUT and the marker at
+// /system/migrations/rules-first-match-v1 is written last, so a failure is
+// logged, leaves the marker unset and is resumed by the next boot. Startup
+// does not fail on it.
+func (a *Agent) migrateRulesFirstMatch() {
+	if a.Rules == nil || a.Raft == nil || !a.IsLeader() {
+		return
+	}
+	if done, err := a.Rules.FirstMatchMigrationDone(); err != nil {
+		a.logger.Warn("startup: rules first-match migration marker unreadable", "error", err)
+		return
+	} else if done {
+		return
+	}
+	n, err := a.Rules.MigrateFirstMatch()
+	if err != nil {
+		a.logger.Warn("startup: rules first-match migration failed", "migrated", n, "error", err)
+		return
+	}
+	if n > 0 {
+		a.logger.Info("startup: set stop_processing on existing rules", "count", n)
+	}
+	if err := a.Rules.MarkFirstMatchMigrationDone(); err != nil {
+		a.logger.Warn("startup: rules first-match migration marker not written", "error", err)
 	}
 }
 

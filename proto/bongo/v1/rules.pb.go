@@ -28,10 +28,11 @@ type FilterRule struct {
 	Priority       int32                  `protobuf:"varint,3,opt,name=priority,proto3" json:"priority,omitempty"` // lower = runs first
 	Enabled        bool                   `protobuf:"varint,4,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	Conditions     []*Condition           `protobuf:"bytes,5,rep,name=conditions,proto3" json:"conditions,omitempty"`
-	Action         *FilterAction          `protobuf:"bytes,6,opt,name=action,proto3" json:"action,omitempty"`
+	Action         *FilterAction          `protobuf:"bytes,6,opt,name=action,proto3" json:"action,omitempty"`                                        // first of actions; kept so an older node reads something sensible
 	StopProcessing bool                   `protobuf:"varint,7,opt,name=stop_processing,json=stopProcessing,proto3" json:"stop_processing,omitempty"` // skip remaining rules if matched
 	CreatedAt      int64                  `protobuf:"varint,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt      int64                  `protobuf:"varint,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Actions        []*FilterAction        `protobuf:"bytes,10,rep,name=actions,proto3" json:"actions,omitempty"` // 1 to 10 actions; empty means [action] (rules written before v0.14)
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -129,6 +130,13 @@ func (x *FilterRule) GetUpdatedAt() int64 {
 	return 0
 }
 
+func (x *FilterRule) GetActions() []*FilterAction {
+	if x != nil {
+		return x.Actions
+	}
+	return nil
+}
+
 type Condition struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Field         string                 `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`       // "from", "to", "subject", "body", "header:X-List-Id", "size", "has_attachment"
@@ -191,7 +199,7 @@ func (x *Condition) GetValue() string {
 
 type FilterAction struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`     // "move", "copy", "flag", "mark_read", "delete", "tag"
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`     // "move", "copy", "forward", "flag", "mark_read", "delete", "tag"
 	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"` // folder name for move/copy, flag name for flag
 	Tags          []string               `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`     // tag names to apply (used when type = "tag")
 	unknownFields protoimpl.UnknownFields
@@ -253,7 +261,7 @@ var File_proto_bongo_v1_rules_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_rules_proto_rawDesc = "" +
 	"\n" +
-	"\x1aproto/bongo/v1/rules.proto\x12\bbongo.v1\"\xb2\x02\n" +
+	"\x1aproto/bongo/v1/rules.proto\x12\bbongo.v1\"\xe4\x02\n" +
 	"\n" +
 	"FilterRule\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -268,7 +276,9 @@ const file_proto_bongo_v1_rules_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\t \x01(\x03R\tupdatedAt\"S\n" +
+	"updated_at\x18\t \x01(\x03R\tupdatedAt\x120\n" +
+	"\aactions\x18\n" +
+	" \x03(\v2\x16.bongo.v1.FilterActionR\aactions\"S\n" +
 	"\tCondition\x12\x14\n" +
 	"\x05field\x18\x01 \x01(\tR\x05field\x12\x1a\n" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x14\n" +
@@ -299,11 +309,12 @@ var file_proto_bongo_v1_rules_proto_goTypes = []any{
 var file_proto_bongo_v1_rules_proto_depIdxs = []int32{
 	1, // 0: bongo.v1.FilterRule.conditions:type_name -> bongo.v1.Condition
 	2, // 1: bongo.v1.FilterRule.action:type_name -> bongo.v1.FilterAction
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	2, // 2: bongo.v1.FilterRule.actions:type_name -> bongo.v1.FilterAction
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_proto_bongo_v1_rules_proto_init() }

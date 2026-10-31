@@ -9,10 +9,12 @@ import (
 	"io"
 	"log/slog"
 	"net/mail"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
@@ -611,13 +613,55 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			}
 		}
 
+		// Copies share the blob: each is a MailMeta of its own (new GUID, same
+		// blob reference) in another mailbox, so no blob is written again and
+		// the blob GC, which sees every MailMeta, keeps the content while any
+		// copy remains. The clones are taken before DeliverMail, which
+		// sanitises the meta it is given. The writes are separate Raft
+		// commands; a crash between them repeats the earlier writes on retry,
+		// the same at-least-once behaviour as the recipient loop.
+		var copyMetas []*copyDelivery
+		for _, mb := range env.CopyMailboxes {
+			if mb == "" || (!env.DiscardNormal && strings.EqualFold(mb, targetMailbox)) {
+				continue
+			}
+			if slices.ContainsFunc(copyMetas, func(c *copyDelivery) bool { return strings.EqualFold(c.mailbox, mb) }) {
+				continue
+			}
+			cm := proto.Clone(meta).(*bongov1.MailMeta)
+			cm.Guid = uuid.New().String()
+			cm.TargetMailbox = mb
+			copyMetas = append(copyMetas, &copyDelivery{mailbox: mb, meta: cm})
+		}
+
 		applyStart := time.Now()
-		applyErr := store.DeliverMail(p.applier, userID, targetMailbox, meta, 0)
+		var applyErr error
+		if env.DiscardNormal {
+			// A delete rule won and the rules also asked for copies or
+			// forwards: the normal destination is skipped, nothing else.
+			p.logger.Info("deliver: normal destination skipped (delete rule)",
+				"recipient", rcpt, "user", userID, "id", env.Id)
+		} else {
+			applyErr = store.DeliverMail(p.applier, userID, targetMailbox, meta, env.PendingFlags)
+		}
+		for _, c := range copyMetas {
+			if applyErr != nil {
+				break
+			}
+			applyErr = store.DeliverMail(p.applier, userID, c.mailbox, c.meta, env.PendingFlags)
+			if applyErr == nil {
+				p.logger.Info("deliver: copy stored",
+					"recipient", rcpt, "user", userID, "guid", c.meta.Guid, "id", env.Id, "target_mailbox", c.mailbox)
+			}
+		}
 		tApply += mark(applyStart)
 		if applyErr != nil {
 			return nil, fmt.Errorf("deliver: apply delivery command for %s: %w", rcpt, applyErr)
 		}
 
+		if env.DiscardNormal {
+			continue
+		}
 		p.logger.Info("deliver: mail stored",
 			// The envelope recipient, not just the resolved user ID: an alias and
 			// its target share one UUID, so a UUID alone cannot say which address
@@ -645,6 +689,13 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		ProcessedAt: time.Now().Unix(),
 		DurationMs:  durationMs,
 	}, nil
+}
+
+// copyDelivery is one extra mailbox a copy rule asked for and the MailMeta
+// written there.
+type copyDelivery struct {
+	mailbox string
+	meta    *bongov1.MailMeta
 }
 
 // forwardGate collects the forwards one message is allowed to send. Every

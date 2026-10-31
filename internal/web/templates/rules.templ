@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 )
 import "fmt"
+import "slices"
 
 // RuleInfo is the template data for a filter rule.
 type RuleInfo struct {
@@ -14,7 +15,7 @@ type RuleInfo struct {
 	Enabled          bool
 	StopProcessing   bool
 	Conditions       []ConditionInfo
-	Action           ActionInfo
+	Actions          []ActionInfo
 }
 
 // ConditionInfo is the template data for a rule condition.
@@ -99,7 +100,7 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 											<span class="condition">{ ruleConditionText(ctx, cond) }</span>
 										}
 										<span class="arrow" aria-hidden="true">&rarr;</span>
-										<span class="action">{ ruleActionText(ctx, rule.Action) }</span>
+										<span class="action">{ ruleActionsText(ctx, rule.Actions) }</span>
 										<span class="spacer"></span>
 										<div class="rule-more" x-data="messageMore" x-on:keydown.escape="close()" x-on:click.outside="dismiss()">
 											<button
@@ -221,58 +222,61 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 					</template>
 					<button type="button" @click="addCondition()" class="btn-outline btn-sm">{ t(ctx, "rules.addCondition") }</button>
 				</div>
-				<div class="form-section">
+				<div class="form-section" x-data="ruleActions" data-actions={ ruleActionsJSON(rule.Actions) } data-default-folder={ ruleDefaultFolder(mailboxes) }>
 					<div class="form-section-title">{ t(ctx, "rules.actionHeader") }</div>
-					<div x-data="ruleAction" data-action-type={ ruleActionType(rule.Action.Type) } data-tags={ ruleTagsJSON(rule.Action.Tags) }>
-						<div class="form-row two-col">
-							<div class="form-group">
-								<label for="action_type">{ t(ctx, "rules.whenMatched") }</label>
-								<select name="action_type" id="action_type" x-model="actionType">
-									<option value="move">{ t(ctx, "rules.actionMove") }</option>
-									<option value="copy">{ t(ctx, "rules.actionCopy") }</option>
-									<option value="forward">{ t(ctx, "rules.actionForward") }</option>
-									<option value="flag">{ t(ctx, "rules.actionFlag") }</option>
-									<option value="mark_read">{ t(ctx, "rules.actionMarkRead") }</option>
-									<option value="delete">{ t(ctx, "rules.actionDelete") }</option>
-									<option value="tag">{ t(ctx, "rules.actionTag") }</option>
-								</select>
+					<p class="tag-input-help">{ t(ctx, "rules.actionsHelp") }</p>
+					<template x-for="(action, i) in actions" :key="i">
+						<div class="action-row">
+							<div class="form-row two-col">
+								<div class="form-group">
+									<select name="action_type" aria-label={ t(ctx, "rules.whenMatched") } x-bind:value="action.type" @change="setType(i, $event.target.value)">
+										<option value="move">{ t(ctx, "rules.actionMove") }</option>
+										<option value="copy">{ t(ctx, "rules.actionCopy") }</option>
+										<option value="forward">{ t(ctx, "rules.actionForward") }</option>
+										<option value="flag">{ t(ctx, "rules.actionFlag") }</option>
+										<option value="mark_read">{ t(ctx, "rules.actionMarkRead") }</option>
+										<option value="delete">{ t(ctx, "rules.actionDelete") }</option>
+										<option value="tag">{ t(ctx, "rules.actionTag") }</option>
+									</select>
+								</div>
+								<div class="form-group" x-bind:hidden="!needsFolder(action)">
+									<select name="action_target" aria-label={ t(ctx, "rules.targetFolder") } x-bind:value="action.target" @change="setTarget(i, $event.target.value)">
+										for _, mb := range ruleFolderOptions(mailboxes, rule.Actions) {
+											<option value={ mb }>{ mb }</option>
+										}
+									</select>
+								</div>
 							</div>
-							<div class="form-group" x-bind:hidden="!needsFolder()">
-								<label for="action_target">{ t(ctx, "rules.targetFolder") }</label>
-								<select name="action_target" id="action_target">
-									for _, mb := range mailboxes {
-										<option value={ mb } selected?={ mb == rule.Action.Target }>{ mb }</option>
-									}
-								</select>
+							<div class="form-group" x-bind:hidden="!isForward(action)">
+								<input type="email" name="action_target_forward" class="form-input" aria-label={ t(ctx, "rules.forwardToEmail") } placeholder="user@example.com" x-bind:value="action.forward" @input="setForward(i, $event.target.value)"/>
 							</div>
-						</div>
-						<div class="form-group" x-bind:hidden="!isAction('forward')">
-							<label for="action_target_forward">{ t(ctx, "rules.forwardToEmail") }</label>
-							<input type="email" name="action_target_forward" id="action_target_forward" class="form-input" placeholder="user@example.com" value={ forwardTarget(rule.Action) }/>
-						</div>
-						<div class="form-group" x-bind:hidden="!isAction('tag')">
-							<label>{ t(ctx, "rules.tagsToApply") }</label>
-							<div class="tag-input-wrapper">
-								<template x-for="(tag, idx) in selectedTags" :key="idx">
-									<span class="tag-pill">
-										<span x-text="tag"></span>
-										<input type="hidden" name="action_tag" :value="tag"/>
-										<button type="button" class="tag-pill-remove" @click="removeTag(idx)" aria-label={ t(ctx, "rules.removeTag") }>&#10005;</button>
-									</span>
-								</template>
-								<input
-									type="text"
-									x-model="tagInput"
-									@keydown.enter.prevent="addTag()"
-									@keydown.comma.prevent="addTag()"
-									placeholder={ t(ctx, "rules.tagInputPlaceholder") }
-									class="tag-input-field"
-									aria-label={ t(ctx, "tag.namePlaceholder") }
-								/>
+							<div class="form-group" x-bind:hidden="!isTag(action)">
+								<label>{ t(ctx, "rules.tagsToApply") }</label>
+								<div class="tag-input-wrapper">
+									<template x-for="(tag, idx) in action.tags" :key="idx">
+										<span class="tag-pill">
+											<span x-text="tag"></span>
+											<button type="button" class="tag-pill-remove" @click="removeTag(i, idx)" aria-label={ t(ctx, "rules.removeTag") }>&#10005;</button>
+										</span>
+									</template>
+									<input
+										type="text"
+										x-bind:value="action.tagInput"
+										@input="setTagInput(i, $event.target.value)"
+										@keydown.enter.prevent="addTag(i)"
+										@keydown.comma.prevent="addTag(i)"
+										placeholder={ t(ctx, "rules.tagInputPlaceholder") }
+										class="tag-input-field"
+										aria-label={ t(ctx, "tag.namePlaceholder") }
+									/>
+								</div>
+								<p class="tag-input-help">{ t(ctx, "rules.tagInputHelp") }</p>
 							</div>
-							<p class="tag-input-help">{ t(ctx, "rules.tagInputHelp") }</p>
+							<input type="hidden" name="action_tags" x-bind:value="tagsValue(action)"/>
+							<button type="button" @click="removeAction(i)" class="condition-row-remove" x-bind:hidden="!canRemove()" aria-label={ t(ctx, "rules.removeAction") }>&#10005;</button>
 						</div>
-					</div>
+					</template>
+					<button type="button" @click="addAction()" class="btn-outline btn-sm" x-bind:hidden="!canAdd()">{ t(ctx, "rules.addAction") }</button>
 				</div>
 				<div class="form-actions">
 					<button type="submit" class="btn-primary">
@@ -291,10 +295,13 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 	}
 }
 
-templ RuleTestResults(ruleID string, matches int, total int, samples []MailSample) {
+templ RuleTestResults(ruleID string, matches int, total int, samples []MailSample, actions []ActionInfo) {
 	<div id={ "test-results-" + ruleID } class="rule-results">
 		<p class="u-mb-05">
 			<strong>{ fmt.Sprintf("%d / %d", matches, total) }</strong> { t(ctx, "rules.recentMessagesMatched") }
+		</p>
+		<p class="u-mb-05">
+			<strong>{ t(ctx, "rules.actionsLabel") }:</strong> { ruleActionsText(ctx, actions) }
 		</p>
 		if len(samples) > 0 {
 			<ul class="u-m0 u-font-085 u-pl-15">
@@ -353,14 +360,40 @@ func ruleOperatorLabelsJSON(ctx context.Context) string {
 	return string(b)
 }
 
-// forwardTarget pre-fills the forward address only on forward rules. Older
-// rules of other types can carry a folder name as their target, which in the
-// hidden type=email field would block the form from submitting.
-func forwardTarget(a ActionInfo) string {
-	if a.Type == "forward" {
-		return a.Target
+// ruleActionRow is one action row of the editor, as JSON for the ruleActions
+// component. The forward address and the folder are kept apart so that
+// switching the type does not leave a stale folder in the email field.
+type ruleActionRow struct {
+	Type     string   `json:"type"`
+	Target   string   `json:"target"`
+	Forward  string   `json:"forward"`
+	Tags     []string `json:"tags"`
+	TagInput string   `json:"tagInput"`
+}
+
+// ruleActionsJSON is the editor's initial action list, as JSON in a data
+// attribute (the Alpine CSP build cannot evaluate an inline object). A rule
+// without actions gets one empty move row.
+func ruleActionsJSON(actions []ActionInfo) string {
+	out := []ruleActionRow{}
+	for _, a := range actions {
+		row := ruleActionRow{Type: ruleActionType(a.Type), Tags: a.Tags}
+		if row.Tags == nil {
+			row.Tags = []string{}
+		}
+		switch row.Type {
+		case "forward":
+			row.Forward = a.Target
+		case "move", "copy":
+			row.Target = a.Target
+		}
+		out = append(out, row)
 	}
-	return ""
+	if len(out) == 0 {
+		out = append(out, ruleActionRow{Type: "move", Tags: []string{}})
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
 
 func ruleActionType(actionType string) string {
@@ -370,10 +403,25 @@ func ruleActionType(actionType string) string {
 	return actionType
 }
 
-func ruleTagsJSON(tags []string) string {
-	if tags == nil {
-		tags = []string{}
+// ruleDefaultFolder is the folder a new move or copy row starts on: INBOX when
+// the user has it, otherwise their first folder.
+func ruleDefaultFolder(mailboxes []string) string {
+	if slices.Contains(mailboxes, "INBOX") || len(mailboxes) == 0 {
+		return "INBOX"
 	}
-	b, _ := json.Marshal(tags)
-	return string(b)
+	return mailboxes[0]
+}
+
+// ruleFolderOptions is the folder list for the editor's selects, plus any
+// folder a saved move or copy action names that no longer exists. Without it
+// the select would have no matching option, post nothing and shift the
+// positional action fields.
+func ruleFolderOptions(mailboxes []string, actions []ActionInfo) []string {
+	out := slices.Clone(mailboxes)
+	for _, a := range actions {
+		if (a.Type == "move" || a.Type == "copy") && a.Target != "" && !slices.Contains(out, a.Target) {
+			out = append(out, a.Target)
+		}
+	}
+	return out
 }

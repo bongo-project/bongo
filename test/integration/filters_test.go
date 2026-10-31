@@ -289,48 +289,143 @@ func TestFilterRuleCRUD(t *testing.T) {
 	}
 }
 
+// TestFilterRuleWithSpam: spam the antispam stage filed in Junk stays there
+// when a rule moves it elsewhere, unless the rule's target is Junk or Trash.
 func TestFilterRuleWithSpam(t *testing.T) {
+	for _, tc := range []struct {
+		name, target, wantBox, otherBox string
+	}{
+		{"move elsewhere stays in Junk", "News", "Junk", "News"},
+		{"move to Trash is honoured", "Trash", "Trash", "Junk"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, cancel := startFilterAgent(t)
+			defer cancel()
+
+			smtpAddr := a.SMTP.MXAddr()
+			email := "filter5@localhost"
+			userID := createFilterUser(t, a, email, "testpass")
+			createMailbox(t, a, userID, "News")
+
+			createRule(t, a.Rules, userID, &bongov1.FilterRule{
+				Id: "rule-1", Name: "News to folder", Priority: 1, Enabled: true,
+				Conditions: []*bongov1.Condition{{Field: "from", Operator: "contains", Value: "news"}},
+				Action:     &bongov1.FilterAction{Type: "move", Target: tc.target},
+				CreatedAt:  time.Now().Unix(),
+			})
+
+			// No Message-ID and no Date, so that spam scoring fires.
+			msg := fmt.Sprintf("From: news@example.com\r\nTo: %s\r\n\r\nBreaking news content.\r\n", email)
+			if err := smtplib.SendMail(smtpAddr, nil, "news@example.com", []string{email}, []byte(msg)); err != nil {
+				t.Fatalf("SendMail: %v", err)
+			}
+
+			if n := waitMailboxCount(a, userID, tc.wantBox, 1); n != 1 {
+				t.Fatalf("expected the message in %s, got %d", tc.wantBox, n)
+			}
+			time.Sleep(500 * time.Millisecond)
+			if msgs, _, _ := a.Mailboxes.ListMessagesPaged(userID, tc.otherBox, 0, 10); len(msgs) != 0 {
+				t.Errorf("%s holds %d messages, want none", tc.otherBox, len(msgs))
+			}
+		})
+	}
+}
+
+// mailMetaFor loads the MailMeta of a mailbox message.
+func mailMetaFor(t *testing.T, a *agent.Agent, userID string, mailGUID string) *bongov1.MailMeta {
+	t.Helper()
+	val, err := a.Store.Get([]byte(fmt.Sprintf("/user/%s/mail/%s", userID, mailGUID)))
+	if err != nil {
+		t.Fatalf("get MailMeta: %v", err)
+	}
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(val, &meta); err != nil {
+		t.Fatal(err)
+	}
+	return &meta
+}
+
+// TestFilterRulesRunInPriorityOrderUntilStop: A (priority 1) and B (priority
+// 2) both apply when A has stop_processing off, and only A when it is on.
+func TestFilterRulesRunInPriorityOrderUntilStop(t *testing.T) {
+	for _, stop := range []bool{false, true} {
+		name := "stop off"
+		if stop {
+			name = "stop on"
+		}
+		t.Run(name, func(t *testing.T) {
+			a, cancel := startFilterAgent(t)
+			defer cancel()
+			email := "order@localhost"
+			userID := createFilterUser(t, a, email, "testpass")
+			createMailbox(t, a, userID, "FromA")
+			createMailbox(t, a, userID, "FromB")
+			cond := []*bongov1.Condition{{Field: "subject", Operator: "contains", Value: "hello"}}
+			mk := func(id string, prio int32, stopProc bool, box string) *bongov1.FilterRule {
+				r := &bongov1.FilterRule{Id: id, Name: id, Priority: prio, Enabled: true, Conditions: cond, StopProcessing: stopProc, CreatedAt: time.Now().Unix()}
+				rules.SetActions(r, []*bongov1.FilterAction{{Type: "copy", Target: box}})
+				return r
+			}
+			createRule(t, a.Rules, userID, mk("rule-b", 2, false, "FromB"))
+			createRule(t, a.Rules, userID, mk("rule-a", 1, stop, "FromA"))
+
+			sendMessage(t, a.SMTP.MXAddr(), "friend@example.com", email, "hello there", "body")
+
+			if n := waitMailboxCount(a, userID, "FromA", 1); n != 1 {
+				t.Fatalf("FromA holds %d, want 1", n)
+			}
+			wantB := 1
+			if stop {
+				wantB = 0
+			}
+			time.Sleep(time.Second)
+			if msgs, _, _ := a.Mailboxes.ListMessagesPaged(userID, "FromB", 0, 10); len(msgs) != wantB {
+				t.Errorf("FromB holds %d, want %d", len(msgs), wantB)
+			}
+		})
+	}
+}
+
+// TestFilterRuleFlagMarkReadAndCopy: one rule with flag, mark_read and copy
+// delivers a flagged, seen message to INBOX and a second one to Folder, both
+// sharing the blob.
+func TestFilterRuleFlagMarkReadAndCopy(t *testing.T) {
 	a, cancel := startFilterAgent(t)
 	defer cancel()
-
-	smtpAddr := a.SMTP.MXAddr()
-	email := "filter5@localhost"
+	email := "multi@localhost"
 	userID := createFilterUser(t, a, email, "testpass")
+	createMailbox(t, a, userID, "Folder")
 
-	createMailbox(t, a, userID, "News")
-
-	// Create rule: from contains "news" -> move to "News".
-	createRule(t, a.Rules, userID, &bongov1.FilterRule{
-		Id:       "rule-1",
-		Name:     "News to News folder",
-		Priority: 1,
-		Enabled:  true,
-		Conditions: []*bongov1.Condition{
-			{Field: "from", Operator: "contains", Value: "news"},
-		},
-		Action:    &bongov1.FilterAction{Type: "move", Target: "News"},
-		CreatedAt: time.Now().Unix(),
-	})
-
-	// Send a spammy message from news@example.com (no Message-ID, no Date to trigger spam scoring).
-	msg := fmt.Sprintf("From: news@example.com\r\n"+
-		"To: %s\r\n"+
-		"\r\n"+
-		"Breaking news content.\r\n", email)
-
-	err := smtplib.SendMail(smtpAddr, nil, "news@example.com", []string{email}, []byte(msg))
-	if err != nil {
-		t.Fatalf("SendMail: %v", err)
+	r := &bongov1.FilterRule{
+		Id: "multi", Name: "multi", Priority: 1, Enabled: true, CreatedAt: time.Now().Unix(),
+		Conditions: []*bongov1.Condition{{Field: "subject", Operator: "contains", Value: "hello"}},
 	}
+	rules.SetActions(r, []*bongov1.FilterAction{{Type: "flag"}, {Type: "mark_read"}, {Type: "copy", Target: "Folder"}})
+	createRule(t, a.Rules, userID, r)
 
-	time.Sleep(2 * time.Second)
+	sendMessage(t, a.SMTP.MXAddr(), "friend@example.com", email, "hello there", "body")
 
-	// Verify: rule takes precedence over spam routing (goes to "News" not "Junk").
-	newsMsgs, _, _ := a.Mailboxes.ListMessagesPaged(userID, "News", 0, 10)
-	junkMsgs, _, _ := a.Mailboxes.ListMessagesPaged(userID, "Junk", 0, 10)
-
-	if len(newsMsgs) == 0 {
-		t.Errorf("expected message in News, got 0 (Junk has %d)", len(junkMsgs))
+	if n := waitMailboxCount(a, userID, "Folder", 1); n != 1 {
+		t.Fatalf("Folder holds %d, want 1", n)
+	}
+	if n := waitMailboxCount(a, userID, "INBOX", 1); n != 1 {
+		t.Fatalf("INBOX holds %d, want 1", n)
+	}
+	inbox, _, _ := a.Mailboxes.ListMessagesPaged(userID, "INBOX", 0, 10)
+	folder, _, _ := a.Mailboxes.ListMessagesPaged(userID, "Folder", 0, 10)
+	for name, m := range map[string]*bongov1.MailboxMessage{"INBOX": inbox[0], "Folder": folder[0]} {
+		const want = 1 | 4 // Seen and Flagged
+		if m.Flags&want != want {
+			t.Errorf("%s: flags = %d, want Seen and Flagged set", name, m.Flags)
+		}
+	}
+	if inbox[0].MailGuid == folder[0].MailGuid {
+		t.Error("copy must be a message of its own")
+	}
+	hashA := mailMetaFor(t, a, userID, inbox[0].MailGuid).RawMessage.Hash
+	hashB := mailMetaFor(t, a, userID, folder[0].MailGuid).RawMessage.Hash
+	if hashA == "" || hashA != hashB {
+		t.Errorf("blob hashes differ: %q vs %q (copies must share the blob)", hashA, hashB)
 	}
 }
 

@@ -58,7 +58,7 @@ func TestRuleEditorAlpineExpressionsAreCSPSafe(t *testing.T) {
 			{Field: "has_attachment", Operator: "equals", Value: "true"},
 			{Field: "size", Operator: "greater_than", Value: "1000"},
 		},
-		Action: ActionInfo{Type: "tag", Tags: []string{"news", "o'brien"}},
+		Actions: []ActionInfo{{Type: "tag", Tags: []string{"news", "o'brien"}}, {Type: "move", Target: "Archive"}},
 	}
 	for name, c := range map[string]RuleInfo{"new": {}, "edit": edit} {
 		out := renderToString(t, RuleFormPage(c, []string{"INBOX", "Archive"}, name == "new", "a@b.c", ""))
@@ -78,8 +78,8 @@ func TestRuleEditorStateIsJSON(t *testing.T) {
 	if got := ruleConditionsJSON(nil); got != `[{"field":"from","operator":"contains","value":""}]` {
 		t.Errorf("empty rule gets %s, want one default condition", got)
 	}
-	if got := ruleTagsJSON(nil); got != `[]` {
-		t.Errorf("ruleTagsJSON(nil) = %s, want []", got)
+	if got := ruleActionsJSON(nil); got != `[{"type":"move","target":"","forward":"","tags":[],"tagInput":""}]` {
+		t.Errorf("ruleActionsJSON(nil) = %s, want one empty move row", got)
 	}
 	if got := ruleActionType(""); got != "move" {
 		t.Errorf("ruleActionType(\"\") = %q, want move", got)
@@ -94,23 +94,44 @@ func TestRuleEditorStateIsJSON(t *testing.T) {
 }
 
 // A rule of another type can carry a stale folder target; it must not reach
-// the hidden type=email forward field, where it would block submission.
-func TestRuleEditorForwardFieldOnlyForForwardRules(t *testing.T) {
-	for _, c := range []struct {
-		action ActionInfo
-		want   string
-	}{
-		{ActionInfo{Type: "tag", Target: "Archive", Tags: []string{"x"}}, ""},
-		{ActionInfo{Type: "move", Target: "Archive"}, ""},
-		{ActionInfo{Type: "forward", Target: "fwd@example.com"}, "fwd@example.com"},
-	} {
-		out := renderToString(t, RuleFormPage(RuleInfo{ID: "r1", Name: "n", Action: c.action}, []string{"INBOX", "Archive"}, false, "a@b.c", ""))
-		m := regexp.MustCompile(`id="action_target_forward"[^>]*value="([^"]*)"`).FindStringSubmatch(out)
-		if m == nil {
-			t.Fatalf("%s: no forward field value in output", c.action.Type)
+// the forward address of its row, where it would block submission.
+func TestRuleEditorActionRowsCarryOnlyTheirOwnTarget(t *testing.T) {
+	got := ruleActionsJSON([]ActionInfo{
+		{Type: "tag", Target: "Archive", Tags: []string{"x"}},
+		{Type: "move", Target: "Archive"},
+		{Type: "forward", Target: "fwd@example.com"},
+	})
+	want := `[{"type":"tag","target":"","forward":"","tags":["x"],"tagInput":""},` +
+		`{"type":"move","target":"Archive","forward":"","tags":[],"tagInput":""},` +
+		`{"type":"forward","target":"","forward":"fwd@example.com","tags":[],"tagInput":""}]`
+	if got != want {
+		t.Errorf("ruleActionsJSON =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// The editor must post each of the four positional fields once per row, hidden
+// or not, and offer a folder the rule names even if it was deleted since.
+func TestRuleEditorRowFieldsAndStaleFolder(t *testing.T) {
+	out := renderToString(t, RuleFormPage(RuleInfo{ID: "r1", Name: "n", Actions: []ActionInfo{{Type: "copy", Target: "Gone"}}}, []string{"INBOX", "Archive"}, false, "a@b.c", ""))
+	for _, name := range []string{"action_type", "action_target", "action_target_forward", "action_tags"} {
+		if n := strings.Count(out, `name="`+name+`"`); n != 1 {
+			t.Errorf("%s appears %d times in the row template, want 1", name, n)
 		}
-		if m[1] != c.want {
-			t.Errorf("%s: forward field value = %q, want %q", c.action.Type, m[1], c.want)
-		}
+	}
+	if !strings.Contains(out, `<option value="Gone">Gone</option>`) {
+		t.Error("a folder named by a saved action but missing from the mailbox list must still be an option")
+	}
+	if !strings.Contains(out, `data-default-folder="INBOX"`) {
+		t.Error("missing default folder for new rows")
+	}
+}
+
+func TestRuleFolderOptions(t *testing.T) {
+	got := ruleFolderOptions([]string{"INBOX", "A"}, []ActionInfo{{Type: "move", Target: "A"}, {Type: "copy", Target: "Z"}, {Type: "forward", Target: "x@y.example"}, {Type: "tag", Target: "Q"}})
+	if strings.Join(got, ",") != "INBOX,A,Z" {
+		t.Errorf("options = %v, want INBOX,A,Z", got)
+	}
+	if ruleDefaultFolder([]string{"A", "B"}) != "A" || ruleDefaultFolder([]string{"A", "INBOX"}) != "INBOX" {
+		t.Error("default folder must be INBOX when present, else the first folder")
 	}
 }

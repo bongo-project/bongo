@@ -132,10 +132,10 @@ func TestRulesListPageStructure(t *testing.T) {
 	rules := []RuleInfo{
 		{ID: "r1", Name: "Multi", Priority: 1, Enabled: true,
 			Conditions: []ConditionInfo{{"from", "contains", "AAA1"}, {"subject", "contains", "BBB2"}, {"size", "greater_than", "CCC3"}},
-			Action:     ActionInfo{Type: "move", Target: "Archive"}},
+			Actions:    []ActionInfo{{Type: "move", Target: "Archive"}, {Type: "flag"}}},
 		{ID: "r2", Name: "<script>x</script>", Priority: 2, Enabled: false,
 			Conditions: []ConditionInfo{{"body", "matches", "<img src=x>"}},
-			Action:     ActionInfo{Type: "tag", Tags: []string{"a<b"}}},
+			Actions:    []ActionInfo{{Type: "tag", Tags: []string{"a<b"}}}},
 	}
 	out := renderRulesList(t, rules)
 	and := ruleT(context.Background(), "rules.and")
@@ -198,11 +198,29 @@ func TestRulesListPageEmpty(t *testing.T) {
 
 func TestRuleTestResultsIsDiv(t *testing.T) {
 	var buf bytes.Buffer
-	if err := RuleTestResults("r1", 1, 5, []MailSample{{Subject: "S", From: "F", Date: "D"}}).Render(context.Background(), &buf); err != nil {
+	if err := RuleTestResults("r1", 1, 5, []MailSample{{Subject: "S", From: "F", Date: "D"}}, []ActionInfo{{Type: "copy", Target: "Backup"}, {Type: "flag"}}).Render(context.Background(), &buf); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
 	if !strings.Contains(out, `<div id="test-results-r1"`) || strings.Contains(out, "<tr") {
 		t.Errorf("unexpected markup: %s", out)
+	}
+	// Every action that would run is listed, in order.
+	if !strings.Contains(out, ruleActionText(context.Background(), ActionInfo{Type: "copy", Target: "Backup"})+", "+ruleActionText(context.Background(), ActionInfo{Type: "flag"})) {
+		t.Errorf("test results must list every action: %s", out)
+	}
+}
+
+func TestRuleActionsText(t *testing.T) {
+	ctx := context.Background()
+	if got := ruleActionsText(ctx, nil); got != ruleT(ctx, "rules.actionNone") {
+		t.Errorf("no actions = %q", got)
+	}
+	got := ruleActionsText(ctx, []ActionInfo{{Type: "move", Target: "Archive"}, {Type: "tag", Tags: []string{"a", "b"}}, {Type: "delete"}})
+	want := ruleActionText(ctx, ActionInfo{Type: "move", Target: "Archive"}) + ", " +
+		ruleActionText(ctx, ActionInfo{Type: "tag", Tags: []string{"a", "b"}}) + ", " +
+		ruleActionText(ctx, ActionInfo{Type: "delete"})
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

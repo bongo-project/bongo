@@ -299,3 +299,53 @@ func TestEvaluate_TagActionNoMatch(t *testing.T) {
 		t.Fatal("expected nil when subject does not match")
 	}
 }
+
+func TestMatchingRules(t *testing.T) {
+	cond := []*bongov1.Condition{{Field: "subject", Operator: "contains", Value: "hi"}}
+	mk := func(id string, enabled, stop bool, c []*bongov1.Condition) *bongov1.FilterRule {
+		return &bongov1.FilterRule{Id: id, Enabled: enabled, StopProcessing: stop, Conditions: c}
+	}
+	other := []*bongov1.Condition{{Field: "subject", Operator: "contains", Value: "zzz"}}
+	tests := []struct {
+		name  string
+		rules []*bongov1.FilterRule
+		want  string
+	}{
+		{"all matching run when stop is off", []*bongov1.FilterRule{mk("A", true, false, cond), mk("B", true, false, cond)}, "AB"},
+		{"stop on the first match hides the rest", []*bongov1.FilterRule{mk("A", true, true, cond), mk("B", true, false, cond)}, "A"},
+		{"stop on a non-matching rule does nothing", []*bongov1.FilterRule{mk("A", true, true, other), mk("B", true, false, cond)}, "B"},
+		{"stop on a disabled rule does nothing", []*bongov1.FilterRule{mk("A", false, true, cond), mk("B", true, false, cond)}, "B"},
+		{"stop on the second keeps the first", []*bongov1.FilterRule{mk("A", true, false, cond), mk("B", true, true, cond), mk("C", true, false, cond)}, "AB"},
+		{"none match", []*bongov1.FilterRule{mk("A", true, false, other)}, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var matched string
+			for _, r := range NewEngine().MatchingRules(tc.rules, &bongov1.MailMeta{Subject: "hi there"}, nil, "") {
+				matched += r.Id
+			}
+			if matched != tc.want {
+				t.Errorf("matched %q, want %q", matched, tc.want)
+			}
+		})
+	}
+}
+
+func TestActionsReadAndWrite(t *testing.T) {
+	legacy := &bongov1.FilterRule{Action: &bongov1.FilterAction{Type: "move", Target: "X"}}
+	if acts := Actions(legacy); len(acts) != 1 || acts[0].Target != "X" {
+		t.Errorf("legacy read = %v", acts)
+	}
+	if acts := Actions(&bongov1.FilterRule{}); acts != nil {
+		t.Errorf("empty rule read = %v, want nil", acts)
+	}
+	both := &bongov1.FilterRule{Action: &bongov1.FilterAction{Type: "move"}, Actions: []*bongov1.FilterAction{{Type: "flag"}, {Type: "copy"}}}
+	if acts := Actions(both); len(acts) != 2 || acts[0].Type != "flag" {
+		t.Errorf("list must win over field 6, got %v", acts)
+	}
+	var w bongov1.FilterRule
+	SetActions(&w, []*bongov1.FilterAction{{Type: "flag"}, {Type: "copy"}})
+	if w.Action == nil || w.Action.Type != "flag" || len(w.Actions) != 2 {
+		t.Errorf("SetActions must set both: action=%v actions=%v", w.Action, w.Actions)
+	}
+}

@@ -40,31 +40,47 @@ type RulesHandler struct {
 // forward rule is saved but never fires until its target is verified.
 func (h *RulesHandler) SetForwardVerifier(v *ForwardVerifier) { h.forwarder = v }
 
-// ensureForwardTarget records a forward rule's external target as pending and
-// starts its verification. It reports the flash suffix to show and whether the
-// request was handled (false means an error response was already written).
+// ensureForwardTarget records each forward action's external target as pending
+// and starts its verification. It reports the flash suffix to show and whether
+// the request was handled (false means an error response was already written).
+// Every forward in the rule is checked, not just the first action. Addresses
+// were validated by parseRuleForm, so the invalid-address branch is a backstop.
 func (h *RulesHandler) ensureForwardTarget(w http.ResponseWriter, r *http.Request, userID, email string, rule *bongov1.FilterRule) (string, bool) {
-	if rule.Action == nil || !strings.EqualFold(rule.Action.Type, "forward") || rule.Action.Target == "" {
-		return "", true
-	}
-	if _, ok := parseForwardTarget(rule.Action.Target); !ok {
-		fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
-		return "", false
-	}
-	if h.forwarder == nil {
-		return "", true
-	}
-	if err := h.forwarder.Ensure(userID, email, rule.Action.Target); err != nil {
-		if msg, soft := forwardOutcomeMessage(r, err); soft {
-			return ". " + msg, true
+	var notes []string
+	seen := map[string]bool{}
+	for _, act := range rules.Actions(rule) {
+		if !strings.EqualFold(act.Type, "forward") || act.Target == "" {
+			continue
 		}
-		fwdError(w, r, "settings.fwdErrStart", http.StatusInternalServerError)
-		return "", false
+		key := strings.ToLower(act.Target)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if _, ok := parseForwardTarget(act.Target); !ok {
+			fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
+			return "", false
+		}
+		if h.forwarder == nil {
+			continue
+		}
+		if err := h.forwarder.Ensure(userID, email, act.Target); err != nil {
+			if msg, soft := forwardOutcomeMessage(r, err); soft {
+				notes = append(notes, msg)
+				continue
+			}
+			fwdError(w, r, "settings.fwdErrStart", http.StatusInternalServerError)
+			return "", false
+		}
+		if h.forwarder.Pending(userID, act.Target) {
+			notes = append(notes, fwdText(r, "settings.fwdRuleVerify"))
+		}
 	}
-	if h.forwarder.Pending(userID, rule.Action.Target) {
-		return ". " + fwdText(r, "settings.fwdRuleVerify"), true
+	if len(notes) == 0 {
+		return "", true
 	}
-	return "", true
+	// One flash is enough when several forwards need the same follow-up.
+	return ". " + strings.Join(slices.Compact(notes), ". "), true
 }
 
 // NewRulesHandler creates a RulesHandler.
@@ -106,7 +122,7 @@ func (h *RulesHandler) NewRule(w http.ResponseWriter, r *http.Request) {
 		Conditions: []templates.ConditionInfo{
 			{Field: "from", Operator: "contains"},
 		},
-		Action: templates.ActionInfo{Type: "move"},
+		Actions: []templates.ActionInfo{{Type: "move"}},
 	}
 
 	// "Create filter" on a message links here with ?mailbox=&uid=. The sender
@@ -166,7 +182,11 @@ func (h *RulesHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rule := h.parseRuleForm(r)
+	rule, errKey := h.parseRuleForm(r)
+	if errKey != "" {
+		fwdError(w, r, errKey, http.StatusBadRequest)
+		return
+	}
 	rule.Id = uuid.New().String()
 	rule.CreatedAt = time.Now().Unix()
 	rule.UpdatedAt = rule.CreatedAt
@@ -226,7 +246,11 @@ func (h *RulesHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rule := h.parseRuleForm(r)
+	rule, errKey := h.parseRuleForm(r)
+	if errKey != "" {
+		fwdError(w, r, errKey, http.StatusBadRequest)
+		return
+	}
 	rule.Id = ruleID
 	rule.Priority = existing.Priority
 	rule.CreatedAt = existing.CreatedAt
@@ -293,7 +317,7 @@ func (h *RulesHandler) TestRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := h.testRuleAgainstMail(userID, rule)
-	templ.Handler(templates.RuleTestResults(ruleID, results.Matches, results.Total, results.Samples)).ServeHTTP(w, r)
+	templ.Handler(templates.RuleTestResults(ruleID, results.Matches, results.Total, results.Samples, ruleToInfo(rule).Actions)).ServeHTTP(w, r)
 }
 
 type testResults struct {
@@ -346,7 +370,7 @@ func (h *RulesHandler) testRuleAgainstMail(userID string, rule *bongov1.FilterRu
 	return results
 }
 
-func (h *RulesHandler) parseRuleForm(r *http.Request) *bongov1.FilterRule {
+func (h *RulesHandler) parseRuleForm(r *http.Request) (*bongov1.FilterRule, string) {
 	rule := &bongov1.FilterRule{
 		Name:           r.FormValue("name"),
 		Enabled:        r.FormValue("enabled") == "on" || r.FormValue("enabled") == "true",
@@ -372,25 +396,76 @@ func (h *RulesHandler) parseRuleForm(r *http.Request) *bongov1.FilterRule {
 		})
 	}
 
-	// Parse action.
-	// Only move, copy and forward have a target. The editor posts the folder
-	// and forward fields for every action, so other actions must not keep a
-	// stray folder name as their target.
-	actionType := r.FormValue("action_type")
-	var target string
-	switch actionType {
-	case "move", "copy":
-		target = r.FormValue("action_target")
-	case "forward":
-		target = r.FormValue("action_target_forward")
+	actions, errKey := parseRuleActions(r.Form)
+	if errKey != "" {
+		return nil, errKey
 	}
-	rule.Action = &bongov1.FilterAction{
-		Type:   actionType,
-		Target: target,
-		Tags:   ruleActionTags(r.Form["action_tag"]),
+	rules.SetActions(rule, actions)
+
+	return rule, ""
+}
+
+// ruleActionTypes are the action types the editor offers.
+var ruleActionTypes = []string{"move", "copy", "forward", "flag", "mark_read", "delete", "tag"}
+
+// maxMailboxName bounds a folder name taken from the form.
+const maxMailboxName = 255
+
+// parseRuleActions reads the editor's positional action fields. Each row posts
+// action_type, action_target, action_target_forward and action_tags exactly
+// once, so the four lists must be the same length; anything else is a
+// malformed request. It returns the i18n key of the error to show, or "".
+// The count is checked before anything is allocated per row, and every row is
+// validated before the first write.
+//
+// Only move, copy and forward have a target: the editor posts the folder and
+// forward fields for every row, so other actions must not keep a stray value.
+// Folder names for move and copy go through one check, so copy cannot name a
+// folder that move would refuse.
+func parseRuleActions(form url.Values) ([]*bongov1.FilterAction, string) {
+	types := form["action_type"]
+	if len(types) < 1 || len(types) > store.MaxRuleActions {
+		return nil, "rules.errActionCount"
+	}
+	folders, forwards, tagLists := form["action_target"], form["action_target_forward"], form["action_tags"]
+	if len(folders) != len(types) || len(forwards) != len(types) || len(tagLists) != len(types) {
+		return nil, "rules.errActionCount"
 	}
 
-	return rule
+	actions := make([]*bongov1.FilterAction, 0, len(types))
+	for i, typ := range types {
+		if !slices.Contains(ruleActionTypes, typ) {
+			return nil, "rules.errActionType"
+		}
+		act := &bongov1.FilterAction{Type: typ}
+		switch typ {
+		case "move", "copy":
+			if !validRuleFolder(folders[i]) {
+				return nil, "rules.errActionFolder"
+			}
+			act.Target = folders[i]
+		case "forward":
+			addr, ok := parseForwardTarget(forwards[i])
+			if !ok {
+				return nil, "settings.fwdInvalidAddress"
+			}
+			act.Target = addr
+		case "tag":
+			act.Tags = ruleActionTags(strings.Split(tagLists[i], ","))
+		}
+		actions = append(actions, act)
+	}
+	return actions, ""
+}
+
+// validRuleFolder accepts a non-empty folder name of reasonable length with no
+// control characters. The name becomes part of a Raft key, as a move target
+// always has.
+func validRuleFolder(name string) bool {
+	if name == "" || len(name) > maxMailboxName {
+		return false
+	}
+	return !strings.ContainsFunc(name, func(r rune) bool { return r < 0x20 || r == 0x7f })
 }
 
 func (h *RulesHandler) listMailboxNames(userID string) []string {
@@ -422,12 +497,12 @@ func ruleToInfo(rule *bongov1.FilterRule) templates.RuleInfo {
 		})
 	}
 
-	if rule.Action != nil {
-		info.Action = templates.ActionInfo{
-			Type:   rule.Action.Type,
-			Target: rule.Action.Target,
-			Tags:   rule.Action.Tags,
-		}
+	for _, act := range rules.Actions(rule) {
+		info.Actions = append(info.Actions, templates.ActionInfo{
+			Type:   act.Type,
+			Target: act.Target,
+			Tags:   act.Tags,
+		})
 	}
 
 	return info

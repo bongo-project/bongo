@@ -8,6 +8,8 @@ import (
 	"time"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
+
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // Engine evaluates filter rules against inbound messages.
@@ -18,32 +20,53 @@ func NewEngine() *Engine {
 	return &Engine{}
 }
 
-// Evaluate runs filter rules against a message and returns the first matching action.
-// Returns nil if no rules match.
+// Actions returns a rule's actions in order; an empty list reads as the single
+// legacy action. See store.RuleActions.
+func Actions(rule *bongov1.FilterRule) []*bongov1.FilterAction {
+	return store.RuleActions(rule)
+}
+
+// SetActions writes a rule's actions in both shapes. See store.SetRuleActions.
+func SetActions(rule *bongov1.FilterRule, actions []*bongov1.FilterAction) {
+	store.SetRuleActions(rule, actions)
+}
+
+// Evaluate returns the first action of the first enabled rule that matches, or
+// nil. It answers "does this rule match this message" for the rule tester; the
+// delivery pipeline uses MatchingRules, which honours stop_processing.
 func (e *Engine) Evaluate(rules []*bongov1.FilterRule, meta *bongov1.MailMeta, headers map[string]string, bodyText string) *bongov1.FilterAction {
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
 		if matchAllConditions(rule.Conditions, meta, headers, bodyText) {
-			return rule.Action
+			if acts := Actions(rule); len(acts) > 0 {
+				return acts[0]
+			}
+			return nil
 		}
-		// stop_processing only applies when a rule matches
 	}
 	return nil
 }
 
-// EvaluateWithStop is like Evaluate but also returns whether stop_processing was set.
-func (e *Engine) EvaluateWithStop(rules []*bongov1.FilterRule, meta *bongov1.MailMeta, headers map[string]string, bodyText string) (*bongov1.FilterAction, bool) {
+// MatchingRules returns the enabled rules that match, in the order given (the
+// caller sorts by priority). It stops after the first matching rule with
+// stop_processing set, which is included.
+func (e *Engine) MatchingRules(rules []*bongov1.FilterRule, meta *bongov1.MailMeta, headers map[string]string, bodyText string) []*bongov1.FilterRule {
+	var matched []*bongov1.FilterRule
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
-		if matchAllConditions(rule.Conditions, meta, headers, bodyText) {
-			return rule.Action, rule.StopProcessing
+		if !matchAllConditions(rule.Conditions, meta, headers, bodyText) {
+			continue
+		}
+		matched = append(matched, rule)
+		if rule.StopProcessing {
+			break
 		}
 	}
-	return nil, false
+	return matched
 }
 
 func matchAllConditions(conditions []*bongov1.Condition, meta *bongov1.MailMeta, headers map[string]string, bodyText string) bool {

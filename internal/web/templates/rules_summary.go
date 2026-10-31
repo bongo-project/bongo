@@ -90,6 +90,19 @@ func ruleActionText(ctx context.Context, a ActionInfo) string {
 	return label + ": " + detail
 }
 
+// ruleActionsText renders every action of a rule, in order, separated by
+// commas. A rule with no actions reads as "none".
+func ruleActionsText(ctx context.Context, actions []ActionInfo) string {
+	if len(actions) == 0 {
+		return t(ctx, "rules.actionNone")
+	}
+	parts := make([]string, len(actions))
+	for i, a := range actions {
+		parts[i] = ruleActionText(ctx, a)
+	}
+	return strings.Join(parts, ", ")
+}
+
 func nonEmpty(parts ...string) []string {
 	out := parts[:0:0]
 	for _, p := range parts {

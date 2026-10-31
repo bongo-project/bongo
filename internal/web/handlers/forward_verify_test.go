@@ -270,7 +270,7 @@ func TestForwardRule_ExternalTargetStartsPending(t *testing.T) {
 	rule := func(action, target string) url.Values {
 		return url.Values{
 			"name": {"r"}, "enabled": {"on"}, "action_type": {action},
-			"action_target": {target}, "action_target_forward": {target},
+			"action_target": {target}, "action_target_forward": {target}, "action_tags": {""},
 			"cond_field": {"subject"}, "cond_operator": {"contains"}, "cond_value": {"x"},
 		}
 	}
@@ -295,6 +295,31 @@ func TestForwardRule_ExternalTargetStartsPending(t *testing.T) {
 	// Invalid target is refused outright.
 	if w := e.post(e.rulesH.CreateRule, "u-alice", "alice@example.com", rule("forward", "not an address")); w.Code != http.StatusBadRequest {
 		t.Errorf("invalid target status = %d, want 400", w.Code)
+	}
+}
+
+// A rule with several actions verifies every forward in it, not just the first.
+func TestForwardRule_EveryForwardActionStartsPending(t *testing.T) {
+	e := newFwdEnv(t, nil)
+	form := url.Values{
+		"name": {"r"}, "enabled": {"on"},
+		"action_type":           {"forward", "flag", "forward"},
+		"action_target":         {"INBOX", "INBOX", "INBOX"},
+		"action_target_forward": {"one@other.example", "", "two@other.example"},
+		"action_tags":           {"", "", ""},
+		"cond_field":            {"subject"}, "cond_operator": {"contains"}, "cond_value": {"x"},
+	}
+	w := e.post(e.rulesH.CreateRule, "u-alice", "alice@example.com", form)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, body %q", w.Code, w.Body.String())
+	}
+	for _, tgt := range []string{"one@other.example", "two@other.example"} {
+		if e.allowed(t, "u-alice", tgt) {
+			t.Errorf("%s allowed before verification", tgt)
+		}
+		if rec, ok, _ := e.targets.Get("u-alice", tgt); !ok || rec.State != store.ForwardStatePending {
+			t.Errorf("%s: record = %v, %v; want pending", tgt, rec, ok)
+		}
 	}
 }
 
