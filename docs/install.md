@@ -252,12 +252,48 @@ domain of `smtp.hostname` (`example.com` for `mail.example.com`). Add any
 further domains under **Admin → Domains**; they are managed at runtime, not in
 the config file.
 
+### Listing users, domains and aliases
+
+Three read-only commands list what the server holds, without the web UI. They
+use the same control listener and session secret as `user create`:
+
+```bash
+bongo user list   [--domain example.com] [--json]
+bongo domain list [--json]
+bongo alias list  [--domain example.com] [--json]
+```
+
+- `user list` prints email, display name, enabled or disabled, global admin and
+  the domains the account administers.
+- `domain list` prints each hosted domain with its status, `alias_of` (set for a
+  domain alias), catch-all target, user and storage quota, usage and whether a
+  DKIM key exists. The key itself is never shown.
+- `alias list` prints **address** aliases (an alias address and the account it
+  delivers to), not domain aliases. Domain aliases are in the `ALIAS OF` column
+  of `domain list`.
+- `--domain` keeps only addresses ending in `@example.com`; subdomains do not
+  match. `--json` prints a JSON array with the same fields as the table.
+- `--http-addr` and `--session-secret` work as for `user create`; `--http-addr`
+  accepts `host:port` or `http://host:port`. If the server cannot be reached
+  the command prints one line naming the control address and exits non-zero.
+
+The data comes from the node's own Pebble store, never from passwords, TOTP
+secrets, recovery codes, DKIM keys or session material. A follower may lag the
+leader by a few log entries. Each list is sorted and capped at 100000 rows; if
+it is cut, the command still prints what it has, warns on stderr and exits
+non-zero (narrow it with `--domain`). An older node that lacks these routes
+answers 404, which the command reports as such.
+
 ---
 
 ## 9. Importing existing mail
 
 `bongo-import` ingests mail from mbox, maildir, `.eml`, IMAP and Thunderbird
 profiles. See [`importing.md`](importing.md).
+
+Cron jobs and web applications on the same host can send mail through
+`bongo sendmail`, a sendmail-compatible submission client. See
+[`sendmail.md`](sendmail.md).
 
 ---
 

@@ -23,6 +23,7 @@
   "mail.unreadCount": "%d unread messages",
   "mail.reply": "Reply",
   "mail.replyAll": "Reply All",
+  "mail.replyList": "Reply to list",
   "mail.forward": "Forward",
   "mail.delete": "Delete",
   "mail.emptyTrash": "Empty Trash",

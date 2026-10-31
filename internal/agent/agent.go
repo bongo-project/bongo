@@ -1408,6 +1408,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			// POST carries the quick reply text from the message view.
 			r.Post("/compose/reply/{mailbox}/{uid}", composeH.Reply)
+			// GET only: the list address is derived server side from the message.
+			r.Get("/compose/reply-list/{mailbox}/{uid}", composeH.ReplyList)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
 			r.Get("/compose/draft/{mailbox}/{uid}", composeH.EditDraft)
 			r.With(refuseLowStorage).Post("/compose/send", composeH.Send)
@@ -1876,6 +1878,18 @@ func (a *Agent) Run(ctx context.Context) error {
 			addrRepairH := handlers.NewAddressRepairHandler(a.Store, a.AddressStore, a.logger)
 			cr.Get("/internal/addresses/orphaned", addrRepairH.List)
 			cr.Post("/internal/addresses/repair", addrRepairH.Repair)
+		})
+
+		// Read-only directory listings for the CLI (user, domain and address
+		// alias lists). Control listener only, behind the same internal gate;
+		// they read Pebble and never write. "/internal/" here is the path
+		// prefix of the loopback control router, not the public one.
+		cr.Group(func(cr chi.Router) {
+			cr.Use(middleware.RequireInternalAuth(sessionSecret))
+			dirH := handlers.NewDirectoryListHandler(a.Store, a.logger)
+			cr.Get("/internal/users", dirH.Users)
+			cr.Get("/internal/domains", dirH.Domains)
+			cr.Get("/internal/aliases", dirH.AddressAliases)
 		})
 
 		// Forced raft snapshot. Same private/internal gate: this drives the

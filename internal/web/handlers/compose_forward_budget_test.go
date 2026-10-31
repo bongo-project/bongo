@@ -23,6 +23,10 @@ func (r budgetResolver) ResolveRecipient(email string) (string, error) {
 	return "", http.ErrNoLocation
 }
 
+func (r budgetResolver) ResolveAccount(email string) (string, error) {
+	return r.ResolveRecipient(email)
+}
+
 type budgetApplier struct{}
 
 func (budgetApplier) ApplyCommand(*bongov1.RaftCommand, time.Duration) error { return nil }

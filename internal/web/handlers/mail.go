@@ -572,11 +572,17 @@ func (h *MailHandler) findMailboxMessageByGUID(userID, preferredMailbox, guid st
 // sibling rendering in messageDetailFromMeta, so each message's envelope is
 // parsed at most once per render.
 func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *bongov1.MailMeta) {
+	// The stored List-Post decides the button; the blob is the fallback below
+	// for messages that lack the stored field.
+	detail.HasListPost = listPostAddress(meta.ListPost) != ""
 	if meta.RawMessage != nil && meta.RawMessage.Hash != "" && h.blobs != nil {
 		rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 		if err == nil {
 			env, degraded, perr := mimesafe.ReadEnvelope(rawMsg)
 			if perr == nil {
+				if meta.ListPost == "" {
+					detail.HasListPost = listPostAddress(env.GetHeader("List-Post")) != ""
+				}
 				detail.MIMETooComplex = degraded
 				if env.HTML != "" {
 					inlined := inlineStyleBlocks(env.HTML)

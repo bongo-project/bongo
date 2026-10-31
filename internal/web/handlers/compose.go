@@ -17,6 +17,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
+	"github.com/jhillyerd/enmime"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/i18n"
@@ -44,6 +45,10 @@ const composeUploadMaxMemory = 32 << 20
 // internal/smtp. Satisfied by *store.RecipientResolver.
 type localRecipientResolver interface {
 	ResolveRecipient(email string) (string, error)
+	// ResolveAccount is the strict lookup (primary, aliases, domain aliases;
+	// no catch-all or postmaster). Reply-all uses it to recognise the user's
+	// own addresses.
+	ResolveAccount(email string) (string, error)
 }
 
 // ComposeHandler handles email composition.
@@ -246,7 +251,21 @@ func truncateRunes(s string, n int) string {
 
 // Reply renders the reply form with pre-filled fields.
 func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	h.serveReply(w, r, false)
+}
+
+// ReplyList renders the reply form addressed to the message's mailing list
+// only (the List-Post mailto: address). The address is derived on the server
+// from the stored message, never from the request. A message without a usable
+// List-Post redirects to a blank composer, like a missing message does.
+func (h *ComposeHandler) ReplyList(w http.ResponseWriter, r *http.Request) {
+	h.serveReply(w, r, true)
+}
+
+// serveReply is the shared prelude of Reply and ReplyList: it loads the message
+// and its envelope once, works out the recipients and renders the composer.
+func (h *ComposeHandler) serveReply(w http.ResponseWriter, r *http.Request, toList bool) {
+	userID, replyEmail := middleware.UserFromContext(r.Context())
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
@@ -267,32 +286,20 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 		subject = "Re: " + subject
 	}
 
-	body := h.signatureBody(userID) + h.loadQuotedBody(userID, meta)
+	// The blob is read and parsed once: for the quote and for the headers that
+	// older messages (or ones delivered without the stored fields) lack.
+	env := h.loadEnvelope(meta)
+	body := h.signatureBody(userID) + quotedBody(meta, env)
 
-	// Reply-all is used when the request asks for it (?all=1, the message
-	// view's Reply all button) or when the default_reply preference says so.
-	replyTo := meta.From
-	var replyCc string
-	replyAll := r.URL.Query().Get("all") == "1"
-	if !replyAll && h.prefs != nil {
-		up := h.prefs.Get(userID)
-		replyAll = up.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL
-	}
-	if replyAll {
-		// Cc = original To + original Cc minus the current user.
-		_, currentEmail := middleware.UserFromContext(r.Context())
-		var ccAddrs []string
-		for _, addr := range meta.To {
-			if !strings.EqualFold(strings.TrimSpace(addr), currentEmail) {
-				ccAddrs = append(ccAddrs, strings.TrimSpace(addr))
-			}
+	var replyTo, replyCc string
+	if toList {
+		replyTo = listPostAddress(firstNonEmpty(meta.ListPost, envelopeHeader(env, "List-Post")))
+		if replyTo == "" {
+			http.Redirect(w, r, "/compose", http.StatusSeeOther)
+			return
 		}
-		for _, addr := range meta.Cc {
-			if !strings.EqualFold(strings.TrimSpace(addr), currentEmail) {
-				ccAddrs = append(ccAddrs, strings.TrimSpace(addr))
-			}
-		}
-		replyCc = strings.Join(ccAddrs, ", ")
+	} else {
+		replyTo, replyCc = h.replyRecipients(r, userID, replyEmail, meta, env)
 	}
 
 	// Text typed into the message view's quick reply card seeds the body. It
@@ -305,7 +312,6 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 		body = truncateRunes(quick, maxQuickReplyRunes) + "\n" + body
 	}
 
-	_, replyEmail := middleware.UserFromContext(r.Context())
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, replyEmail)
 
 	if r.Header.Get("HX-Request") == "true" {
@@ -315,6 +321,75 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 
 	mailboxInfos := h.loadMailboxInfos(userID)
 	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// replyRecipients returns the To and Cc field values of a plain reply or a
+// reply-all. To is the Reply-To address list when it parses, else From.
+func (h *ComposeHandler) replyRecipients(r *http.Request, userID, primary string, meta *bongov1.MailMeta, env *enmime.Envelope) (to, cc string) {
+	to = meta.From
+	replyToAddrs := replyToAddresses(firstNonEmpty(meta.ReplyTo, rawAddressHeader(env, "Reply-To")))
+	if len(replyToAddrs) > 0 {
+		to = strings.Join(replyToAddrs, ", ")
+	}
+
+	// Reply-all is used when the request asks for it (?all=1, the message
+	// view's Reply all button) or when the default_reply preference says so.
+	replyAll := r.URL.Query().Get("all") == "1"
+	if !replyAll && h.prefs != nil {
+		up := h.prefs.Get(userID)
+		replyAll = up.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL
+	}
+	if !replyAll {
+		return to, ""
+	}
+
+	// Cc = original To + original Cc minus the user's own addresses and the
+	// addresses already in To.
+	seen := make(map[string]bool, len(replyToAddrs)+1)
+	for _, a := range replyToAddrs {
+		seen[strings.ToLower(a)] = true
+	}
+	if from, err := netmail.ParseAddress(meta.From); err == nil && len(replyToAddrs) == 0 {
+		seen[strings.ToLower(from.Address)] = true
+	}
+	var ccAddrs []string
+	for _, a := range replyAllCandidates(env, meta.To, meta.Cc) {
+		key := strings.ToLower(a)
+		if seen[key] || h.isOwnAddress(userID, primary, a) {
+			continue
+		}
+		seen[key] = true
+		ccAddrs = append(ccAddrs, a)
+	}
+	return to, strings.Join(ccAddrs, ", ")
+}
+
+// isOwnAddress reports whether addr is one of the user's own addresses:
+// the session primary, an account address or alias (strict resolver lookup),
+// or a verified send-as identity. It deliberately avoids ResolveRecipient,
+// which routes unknown addresses on a catch-all domain and postmaster@ to an
+// owner. Without a resolver or address store (edge nodes) only the primary
+// counts.
+func (h *ComposeHandler) isOwnAddress(userID, primary, addr string) bool {
+	if strings.EqualFold(addr, primary) {
+		return true
+	}
+	if h.resolver != nil {
+		if id, err := h.resolver.ResolveAccount(addr); err == nil && id == userID {
+			return true
+		}
+	}
+	if ok, err := store.CanSendAs(h.addresses, userID, primary, addr); err == nil && ok {
+		return true
+	}
+	return false
 }
 
 // Forward renders the forward form.
@@ -1165,17 +1240,30 @@ func (h *ComposeHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {
 	return &meta
 }
 
-func (h *ComposeHandler) loadQuotedBody(userID string, meta *bongov1.MailMeta) string {
+// loadEnvelope reads and parses the message's raw blob, or returns nil when
+// it has none or it cannot be read or parsed.
+func (h *ComposeHandler) loadEnvelope(meta *bongov1.MailMeta) *enmime.Envelope {
 	if meta.RawMessage == nil || meta.RawMessage.Hash == "" {
-		return ""
+		return nil
 	}
-
 	rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 	if err != nil {
-		return ""
+		return nil
 	}
 	env, _, err := mimesafe.ReadEnvelope(rawMsg)
 	if err != nil {
+		return nil
+	}
+	return env
+}
+
+func (h *ComposeHandler) loadQuotedBody(userID string, meta *bongov1.MailMeta) string {
+	return quotedBody(meta, h.loadEnvelope(meta))
+}
+
+// quotedBody renders env's text as a quoted reply block ("" when env is nil).
+func quotedBody(meta *bongov1.MailMeta, env *enmime.Envelope) string {
+	if env == nil {
 		return ""
 	}
 

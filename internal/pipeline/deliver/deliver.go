@@ -385,6 +385,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	headerFrom := env.Sender
 	inReplyTo := ""
 	references := ""
+	var replyToHdr, listID, listPost string
 	var toAddrs []string
 	var ccAddrs []string
 
@@ -393,6 +394,14 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		messageID = parsed.GetHeader("Message-Id")
 		inReplyTo = parsed.GetHeader("In-Reply-To")
 		references = parsed.GetHeader("References")
+		// Raw, not decoded: the reply handler parses it with net/mail, which
+		// decodes encoded-words itself and rejects a decoded name holding a
+		// comma.
+		if parsed.Root != nil {
+			replyToHdr = storedHeader(parsed.Root.Header.Get("Reply-To"))
+		}
+		listID = storedHeader(parsed.GetHeader("List-Id"))
+		listPost = storedHeader(parsed.GetHeader("List-Post"))
 
 		if fromHeader := parsed.GetHeader("From"); fromHeader != "" {
 			headerFrom = fromHeader
@@ -628,6 +637,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			Layout:        layout,
 			InReplyTo:     inReplyTo,
 			References:    references,
+			ReplyTo:       replyToHdr,
+			ListId:        listID,
+			ListPost:      listPost,
 			SpamScore:     spamScore,
 			SpfResult:     env.SpfResult,
 			DkimResult:    dkimResult,

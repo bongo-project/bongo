@@ -646,8 +646,11 @@ FR-1 to FR-18 are the acceptance criteria of the stories in section 3
 ### 6.1 Security
 
 The server is internet-facing. In addition to section 4:
-- No new route goes on `/internal/*`; US-017 deliberately uses the public
-  submission ports with authentication instead.
+- No new route goes on `/internal/*` of the public web router; US-017
+  deliberately uses the public submission ports with authentication
+  instead. The read-only US-018 routes (`/internal/users`, `/domains`,
+  `/aliases`) live on the loopback control listener only, signed like the
+  existing control routes, as that story requires.
 - Every generated message (vacation, DSN, bounce copy) is built with header
   values that are validated or fixed, never copied raw from the triggering
   message.
@@ -837,3 +840,16 @@ Found while implementing (2026-10-31):
   `\Archive` on an existing Archive mailbox. Browsers that cached the old
   bongo.js under the same version keep the old swipe until the cache is
   refreshed; the asset version changes with each release.
+- US-017 as built: `-bm` and `-B<type>` (Debian cron passes `-B8BITMIME`)
+  are accepted and ignored as well as the listed flags. Only a qualified
+  `-f` is honoured; an unqualified one (cronie's `-f root`) and an
+  unqualified `From:` are replaced by the account address. Quota refusal at
+  DATA exits 69. `insecure_skip_verify` is allowed for a literal loopback
+  IP or `localhost` only, not for a name that resolves to loopback.
+- Found while implementing US-017: an authenticated submission to an
+  unknown local part on a hosted domain (for example `nobody@localhost` in
+  dev) is accepted and relayed instead of refused at RCPT, so `bongo
+  sendmail` cannot report exit 67 for it. Candidate for v0.15.
+- US-018 as built: `--json` output carries an `id` field the text table
+  does not show (a superset, for scripts). Each list is capped at 100000
+  rows; a truncated list prints the rows and exits non-zero.

@@ -96,7 +96,14 @@ type MailMeta struct {
 	// these segments describe how to interleave the skeleton's literal bytes with
 	// the attachments[] blobs to rebuild the exact original RFC822 message. Empty
 	// means a legacy whole-raw record: raw_message is the full message.
-	Layout        []*MessageSegment `protobuf:"bytes,20,rep,name=layout,proto3" json:"layout,omitempty"`
+	Layout []*MessageSegment `protobuf:"bytes,20,rep,name=layout,proto3" json:"layout,omitempty"`
+	// Reply and mailing-list headers, stored as decoded text (CR/LF removed,
+	// capped) and validated at use. Empty on messages delivered before these
+	// fields existed or by paths that do not fill them; readers then parse the
+	// headers from the blob.
+	ReplyTo       string `protobuf:"bytes,21,opt,name=reply_to,json=replyTo,proto3" json:"reply_to,omitempty"`    // Reply-To header
+	ListId        string `protobuf:"bytes,22,opt,name=list_id,json=listId,proto3" json:"list_id,omitempty"`       // List-Id header
+	ListPost      string `protobuf:"bytes,23,opt,name=list_post,json=listPost,proto3" json:"list_post,omitempty"` // List-Post header
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -271,6 +278,27 @@ func (x *MailMeta) GetLayout() []*MessageSegment {
 	return nil
 }
 
+func (x *MailMeta) GetReplyTo() string {
+	if x != nil {
+		return x.ReplyTo
+	}
+	return ""
+}
+
+func (x *MailMeta) GetListId() string {
+	if x != nil {
+		return x.ListId
+	}
+	return ""
+}
+
+func (x *MailMeta) GetListPost() string {
+	if x != nil {
+		return x.ListPost
+	}
+	return ""
+}
+
 // MessageSegment is one step in reconstructing a split message. Segments are
 // applied in order: a LITERAL consumes `length` bytes from the skeleton blob
 // (read sequentially); an ATTACHMENT splices in attachments[attachment_index].
@@ -338,7 +366,7 @@ var File_proto_bongo_v1_mail_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"\n" +
-	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\xf9\x04\n" +
+	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\xca\x05\n" +
 	"\bMailMeta\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1d\n" +
 	"\n" +
@@ -370,7 +398,10 @@ const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"dkimDomain\x12%\n" +
 	"\x0etarget_mailbox\x18\x12 \x01(\tR\rtargetMailbox\x12\x12\n" +
 	"\x04tags\x18\x13 \x03(\tR\x04tags\x120\n" +
-	"\x06layout\x18\x14 \x03(\v2\x18.bongo.v1.MessageSegmentR\x06layout\"\xc1\x01\n" +
+	"\x06layout\x18\x14 \x03(\v2\x18.bongo.v1.MessageSegmentR\x06layout\x12\x19\n" +
+	"\breply_to\x18\x15 \x01(\tR\areplyTo\x12\x17\n" +
+	"\alist_id\x18\x16 \x01(\tR\x06listId\x12\x1b\n" +
+	"\tlist_post\x18\x17 \x01(\tR\blistPost\"\xc1\x01\n" +
 	"\x0eMessageSegment\x121\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1d.bongo.v1.MessageSegment.KindR\x04kind\x12\x16\n" +
 	"\x06length\x18\x02 \x01(\x03R\x06length\x12)\n" +
