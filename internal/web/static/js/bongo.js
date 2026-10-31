@@ -1334,7 +1334,18 @@ document.addEventListener('alpine:init', () => {
     operatorsFor(cond) {
       if (cond.field === 'size') return ['greater_than', 'less_than'];
       if (cond.field === 'has_attachment') return ['equals'];
+      if (cond.field === 'mime_type') return ['equals', 'contains', 'matches'];
       return ['contains', 'not_contains', 'equals', 'matches'];
+    },
+
+    isHeader(cond) {
+      return cond.field === 'header';
+    },
+
+    // The one cond_field value a row posts: a header row posts header:Name, so
+    // the field, operator and value lists stay the same length.
+    postedField(cond) {
+      return cond.field === 'header' ? 'header:' + (cond.header || '') : cond.field;
     },
 
     operatorLabel(op) {
@@ -1352,6 +1363,10 @@ document.addEventListener('alpine:init', () => {
       if (!cond) return;
       cond.field = field;
       this.updateOperators(cond);
+    },
+
+    setHeader(i, name) {
+      if (this.conditions[i]) this.conditions[i].header = name;
     },
 
     setOperator(i, op) {

@@ -17,7 +17,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/i18n"
-	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/rules"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/tagname"
@@ -331,7 +330,6 @@ func (h *RulesHandler) testRuleAgainstMail(userID string, rule *bongov1.FilterRu
 	messages, _, _ := h.mailboxes.ListMessagesPaged(userID, "INBOX", 0, 100)
 
 	var results testResults
-	results.Total = len(messages)
 
 	for _, msg := range messages {
 		// Load MailMeta from Pebble.
@@ -346,15 +344,20 @@ func (h *RulesHandler) testRuleAgainstMail(userID string, rule *bongov1.FilterRu
 			continue
 		}
 
-		// Extract body text from raw blob for body matching.
-		var bodyText string
-		if meta.RawMessage != nil && meta.RawMessage.Hash != "" {
-			if rawBytes, err := store.RawMessageBytes(h.blobs, &meta); err == nil {
-				bodyText = extractBodyText(rawBytes)
-			}
+		// Evaluate the message as delivery does: parse the raw bytes with
+		// rules.ParseMessage, never the stored meta, so headers, MIME types,
+		// attachments and size cannot diverge. A message whose blob cannot be
+		// read is skipped and does not count towards the total.
+		if meta.RawMessage == nil || meta.RawMessage.Hash == "" {
+			continue
+		}
+		rawBytes, err := store.RawMessageBytes(h.blobs, &meta)
+		if err != nil {
+			continue
 		}
 
-		action := h.engine.Evaluate([]*bongov1.FilterRule{rule}, &meta, nil, bodyText)
+		results.Total++
+		action := h.engine.Evaluate([]*bongov1.FilterRule{rule}, rules.ParseMessage(rawBytes))
 		if action != nil {
 			results.Matches++
 			if len(results.Samples) < 10 {
@@ -388,24 +391,11 @@ func (h *RulesHandler) parseRuleForm(r *http.Request) (*bongov1.FilterRule, stri
 		return nil, "rules.errMatch"
 	}
 
-	// Parse conditions.
-	fields := r.Form["cond_field"]
-	operators := r.Form["cond_operator"]
-	values := r.Form["cond_value"]
-
-	for i := 0; i < len(fields); i++ {
-		if i >= len(operators) || i >= len(values) {
-			break
-		}
-		if fields[i] == "" {
-			continue
-		}
-		rule.Conditions = append(rule.Conditions, &bongov1.Condition{
-			Field:    fields[i],
-			Operator: operators[i],
-			Value:    values[i],
-		})
+	conds, errKey := parseRuleConditions(r.Form)
+	if errKey != "" {
+		return nil, errKey
 	}
+	rule.Conditions = conds
 
 	actions, errKey := parseRuleActions(r.Form)
 	if errKey != "" {
@@ -518,14 +508,6 @@ func ruleToInfo(rule *bongov1.FilterRule) templates.RuleInfo {
 	}
 
 	return info
-}
-
-func extractBodyText(raw []byte) string {
-	env, _, err := mimesafe.ReadEnvelope(raw)
-	if err != nil {
-		return ""
-	}
-	return env.Text
 }
 
 // ruleActionTags folds typed tag names into stored form so the tag action

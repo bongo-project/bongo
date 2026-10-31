@@ -127,7 +127,7 @@ func TestMigrateFirstMatchSameDeliveryBeforeAndAfter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := NewEngine().MatchingRules(list, meta, nil, "")
+	got := NewEngine().MatchingRules(list, &Message{Meta: meta})
 	if len(got) != 1 || got[0].Id != "first" {
 		t.Fatalf("matched %d rules, want only \"first\"", len(got))
 	}

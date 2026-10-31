@@ -13,6 +13,7 @@ var ruleFieldKeys = map[string]string{
 	"body":           "rules.fieldBody",
 	"has_attachment": "rules.fieldHasAttachment",
 	"size":           "rules.fieldSize",
+	"mime_type":      "rules.fieldMimeType",
 }
 
 var ruleOperatorKeys = map[string]string{

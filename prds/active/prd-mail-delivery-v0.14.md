@@ -800,3 +800,11 @@ Found while implementing (2026-10-31):
 - Release notes: an older node ignores `FilterRule.match`, so it evaluates
   an any-rule as all, and saving the rule through an older node turns it
   back into all (US-006).
+- Release notes (US-007): upgrade every node before creating a
+  `mime_type` rule; an older node reads the field as empty, so a `matches`
+  pattern that accepts an empty string fires there. Rule saves are now
+  validated per field: a rule stored earlier with an operator its field
+  does not support (for example `size contains`) is refused when edited
+  until the condition is corrected. The rule tester now uses the delivery
+  parser, so its body text is capped at 8192 bytes and messages with a
+  missing blob are skipped.

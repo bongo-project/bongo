@@ -6,6 +6,7 @@ import (
 )
 import "fmt"
 import "slices"
+import "strings"
 
 // RuleInfo is the template data for a filter rule.
 type RuleInfo struct {
@@ -206,7 +207,8 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 					</div>
 					<template x-for="(cond, i) in conditions" :key="i">
 						<div class="condition-row">
-							<select name="cond_field" x-bind:value="cond.field" @change="setField(i, $event.target.value)">
+							<input type="hidden" name="cond_field" x-bind:value="postedField(cond)"/>
+							<select aria-label={ t(ctx, "rules.fieldLabel") } x-bind:value="cond.field" @change="setField(i, $event.target.value)">
 								<option value="from">{ t(ctx, "rules.fieldFrom") }</option>
 								<option value="to">{ t(ctx, "rules.fieldTo") }</option>
 								<option value="cc">{ t(ctx, "rules.fieldCc") }</option>
@@ -214,7 +216,12 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 								<option value="body">{ t(ctx, "rules.fieldBody") }</option>
 								<option value="has_attachment">{ t(ctx, "rules.fieldHasAttachment") }</option>
 								<option value="size">{ t(ctx, "rules.fieldSize") }</option>
+								<option value="mime_type">{ t(ctx, "rules.fieldMimeType") }</option>
+								<option value="header">{ t(ctx, "rules.fieldHeader") }</option>
 							</select>
+							<template x-if="isHeader(cond)">
+								<input type="text" x-bind:value="cond.header" @input="setHeader(i, $event.target.value)" maxlength="76" placeholder={ t(ctx, "rules.headerNamePlaceholder") } aria-label={ t(ctx, "rules.headerNameLabel") }/>
+							</template>
 							<select name="cond_operator" @change="setOperator(i, $event.target.value)">
 								<template x-for="op in operatorsFor(cond)" :key="op">
 									<option :value="op" x-text="operatorLabel(op)" :selected="cond.operator === op"></option>
@@ -345,15 +352,21 @@ func ruleFormAction(id string, isNew bool) templ.SafeURL {
 func ruleConditionsJSON(conditions []ConditionInfo) string {
 	type cond struct {
 		Field    string `json:"field"`
+		Header   string `json:"header,omitempty"`
 		Operator string `json:"operator"`
 		Value    string `json:"value"`
 	}
 	out := []cond{}
 	for _, c := range conditions {
-		out = append(out, cond{c.Field, c.Operator, c.Value})
+		field, header := c.Field, ""
+		// A stored "header:X-Foo" is the editor's Header option plus a name.
+		if len(field) >= len("header:") && strings.EqualFold(field[:len("header:")], "header:") {
+			field, header = "header", field[len("header:"):]
+		}
+		out = append(out, cond{field, header, c.Operator, c.Value})
 	}
 	if len(out) == 0 {
-		out = append(out, cond{"from", "contains", ""})
+		out = append(out, cond{"from", "", "contains", ""})
 	}
 	b, _ := json.Marshal(out)
 	return string(b)

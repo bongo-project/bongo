@@ -21,7 +21,7 @@ func TestEvaluate_MatchesFromContains(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{From: "newsletter@example.com", Subject: "Weekly digest"}
 
-	action := engine.Evaluate(rules, meta, nil, "")
+	action := engine.Evaluate(rules, &Message{Meta: meta})
 	if action == nil {
 		t.Fatal("expected action, got nil")
 	}
@@ -47,13 +47,13 @@ func TestEvaluate_ANDConditions(t *testing.T) {
 
 	// Both match.
 	meta := &bongov1.MailMeta{From: "boss@company.com", Subject: "Urgent: review needed"}
-	if action := engine.Evaluate(rules, meta, nil, ""); action == nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action == nil {
 		t.Fatal("expected action when both conditions match")
 	}
 
 	// Only one matches.
 	meta2 := &bongov1.MailMeta{From: "boss@company.com", Subject: "FYI: updates"}
-	if action := engine.Evaluate(rules, meta2, nil, ""); action != nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta2}); action != nil {
 		t.Fatal("expected nil when only one condition matches")
 	}
 }
@@ -72,7 +72,7 @@ func TestEvaluate_DisabledRuleSkipped(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{From: "test@example.com"}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action != nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action != nil {
 		t.Fatal("disabled rule should not match")
 	}
 }
@@ -94,7 +94,7 @@ func TestEvaluate_StopProcessing(t *testing.T) {
 	}
 
 	meta := &bongov1.MailMeta{From: "boss@company.com", Subject: "Urgent task"}
-	action := engine.Evaluate(rules, meta, nil, "")
+	action := engine.Evaluate(rules, &Message{Meta: meta})
 	if action == nil {
 		t.Fatal("expected action")
 	}
@@ -114,7 +114,7 @@ func TestEvaluate_NoMatchReturnsNil(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{From: "friend@example.com"}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action != nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action != nil {
 		t.Fatal("expected nil when no rules match")
 	}
 }
@@ -130,7 +130,7 @@ func TestEvaluate_RegexMatching(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{Subject: "[PATCH 1/3] Fix memory leak"}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action == nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action == nil {
 		t.Fatal("expected regex to match")
 	}
 }
@@ -146,7 +146,7 @@ func TestEvaluate_CaseInsensitiveContains(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{From: "newsletter@example.com"}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action == nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action == nil {
 		t.Fatal("expected case-insensitive match")
 	}
 }
@@ -162,12 +162,12 @@ func TestEvaluate_NotContains(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{Subject: "Important meeting"}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action == nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action == nil {
 		t.Fatal("expected not_contains to match")
 	}
 
 	meta2 := &bongov1.MailMeta{Subject: "This is spam"}
-	if action := engine.Evaluate(rules, meta2, nil, ""); action != nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta2}); action != nil {
 		t.Fatal("expected not_contains to not match when value present")
 	}
 }
@@ -185,14 +185,14 @@ func TestEvaluate_SizeComparison(t *testing.T) {
 		RawMessage: &bongov1.BlobRef{Size: 2000000},
 	}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action == nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action == nil {
 		t.Fatal("expected size > 1MB to match")
 	}
 
 	meta2 := &bongov1.MailMeta{
 		RawMessage: &bongov1.BlobRef{Size: 500},
 	}
-	if action := engine.Evaluate(rules, meta2, nil, ""); action != nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta2}); action != nil {
 		t.Fatal("expected size 500 to not match > 1MB")
 	}
 }
@@ -207,9 +207,9 @@ func TestEvaluate_HeaderField(t *testing.T) {
 		},
 	}
 	meta := &bongov1.MailMeta{From: "someone@example.com"}
-	headers := map[string]string{"X-List-Id": "<dev-list.example.com>"}
+	headers := map[string]string{"x-list-id": "<dev-list.example.com>"}
 
-	if action := engine.Evaluate(rules, meta, headers, ""); action == nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta, Headers: headers}); action == nil {
 		t.Fatal("expected header match")
 	}
 }
@@ -227,7 +227,7 @@ func TestEvaluate_HasAttachment(t *testing.T) {
 		Attachments: []*bongov1.BlobRef{{Hash: "abc"}},
 	}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action == nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action == nil {
 		t.Fatal("expected has_attachment match")
 	}
 }
@@ -243,7 +243,7 @@ func TestEvaluate_EmptyConditions(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{From: "test@example.com"}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action != nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action != nil {
 		t.Fatal("rule with empty conditions should not match")
 	}
 }
@@ -264,7 +264,7 @@ func TestEvaluate_TagAction(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{Subject: "Your newsletter is here"}
 
-	action := engine.Evaluate(rules, meta, nil, "")
+	action := engine.Evaluate(rules, &Message{Meta: meta})
 	if action == nil {
 		t.Fatal("expected tag action, got nil")
 	}
@@ -295,7 +295,7 @@ func TestEvaluate_TagActionNoMatch(t *testing.T) {
 	}
 	meta := &bongov1.MailMeta{Subject: "Hello from a friend"}
 
-	if action := engine.Evaluate(rules, meta, nil, ""); action != nil {
+	if action := engine.Evaluate(rules, &Message{Meta: meta}); action != nil {
 		t.Fatal("expected nil when subject does not match")
 	}
 }
@@ -321,7 +321,7 @@ func TestMatchingRules(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var matched string
-			for _, r := range NewEngine().MatchingRules(tc.rules, &bongov1.MailMeta{Subject: "hi there"}, nil, "") {
+			for _, r := range NewEngine().MatchingRules(tc.rules, &Message{Meta: &bongov1.MailMeta{Subject: "hi there"}}) {
 				matched += r.Id
 			}
 			if matched != tc.want {
