@@ -46,4 +46,14 @@ message UserPreferences {
   string forward_address = 12;    // External address to forward all mail to (empty = disabled)
   bool forward_keep_copy = 13;    // When forwarding, also deliver locally (default true)
   string signature_html = 14;     // HTML signature (fallback to plain-text signature if empty)
+
+  // Vacation auto-reply. start and end are unix seconds; 0 means open on that
+  // side. interval_days is the minimum gap between replies to one sender; 0
+  // (a record written before the field existed) is read as 7.
+  bool vacation_enabled = 15;
+  string vacation_subject = 16;
+  string vacation_body = 17;
+  int64 vacation_start = 18;
+  int64 vacation_end = 19;
+  int32 vacation_interval_days = 20;
 }

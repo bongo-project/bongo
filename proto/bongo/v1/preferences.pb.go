@@ -242,8 +242,17 @@ type UserPreferences struct {
 	ForwardAddress  string                 `protobuf:"bytes,12,opt,name=forward_address,json=forwardAddress,proto3" json:"forward_address,omitempty"`       // External address to forward all mail to (empty = disabled)
 	ForwardKeepCopy bool                   `protobuf:"varint,13,opt,name=forward_keep_copy,json=forwardKeepCopy,proto3" json:"forward_keep_copy,omitempty"` // When forwarding, also deliver locally (default true)
 	SignatureHtml   string                 `protobuf:"bytes,14,opt,name=signature_html,json=signatureHtml,proto3" json:"signature_html,omitempty"`          // HTML signature (fallback to plain-text signature if empty)
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Vacation auto-reply. start and end are unix seconds; 0 means open on that
+	// side. interval_days is the minimum gap between replies to one sender; 0
+	// (a record written before the field existed) is read as 7.
+	VacationEnabled      bool   `protobuf:"varint,15,opt,name=vacation_enabled,json=vacationEnabled,proto3" json:"vacation_enabled,omitempty"`
+	VacationSubject      string `protobuf:"bytes,16,opt,name=vacation_subject,json=vacationSubject,proto3" json:"vacation_subject,omitempty"`
+	VacationBody         string `protobuf:"bytes,17,opt,name=vacation_body,json=vacationBody,proto3" json:"vacation_body,omitempty"`
+	VacationStart        int64  `protobuf:"varint,18,opt,name=vacation_start,json=vacationStart,proto3" json:"vacation_start,omitempty"`
+	VacationEnd          int64  `protobuf:"varint,19,opt,name=vacation_end,json=vacationEnd,proto3" json:"vacation_end,omitempty"`
+	VacationIntervalDays int32  `protobuf:"varint,20,opt,name=vacation_interval_days,json=vacationIntervalDays,proto3" json:"vacation_interval_days,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *UserPreferences) Reset() {
@@ -374,11 +383,53 @@ func (x *UserPreferences) GetSignatureHtml() string {
 	return ""
 }
 
+func (x *UserPreferences) GetVacationEnabled() bool {
+	if x != nil {
+		return x.VacationEnabled
+	}
+	return false
+}
+
+func (x *UserPreferences) GetVacationSubject() string {
+	if x != nil {
+		return x.VacationSubject
+	}
+	return ""
+}
+
+func (x *UserPreferences) GetVacationBody() string {
+	if x != nil {
+		return x.VacationBody
+	}
+	return ""
+}
+
+func (x *UserPreferences) GetVacationStart() int64 {
+	if x != nil {
+		return x.VacationStart
+	}
+	return 0
+}
+
+func (x *UserPreferences) GetVacationEnd() int64 {
+	if x != nil {
+		return x.VacationEnd
+	}
+	return 0
+}
+
+func (x *UserPreferences) GetVacationIntervalDays() int32 {
+	if x != nil {
+		return x.VacationIntervalDays
+	}
+	return 0
+}
+
 var File_proto_bongo_v1_preferences_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_preferences_proto_rawDesc = "" +
 	"\n" +
-	" proto/bongo/v1/preferences.proto\x12\bbongo.v1\"\xcb\x04\n" +
+	" proto/bongo/v1/preferences.proto\x12\bbongo.v1\"\xc6\x06\n" +
 	"\x0fUserPreferences\x12%\n" +
 	"\x05theme\x18\x01 \x01(\x0e2\x0f.bongo.v1.ThemeR\x05theme\x125\n" +
 	"\vlayout_mode\x18\x02 \x01(\x0e2\x14.bongo.v1.LayoutModeR\n" +
@@ -396,7 +447,13 @@ const file_proto_bongo_v1_preferences_proto_rawDesc = "" +
 	"\x0finfinite_scroll\x18\v \x01(\bR\x0einfiniteScroll\x12'\n" +
 	"\x0fforward_address\x18\f \x01(\tR\x0eforwardAddress\x12*\n" +
 	"\x11forward_keep_copy\x18\r \x01(\bR\x0fforwardKeepCopy\x12%\n" +
-	"\x0esignature_html\x18\x0e \x01(\tR\rsignatureHtml*O\n" +
+	"\x0esignature_html\x18\x0e \x01(\tR\rsignatureHtml\x12)\n" +
+	"\x10vacation_enabled\x18\x0f \x01(\bR\x0fvacationEnabled\x12)\n" +
+	"\x10vacation_subject\x18\x10 \x01(\tR\x0fvacationSubject\x12#\n" +
+	"\rvacation_body\x18\x11 \x01(\tR\fvacationBody\x12%\n" +
+	"\x0evacation_start\x18\x12 \x01(\x03R\rvacationStart\x12!\n" +
+	"\fvacation_end\x18\x13 \x01(\x03R\vvacationEnd\x124\n" +
+	"\x16vacation_interval_days\x18\x14 \x01(\x05R\x14vacationIntervalDays*O\n" +
 	"\x05Theme\x12\x15\n" +
 	"\x11THEME_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +

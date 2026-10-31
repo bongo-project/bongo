@@ -111,6 +111,25 @@ recipients already served (duplicates, not loss). Set the orchestrator kill time
 finish. SMTP and IMAP session goroutines still running after their listeners close
 are not waited for.
 
+**Vacation replies are best-effort across nodes.** A vacation reply is sent
+at most once per sender per interval, and never to the null sender, role
+addresses, list mail, bulk mail, automatic mail, spam, quarantined mail or mail
+the user's rules delete or file to Junk or Trash. The check-then-write of the
+tracking record is serialised on one node, not between nodes, and a follower
+may read a record that has not replicated yet, so two nodes handling mail from
+one sender at the same moment can both reply. A sender whose envelope address
+changes with every message (SRS-rewritten mail) is a new sender each time and
+defeats the interval. The cap of 100 replies per user per hour per node bounds
+both. Replies to a sender that fails SPF are never sent.
+
+**Mixed versions and vacation replies.** An older node sends no vacation reply
+and keeps the vacation preference fields when it saves other settings. Its
+queue worker signs and relays the new `OUTBOUND_ORIGIN_AUTOREPLY` (it excludes
+only `FORWARD` from signing and, for any other origin value, treats the message
+as locally authored), and a reply has no envelope sender so no bounce is ever
+generated for it. Tracking records are swept only by the leader; while an older
+node leads they accumulate until a newer node takes over.
+
 ## Scope
 
 In scope: the server (`internal/`, `cmd/`), the protocol implementations, and the

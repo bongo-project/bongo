@@ -113,3 +113,20 @@ func Handler() http.Handler {
 		Registry: Registry,
 	})
 }
+
+// VacationRepliesTotal counts vacation reply outcomes, labelled by result. It
+// has no user label: users are unbounded.
+//
+// Results:
+//   - "sent":           a reply was queued or delivered
+//   - "rate_limited":   skipped because the user reached the per-hour cap
+//   - "track_failed":   skipped because the tracking record could not be written
+//   - "enqueue_failed": the tracking record was written but the reply could not
+//     be queued or delivered, so one reply was lost
+var VacationRepliesTotal = factory.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "bongo_vacation_replies_total",
+		Help: "Vacation reply outcomes, by result.",
+	},
+	[]string{"result"},
+)

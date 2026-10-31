@@ -14,6 +14,7 @@ type RuleInfo struct {
 	Priority         int
 	Enabled          bool
 	StopProcessing   bool
+	Match            string // "all" (also empty) or "any"
 	Conditions       []ConditionInfo
 	Actions          []ActionInfo
 }
@@ -95,7 +96,11 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 										<span class="rule-when">{ t(ctx, "rules.when") }</span>
 										for j, cond := range rule.Conditions {
 											if j > 0 {
-												<span class="rule-and">{ t(ctx, "rules.and") }</span>
+												if rule.Match == "any" {
+													<span class="rule-and">{ t(ctx, "rules.or") }</span>
+												} else {
+													<span class="rule-and">{ t(ctx, "rules.and") }</span>
+												}
 											}
 											<span class="condition">{ ruleConditionText(ctx, cond) }</span>
 										}
@@ -192,6 +197,13 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 				</div>
 				<div class="form-section">
 					<div class="form-section-title">{ t(ctx, "rules.conditionsHeader") }</div>
+					<div class="form-group">
+						<label for="rule_match">{ t(ctx, "rules.matchLabel") }</label>
+						<select name="match" id="rule_match">
+							<option value="all" selected?={ rule.Match != "any" }>{ t(ctx, "rules.matchAll") }</option>
+							<option value="any" selected?={ rule.Match == "any" }>{ t(ctx, "rules.matchAny") }</option>
+						</select>
+					</div>
 					<template x-for="(cond, i) in conditions" :key="i">
 						<div class="condition-row">
 							<select name="cond_field" x-bind:value="cond.field" @change="setField(i, $event.target.value)">

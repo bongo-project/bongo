@@ -435,6 +435,23 @@ func TestGenerateBounceGuardsNullSender(t *testing.T) {
 	}
 }
 
+// A vacation reply is queued with a null sender, so a failed delivery of it
+// must never produce a DSN, for the AUTOREPLY origin and for an origin value
+// this binary does not know.
+func TestGenerateBounceSuppressedForAutoReply(t *testing.T) {
+	for _, origin := range []bongov1.OutboundOrigin{bongov1.OutboundOrigin_OUTBOUND_ORIGIN_AUTOREPLY, bongov1.OutboundOrigin(99)} {
+		t.Run(origin.String(), func(t *testing.T) {
+			worker, _, _, deliverer := newWorkerTestEnvWithDeliverer(t, true)
+			msg := &bongov1.OutboundMessage{Id: "reply-1", SenderEmail: "", Origin: origin, SenderId: "u1"}
+			worker.generateBounce(msg, []string{"bob@external.com"}, "delivery permanently failed")
+			close(deliverer.messages)
+			if n := len(deliverer.messages); n != 0 {
+				t.Fatalf("delivered = %d, want 0", n)
+			}
+		})
+	}
+}
+
 // fakeRelay lets a test drive the exact combination Deliver can return:
 // permanent failures for some recipients together with a transient error for
 // the rest.

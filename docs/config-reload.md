@@ -314,6 +314,7 @@ TLS as well as raft transport.
 | `pipeline.forward_verify_max_per_hour` | `agent.go` -> `mail.NewRateLimiter` handed to the forward verifier (`SetLimiter`) | ctor | RESTART |
 | `pipeline.stage "<name>"` label `name`, `enabled`, `backend` | `agent.go:1047-1073` builds the ordered `[]pipeline.Processor` once | ctor | RESTART (stage re-ordering and add/remove is out of scope) |
 | `queue.poll_interval` | `agent.go:1257` -> `queue.WithPollInterval`; `queue/worker.go:40`, ONE `time.NewTicker(w.pollInterval)` at `:101` | ctor, then ticker fixed | HOT-2 (needs `Ticker.Reset` plumbing) |
+| `queue.bounce_copy_postmaster` | `agent.go` -> `BounceGenerator.SetPostmasterCopy`, set once when the generator is built | ctor | RESTART |
 
 `telemetry`
 

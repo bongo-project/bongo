@@ -377,6 +377,17 @@ func (h *RulesHandler) parseRuleForm(r *http.Request) (*bongov1.FilterRule, stri
 		StopProcessing: r.FormValue("stop_processing") == "on",
 	}
 
+	// "" reads as all; the stored value is always explicit. Anything else is
+	// refused here, before any write or forward verification starts.
+	switch r.FormValue("match") {
+	case "", "all":
+		rule.Match = "all"
+	case rules.MatchAny:
+		rule.Match = rules.MatchAny
+	default:
+		return nil, "rules.errMatch"
+	}
+
 	// Parse conditions.
 	fields := r.Form["cond_field"]
 	operators := r.Form["cond_operator"]
@@ -487,6 +498,7 @@ func ruleToInfo(rule *bongov1.FilterRule) templates.RuleInfo {
 		Priority:       int(rule.Priority),
 		Enabled:        rule.Enabled,
 		StopProcessing: rule.StopProcessing,
+		Match:          rule.Match,
 	}
 
 	for _, cond := range rule.Conditions {

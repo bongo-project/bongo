@@ -142,6 +142,9 @@ type DeliverProcessor struct {
 	// loads it once per message so the two never disagree.
 	authservID     string
 	spamThresholds ThresholdSource
+
+	// vacation sends vacation replies; nil means none are sent.
+	vacation *vacationState
 }
 
 // ThresholdSource supplies the shared tag/quarantine pair. Only Tag is used
@@ -515,6 +518,8 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// Deliver to each recipient. Check account-level forwarding preferences.
 	stepStart = time.Now()
 	reversed := make(map[string]struct{})
+	var vacationBatch *vacationBatch
+	var vacationReplies []*vacationCandidate
 	for _, rcpt := range env.Recipients {
 		// An SRS address on a hosted domain is never resolved: no user owns it,
 		// and resolving would hand a bounce to a catch-all owner. It arrives
@@ -540,9 +545,11 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 		// Check account-level forwarding preferences.
 		skipLocal := false
+		var userPrefs *bongov1.UserPreferences
 		if p.prefs != nil {
 			prefsStart := time.Now()
 			prefs := p.prefs.Get(userID)
+			userPrefs = prefs
 			tPrefs += mark(prefsStart)
 			if prefs.ForwardAddress != "" {
 				sent := gate.permit(userID, prefs.ForwardAddress)
@@ -559,12 +566,6 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			}
 		}
 
-		if skipLocal {
-			p.logger.Info("deliver: skipping local delivery (forward_keep_copy=false)",
-				"recipient", rcpt, "user", userID, "id", env.Id)
-			continue
-		}
-
 		// Determine target mailbox: envelope override takes precedence.
 		targetMailbox := env.TargetMailbox
 		if targetMailbox == "" {
@@ -572,6 +573,25 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			if spamScore >= spamTag {
 				targetMailbox = "Junk"
 			}
+		}
+
+		// Decide a vacation reply now that the final destination is known, and
+		// before the skipLocal exit below: forwarding without a copy is not a
+		// deletion, so such a user still replies. The reply is sent after the
+		// loop and changes nothing about delivery.
+		if p.vacation != nil && userPrefs != nil && store.VacationActive(userPrefs, p.vacation.now()) {
+			if vacationBatch == nil {
+				vacationBatch = newVacationBatch(raw, forwardedAsSpam(env, spamScore, spamTag))
+			}
+			if c := p.vacationCandidateFor(env, vacationBatch, userID, rcpt, userPrefs, targetMailbox); c != nil {
+				vacationReplies = append(vacationReplies, c)
+			}
+		}
+
+		if skipLocal {
+			p.logger.Info("deliver: skipping local delivery (forward_keep_copy=false)",
+				"recipient", rcpt, "user", userID, "id", env.Id)
+			continue
 		}
 
 		guid := uuid.New().String()
@@ -677,6 +697,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	tRecipients = mark(stepStart)
 
 	p.enqueueForwards(env, raw, gate.approved)
+	p.sendVacationReplies(env, vacationReplies)
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
 	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)

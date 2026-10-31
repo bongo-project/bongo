@@ -1452,6 +1452,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/settings", prefH.ShowSettings)
 			r.Post("/settings", prefH.SaveSettings)
 			r.Get("/api/user-prefs", prefH.UserPrefsJSON)
+
+			// Vacation reply settings. Disabling deletes the reply tracking
+			// records through Raft, which needs the store.
+			vacationH := handlers.NewVacationHandler(a.Preferences, a.Store, a, a.logger)
+			r.Get("/settings/vacation", vacationH.Show)
+			r.Post("/settings/vacation", vacationH.Save)
 		}
 
 		if a.Rules != nil && a.Mailboxes != nil {
@@ -1770,6 +1776,24 @@ func (a *Agent) Run(ctx context.Context) error {
 		if smtpPipeline != nil {
 			bounceDomain := mail.ResolveServerDomain(a.Config.SMTP.DKIM.Domain, a.Config.SMTP.Hostname)
 			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger, bounceDomain, a.DKIMRegistry)
+			a.configureBouncePostmasterCopy(a.BounceGen)
+		}
+
+		// Vacation replies: to an external sender through the outbound queue
+		// set above, to a local one through the inbound pipeline like bounces.
+		// The cap is a constant per node (a config key would need a default,
+		// validation and a reload class for no operator need). Without every
+		// dependency the stage sends no reply.
+		if deliverProc != nil && smtpPipeline != nil && a.Blobs != nil && a.Store != nil && sharedResolver != nil {
+			deliverProc.SetVacation(pipelinedeliver.VacationConfig{
+				Accounts: sharedResolver,
+				Profiles: &store.UserDomains{Pebble: a.Store},
+				Tracker:  a.Store,
+				Blobs:    a.Blobs,
+				Local:    smtpPipeline,
+				Limiter:  mail.NewRateLimiter(store.VacationRepliesPerHour),
+				DKIM:     a.DKIMRegistry,
+			})
 		}
 
 		// Queue worker (leader-only processing).
@@ -2161,6 +2185,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 			prevGhosts = a.sweepGhostUserTrees(prevGhosts)
 			prevBlobs, prevBlobMode = a.blobGCPass(prevBlobs, prevBlobMode, minAge)
 			a.sweepSendLogs(time.Now(), store.SendLogTTL)
+			a.sweepVacationSent(time.Now(), store.VacationSentTTL)
 		}
 	}
 }
@@ -2820,20 +2845,42 @@ func (a *Agent) reclaimGhostUserTree(userID string) {
 // check. Leader-only. A user whose tree is already gone is covered by the ghost
 // tree sweep.
 func (a *Agent) sweepSendLogs(now time.Time, ttl time.Duration) int {
+	return a.sweepAgedUserKeys(now, ttl, "send log", store.SendLogPrefix,
+		func(v []byte) (time.Time, error) {
+			at, _, err := store.DecodeSendLogRecord(v)
+			return at, err
+		})
+}
+
+// sweepVacationSent deletes vacation reply tracking records
+// (store.VacationSentKey) older than ttl and returns how many it removed. A
+// record older than the longest reply interval can no longer suppress
+// anything. Leader-only. Disabling vacation deletes a user's records at once;
+// this reclaims the rest, including any the disable could not delete.
+func (a *Agent) sweepVacationSent(now time.Time, ttl time.Duration) int {
+	return a.sweepAgedUserKeys(now, ttl, "vacation tracking", store.VacationSentPrefix, store.DecodeVacationSent)
+}
+
+// sweepAgedUserKeys deletes, through Raft, every key under each user's prefix
+// whose record is older than ttl, and returns how many it removed. A record
+// that does not decode is treated as expired: it would otherwise never be
+// reclaimed. Leader-only; age alone decides, there is no reference to check.
+func (a *Agent) sweepAgedUserKeys(now time.Time, ttl time.Duration, label string,
+	prefix func(userID string) []byte, decode func([]byte) (time.Time, error)) int {
 	if a.Raft == nil || !a.IsLeader() {
 		return 0
 	}
 	userIDs, err := a.Metadata.System.ListUserIDs()
 	if err != nil {
-		a.logger.Warn("orphan-gc: listing users for send log sweep failed", "error", err)
+		a.logger.Warn("orphan-gc: listing users for sweep failed", "sweep", label, "error", err)
 		return 0
 	}
 	cutoff := now.Add(-ttl)
 	deleted := 0
 	for _, userID := range userIDs {
-		iter, err := a.Store.PrefixScan(store.SendLogPrefix(userID))
+		iter, err := a.Store.PrefixScan(prefix(userID))
 		if err != nil {
-			a.logger.Warn("orphan-gc: scanning send log failed", "user", userID, "error", err)
+			a.logger.Warn("orphan-gc: scan failed", "sweep", label, "user", userID, "error", err)
 			continue
 		}
 		var expired [][]byte
@@ -2842,31 +2889,25 @@ func (a *Agent) sweepSendLogs(now time.Time, ttl time.Duration) int {
 			if err != nil {
 				continue
 			}
-			at, _, err := store.DecodeSendLogRecord(val)
-			if err != nil {
-				// Not ours to interpret; a malformed record would otherwise
-				// never be reclaimed, so treat it as expired.
-				expired = append(expired, append([]byte(nil), iter.Key()...))
-				continue
-			}
-			if at.Before(cutoff) {
+			at, err := decode(val)
+			if err != nil || at.Before(cutoff) {
 				expired = append(expired, append([]byte(nil), iter.Key()...))
 			}
 		}
 		if err := iter.Close(); err != nil {
-			a.logger.Warn("orphan-gc: closing send log iterator", "user", userID, "error", err)
+			a.logger.Warn("orphan-gc: closing iterator failed", "sweep", label, "user", userID, "error", err)
 			continue
 		}
 		for _, k := range expired {
 			if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: k}, 5*time.Second); err != nil {
-				a.logger.Warn("orphan-gc: deleting send log entry failed", "user", userID, "error", err)
+				a.logger.Warn("orphan-gc: delete failed", "sweep", label, "user", userID, "error", err)
 				continue
 			}
 			deleted++
 		}
 	}
 	if deleted > 0 {
-		a.logger.Info("orphan-gc: reclaimed send log entries", "count", deleted)
+		a.logger.Info("orphan-gc: reclaimed entries", "sweep", label, "count", deleted)
 	}
 	return deleted
 }
@@ -3155,6 +3196,31 @@ func (a *Agent) newRecipientResolver(sys *store.SystemIndex) *store.RecipientRes
 		r.SetPostmasterAccount(a.Config.SMTP.PostmasterAccount)
 	}
 	return r
+}
+
+// configureBouncePostmasterCopy applies queue.bounce_copy_postmaster to g. The
+// hosted check is read-only. A disabled domain counts as not hosted: it
+// receives no mail, so postmaster@ there would be dropped; the copy goes to
+// smtp.postmaster_account instead. A store error also counts as not hosted.
+func (a *Agent) configureBouncePostmasterCopy(g *mail.BounceGenerator) {
+	if !a.Config.Queue.BounceCopyToPostmaster() {
+		return
+	}
+	g.SetPostmasterCopy(true, a.bounceCopyHostedDomain, a.newRecipientResolver(nil).PostmasterAccount())
+}
+
+// bounceCopyHostedDomain reports whether a bounce copy may go to postmaster@
+// domain: the domain is hosted here and not disabled.
+func (a *Agent) bounceCopyHostedDomain(domain string) bool {
+	if a.Store == nil {
+		return false
+	}
+	ok, err := store.DomainHosted(a.Store, domain)
+	if err != nil || !ok {
+		return false
+	}
+	disabled, err := store.DomainDisabled(a.Store, domain)
+	return err == nil && !disabled
 }
 
 // maxReportedDomains bounds the domain list in the postmaster warning.

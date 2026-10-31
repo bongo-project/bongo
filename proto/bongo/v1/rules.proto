@@ -15,6 +15,7 @@ message FilterRule {
   int64 created_at = 8;
   int64 updated_at = 9;
   repeated FilterAction actions = 10; // 1 to 10 actions; empty means [action] (rules written before v0.14)
+  string match = 11;             // "all" (default; "" reads as all) or "any"
 }
 
 message Condition {
