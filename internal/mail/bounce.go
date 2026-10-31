@@ -93,6 +93,28 @@ func ResolveServerDomain(dkimDomain, smtpHostname string) string {
 
 // GenerateAndDeliver creates an RFC 3464 DSN bounce and delivers it to the sender's INBOX.
 func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage, failedRecipients []string, reason string) error {
+	return bg.generate(original, failedRecipients, reason, reportFailed, time.Time{})
+}
+
+// GenerateDelayReport delivers an "Action: delayed" report (RFC 3464) to the
+// sender: the message is still queued and will be retried until retryUntil.
+// The caller decides whether a delay report is wanted and allowed (NOTIFY=DELAY,
+// not a null or unauthenticated-forward sender); like every report it is
+// delivered through the local inbound pipeline, so one addressed to a sender
+// outside the hosted domains is dropped there. It never produces a postmaster
+// copy: that copy is for bounces only.
+func (bg *BounceGenerator) GenerateDelayReport(original *bongov1.OutboundMessage, recipients []string, reason string, retryUntil time.Time) error {
+	return bg.generate(original, recipients, reason, reportDelayed, retryUntil)
+}
+
+// GenerateDeliveredReport delivers an "Action: delivered" report to the sender
+// for recipients the message reached. The caller has already applied the same
+// backscatter gate as for a bounce. No postmaster copy.
+func (bg *BounceGenerator) GenerateDeliveredReport(original *bongov1.OutboundMessage, recipients []string) error {
+	return bg.generate(original, recipients, "", reportDelivered, time.Time{})
+}
+
+func (bg *BounceGenerator) generate(original *bongov1.OutboundMessage, recipients []string, reason string, kind reportKind, retryUntil time.Time) error {
 	// Best-effort retrieval of the original message's header block for the
 	// third (text/rfc822-headers) MIME part. Never fails the bounce: any
 	// problem is logged inside originalHeaderBlock and it returns "", which
@@ -103,14 +125,21 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 	// not valid RFC 5322, and the strict DKIM signer-domain parse would refuse
 	// to sign the DSN.
 	domain := strings.TrimSuffix(bg.domain, ".")
-	bounceMsg := buildBounce(original, failedRecipients, reason, domain, originalHeaders, bounceOptions{
-		to:      original.SenderEmail,
-		subject: "Undelivered Mail Returned to Sender",
-	})
+	opts := bounceOptions{
+		to:           original.SenderEmail,
+		subject:      kind.subject(),
+		kind:         kind,
+		retryUntil:   retryUntil,
+		originalFull: bg.originalFullMessage(original),
+	}
+	bounceMsg := buildBounce(original, recipients, reason, domain, originalHeaders, opts)
 
+	// Recipient addresses are logged as before; the ENVID, ORCPT and report
+	// body are never logged.
 	bg.logger.Info("bounce: generating DSN",
+		"kind", kind.action(),
 		"sender", original.SenderEmail,
-		"failed_recipients", failedRecipients,
+		"recipients", recipients,
 		"reason", reason,
 	)
 
@@ -123,6 +152,11 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 	// above) — MAILER-DAEMON is the display name and postmaster@<domain> is
 	// the addr-spec that DKIM/DMARC alignment is computed from. Only the
 	// envelope sender is null.
+	//
+	// The report goes through the local inbound pipeline, whose deliver stage
+	// drops a recipient it cannot resolve. A report for a sender outside the
+	// hosted domains is therefore dropped, as bounces already are; relaying
+	// DSNs onward is a later release.
 	senderErr := bg.deliverer.Deliver(
 		"",
 		[]string{original.SenderEmail},
@@ -132,9 +166,11 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 	// The postmaster copy is independent of the sender's bounce: it is
 	// attempted even when that delivery failed, and never changes the result.
 	// It sits after Worker.generateBounce's suppression (null sender,
-	// unauthenticated forward), so a suppressed bounce is never copied.
-	if bg.copyPostmaster {
-		bg.deliverPostmasterCopy(original, failedRecipients, reason, domain, originalHeaders)
+	// unauthenticated forward), so a suppressed bounce is never copied. Only
+	// failure reports are copied, and never with the original body (RET=FULL
+	// applies to the sender's report only).
+	if bg.copyPostmaster && kind == reportFailed {
+		bg.deliverPostmasterCopy(original, recipients, reason, domain, originalHeaders)
 	}
 	return senderErr
 }
@@ -260,6 +296,138 @@ func (bg *BounceGenerator) deliverPostmasterCopy(original *bongov1.OutboundMessa
 type bounceOptions struct {
 	to      string
 	subject string
+
+	// kind selects failed (the zero value), delayed or delivered wording and
+	// Action/Status. retryUntil is the Will-Retry-Until of a delayed report.
+	kind       reportKind
+	retryUntil time.Time
+
+	// originalFull is the complete original message for a RET=FULL report, or
+	// nil. Only the sender's report sets it; the postmaster copy never does.
+	// buildBounce still falls back to the header block when the bytes cannot
+	// safely sit in a message/rfc822 part.
+	originalFull []byte
+}
+
+// reportKind is the kind of DSN: failure, delay or success.
+type reportKind int
+
+const (
+	reportFailed reportKind = iota
+	reportDelayed
+	reportDelivered
+)
+
+// action is the RFC 3464 Action field value.
+func (k reportKind) action() string {
+	switch k {
+	case reportDelayed:
+		return "delayed"
+	case reportDelivered:
+		return "delivered"
+	}
+	return "failed"
+}
+
+func (k reportKind) subject() string {
+	switch k {
+	case reportDelayed:
+		return "Delayed Mail (still being retried)"
+	case reportDelivered:
+		return "Successful Mail Delivery Report"
+	}
+	return "Undelivered Mail Returned to Sender"
+}
+
+// maxFullReturn is the largest original a RET=FULL report attaches whole;
+// anything larger falls back to the header block.
+const maxFullReturn = 1 << 20
+
+// maxReportLine is the SMTP line limit (RFC 5321 section 4.5.3.1.6) without
+// the CRLF.
+const maxReportLine = 998
+
+// originalFullMessage returns the original message for a RET=FULL report, or
+// nil when RET is not FULL, the blob store is unavailable, the message is over
+// maxFullReturn, or it cannot be read. The size is checked from blob sizes
+// before anything is read, so a large message is never rebuilt in memory.
+func (bg *BounceGenerator) originalFullMessage(msg *bongov1.OutboundMessage) []byte {
+	if !strings.EqualFold(msg.GetDsnRet(), "FULL") || bg.blobs == nil || msg.GetBlobHash() == "" {
+		return nil
+	}
+	total, err := bg.blobs.Size(msg.BlobHash)
+	if err != nil {
+		bg.logger.Warn("bounce: RET=FULL size unavailable, returning headers only", "hash", msg.BlobHash, "error", err)
+		return nil
+	}
+	if len(msg.Layout) > 0 {
+		// Split record: the skeleton holds the literal pieces; each attachment
+		// segment adds that attachment's blob.
+		total = 0
+		for _, seg := range msg.Layout {
+			switch seg.Kind {
+			case bongov1.MessageSegment_LITERAL:
+				total += seg.Length
+			case bongov1.MessageSegment_ATTACHMENT:
+				idx := int(seg.AttachmentIndex)
+				if idx < 0 || idx >= len(msg.Attachments) {
+					return nil
+				}
+				n, sizeErr := bg.blobs.Size(msg.Attachments[idx].Hash)
+				if sizeErr != nil {
+					bg.logger.Warn("bounce: RET=FULL attachment size unavailable, returning headers only", "error", sizeErr)
+					return nil
+				}
+				total += n
+			}
+			if total > maxFullReturn {
+				return nil
+			}
+		}
+	}
+	if total > maxFullReturn {
+		return nil
+	}
+	raw, err := store.RawMessageBytes(bg.blobs, &bongov1.MailMeta{
+		RawMessage:  &bongov1.BlobRef{Hash: msg.BlobHash},
+		Attachments: msg.Attachments,
+		Layout:      msg.Layout,
+	})
+	if err != nil {
+		bg.logger.Warn("bounce: RET=FULL original unreadable, returning headers only", "hash", msg.BlobHash, "error", err)
+		return nil
+	}
+	if len(raw) > maxFullReturn {
+		return nil
+	}
+	return raw
+}
+
+// attachableOriginal normalises raw to CRLF and reports whether it can sit in
+// a 7bit or 8bit message/rfc822 part: no NUL, no line over 998 octets and no
+// line equal to the report's own boundary. The original is untrusted input.
+func attachableOriginal(raw []byte, boundary string) (string, bool) {
+	if len(raw) == 0 || bytes.IndexByte(raw, 0) >= 0 {
+		return "", false
+	}
+	text := normalizeCRLF(raw)
+	if !strings.HasSuffix(text, "\r\n") {
+		text += "\r\n"
+	}
+	// CRLF conversion can grow a bare-LF original past the limit checked on
+	// the raw size; check again on what would be attached.
+	if len(text) > maxFullReturn {
+		return "", false
+	}
+	for _, line := range strings.Split(text, "\r\n") {
+		if len(line) > maxReportLine {
+			return "", false
+		}
+	}
+	if containsBoundaryLine(text, boundary) {
+		return "", false
+	}
+	return text, true
 }
 
 // originalHeaderBlock returns the header block (normalized to CRLF, with a
@@ -357,14 +525,20 @@ var enhancedStatusRe = regexp.MustCompile(`(?:^|[^0-9A-Za-z.])([2-5])[0-9]{2}[ \
 // match of any class — otherwise "250 2.0.0 accepted ... 550 5.1.1 user
 // unknown" would report Status: 2.0.0 on a failure DSN.
 func parseEnhancedStatus(reason string) string {
+	return parseEnhancedStatusClass(reason, "5")
+}
+
+// parseEnhancedStatusClass is parseEnhancedStatus for a given class digit
+// ("5" for a failure, "4" for a delay), falling back to class.0.0.
+func parseEnhancedStatusClass(reason, class string) string {
 	for _, m := range enhancedStatusRe.FindAllStringSubmatch(reason, -1) {
 		basicClass, enhancedClass := m[1], m[2]
-		if basicClass != enhancedClass || enhancedClass != "5" {
+		if basicClass != enhancedClass || enhancedClass != class {
 			continue
 		}
 		return enhancedClass + "." + m[3] + "." + m[4]
 	}
-	return "5.0.0"
+	return class + ".0.0"
 }
 
 // normalizeCRLF collapses any mix of bare LF and CRLF line endings in b to
@@ -420,7 +594,16 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	for i, r := range failedRecipients {
 		safeRecipients[i] = SanitizeHeaderValue(r)
 	}
-	status := parseEnhancedStatus(reason)
+	var status string
+	switch opts.kind {
+	case reportDelayed:
+		status = parseEnhancedStatusClass(reason, "4")
+	case reportDelivered:
+		status = "2.0.0"
+	default:
+		status = parseEnhancedStatus(reason)
+	}
+	action := opts.kind.action()
 
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: MAILER-DAEMON <postmaster@%s>\r\n", domain)
@@ -456,11 +639,23 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	buf.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
 	buf.WriteString("\r\n")
 	var part1 strings.Builder
-	part1.WriteString("The following message could not be delivered to one or more recipients:\r\n\r\n")
+	switch opts.kind {
+	case reportDelayed:
+		part1.WriteString("Delivery of the following message to one or more recipients has been delayed. It is still queued and delivery will be retried:\r\n\r\n")
+	case reportDelivered:
+		part1.WriteString("The following message was delivered to one or more recipients:\r\n\r\n")
+	default:
+		part1.WriteString("The following message could not be delivered to one or more recipients:\r\n\r\n")
+	}
 	for _, rcpt := range safeRecipients {
 		fmt.Fprintf(&part1, "  * %s\r\n", rcpt)
 	}
-	fmt.Fprintf(&part1, "\r\nReason: %s\r\n", safeReason)
+	if opts.kind == reportDelayed && !opts.retryUntil.IsZero() {
+		fmt.Fprintf(&part1, "\r\nDelivery will be retried until %s.\r\n", opts.retryUntil.UTC().Format(time.RFC1123Z))
+	}
+	if opts.kind != reportDelivered {
+		fmt.Fprintf(&part1, "\r\nReason: %s\r\n", safeReason)
+	}
 	// Error ignored: the sink is a bytes.Buffer, whose Write never fails. The
 	// helper still returns an error so a non-buffer sink would be handled.
 	_ = writeQuotedPrintable(&buf, part1.String())
@@ -474,20 +669,56 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	buf.WriteString("Content-Transfer-Encoding: 7bit\r\n")
 	buf.WriteString("\r\n")
 	fmt.Fprintf(&buf, "Reporting-MTA: dns; %s\r\n", domain)
+	// RFC 3464 section 2.2.1: the ENVID the client sent, decoded. go-smtp has
+	// already checked it is printable ASCII; the check here keeps a record
+	// from any other source out of the 7bit part.
+	if envid := SanitizeHeaderValue(original.GetDsnEnvid()); envid != "" && isASCII(envid) {
+		fmt.Fprintf(&buf, "Original-Envelope-Id: %s\r\n", envid)
+	}
 	buf.WriteString("\r\n")
 	diagCode := asciiOnly(truncateRunes(safeReason, 500))
-	for _, rcpt := range safeRecipients {
+	for i, rcpt := range safeRecipients {
+		if orcpt := orcptField(recipientDSN(original, failedRecipients[i])); orcpt != "" {
+			fmt.Fprintf(&buf, "Original-Recipient: %s\r\n", orcpt)
+		}
 		fmt.Fprintf(&buf, "Final-Recipient: rfc822; %s\r\n", rcpt)
-		buf.WriteString("Action: failed\r\n")
+		fmt.Fprintf(&buf, "Action: %s\r\n", action)
 		fmt.Fprintf(&buf, "Status: %s\r\n", status)
-		fmt.Fprintf(&buf, "Diagnostic-Code: smtp; %s\r\n", diagCode)
+		if opts.kind != reportDelivered {
+			fmt.Fprintf(&buf, "Diagnostic-Code: smtp; %s\r\n", diagCode)
+		}
+		if opts.kind == reportDelayed && !opts.retryUntil.IsZero() {
+			fmt.Fprintf(&buf, "Will-Retry-Until: %s\r\n", opts.retryUntil.UTC().Format(time.RFC1123Z))
+		}
 		buf.WriteString("\r\n")
+	}
+
+	// Part 3, RET=FULL: the whole original as message/rfc822 when it is safe
+	// to embed; otherwise fall through to the header block below.
+	attachedFull := false
+	if len(opts.originalFull) > 0 {
+		if full, ok := attachableOriginal(opts.originalFull, boundary); ok {
+			fmt.Fprintf(&buf, "--%s\r\n", boundary)
+			buf.WriteString("Content-Type: message/rfc822\r\n")
+			// RFC 2045 section 6.4 forbids quoted-printable and base64 on a
+			// message/* part, so the original goes in as it is, declared 7bit
+			// or 8bit to match what it really contains.
+			if isASCII(full) {
+				buf.WriteString("Content-Transfer-Encoding: 7bit\r\n")
+			} else {
+				buf.WriteString("Content-Transfer-Encoding: 8bit\r\n")
+			}
+			buf.WriteString("\r\n")
+			buf.WriteString(full)
+			buf.WriteString("\r\n")
+			attachedFull = true
+		}
 	}
 
 	// Part 3: the original message's header block, when available.
 	// Best-effort — omitted entirely when originalHeaders is "" (retrieval
 	// failure or unavailable blob store, logged by the caller).
-	if hdrs := originalHeaders; hdrs != "" && !containsBoundaryLine(hdrs, boundary) {
+	if hdrs := originalHeaders; !attachedFull && hdrs != "" && !containsBoundaryLine(hdrs, boundary) {
 		fmt.Fprintf(&buf, "--%s\r\n", boundary)
 		// charset is declared because a header block can carry raw non-ASCII
 		// (an unencoded Subject from a non-conforming sender); without it a

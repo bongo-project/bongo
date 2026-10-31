@@ -318,9 +318,10 @@ TLS as well as raft transport.
 | `queue.bounce_copy_postmaster` | `agent.go` -> `BounceGenerator.SetPostmasterCopy`, set once when the generator is built | ctor | RESTART |
 | `queue.max_lifetime` | `agent.go` -> `queue.WithMaxLifetime`; read per failure by `Worker.handleFailure` | ctor | RESTART |
 | `queue.max_retry_interval` | `agent.go` -> `queue.WithMaxRetryInterval`; caps `retryDelay` | ctor | RESTART |
+| `queue.delay_warning_after` | `agent.go` -> `queue.WithDelayWarningAfter`; read per failure by `Worker.handleFailure` | ctor | RESTART |
 | `queue.concurrency` | `agent.go` -> `queue.WithConcurrency`; sizes the per-poll semaphore | ctor | RESTART |
 
-The queue worker runs on the Raft leader only, so the three `queue.*` limits above follow whichever node is leader. Keep them identical on every voter: with differing values the bounce policy changes on a leader change. A mixed-version cluster behaves the same way, since a pre-upgrade leader bounces on attempt 10 rather than by lifetime. Messages already queued are judged by `created_at`, so one pending longer than `max_lifetime` bounces on its next failed attempt after the upgrade; admin "Retry now" does not reset `created_at`.
+The queue worker runs on the Raft leader only, so the four `queue.*` limits above follow whichever node is leader. Keep them identical on every voter: with differing values the bounce policy changes on a leader change. A mixed-version cluster behaves the same way, since a pre-upgrade leader bounces on attempt 10 rather than by lifetime. Messages already queued are judged by `created_at`, so one pending longer than `max_lifetime` bounces on its next failed attempt after the upgrade; admin "Retry now" does not reset `created_at`.
 
 `telemetry`
 

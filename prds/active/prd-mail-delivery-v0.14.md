@@ -818,3 +818,12 @@ Found while implementing (2026-10-31):
   monitor samples `storage.data_dir` and its Raft snapshots; it does not
   read `cluster.raft.data_dir`. A failing free-space check never refuses
   work.
+- US-010: reports, like bounces, are delivered through the local inbound
+  pipeline, so a report to an external sender is dropped by the deliver
+  stage; only local senders receive them until DSN relaying (v0.15 US-018) is
+  built. No success report is sent for mail filed as spam, Junk or
+  quarantined (it would confirm a live address). A success report can
+  repeat if an envelope is retried after a crash. With a `queue.max_lifetime`
+  of 4h or less and the default `delay_warning_after`, no delay report can
+  be sent; the agent warns at startup. Release notes: the new proto fields
+  and `queue.delay_warning_after` need every node upgraded first.

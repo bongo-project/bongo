@@ -24,6 +24,12 @@ message QueueEnvelope {
   uint32 pending_flags = 17;             // Mailbox flag bits (store.FlagSeen, store.FlagFlagged) the rules stage asks for
   repeated string copy_mailboxes = 18;   // Extra mailboxes a copy action asks for; each shares the message blob
   bool discard_normal = 19;              // A delete action won: skip the normal destination, still write copies and forwards
+  // DSN parameters (RFC 3461). One recipient per envelope, so NOTIFY/ORCPT are scalar.
+  string dsn_ret = 20;                   // "FULL", "HDRS" or empty
+  string dsn_envid = 21;                 // Decoded ENVID
+  uint32 dsn_notify = 22;                // NOTIFY bitmask (1 SUCCESS, 2 FAILURE, 4 DELAY, 8 NEVER); 0 = not given
+  string dsn_orcpt_type = 23;            // "rfc822" or "utf-8"
+  string dsn_orcpt = 24;                 // Decoded original recipient
 }
 
 // ForwardRequest is one forward asked for by a rule, attributed to the user

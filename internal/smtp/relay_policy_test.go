@@ -66,13 +66,9 @@ func (d *fakeSplitDeliverer) EnqueueLocal(from string, recipients []string, blob
 	d.localCalls = append(d.localCalls, recipients)
 	// Make a copy of meta for verification
 	if meta != nil {
-		d.localMetas = append(d.localMetas, &InboundMeta{
-			SPFResult: meta.SPFResult,
-			SourceIP:  meta.SourceIP,
-			Trusted:   meta.Trusted,
-
-			AuthUserID: meta.AuthUserID,
-		})
+		cp := *meta
+		cp.DSNRcpts = append([]RcptDSN(nil), meta.DSNRcpts...)
+		d.localMetas = append(d.localMetas, &cp)
 	} else {
 		d.localMetas = append(d.localMetas, &InboundMeta{})
 	}

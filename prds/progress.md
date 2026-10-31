@@ -1500,3 +1500,9 @@ PATTERN: [ui] Pair positional form lists through one computed hidden input per r
 PATTERN: [testing] When a fix depends on a value being persisted, assert on the stored record, not on the in-memory object the code mutated.
 - 28.9 refuse new work when the disk is nearly full. Plan PROCEED, review MINOR. The orchestrator removed a nested role="alert" around the admin banner, made an all-error sample while low log a failed check rather than "recovered" (both with tests, mutants killed), and moved the per-request refusal logs from Warn to Debug so a full disk is not filled further by logs. Linux amd64 and arm64 builds checked with CGO_ENABLED=0. Logged: the agent route test greps agent.go source text.
 PATTERN: [ops] When a gate exists because a resource is scarce, log transitions, not each refusal; per-request warnings consume the resource being protected.
+
+## 2026-10-31: Phase 28 batch 4 (28.10, 28.11, 28.12)
+
+- 28.10 DSN parameters. Plan PROCEED (the advisor read go-smtp v0.24.0: EnableDSN plus its parser already refuses malformed RET/ENVID/NOTIFY/ORCPT with 501), review MINOR. The worker's first full run failed once on an unrelated POP3 timeout under load; the orchestrator re-ran the full gate. Orchestrator fixes: a startup warning when the default delay is not below a short max_lifetime (accessor tested), suppressed delay reports log at Debug since they are re-checked on every failure, and the RET=FULL limit is re-checked after CRLF conversion (test red first). Found: reports to external senders are dropped by the deliver stage, as bounces are; recorded in 8.2.
+PATTERN: [mail] Persist an at-most-once flag in the same write that reschedules the record, and send the side effect only after that write succeeds; a crash then loses a notice rather than repeating it.
+PATTERN: [limits] Check a size limit on the bytes that will be emitted, after any normalisation that can grow them.

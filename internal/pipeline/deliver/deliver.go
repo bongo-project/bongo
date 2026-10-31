@@ -145,7 +145,22 @@ type DeliverProcessor struct {
 
 	// vacation sends vacation replies; nil means none are sent.
 	vacation *vacationState
+
+	// reporter sends NOTIFY=SUCCESS delivery reports; nil means none are sent.
+	reporter DeliveryReporter
 }
+
+// DeliveryReporter sends an Action: delivered report (RFC 3464) to the
+// envelope sender. Declared here, at the consumer; *mail.BounceGenerator
+// satisfies it. original carries the sender, the blob and the DSN parameters
+// the report echoes.
+type DeliveryReporter interface {
+	GenerateDeliveredReport(original *bongov1.OutboundMessage, recipients []string) error
+}
+
+// SetDeliveryReporter enables NOTIFY=SUCCESS delivery reports. Nil (the
+// default) sends none, so a node without a bounce generator ignores SUCCESS.
+func (p *DeliverProcessor) SetDeliveryReporter(r DeliveryReporter) { p.reporter = r }
 
 // ThresholdSource supplies the shared tag/quarantine pair. Only Tag is used
 // here.
@@ -682,6 +697,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		if env.DiscardNormal {
 			continue
 		}
+		p.reportDelivered(env, rcpt, messageID, spamScore, spamTag)
 		p.logger.Info("deliver: mail stored",
 			// The envelope recipient, not just the resolved user ID: an alias and
 			// its target share one UUID, so a UUID alone cannot say which address
@@ -710,6 +726,57 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		ProcessedAt: time.Now().Unix(),
 		DurationMs:  durationMs,
 	}, nil
+}
+
+// reportDelivered sends the NOTIFY=SUCCESS report for one recipient whose copy
+// has just been written. It is best-effort: the mail is already delivered, so
+// a failure is logged and never fails the stage. A crash between the write and
+// this call loses the report, and a retry of the envelope repeats the delivery
+// and may repeat the report; both are acceptable for a courtesy notice.
+//
+// The report is held to the same backscatter rule as a bounce: it needs a
+// non-null sender whose address was authenticated (SPF pass or an
+// authenticated local author), or it would be mail to a forged address.
+//
+// "Delivered" here means the copy was written for the recipient in a mailbox
+// they read. No report is sent for mail the pipeline judged spam, junk or
+// quarantined (a report would tell a spammer the address is live). A delete
+// rule that discarded the normal destination and forward-without-copy both
+// skip the recipient before this is called. Hosted SRS and no-relay addresses are skipped
+// earlier in the loop and never get here. A recipient relayed elsewhere
+// produces no "relayed" report in this release.
+//
+// The report is delivered through the local inbound pipeline, so one for a
+// sender outside the hosted domains is dropped there, as bounces are today.
+func (p *DeliverProcessor) reportDelivered(env *bongov1.QueueEnvelope, rcpt, messageID string, spamScore, spamTag float32) {
+	if p.reporter == nil || !bongomail.NotifyWantsSuccess(env.GetDsnNotify()) {
+		return
+	}
+	if strings.TrimSpace(env.GetSender()) == "" || !senderAuthenticated(env) {
+		return
+	}
+	if forwardedAsSpam(env, spamScore, spamTag) {
+		return
+	}
+	original := &bongov1.OutboundMessage{
+		Id:          env.GetId(),
+		SenderEmail: env.GetSender(),
+		Recipients:  []string{rcpt},
+		BlobHash:    env.GetBlobHash(),
+		MessageGuid: messageID,
+		DsnRet:      env.GetDsnRet(),
+		DsnEnvid:    env.GetDsnEnvid(),
+		RecipientDsn: []*bongov1.RecipientDSN{{
+			Address:   rcpt,
+			Notify:    env.GetDsnNotify(),
+			OrcptType: env.GetDsnOrcptType(),
+			Orcpt:     env.GetDsnOrcpt(),
+		}},
+	}
+	if err := p.reporter.GenerateDeliveredReport(original, []string{rcpt}); err != nil {
+		p.logger.Warn("deliver: delivery report failed (best-effort, mail already delivered)",
+			"id", env.GetId(), "error", err)
+	}
 }
 
 // copyDelivery is one extra mailbox a copy rule asked for and the MailMeta

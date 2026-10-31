@@ -22,6 +22,7 @@ const (
 	defaultMaxLifetime      = 5 * 24 * time.Hour
 	defaultMaxRetryInterval = time.Hour
 	defaultConcurrency      = 5
+	defaultDelayWarning     = 4 * time.Hour
 	maxConcurrency          = 64
 )
 
@@ -44,6 +45,7 @@ type Worker struct {
 	maxLifetime      time.Duration
 	maxRetryInterval time.Duration
 	concurrency      int
+	delayWarning     time.Duration
 	now              func() time.Time
 }
 
@@ -76,6 +78,18 @@ func WithMaxRetryInterval(d time.Duration) Option {
 	return func(w *Worker) {
 		if d > 0 {
 			w.maxRetryInterval = d
+		}
+	}
+}
+
+// WithDelayWarningAfter sets how long a message may stay queued, from
+// created_at, before a recipient that asked for NOTIFY=DELAY gets one delay
+// report. Non-positive values are ignored. A value at or above the lifetime
+// means no delay report is ever sent.
+func WithDelayWarningAfter(d time.Duration) Option {
+	return func(w *Worker) {
+		if d > 0 {
+			w.delayWarning = d
 		}
 	}
 }
@@ -127,6 +141,7 @@ func NewWorker(
 		maxLifetime:      defaultMaxLifetime,
 		maxRetryInterval: defaultMaxRetryInterval,
 		concurrency:      defaultConcurrency,
+		delayWarning:     defaultDelayWarning,
 		now:              time.Now,
 	}
 	for _, o := range opts {
@@ -387,40 +402,112 @@ func (w *Worker) handleFailure(msg *bongov1.OutboundMessage, reason string) {
 	}
 
 	msg.StatusReason = reason
+
+	// A delay report is due once, on the first failed attempt at least
+	// delayWarning after creation, and only to recipients that asked for
+	// NOTIFY=DELAY. The flag is set before MarkFailed so the persisted record
+	// carries it, and the report is generated only after MarkFailed succeeded:
+	// a crash in between loses the report rather than repeating it (at most
+	// once). It belongs in this reschedule branch only; a bounce or permanent
+	// failure ends the message and the failure report is the last word.
+	delayTo := w.delayReportRecipients(msg, now)
+	if len(delayTo) > 0 {
+		msg.DelayReportSent = true
+	}
 	if err := w.store.MarkFailed(msg, next.Unix()); err != nil {
+		msg.DelayReportSent = false
 		w.logger.Error("queue: marking failed", "id", msg.Id, "error", err)
-	} else {
-		observability.QueueMessagesTotal.WithLabelValues("failed").Inc()
-		w.logger.Info("queue: message retry scheduled", "id", msg.Id, "attempt", msg.AttemptCount)
+		return
+	}
+	observability.QueueMessagesTotal.WithLabelValues("failed").Inc()
+	w.logger.Info("queue: message retry scheduled", "id", msg.Id, "attempt", msg.AttemptCount)
+	if len(delayTo) > 0 {
+		retryUntil := deadline
+		if err := w.bouncer.GenerateDelayReport(msg, delayTo, reason, retryUntil); err != nil {
+			w.logger.Error("queue: delay report generation failed", "id", msg.Id, "error", err)
+		}
 	}
 }
 
-// generateBounce invokes the bounce generator, unless the failing message has
-// no sender to bounce to. RFC 3464 section 6 prohibits generating a DSN in
-// response to a null-sender message — that is what stops bounce loops between
-// two servers.
+// delayReportRecipients returns the remaining recipients that should be sent
+// an Action: delayed report now, or nil. It applies the same sender gate as a
+// bounce (mayReport), so a delay report is never backscatter either.
+func (w *Worker) delayReportRecipients(msg *bongov1.OutboundMessage, now time.Time) []string {
+	if w.bouncer == nil || msg.DelayReportSent || w.delayWarning <= 0 ||
+		now.Sub(time.Unix(msg.CreatedAt, 0)) < w.delayWarning {
+		return nil
+	}
+	var to []string
+	for _, r := range msg.Recipients {
+		if mail.NotifyWantsDelay(mail.RecipientNotify(msg, r)) {
+			to = append(to, r)
+		}
+	}
+	if len(to) == 0 || !w.mayReport(msg, to, "delay") {
+		return nil
+	}
+	return to
+}
+
+// mayReport reports whether msg's sender may be sent a delivery status report
+// of any kind (failure, delay). It is the single backscatter gate, shared by
+// every report type so a new one cannot get it half-right.
 //
-// Both current call sites already check w.bouncer != nil, but this checks too:
-// the whole point of routing both sites through one helper is that a future
-// third caller cannot get it half-right, and a caller that forgets the nil
-// check would panic on an edge node where no bounce generator is configured.
-func (w *Worker) generateBounce(msg *bongov1.OutboundMessage, recipients []string, reason string) {
+// RFC 3464 section 6 prohibits a DSN in response to a null-sender message; that
+// is what stops bounce loops between two servers. A forward of mail whose
+// sender was not authenticated may carry a forged sender, and a report to it
+// would be backscatter; records queued before the field existed read as
+// unauthenticated, so they default to no report. Only FORWARD is affected:
+// every other origin never sets the field.
+//
+// It also reports false without a bounce generator (an edge node).
+func (w *Worker) mayReport(msg *bongov1.OutboundMessage, recipients []string, report string) bool {
 	if w.bouncer == nil {
-		return
+		return false
+	}
+	// A suppressed delay report is re-checked on every later failure, so it
+	// logs at Debug; a failure report is decided once and logs at Info.
+	level := slog.LevelInfo
+	if report == "delay" {
+		level = slog.LevelDebug
 	}
 	if strings.TrimSpace(msg.SenderEmail) == "" {
-		w.logger.Info("queue: DSN suppressed for null sender (RFC 3464 s6)", "id", msg.Id, "failed_recipients", recipients)
-		return
+		w.logger.Log(context.Background(), level, "queue: DSN suppressed for null sender (RFC 3464 s6)", "id", msg.Id, "report", report, "recipients", recipients)
+		return false
 	}
-	// A forward of mail whose sender was not authenticated may carry a forged
-	// sender; a DSN to it would be backscatter. Records queued before the field
-	// existed read as unauthenticated, so they default to no DSN. Only FORWARD
-	// is affected: every other origin never sets the field.
 	if msg.GetOrigin() == bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD && !msg.GetSenderAuthenticated() {
-		w.logger.Info("queue: DSN suppressed for unauthenticated forwarded sender", "id", msg.Id, "user", msg.SenderId)
+		w.logger.Log(context.Background(), level, "queue: DSN suppressed for unauthenticated forwarded sender", "id", msg.Id, "report", report, "user", msg.SenderId)
+		return false
+	}
+	return true
+}
+
+// generateBounce sends the failure report for recipients, unless the sender may
+// not be reported to (mayReport) or no recipient wants one. A recipient wants a
+// failure report when it gave no NOTIFY, or NOTIFY includes FAILURE (RFC 3461
+// section 4.1); NOTIFY=NEVER, SUCCESS alone and DELAY alone all mean none.
+// When nothing is left to report, nothing is sent, and there is no postmaster
+// copy of a report that was not sent.
+//
+// Both current call sites already check w.bouncer != nil, but mayReport checks
+// too: the whole point of routing every site through one helper is that a
+// future caller cannot get it half-right, and a caller that forgets the nil
+// check would panic on an edge node where no bounce generator is configured.
+func (w *Worker) generateBounce(msg *bongov1.OutboundMessage, recipients []string, reason string) {
+	if !w.mayReport(msg, recipients, "failure") {
 		return
 	}
-	if err := w.bouncer.GenerateAndDeliver(msg, recipients, reason); err != nil {
+	var wanted []string
+	for _, r := range recipients {
+		if mail.NotifyWantsFailure(mail.RecipientNotify(msg, r)) {
+			wanted = append(wanted, r)
+		}
+	}
+	if len(wanted) == 0 {
+		w.logger.Info("queue: failure report suppressed by NOTIFY", "id", msg.Id, "recipients", recipients)
+		return
+	}
+	if err := w.bouncer.GenerateAndDeliver(msg, wanted, reason); err != nil {
 		w.logger.Error("queue: bounce generation failed", "error", err)
 	}
 }

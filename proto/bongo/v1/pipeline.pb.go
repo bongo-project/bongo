@@ -42,8 +42,14 @@ type QueueEnvelope struct {
 	PendingFlags     uint32                 `protobuf:"varint,17,opt,name=pending_flags,json=pendingFlags,proto3" json:"pending_flags,omitempty"`            // Mailbox flag bits (store.FlagSeen, store.FlagFlagged) the rules stage asks for
 	CopyMailboxes    []string               `protobuf:"bytes,18,rep,name=copy_mailboxes,json=copyMailboxes,proto3" json:"copy_mailboxes,omitempty"`          // Extra mailboxes a copy action asks for; each shares the message blob
 	DiscardNormal    bool                   `protobuf:"varint,19,opt,name=discard_normal,json=discardNormal,proto3" json:"discard_normal,omitempty"`         // A delete action won: skip the normal destination, still write copies and forwards
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// DSN parameters (RFC 3461). One recipient per envelope, so NOTIFY/ORCPT are scalar.
+	DsnRet        string `protobuf:"bytes,20,opt,name=dsn_ret,json=dsnRet,proto3" json:"dsn_ret,omitempty"`                     // "FULL", "HDRS" or empty
+	DsnEnvid      string `protobuf:"bytes,21,opt,name=dsn_envid,json=dsnEnvid,proto3" json:"dsn_envid,omitempty"`               // Decoded ENVID
+	DsnNotify     uint32 `protobuf:"varint,22,opt,name=dsn_notify,json=dsnNotify,proto3" json:"dsn_notify,omitempty"`           // NOTIFY bitmask (1 SUCCESS, 2 FAILURE, 4 DELAY, 8 NEVER); 0 = not given
+	DsnOrcptType  string `protobuf:"bytes,23,opt,name=dsn_orcpt_type,json=dsnOrcptType,proto3" json:"dsn_orcpt_type,omitempty"` // "rfc822" or "utf-8"
+	DsnOrcpt      string `protobuf:"bytes,24,opt,name=dsn_orcpt,json=dsnOrcpt,proto3" json:"dsn_orcpt,omitempty"`               // Decoded original recipient
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QueueEnvelope) Reset() {
@@ -209,6 +215,41 @@ func (x *QueueEnvelope) GetDiscardNormal() bool {
 	return false
 }
 
+func (x *QueueEnvelope) GetDsnRet() string {
+	if x != nil {
+		return x.DsnRet
+	}
+	return ""
+}
+
+func (x *QueueEnvelope) GetDsnEnvid() string {
+	if x != nil {
+		return x.DsnEnvid
+	}
+	return ""
+}
+
+func (x *QueueEnvelope) GetDsnNotify() uint32 {
+	if x != nil {
+		return x.DsnNotify
+	}
+	return 0
+}
+
+func (x *QueueEnvelope) GetDsnOrcptType() string {
+	if x != nil {
+		return x.DsnOrcptType
+	}
+	return ""
+}
+
+func (x *QueueEnvelope) GetDsnOrcpt() string {
+	if x != nil {
+		return x.DsnOrcpt
+	}
+	return ""
+}
+
 // ForwardRequest is one forward asked for by a rule, attributed to the user
 // whose rule asked for it, so the deliver stage can check that user's verified
 // targets and rate limit. Unattributed entries (user_id empty) are never sent.
@@ -368,7 +409,7 @@ var File_proto_bongo_v1_pipeline_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/bongo/v1/pipeline.proto\x12\bbongo.v1\"\xa6\x05\n" +
+	"\x1dproto/bongo/v1/pipeline.proto\x12\bbongo.v1\"\xbe\x06\n" +
 	"\rQueueEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06sender\x18\x02 \x01(\tR\x06sender\x12\x1e\n" +
@@ -394,7 +435,13 @@ const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\x10forward_requests\x18\x10 \x03(\v2\x18.bongo.v1.ForwardRequestR\x0fforwardRequests\x12#\n" +
 	"\rpending_flags\x18\x11 \x01(\rR\fpendingFlags\x12%\n" +
 	"\x0ecopy_mailboxes\x18\x12 \x03(\tR\rcopyMailboxes\x12%\n" +
-	"\x0ediscard_normal\x18\x13 \x01(\bR\rdiscardNormal\"A\n" +
+	"\x0ediscard_normal\x18\x13 \x01(\bR\rdiscardNormal\x12\x17\n" +
+	"\adsn_ret\x18\x14 \x01(\tR\x06dsnRet\x12\x1b\n" +
+	"\tdsn_envid\x18\x15 \x01(\tR\bdsnEnvid\x12\x1d\n" +
+	"\n" +
+	"dsn_notify\x18\x16 \x01(\rR\tdsnNotify\x12$\n" +
+	"\x0edsn_orcpt_type\x18\x17 \x01(\tR\fdsnOrcptType\x12\x1b\n" +
+	"\tdsn_orcpt\x18\x18 \x01(\tR\bdsnOrcpt\"A\n" +
 	"\x0eForwardRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\"\xec\x01\n" +
