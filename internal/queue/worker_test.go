@@ -257,7 +257,8 @@ func TestWorkerMaxRetriesBounces(t *testing.T) {
 		SenderEmail:  "alice@example.com",
 		Recipients:   []string{"bob@external.com"},
 		BlobHash:     hash,
-		AttemptCount: 9, // Next failure will be attempt 10 (>= maxAttempts-1)
+		AttemptCount: 3,
+		CreatedAt:    time.Now().Add(-6 * 24 * time.Hour).Unix(), // past the 5d default lifetime
 	}
 	if err := qs.Enqueue(msg); err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -337,7 +338,8 @@ func TestWorkerMaxRetriesBounceSuppressesNullSender(t *testing.T) {
 				SenderEmail:  tt.sender,
 				Recipients:   []string{"bob@external.com"},
 				BlobHash:     hash,
-				AttemptCount: 9, // Next failure is attempt 10 (>= maxAttempts-1): max-retries bounce path.
+				AttemptCount: 3,
+				CreatedAt:    time.Now().Add(-6 * 24 * time.Hour).Unix(), // past the 5d default lifetime: lifetime bounce path
 			}
 			if err := qs.Enqueue(msg); err != nil {
 				t.Fatalf("Enqueue: %v", err)
@@ -481,7 +483,7 @@ func (f *fakeRelay) Deliver(_ context.Context, _ string, recipients []string, _ 
 //
 // Before this, the dead recipients stayed in msg.Recipients, so every retry
 // relayed to them again and generated another DSN. The sender received up to
-// maxAttempts copies of the same bounce for the same address.
+// one copy per attempt of the same bounce for the same address.
 // msg.FailedRecipients was appended to but never read by anything.
 func TestPermanentFailuresAreNotRetriedOrRebounced(t *testing.T) {
 	worker, qs, blobs, deliverer := newWorkerTestEnvWithDeliverer(t, true)
@@ -618,7 +620,7 @@ func TestPruneRecipients(t *testing.T) {
 //
 // A message enqueued before the 2026-08-30 blob-GC incident spent seven days
 // cycling through attempts that each failed identically, because handleFailure
-// treats every error as worth retrying and only bounces once maxAttempts is
+// treats every error as worth retrying and only bounces once the lifetime is
 // spent. A missing body is not a transient condition: the bytes are gone, and
 // the ninth attempt fails exactly as the first did.
 //

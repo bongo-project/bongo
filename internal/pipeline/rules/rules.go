@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/rules"
 	"github.com/bongo-project/bongo/internal/store"
@@ -112,7 +111,7 @@ func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope
 	}
 
 	// Parse the message to extract fields used by rule conditions.
-	parsed := parseMessage(raw)
+	parsed := rules.ParseMessage(raw)
 
 	var (
 		reasons       []string
@@ -147,7 +146,7 @@ func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope
 			continue
 		}
 
-		for _, rule := range p.engine.MatchingRules(userRules, parsed.meta, parsed.headers, parsed.bodyText) {
+		for _, rule := range p.engine.MatchingRules(userRules, parsed) {
 			actions := rules.Actions(rule)
 			if len(actions) > store.MaxRuleActions {
 				actions = actions[:store.MaxRuleActions]
@@ -256,112 +255,6 @@ func appendUniqueFold(dst, src []string) []string {
 		}
 	}
 	return dst
-}
-
-// parsedMessage holds the extracted fields from a raw RFC 5322 message.
-type parsedMessage struct {
-	meta     *bongov1.MailMeta
-	headers  map[string]string
-	bodyText string
-}
-
-// parseMessage extracts fields from raw message bytes needed for rule matching.
-// It uses enmime for full MIME parsing with a plain-text fallback.
-func parseMessage(raw []byte) *parsedMessage {
-	meta := &bongov1.MailMeta{
-		RawMessage: &bongov1.BlobRef{Size: int64(len(raw))},
-	}
-	headers := make(map[string]string)
-
-	env, _, err := mimesafe.ReadEnvelope(raw)
-	if err != nil {
-		// Fallback: extract headers with a simple line scanner.
-		meta.Subject, headers = extractBasicHeaders(raw)
-		return &parsedMessage{meta: meta, headers: headers}
-	}
-
-	meta.From = env.GetHeader("From")
-	meta.Subject = env.GetHeader("Subject")
-	meta.To = splitAddresses(env.GetHeader("To"))
-	meta.Cc = splitAddresses(env.GetHeader("Cc"))
-
-	// Collect all headers for rule matching (e.g. header:X-List-Id).
-	for _, key := range env.GetHeaderKeys() {
-		if v := env.GetHeader(key); v != "" {
-			headers[key] = v
-		}
-	}
-
-	bodyText := env.Text
-	if len(bodyText) > 8192 {
-		bodyText = bodyText[:8192]
-	}
-
-	// Record attachment count so has_attachment rules work.
-	for range env.Attachments {
-		meta.Attachments = append(meta.Attachments, &bongov1.BlobRef{})
-	}
-
-	return &parsedMessage{
-		meta:     meta,
-		headers:  headers,
-		bodyText: bodyText,
-	}
-}
-
-// splitAddresses splits a comma-separated address list into individual entries.
-func splitAddresses(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
-// extractBasicHeaders scans raw RFC 5322 bytes and returns the Subject and a
-// map of all header names to their values. Used as a fallback when enmime fails.
-func extractBasicHeaders(raw []byte) (subject string, headers map[string]string) {
-	headers = make(map[string]string)
-	lines := strings.Split(string(raw), "\n")
-	var currentKey, currentVal string
-
-	flush := func() {
-		if currentKey == "" {
-			return
-		}
-		v := strings.TrimSpace(currentVal)
-		headers[currentKey] = v
-		if strings.EqualFold(currentKey, "Subject") {
-			subject = v
-		}
-	}
-
-	for _, line := range lines {
-		if strings.TrimRight(line, "\r") == "" {
-			break
-		}
-		// Folded header continuation.
-		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
-			currentVal += " " + strings.TrimSpace(line)
-			continue
-		}
-		flush()
-		if idx := strings.IndexByte(line, ':'); idx > 0 {
-			currentKey = strings.TrimSpace(line[:idx])
-			currentVal = strings.TrimSpace(line[idx+1:])
-		} else {
-			currentKey = ""
-			currentVal = ""
-		}
-	}
-	flush()
-	return subject, headers
 }
 
 // appendUnique appends items from src to dst, skipping duplicates already in dst.

@@ -21,3 +21,25 @@ templ QuotaRefusedPage(message, email string) {
 		</main>
 	}
 }
+
+// StorageLowPage is the full-page answer to a form post refused because the
+// server is short of disk space. htmx requests get a short text response.
+templ StorageLowPage(message, email string) {
+	@LayoutWithContent(t(ctx, "storage.lowTitle"), email) {
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					<div class="page-head">
+						<h1>{ t(ctx, "storage.lowTitle") }</h1>
+					</div>
+					<div class="card">
+						<div class="card-body">
+							@FlashMessage(message, "error")
+							<p class="quota-back"><a href="/mail/INBOX" class="btn-secondary">{ t(ctx, "nav.backToMail") }</a></p>
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+	}
+}

@@ -188,6 +188,21 @@ type StorageConfig struct {
 	// It is opt-in so a data-deleting sweep never starts without the operator
 	// enabling it, and dryrun lets it be validated in production first.
 	BlobGC string `hcl:"blob_gc,optional" mapstructure:"blob_gc"`
+	// MinFreeMB is the free space, in MiB, below which the server refuses new
+	// mail, uploads and DAV writes (default 1024; 0 disables the check).
+	MinFreeMB int `hcl:"min_free_mb,optional" mapstructure:"min_free_mb"`
+}
+
+// maxMinFreeMB bounds storage.min_free_mb at 1 TiB so the MiB-to-bytes
+// conversion cannot overflow.
+const maxMinFreeMB = 1 << 20
+
+// MinFreeBytes returns storage.min_free_mb in bytes; 0 means disabled.
+func (s *StorageConfig) MinFreeBytes() uint64 {
+	if s.MinFreeMB <= 0 {
+		return 0
+	}
+	return uint64(s.MinFreeMB) << 20
 }
 
 // BlobGCMode returns the normalised blob-GC mode: "off" (default), "dryrun", or
@@ -852,6 +867,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if c.Storage.MinFreeMB < 0 || c.Storage.MinFreeMB > maxMinFreeMB {
+		return fmt.Errorf("storage.min_free_mb: must be between 0 and %d, got %d", maxMinFreeMB, c.Storage.MinFreeMB)
+	}
+
 	if c.Server.Role == "agent" {
 		if len(c.Server.Agents) == 0 {
 			return fmt.Errorf("server.agents: role \"agent\" requires a non-empty agents list")
@@ -982,6 +1001,24 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if q := c.Queue; q != nil {
+		for _, k := range []struct{ key, v string }{
+			{"queue.max_lifetime", q.MaxLifetime},
+			{"queue.max_retry_interval", q.MaxRetryInterval},
+		} {
+			if k.v == "" {
+				continue
+			}
+			if _, err := parseRetention(k.v); err != nil {
+				return fmt.Errorf("%s: invalid value %q (use whole days like \"5d\" or a duration like \"1h\", must be positive): %w", k.key, k.v, err)
+			}
+		}
+		// Zero is "unset" (default 5): a queue block replaces the defaults.
+		if q.Concurrency < 0 || q.Concurrency > maxQueueConcurrency {
+			return fmt.Errorf("queue.concurrency: invalid value %d (use 1 to %d, or omit for the default of %d)", q.Concurrency, maxQueueConcurrency, defaultQueueConcurrency)
+		}
+	}
+
 	if _, err := c.Storage.Pebble.CacheBytes(); err != nil {
 		return fmt.Errorf("storage.pebble.cache_size: invalid value %q (use a positive size like \"256MB\" or \"1GB\"): %w", c.Storage.Pebble.CacheSize, err)
 	}
@@ -1030,6 +1067,57 @@ type QueueConfig struct {
 	// bounce to postmaster@ the sender's hosted domain, else to
 	// smtp.postmaster_account. Default false. A bool needs no Validate check.
 	BounceCopyPostmaster bool `hcl:"bounce_copy_postmaster,optional" mapstructure:"bounce_copy_postmaster"`
+	// MaxLifetime is how long a message may stay queued, measured from its
+	// created_at, before it is bounced. Whole days ("5d") or any Go duration.
+	// Empty means 5d.
+	MaxLifetime string `hcl:"max_lifetime,optional" mapstructure:"max_lifetime"`
+	// MaxRetryInterval caps the doubling retry delay. Empty means 1h.
+	MaxRetryInterval string `hcl:"max_retry_interval,optional" mapstructure:"max_retry_interval"`
+	// Concurrency is the number of simultaneous outbound deliveries, 1 to 64.
+	// Zero means unset (5): a queue block replaces the defaults wholesale.
+	Concurrency int `hcl:"concurrency,optional" mapstructure:"concurrency"`
+}
+
+const (
+	defaultQueueMaxLifetime      = 5 * 24 * time.Hour
+	defaultQueueMaxRetryInterval = time.Hour
+	defaultQueueConcurrency      = 5
+	maxQueueConcurrency          = 64
+)
+
+// QueueMaxLifetime returns the maximum time a message stays queued. Nil-safe;
+// returns 5d when unset or unparseable.
+func (c *QueueConfig) QueueMaxLifetime() time.Duration {
+	if c == nil || c.MaxLifetime == "" {
+		return defaultQueueMaxLifetime
+	}
+	d, err := parseRetention(c.MaxLifetime)
+	if err != nil {
+		return defaultQueueMaxLifetime
+	}
+	return d
+}
+
+// QueueMaxRetryInterval returns the retry delay cap. Nil-safe; returns 1h when
+// unset or unparseable.
+func (c *QueueConfig) QueueMaxRetryInterval() time.Duration {
+	if c == nil || c.MaxRetryInterval == "" {
+		return defaultQueueMaxRetryInterval
+	}
+	d, err := parseRetention(c.MaxRetryInterval)
+	if err != nil {
+		return defaultQueueMaxRetryInterval
+	}
+	return d
+}
+
+// QueueConcurrency returns the outbound delivery concurrency. Nil-safe;
+// returns 5 when unset or outside 1 to 64.
+func (c *QueueConfig) QueueConcurrency() int {
+	if c == nil || c.Concurrency < 1 || c.Concurrency > maxQueueConcurrency {
+		return defaultQueueConcurrency
+	}
+	return c.Concurrency
 }
 
 // BounceCopyToPostmaster reports whether bounces are copied to the postmaster.
@@ -1265,6 +1353,7 @@ func Defaults() *Config {
 				CacheSize: "256MB",
 			},
 			AttachmentDedupMinSize: "32KB",
+			MinFreeMB:              1024,
 		},
 		SMTP: SMTPConfig{
 			Enabled:                     true,

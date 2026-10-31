@@ -243,14 +243,15 @@ func TestBounceGeneration(t *testing.T) {
 	rawMsg := []byte("From: sender@localhost\r\nTo: fail@external.com\r\nSubject: will bounce\r\n\r\nThis should bounce")
 	hash, _ := a.Blobs.Put(rawMsg)
 
-	// Enqueue with high attempt count so it bounces after one more failure.
+	// Enqueue already past the default 5d lifetime so it bounces on its next failure.
 	msg := &bongov1.OutboundMessage{
 		Id:           "test-bounce-1",
 		SenderId:     userID,
 		SenderEmail:  "sender@localhost",
 		Recipients:   []string{"fail@external.com"},
 		BlobHash:     hash,
-		AttemptCount: 9,
+		AttemptCount: 3,
+		CreatedAt:    time.Now().Add(-6 * 24 * time.Hour).Unix(),
 		MessageGuid:  "<test-bounce@bongo>",
 	}
 	if err := a.QueueStore.Enqueue(msg); err != nil {

@@ -45,6 +45,9 @@ type Server struct {
 	// effect for connections accepted after the call, even after Listen.
 	quota atomic.Pointer[quotaChecker]
 
+	// storage is read the same way as quota.
+	storage atomic.Pointer[storageGate]
+
 	// newSession is the factory handed to go-imap; kept so tests can build a
 	// session exactly as an accepted connection would.
 	newSession func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error)
@@ -92,8 +95,13 @@ func NewServer(
 		if p := s.quota.Load(); p != nil {
 			qc = *p
 		}
+		var sg storageGate
+		if p := s.storage.Load(); p != nil {
+			sg = *p
+		}
 		sess := &session{
 			quota:       qc,
+			storage:     sg,
 			auth:        authenticator,
 			pebble:      pebble,
 			blobs:       blobs,
@@ -151,6 +159,17 @@ func (s *Server) SetQuotaChecker(qc quotaChecker) {
 		return
 	}
 	s.quota.Store(&qc)
+}
+
+// SetStorageGate installs the free-space gate that gates APPEND. Nil disables
+// it. Like SetQuotaChecker it applies to sessions created afterwards, so call it
+// before the first connection is accepted.
+func (s *Server) SetStorageGate(g storageGate) {
+	if g == nil {
+		s.storage.Store(nil)
+		return
+	}
+	s.storage.Store(&g)
 }
 
 // SetConnectionLimits sets the per-listener concurrent connection cap and the

@@ -48,6 +48,7 @@ type AdminHandler struct {
 	gossip       GossipLister
 	raftState    RaftStateGetter
 	logger       *slog.Logger
+	storage      storageGate
 	logSink      *LogSink
 	mailboxes    *store.MailboxStore
 	dkimRegistry *internalmail.DKIMRegistry
@@ -161,6 +162,9 @@ func (h *AdminHandler) SetMailHostname(hostname string) {
 	h.mailHostname = hostname
 }
 
+// SetStorageGate installs the free-space gate behind the dashboard banner.
+func (h *AdminHandler) SetStorageGate(g storageGate) { h.storage = g }
+
 // --- Dashboard ---
 
 // Dashboard shows the admin system health page.
@@ -178,6 +182,7 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		Uptime: time.Since(h.startTime),
 		Build:  version.Info(),
 	}
+	health.StorageLow = h.storage != nil && h.storage.Low()
 
 	// Raft state.
 	if h.raftState != nil {

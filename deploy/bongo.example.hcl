@@ -168,6 +168,12 @@ storage {
   # deduplicated blob (identical attachments are stored once). "0" disables it.
   # attachment_dedup_min_size = "32KB"
 
+  # Free space, in MiB, on the data directory below which new work is refused:
+  # SMTP MAIL (452 4.3.1), IMAP APPEND, web compose/import and CalDAV/CardDAV
+  # PUT. Raft apply, the queue worker, blob GC and reads are never refused.
+  # Sampled every 10 seconds. 0 disables the check. Default 1024.
+  # min_free_mb = 1024
+
   # Unreferenced-blob garbage collector:
   #   "off"    (default) — never runs; blobs are retained forever
   #   "dryrun"           — logs what it WOULD delete, deletes nothing
@@ -691,6 +697,14 @@ pipeline {
 #   # Also deliver a headers-only copy of every bounce to postmaster@ the
 #   # sender's hosted domain, else smtp.postmaster_account. Restart to change.
 #   bounce_copy_postmaster = false
+#   # A message is bounced when its next retry would fall after created_at plus
+#   # max_lifetime. Whole days ("5d") or a duration ("120h"). Restart to change.
+#   max_lifetime = "5d"
+#   # Retries back off from 2 minutes, doubling, up to this interval.
+#   # Restart to change.
+#   max_retry_interval = "1h"
+#   # Simultaneous outbound deliveries, 1 to 64. Restart to change.
+#   concurrency = 5
 # }
 
 

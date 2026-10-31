@@ -48,6 +48,15 @@ var QueueOldestPendingSeconds = factory.NewGauge(
 	},
 )
 
+// StorageLow is 1 while free space on the data directory is below
+// storage.min_free_mb (new mail, uploads and DAV writes are being refused), else 0.
+var StorageLow = factory.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "bongo_storage_low",
+		Help: "1 while free disk space is below storage.min_free_mb and new work is refused, else 0.",
+	},
+)
+
 // QueueMessagesTotal counts outbound queue outcomes, labelled by result.
 //
 // Results:

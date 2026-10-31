@@ -112,8 +112,10 @@ func (qs *QueueStore) MarkDelivered(id string) error {
 	return qs.applier.ApplyCommand(cmd, 5*time.Second)
 }
 
-// MarkFailed increments attempt count and sets exponential backoff via Raft.
-func (qs *QueueStore) MarkFailed(msg *bongov1.OutboundMessage) error {
+// MarkFailed increments the attempt count and reschedules the message for
+// nextRetryAt (unix seconds) via Raft. The caller computes nextRetryAt from its
+// own clock so the schedule is testable; see retryDelay.
+func (qs *QueueStore) MarkFailed(msg *bongov1.OutboundMessage, nextRetryAt int64) error {
 	oldKey, err := qs.findPendingKey(msg.Id)
 	if err != nil {
 		return err
@@ -121,7 +123,7 @@ func (qs *QueueStore) MarkFailed(msg *bongov1.OutboundMessage) error {
 
 	msg.AttemptCount++
 	msg.Status = bongov1.MessageStatus_MESSAGE_STATUS_FAILED
-	msg.NextRetryAt = backoff(msg.AttemptCount)
+	msg.NextRetryAt = nextRetryAt
 
 	data, err := proto.Marshal(msg)
 	if err != nil {
@@ -340,18 +342,27 @@ func (qs *QueueStore) findPendingKey(id string) ([]byte, error) {
 	return nil, fmt.Errorf("message %s not found in queue", id)
 }
 
-// backoff computes the next retry timestamp using exponential backoff.
-// attempt 1 = 2min, attempt 5 = ~32min, capped at 24h.
-func backoff(attempt int32) int64 {
-	const maxSeconds int64 = 24 * 60 * 60 // 24 hours
+// baseRetryDelay is the delay before the first retry; each later attempt doubles it.
+const baseRetryDelay = time.Minute
+
+// retryDelay is the wait before retry number attempt: 2^attempt minutes
+// (attempt 1 = 2m, 2 = 4m, ...) capped at maxInterval. Attempt counts can reach
+// the hundreds under a long max_lifetime, so the shift is clamped before it can
+// overflow.
+func retryDelay(attempt int32, maxInterval time.Duration) time.Duration {
 	if attempt < 0 {
 		attempt = 0
 	}
-	if attempt > 10 {
-		return time.Now().Unix() + maxSeconds
+	// 2^20 minutes is about two years, beyond any sane cap, and keeps the
+	// shift far from overflowing time.Duration (int64 nanoseconds).
+	if attempt > 20 {
+		attempt = 20
 	}
-	seconds := (int64(1) << attempt) * 60 // 2^attempt * 60 seconds
-	return time.Now().Unix() + seconds
+	d := baseRetryDelay << attempt
+	if d > maxInterval {
+		return maxInterval
+	}
+	return d
 }
 
 // applyMove commits one queue transition -- drop the message from oldKey, write

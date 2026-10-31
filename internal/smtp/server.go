@@ -59,6 +59,7 @@ type Backend struct {
 	spfChecker    *mail.SPFChecker
 	resolver      RecipientResolver
 	quotaChecker  QuotaChecker
+	storage       atomic.Pointer[StorageGate]
 	relayQueue    RelayQueuer
 	senderPolicy  SenderPolicy
 	srs           SRSVerifier
@@ -176,6 +177,27 @@ func (b *Backend) SetSenderPolicy(p SenderPolicy) {
 // recipients are accepted regardless of usage.
 func (b *Backend) SetQuotaChecker(qc QuotaChecker) {
 	b.quotaChecker = qc
+}
+
+// StorageGate reports whether the data volume is too full to accept new work.
+// *diskspace.Monitor satisfies it; a nil gate never refuses.
+type StorageGate interface {
+	Low() bool
+}
+
+// SetStorageGate installs the free-space gate checked at MAIL on every
+// listener (MX, 587 and 465 share this Backend). Safe to call after Listen.
+func (b *Backend) SetStorageGate(g StorageGate) {
+	if g == nil {
+		b.storage.Store(nil)
+		return
+	}
+	b.storage.Store(&g)
+}
+
+func (b *Backend) storageLow() bool {
+	g := b.storage.Load()
+	return g != nil && (*g).Low()
 }
 
 // SetRelayQueue sets the outbound queue used to relay mail from authenticated
@@ -485,6 +507,13 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 	if s.submission && !s.authed {
 		s.logger.Warn("smtp: unauthenticated MAIL on submission port rejected", "from", from, "ip", s.remoteIP)
 		return &gosmtp.SMTPError{Code: 530, EnhancedCode: gosmtp.EnhancedCode{5, 7, 0}, Message: "Authentication required"}
+	}
+
+	// Refuse before accepting a body when the disk is nearly full. Unauthenticated
+	// submission has already been answered 530 above.
+	if s.backend.storageLow() {
+		s.logger.Debug("smtp: MAIL refused, storage low", "ip", s.remoteIP)
+		return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 3, 1}, Message: "Insufficient system storage"}
 	}
 
 	if s.submission && s.authed {

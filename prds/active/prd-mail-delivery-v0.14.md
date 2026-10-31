@@ -800,3 +800,21 @@ Found while implementing (2026-10-31):
 - Release notes: an older node ignores `FilterRule.match`, so it evaluates
   an any-rule as all, and saving the rule through an older node turns it
   back into all (US-006).
+- Release notes (US-007): upgrade every node before creating a
+  `mime_type` rule; an older node reads the field as empty, so a `matches`
+  pattern that accepts an empty string fires there. Rule saves are now
+  validated per field: a rule stored earlier with an operator its field
+  does not support (for example `size contains`) is refused when edited
+  until the condition is corrected. The rule tester now uses the delivery
+  parser, so its body text is capped at 8192 bytes and messages with a
+  missing blob are skipped.
+- Release notes (US-008): failed outbound mail is now retried for 5 days
+  (`queue.max_lifetime`) instead of bouncing after about 17 hours. The
+  three new `queue.*` keys are refused by an older binary; set them only
+  after every node is upgraded.
+- Release notes (US-009): below `storage.min_free_mb` (default 1024 MB)
+  the server refuses new mail and uploads with a temporary error. Check the
+  default against production free space before deploying (6.4). The
+  monitor samples `storage.data_dir` and its Raft snapshots; it does not
+  read `cluster.raft.data_dir`. A failing free-space check never refuses
+  work.

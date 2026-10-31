@@ -44,10 +44,10 @@ func TestMatchModes(t *testing.T) {
 				Action: &bongov1.FilterAction{Type: "flag"},
 			}
 			e := NewEngine()
-			if got := e.Evaluate([]*bongov1.FilterRule{rule}, tc.meta, nil, "") != nil; got != tc.want {
+			if got := e.Evaluate([]*bongov1.FilterRule{rule}, &Message{Meta: tc.meta}) != nil; got != tc.want {
 				t.Errorf("Evaluate = %v, want %v", got, tc.want)
 			}
-			if got := len(e.MatchingRules([]*bongov1.FilterRule{rule}, tc.meta, nil, "")) == 1; got != tc.want {
+			if got := len(e.MatchingRules([]*bongov1.FilterRule{rule}, &Message{Meta: tc.meta})) == 1; got != tc.want {
 				t.Errorf("MatchingRules = %v, want %v", got, tc.want)
 			}
 		})
@@ -63,8 +63,24 @@ func TestMatchingRulesAnyStopProcessing(t *testing.T) {
 		{Id: "A", Enabled: true, Match: "any", StopProcessing: true, Conditions: conds},
 		{Id: "B", Enabled: true, Match: "any", Conditions: conds},
 	}
-	got := NewEngine().MatchingRules(rules, &bongov1.MailMeta{From: "x@y", Subject: "hi"}, nil, "")
+	got := NewEngine().MatchingRules(rules, &Message{Meta: &bongov1.MailMeta{From: "x@y", Subject: "hi"}})
 	if len(got) != 1 || got[0].Id != "A" {
 		t.Errorf("want only A, got %v", got)
+	}
+}
+
+// Part types are lowercased, so a matches pattern ignores case like equals and
+// contains do; a pattern written with capitals still matches.
+func TestMIMETypeMatchesIgnoresCase(t *testing.T) {
+	msg := &Message{MIMETypes: []string{"text/plain", "application/pdf"}}
+	for _, pat := range []string{"^Application/PDF$", "application/pdf", "PDF$"} {
+		cond := &bongov1.Condition{Field: FieldMIMEType, Operator: "matches", Value: pat}
+		if !matchCondition(cond, msg) {
+			t.Errorf("matches %q did not match application/pdf", pat)
+		}
+	}
+	cond := &bongov1.Condition{Field: FieldMIMEType, Operator: "matches", Value: "^image/"}
+	if matchCondition(cond, msg) {
+		t.Error("matches ^image/ matched a message with no image part")
 	}
 }

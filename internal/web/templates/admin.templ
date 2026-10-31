@@ -26,6 +26,9 @@ type SystemHealth struct {
 	// the value, so a genuine zero is distinguishable from "not available".
 	UserCountKnown bool
 	StorageKnown   bool
+	// StorageLow is true while free disk space is below storage.min_free_mb and
+	// the server is refusing new work.
+	StorageLow bool
 }
 
 // AdminKPI is one stat card in a KPI row. Delta is empty unless a previous
@@ -226,6 +229,11 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 		<div class="admin-scroll">
 			if flash != "" {
 				@FlashMessage(flash, "success")
+			}
+			if health.StorageLow {
+				<div class="storage-low-banner">
+					@FlashMessage(t(ctx, "admin.storageLowBanner"), "error")
+				</div>
 			}
 			@adminPageHead(t(ctx, "admin.welcome"), t(ctx, "admin.systemDashboard"))
 			@AdminKPIRow(dashboardKPIs(ctx, health))

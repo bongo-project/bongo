@@ -34,7 +34,23 @@ type Backend struct {
 	// quota gates PUT. Nil means unlimited (dev, tests, edge). DELETE is never
 	// gated so a user over quota can still free space.
 	quota QuotaChecker
+
+	// storage refuses PUT while the data volume is nearly full. Nil means
+	// never refuse. DELETE and reads are not gated.
+	storage StorageGate
 }
+
+// StorageGate is satisfied by *diskspace.Monitor.
+type StorageGate interface {
+	Low() bool
+}
+
+// ErrStorageLow is wrapped into the 507 Insufficient Storage that a PUT
+// returns while the server is short of disk space.
+var ErrStorageLow = errors.New("insufficient system storage")
+
+// SetStorageGate installs the free-space gate. Call before serving.
+func (b *Backend) SetStorageGate(g StorageGate) { b.storage = g }
 
 // QuotaChecker is satisfied by *store.DomainQuotaStore. PUT asks whether the
 // stored record (create) or its growth (update) would push the owner's domain
@@ -221,6 +237,9 @@ func (b *Backend) QueryAddressObjects(ctx context.Context, path string, query *c
 
 // PutAddressObject creates or updates a contact from a vCard.
 func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
+	if b.storage != nil && b.storage.Low() {
+		return nil, webdav.NewHTTPError(http.StatusInsufficientStorage, ErrStorageLow)
+	}
 	userID := getUserID(ctx)
 	if userID == "" {
 		return nil, fmt.Errorf("no user in context")

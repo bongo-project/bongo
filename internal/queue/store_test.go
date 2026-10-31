@@ -119,7 +119,7 @@ func TestMarkFailed(t *testing.T) {
 		t.Fatalf("expected 1 ready, got %d", len(ready))
 	}
 
-	if err := qs.MarkFailed(ready[0]); err != nil {
+	if err := qs.MarkFailed(ready[0], time.Now().Add(2*time.Minute).Unix()); err != nil {
 		t.Fatalf("MarkFailed: %v", err)
 	}
 
@@ -180,31 +180,29 @@ func TestMarkBounced(t *testing.T) {
 	}
 }
 
-func TestBackoffMath(t *testing.T) {
+func TestRetryDelay(t *testing.T) {
 	tests := []struct {
-		attempt    int32
-		wantMinSec int64
-		wantMaxSec int64
+		attempt int32
+		max     time.Duration
+		want    time.Duration
 	}{
-		{1, 120, 120},      // 2^1 * 60 = 120s = 2min
-		{5, 1920, 1920},    // 2^5 * 60 = 1920s = 32min
-		{10, 61440, 86400}, // 2^10 * 60 = 61440 > 86400, capped at 24h
-		{15, 86400, 86400}, // way past cap
+		{-1, time.Hour, time.Minute},
+		{0, time.Hour, time.Minute},
+		{1, time.Hour, 2 * time.Minute},
+		{2, time.Hour, 4 * time.Minute},
+		{5, time.Hour, 32 * time.Minute},
+		{6, time.Hour, time.Hour},
+		{10, time.Hour, time.Hour},
+		{10, 24 * time.Hour, 17*time.Hour + 4*time.Minute},
+		{11, 24 * time.Hour, 24 * time.Hour},
+		{29, 1000 * time.Hour, 1000 * time.Hour},
+		{63, time.Hour, time.Hour},
+		{200, time.Hour, time.Hour},
+		{200, 30 * time.Minute, 30 * time.Minute},
 	}
-
 	for _, tt := range tests {
-		now := time.Now().Unix()
-		got := backoff(tt.attempt)
-		diff := got - now
-
-		wantSec := tt.wantMinSec
-		if wantSec > 86400 {
-			wantSec = 86400
-		}
-
-		// Allow 2s tolerance for test execution time.
-		if diff < wantSec-2 || diff > wantSec+2 {
-			t.Errorf("backoff(%d) = %ds from now, want ~%ds", tt.attempt, diff, wantSec)
+		if got := retryDelay(tt.attempt, tt.max); got != tt.want {
+			t.Errorf("retryDelay(%d, %v) = %v, want %v", tt.attempt, tt.max, got, tt.want)
 		}
 	}
 }
@@ -252,7 +250,7 @@ func TestRetryNow(t *testing.T) {
 
 	// Mark failed to push into the future.
 	ready, _ := qs.GetReady(time.Now().Add(1*time.Second), 100)
-	if err := qs.MarkFailed(ready[0]); err != nil {
+	if err := qs.MarkFailed(ready[0], time.Now().Add(2*time.Minute).Unix()); err != nil {
 		t.Fatalf("MarkFailed: %v", err)
 	}
 
