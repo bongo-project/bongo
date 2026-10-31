@@ -1472,3 +1472,15 @@ PATTERN: [testing] Draw all the free ports a test needs from listeners held open
 PATTERN: [css] An alias must point at a token defined in every theme; test both blocks.
 PATTERN: [ui] Foundation work must not restyle screens; keep fallback-only properties undefined with an owner-tagged allowlist until their screen story.
 PATTERN: [workers] A background loop needs its interval as a field so a test can prove it stops on cancel and repeats.
+
+## 2026-10-31: Phase 28 batch 1 (28.1, 28.3, 28.5)
+
+- 28.1 postmaster@ and abuse@ resolver tier. Plan review returned REVISE: go-smtp v0.24.0 refuses a bare `RCPT TO:<postmaster>` at the parser, so that criterion is met in the resolver only; the PRD was amended and the limitation logged in 8.2 and SECURITY.md. Review MINOR: the orchestrator added a guard so a domain containing "/" cannot read a /system/domain/{d}/ sub-key (test red first). The owner path is tested in the resolver and SMTP RCPT tests, not end to end.
+PATTERN: [store] A resolver that builds Pebble keys from an address domain must refuse "/" in the domain, or a crafted address reads a sub-key such as /system/domain/{d}/owner.
+PATTERN: [smtp] Check what the protocol library's parser accepts before writing an acceptance criterion for an RFC edge case; go-smtp rejects some RFC-valid forms before the backend sees them.
+- 28.3 implicit-TLS submission on 465. Plan review returned REVISE (per-IP limit stays per session after PROXY; Apple profile has one outgoing server; TLS source; explicit marking); the PRD was amended in the 28.1 commit. One merge conflict with 28.1 in config/diff.go, resolved by keeping both keys. Review MINOR, logged: no test covers the agent's autoconfig wiring (effective ports, 465 only when enabled); the "smtp: started" log lines do not list 465; the compose template's 465 router matches HostSNI(WEB_HOST) where HostSNI(`*`) would cover other names.
+PATTERN: [smtp] Mark a listener's role with a backend wrapper, not by comparing the local port: PROXY protocol rewrites LocalAddr.
+PATTERN: [config] Share one predicate between the code that binds a listener and the code that advertises it (SubmissionsEnabled), so they cannot disagree.
+- 28.5 several actions per rule. Plan PROCEED, review MINOR; the worker had not run the full gate, the orchestrator did (green). Logged: spam-stays-in-Junk holds in the default stage order only (in 8.2); a copy dropping its flags is caught only by the integration test, not a deliver unit test; FETCH FLAGS is checked through the store, not a real IMAP FETCH; stage reasons still say move/copy when spam suppresses them. The installed protoc-gen-go is the old golang/protobuf plugin; the worker built v1.36.11 into a scratch GOBIN to regenerate.
+PATTERN: [proto] Regenerate .pb.go with the protoc-gen-go version named in the existing generated header; the plugin on PATH may be older.
+PATTERN: [rules] Read and write a field that grew from singular to repeated through one helper pair (store.RuleActions/SetRuleActions) so every consumer sees the same compatibility rule.

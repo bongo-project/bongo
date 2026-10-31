@@ -39,6 +39,7 @@ on a trusted machine only; a real installation serves the web interface over TLS
 |---|---|
 | SMTP (MX) | 2525 |
 | SMTP submission | 2587 |
+| SMTP submission over TLS | 2465 |
 | IMAP | 1143 |
 | IMAP over TLS | 1993 |
 | POP3 | 1110 |

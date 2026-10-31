@@ -197,6 +197,7 @@ func TestDiff(t *testing.T) {
 	}{
 		{name: "identical", mutate: func(c *Config) {}},
 		{name: "log level", mutate: func(c *Config) { c.Telemetry.Log.Level = "debug-x" }, hot: []string{"telemetry.log.level"}},
+		{name: "smtp submissions port", mutate: func(c *Config) { c.SMTP.SubmissionsPort++ }, restart: []string{"smtp.submissions_port"}},
 		{name: "smtp port", mutate: func(c *Config) { c.SMTP.Port++ }, restart: []string{"smtp.port"}},
 		{name: "bind addr", mutate: func(c *Config) { c.Server.BindAddr = "127.0.0.1" }, restart: []string{"server.bind_addr"}},
 		{name: "control addr", mutate: func(c *Config) { c.Server.ControlAddr = "127.0.0.1:9081" }, restart: []string{"server.control_addr"}},

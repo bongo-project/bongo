@@ -21,6 +21,9 @@ message QueueEnvelope {
   bool trusted = 14;                     // Message arrived authenticated or from trusted network
   string auth_user_id = 15;              // Authenticated submitter's user ID; empty for trusted-network or unauthenticated sources
   repeated ForwardRequest forward_requests = 16; // Forwards attributed to the owning user; enforced by the deliver stage
+  uint32 pending_flags = 17;             // Mailbox flag bits (store.FlagSeen, store.FlagFlagged) the rules stage asks for
+  repeated string copy_mailboxes = 18;   // Extra mailboxes a copy action asks for; each shares the message blob
+  bool discard_normal = 19;              // A delete action won: skip the normal destination, still write copies and forwards
 }
 
 // ForwardRequest is one forward asked for by a rule, attributed to the user

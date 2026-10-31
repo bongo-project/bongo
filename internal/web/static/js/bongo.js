@@ -1387,33 +1387,95 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
-  // Rule editor action: type selector and the tag list for the tag action.
-  Alpine.data('ruleAction', () => ({
-    actionType: 'move',
-    selectedTags: [],
-    tagInput: '',
+  // Rule editor actions: one to ten rows, each with a type, a folder, a
+  // forward address and (for the tag action) a tag list. The initial rows
+  // arrive as JSON in data-actions. Every row posts action_type, action_target,
+  // action_target_forward and action_tags exactly once, hidden or not, so the
+  // server reads the four arrays by position; the tags travel comma-joined in
+  // one hidden input because their count differs per row. The CSP build forbids
+  // property assignment in expressions, so rows are written through setters.
+  Alpine.data('ruleActions', () => ({
+    actions: [],
+    maxActions: 10,
+    defaultFolder: '',
 
     init() {
-      this.actionType = this.$el.dataset.actionType || 'move';
-      try { this.selectedTags = JSON.parse(this.$el.dataset.tags || '[]'); } catch (e) { this.selectedTags = []; }
+      this.defaultFolder = this.$el.dataset.defaultFolder || '';
+      try { this.actions = JSON.parse(this.$el.dataset.actions || '[]'); } catch (e) { this.actions = []; }
+      if (this.actions.length === 0) this.addAction();
+      // A select bound to an empty value has no selection and would post
+      // nothing, which shifts the positional arrays; give every row a folder.
+      for (const action of this.actions) {
+        if (!action.target) action.target = this.defaultFolder;
+      }
     },
 
-    isAction(type) {
-      return this.actionType === type;
+    isForward(action) {
+      return action.type === 'forward';
     },
 
-    needsFolder() {
-      return this.actionType === 'move' || this.actionType === 'copy';
+    isTag(action) {
+      return action.type === 'tag';
     },
 
-    addTag() {
-      const v = this.tagInput.trim().replace(/,$/, '');
-      if (v && !this.selectedTags.includes(v)) this.selectedTags.push(v);
-      this.tagInput = '';
+    needsFolder(action) {
+      return action.type === 'move' || action.type === 'copy';
     },
 
-    removeTag(idx) {
-      this.selectedTags.splice(idx, 1);
+    setType(i, type) {
+      const action = this.actions[i];
+      if (!action) return;
+      action.type = type;
+      // A forward address left behind would block submission through the
+      // hidden type=email field.
+      if (type !== 'forward') action.forward = '';
+    },
+
+    setTarget(i, value) {
+      if (this.actions[i]) this.actions[i].target = value;
+    },
+
+    setForward(i, value) {
+      if (this.actions[i]) this.actions[i].forward = value;
+    },
+
+    setTagInput(i, value) {
+      if (this.actions[i]) this.actions[i].tagInput = value;
+    },
+
+    addTag(i) {
+      const action = this.actions[i];
+      if (!action) return;
+      const v = (action.tagInput || '').trim().replace(/,$/, '');
+      if (v && !action.tags.includes(v)) action.tags.push(v);
+      action.tagInput = '';
+    },
+
+    removeTag(i, idx) {
+      if (this.actions[i]) this.actions[i].tags.splice(idx, 1);
+    },
+
+    // Tag names are folded to letters, numbers and hyphens on the server, so a
+    // comma cannot be part of one.
+    tagsValue(action) {
+      return action.type === 'tag' ? action.tags.join(',') : '';
+    },
+
+    addAction() {
+      if (this.actions.length >= this.maxActions) return;
+      this.actions.push({ type: 'move', target: this.defaultFolder, forward: '', tags: [], tagInput: '' });
+    },
+
+    removeAction(i) {
+      if (this.actions.length > 1) this.actions.splice(i, 1);
+    },
+
+    canAdd() {
+      return this.actions.length < this.maxActions;
+    },
+
+    canRemove() {
+      return this.actions.length > 1;
     }
   }));
 

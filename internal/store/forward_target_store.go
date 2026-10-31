@@ -205,9 +205,13 @@ func (s *ForwardTargetStore) MigrateForwardTargets(isLocal func(address string) 
 			}
 		case "rule":
 			var rule bongov1.FilterRule
-			if proto.Unmarshal(val, &rule) == nil && rule.Action != nil &&
-				strings.EqualFold(rule.Action.Type, "forward") && rule.Action.Target != "" {
-				found = append(found, pair{userID, rule.Action.Target})
+			if proto.Unmarshal(val, &rule) != nil {
+				continue
+			}
+			for _, act := range RuleActions(&rule) {
+				if strings.EqualFold(act.Type, "forward") && act.Target != "" {
+					found = append(found, pair{userID, act.Target})
+				}
 			}
 		}
 	}

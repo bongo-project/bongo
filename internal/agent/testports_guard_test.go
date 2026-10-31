@@ -265,6 +265,7 @@ func TestIsolatePortsAvoidsFixedPorts(t *testing.T) {
 			add(def.Web.ListenPort(false), def.Web.ListenPort(true), def.Cluster.Raft.Port, def.Cluster.PeerPort)
 			add(def.SMTP.ListenPorts(false))
 			add(def.SMTP.ListenPorts(true))
+			add(def.SMTP.SubmissionsListenPort(false), def.SMTP.SubmissionsListenPort(true))
 			add(def.IMAP.ListenPorts(false))
 			add(def.IMAP.ListenPorts(true))
 			add(def.POP3.ListenPorts(false))
@@ -280,6 +281,7 @@ func TestIsolatePortsAvoidsFixedPorts(t *testing.T) {
 			}
 			ctlPort, _ := strconv.Atoi(ctl)
 			mx, sub := cfg.SMTP.ListenPorts(dev)
+			submissions := cfg.SMTP.SubmissionsListenPort(dev)
 			imap, imaps := cfg.IMAP.ListenPorts(dev)
 			pop, pops := cfg.POP3.ListenPorts(dev)
 			named := []struct {
@@ -287,7 +289,7 @@ func TestIsolatePortsAvoidsFixedPorts(t *testing.T) {
 				port int
 			}{
 				{"web", cfg.Web.ListenPort(dev)}, {"control", ctlPort},
-				{"smtp", mx}, {"submission", sub},
+				{"smtp", mx}, {"submission", sub}, {"submissions", submissions},
 				{"imap", imap}, {"imaps", imaps}, {"pop3", pop}, {"pop3s", pops},
 				{"raft", cfg.Cluster.Raft.Port}, {"peer", cfg.Cluster.PeerPort},
 			}

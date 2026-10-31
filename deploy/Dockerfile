@@ -41,7 +41,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 #
 # The image runs as uid 10001 from the first instruction: there is no root
 # entrypoint, no su-exec and no file capabilities. Privileged mail ports (25,
-# 587, 143, 993) bind because the container sets
+# 587, 465, 143, 993) bind because the container sets
 # net.ipv4.ip_unprivileged_port_start=0 (see docker-compose.yml), which is
 # compatible with no-new-privileges and an empty capability set.
 FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
@@ -69,7 +69,7 @@ COPY --from=build /out/bongo     /usr/local/bin/bongo
 COPY --from=build /out/bongo-import /usr/local/bin/bongo-import
 
 # Mail + web + metrics ports (host mapping is defined in compose).
-EXPOSE 25 587 143 993 110 995 8080 9090
+EXPOSE 25 587 465 143 993 110 995 8080 9090
 
 VOLUME ["/data", "/logs"]
 

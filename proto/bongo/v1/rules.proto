@@ -10,10 +10,11 @@ message FilterRule {
   int32 priority = 3;            // lower = runs first
   bool enabled = 4;
   repeated Condition conditions = 5;
-  FilterAction action = 6;
+  FilterAction action = 6;       // first of actions; kept so an older node reads something sensible
   bool stop_processing = 7;      // skip remaining rules if matched
   int64 created_at = 8;
   int64 updated_at = 9;
+  repeated FilterAction actions = 10; // 1 to 10 actions; empty means [action] (rules written before v0.14)
 }
 
 message Condition {
@@ -23,7 +24,7 @@ message Condition {
 }
 
 message FilterAction {
-  string type = 1;               // "move", "copy", "flag", "mark_read", "delete", "tag"
+  string type = 1;               // "move", "copy", "forward", "flag", "mark_read", "delete", "tag"
   string target = 2;             // folder name for move/copy, flag name for flag
   repeated string tags = 3;      // tag names to apply (used when type = "tag")
 }

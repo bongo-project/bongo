@@ -88,7 +88,7 @@ var restartKeys = []string{
 	"cluster.gossip.port", "cluster.gossip.encryption_key", "cluster.peer_port",
 	"cluster.tls.cert_file", "cluster.tls.key_file", "cluster.tls.ca_file",
 	"storage.data_dir", "storage.pebble.cache_size", "storage.attachment_dedup_min_size", "storage.blob_gc",
-	"smtp.enabled", "smtp.port", "smtp.submission_port", "smtp.hostname", "smtp.proxy_protocol", "smtp.srs_max_age_days",
+	"smtp.enabled", "smtp.port", "smtp.submission_port", "smtp.submissions_port", "smtp.hostname", "smtp.proxy_protocol", "smtp.srs_max_age_days", "smtp.postmaster_account",
 	"smtp.srs_bounces_per_address_per_hour", "smtp.srs_bounces_per_hour",
 	"smtp.tls.cert_file", "smtp.tls.key_file",
 	"smtp.limits.max_message_size", "smtp.limits.max_recipients", "smtp.limits.max_connections",

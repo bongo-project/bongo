@@ -900,7 +900,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Metadata != nil {
 		sharedSys = a.Metadata.System
 	}
-	sharedResolver := store.NewRecipientResolver(a.AddressStore, a.Store, sharedSys)
+	sharedResolver := a.newRecipientResolver(sharedSys)
 
 	// Forwarded headers (X-Forwarded-For, X-Forwarded-Proto) are believed only
 	// from the configured proxies.
@@ -1068,11 +1068,23 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Mail-client autoconfiguration (public: clients fetch these before any
 	// credentials exist). Advertises the mail hostname + standard ports so
 	// Thunderbird/Outlook/Apple Mail can self-configure from an email address.
+	// Advertise the ports the listeners really bind (dev substitutes its own),
+	// and 465 only when the SMTP server will serve it: the same predicate
+	// NewServer uses, evaluated here because the router is built before SMTP
+	// starts.
+	isDevRole := a.Config.Server.Role == "dev"
+	imapPort, imapsPort := a.Config.IMAP.ListenPorts(isDevRole)
+	_, submissionPort := a.Config.SMTP.ListenPorts(isDevRole)
+	submissionsPort := 0
+	if a.Config.SMTP.SubmissionsEnabled(isDevRole) {
+		submissionsPort = a.Config.SMTP.SubmissionsListenPort(isDevRole)
+	}
 	autoconfigH := handlers.NewAutoconfigHandler(
 		a.Config.SMTP.Hostname,
-		a.Config.IMAP.Port,
-		a.Config.IMAP.PortTLS,
-		a.Config.SMTP.SubmissionPort,
+		imapPort,
+		imapsPort,
+		submissionPort,
+		submissionsPort,
 	)
 	// Outside dev, only answer for domains this server actually handles, so the
 	// endpoint cannot be used as an open autoconfig generator for arbitrary
@@ -1911,6 +1923,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// decides whether to recreate them.
 	a.reportMixedCaseAddresses()
 
+	// Warn about hosted domains where postmaster@ and abuse@ have no target.
+	a.reportPostmasterTargets()
+
 	// Revoke verified identity records that collide with another account's
 	// address or alias, and report the rest. Must run before
 	// migrateAddressIndex so its create-only pass rebuilds the owner's
@@ -1931,6 +1946,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	// index is populated so hosted targets resolve and are skipped.
 	a.migrateForwardTargets()
 	a.reportGrandfatheredForwards()
+
+	// Rules written before several-actions-per-rule keep their first-match
+	// behaviour. Leader-only and before the listeners open, so it cannot race
+	// a user editing a rule.
+	a.migrateRulesFirstMatch()
 
 	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
 	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
@@ -3128,6 +3148,60 @@ func (a *Agent) indexConfiguredDomain(domain string) {
 	}
 }
 
+// newRecipientResolver builds a resolver wired with smtp.postmaster_account.
+func (a *Agent) newRecipientResolver(sys *store.SystemIndex) *store.RecipientResolver {
+	r := store.NewRecipientResolver(a.AddressStore, a.Store, sys)
+	if a.Config != nil {
+		r.SetPostmasterAccount(a.Config.SMTP.PostmasterAccount)
+	}
+	return r
+}
+
+// maxReportedDomains bounds the domain list in the postmaster warning.
+const maxReportedDomains = 20
+
+// reportPostmasterTargets warns once about hosted, enabled domains on which
+// postmaster@ and abuse@ resolve to nobody, and about a configured
+// smtp.postmaster_account that matches no account yet. Read-only, non-fatal,
+// safe on any node.
+func (a *Agent) reportPostmasterTargets() {
+	if a.Store == nil {
+		return
+	}
+	var sys *store.SystemIndex
+	if a.Metadata != nil {
+		sys = a.Metadata.System
+	}
+	logPostmasterReport(a.newRecipientResolver(sys), a.logger)
+}
+
+// logPostmasterReport writes the warnings described on reportPostmasterTargets.
+func logPostmasterReport(r *store.RecipientResolver, logger *slog.Logger) {
+	if acct := r.PostmasterAccount(); acct != "" {
+		if _, err := r.ResolveAccount(acct); err != nil {
+			logger.Warn("startup: smtp.postmaster_account matches no enabled account",
+				"account", acct,
+				"note", "accounts may be created after startup; postmaster@ and abuse@ use the domain owner until then")
+		}
+	}
+	missing, err := r.DomainsWithoutPostmaster()
+	if err != nil {
+		logger.Warn("startup: postmaster target report failed", "error", err)
+		return
+	}
+	if len(missing) == 0 {
+		return
+	}
+	shown := missing
+	if len(shown) > maxReportedDomains {
+		shown = shown[:maxReportedDomains]
+	}
+	logger.Warn("startup: domains with no postmaster@ and abuse@ target; mail to them is refused",
+		"count", len(missing),
+		"domains", shown,
+		"fix", "give each domain an owner, or set smtp.postmaster_account")
+}
+
 // reportMixedCaseAddresses logs any alias or account address stored with
 // upper-case characters. Read-only and safe on every role: it needs nothing but
 // Pebble, so unlike migrateAddressIndex it is NOT leader-gated — a follower or
@@ -3317,7 +3391,7 @@ func (a *Agent) migrateForwardTargets() {
 	} else if done {
 		return
 	}
-	resolver := store.NewRecipientResolver(a.AddressStore, a.Store, sys)
+	resolver := a.newRecipientResolver(sys)
 	n, err := ft.MigrateForwardTargets(a.hostedForwardTarget(resolver))
 	if err != nil {
 		a.logger.Warn("startup: forward target migration failed", "written", n, "error", err)
@@ -3328,6 +3402,35 @@ func (a *Agent) migrateForwardTargets() {
 	}
 	if err := ft.MarkMigrationDone(); err != nil {
 		a.logger.Warn("startup: forward target migration marker not written", "error", err)
+	}
+}
+
+// migrateRulesFirstMatch sets stop_processing on every rule written before
+// several actions per rule existed, so a message still fires only the first
+// matching rule as it did. Each rule is one idempotent PUT and the marker at
+// /system/migrations/rules-first-match-v1 is written last, so a failure is
+// logged, leaves the marker unset and is resumed by the next boot. Startup
+// does not fail on it.
+func (a *Agent) migrateRulesFirstMatch() {
+	if a.Rules == nil || a.Raft == nil || !a.IsLeader() {
+		return
+	}
+	if done, err := a.Rules.FirstMatchMigrationDone(); err != nil {
+		a.logger.Warn("startup: rules first-match migration marker unreadable", "error", err)
+		return
+	} else if done {
+		return
+	}
+	n, err := a.Rules.MigrateFirstMatch()
+	if err != nil {
+		a.logger.Warn("startup: rules first-match migration failed", "migrated", n, "error", err)
+		return
+	}
+	if n > 0 {
+		a.logger.Info("startup: set stop_processing on existing rules", "count", n)
+	}
+	if err := a.Rules.MarkFirstMatchMigrationDone(); err != nil {
+		a.logger.Warn("startup: rules first-match migration marker not written", "error", err)
 	}
 }
 

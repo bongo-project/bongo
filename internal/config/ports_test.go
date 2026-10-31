@@ -93,6 +93,20 @@ func TestValidateListenerPorts(t *testing.T) {
 		}, nil},
 		{"imap tls port too high", func(c *Config) { c.IMAP.PortTLS = 70000 }, []string{"imap.port_tls"}},
 		{"submission port negative", func(c *Config) { c.SMTP.SubmissionPort = -1 }, []string{"smtp.submission_port"}},
+		{"submissions port negative", func(c *Config) { c.SMTP.SubmissionsPort = -1 }, []string{"smtp.submissions_port"}},
+		{"submissions port against web", func(c *Config) {
+			c.SMTP.SubmissionsPort = 8303
+			c.Web.Port = 8303
+		}, []string{"smtp.submissions_port", "web.port"}},
+		{"submissions port against submission", func(c *Config) { c.SMTP.SubmissionsPort = c.SMTP.SubmissionPort }, []string{"smtp.submissions_port", "smtp.submission_port"}},
+		{"submissions port zero is skipped", func(c *Config) {
+			c.SMTP.SubmissionsPort = 0
+		}, nil},
+		{"agent smtp submissions against web", func(c *Config) {
+			agentSMTP(c)
+			c.SMTP.SubmissionsPort = 8303
+			c.Web.Port = 8303
+		}, []string{"smtp.submissions_port", "web.port"}},
 		{"raft port zero", func(c *Config) { c.Cluster.Raft.Port = 0 }, []string{"cluster.raft.port"}},
 		{"redirect port too high", func(c *Config) {
 			redirectOn(c)
@@ -251,5 +265,51 @@ func TestListenPorts(t *testing.T) {
 		pair(popP, popT) != pair(1111, 1996) || d.Web.ListenPort(true) != 8081 {
 		t.Errorf("explicit ports must win in dev: smtp %d/%d imap %d/%d pop3 %d/%d web %d",
 			mx, sub, imapP, imapT, popP, popT, d.Web.ListenPort(true))
+	}
+}
+
+func TestSubmissionsPort(t *testing.T) {
+	d := Defaults()
+	if got := d.SMTP.SubmissionsListenPort(false); got != 465 {
+		t.Errorf("prod default = %d, want 465", got)
+	}
+	if got := d.SMTP.SubmissionsListenPort(true); got != 2465 {
+		t.Errorf("dev default = %d, want 2465", got)
+	}
+	d.SMTP.SubmissionsPort = 4650
+	if got := d.SMTP.SubmissionsListenPort(true); got != 4650 {
+		t.Errorf("explicit dev port = %d, want 4650", got)
+	}
+	d.SMTP.SubmissionsPort = 0
+	if got := d.SMTP.SubmissionsListenPort(true); got != 0 {
+		t.Errorf("disabled dev port = %d, want 0", got)
+	}
+}
+
+func TestSubmissionsEnabled(t *testing.T) {
+	tests := []struct {
+		name   string
+		port   int
+		cert   string
+		key    string
+		dev    bool
+		enable bool
+	}{
+		{"dev default", 465, "", "", true, true},
+		{"dev disabled", 0, "", "", true, false},
+		{"server with cert", 465, "c.crt", "c.key", false, true},
+		{"server without cert", 465, "", "", false, false},
+		{"server cert only", 465, "c.crt", "", false, false},
+		{"server disabled", 0, "c.crt", "c.key", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := Defaults().SMTP
+			s.SubmissionsPort = tt.port
+			s.TLS = TLSConfig{CertFile: tt.cert, KeyFile: tt.key}
+			if got := s.SubmissionsEnabled(tt.dev); got != tt.enable {
+				t.Errorf("SubmissionsEnabled = %v, want %v", got, tt.enable)
+			}
+		})
 	}
 }

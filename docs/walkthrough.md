@@ -69,6 +69,7 @@ root. Logs are JSON lines on standard output.
 | Control         | 8081  | `/internal` endpoints, loopback only |
 | SMTP inbound    | 2525  | Plain text                        |
 | SMTP submission | 2587  | Authentication required           |
+| SMTP submission (TLS) | 2465 | Implicit TLS, authentication required |
 | IMAP            | 1143  | Plain / STARTTLS                  |
 | IMAPS           | 1993  | Implicit TLS                      |
 | POP3            | 1110  | Plain / STARTTLS                  |

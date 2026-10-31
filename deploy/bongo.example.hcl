@@ -190,12 +190,17 @@ storage {
 
 
 # -----------------------------------------------------------------------------
-# smtp — inbound MX (25) + authenticated submission (587)
+# smtp — inbound MX (25) + authenticated submission (587, and 465 over TLS)
 # -----------------------------------------------------------------------------
 smtp {
   enabled         = true
   port            = 25   # inbound mail from other servers (MX)
-  submission_port = 587  # authenticated submission from your users
+  submission_port = 587  # authenticated submission from your users (STARTTLS)
+
+  # Implicit-TLS submission (RFC 8314). Needs the smtp.tls certificate below and
+  # the port published; never served in plaintext. 0 disables it. Upgrading from
+  # a version without this key binds 465 by default: publish it or set 0.
+  submissions_port = 465
 
   # EHLO/HELO hostname, used in BOTH directions: the banner we present to
   # inbound connections, and the EHLO name we send when relaying mail out.
@@ -221,6 +226,14 @@ smtp {
   # are lost; key rotation is not implemented. Upgrade every node before relying
   # on SRS: a node on an older binary forwards with the original sender.
   # srs_max_age_days = 21
+
+  # postmaster@ and abuse@ resolve on every hosted domain: to the domain owner,
+  # else to this account (a full address of a local account). Empty means no
+  # fallback; a domain with neither refuses the mail with 550 5.1.1, and startup
+  # logs one warning listing those domains. The account may be created after
+  # startup. Restart class. Set it only after every node runs this version: an
+  # older binary does not know the key.
+  # postmaster_account = "admin@example.org"
 
   # Anyone holding a valid SRS address can send null-sender mail to it for the
   # whole window above, and each such bounce is relayed from this host unsigned.

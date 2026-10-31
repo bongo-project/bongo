@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/bongo-project/bongo/internal/srs"
@@ -36,6 +37,17 @@ var ErrRecipientUnavailable = errors.New("recipient unavailable")
 //     behaviour): admin-added extra addresses that GrantSend marked verified
 //     depend on it.
 //
+//     2d. postmaster@ and abuse@ on a hosted domain (RFC 5321 section 4.5.1).
+//     Matches the exact local parts only, after the explicit tiers and before the
+//     catch-all. The target is the domain owner, else the account named by
+//     SetPostmasterAccount. The tier applies only when it has a live target: a
+//     disabled or deleted owner falls through to the configured account, and with
+//     no live target resolution continues to the catch-all, and with none of
+//     those the address is ErrRecipientUnavailable (550 5.1.1, and never
+//     relayed out on an authenticated session). Never used by ResolveAccount, or sharing a calendar
+//     with postmaster@d would grant the domain owner. A bare "postmaster" (no
+//     domain) maps to the configured account.
+//
 //  3. Per-domain catch-all: reads /system/catchall/{domain} from Pebble and
 //     returns the owner's user ID when configured. Only domains with an explicit
 //     catch-all entry accept unmatched mail; others are still rejected.
@@ -61,6 +73,65 @@ type RecipientResolver struct {
 	addresses *AddressStore // nil on edge/agent: tier 1 skipped when nil
 	pebble    *PebbleStore  // for tier 2 legacy alias Pebble key
 	system    *SystemIndex  // nil on edge/agent: tier 2 users-table skipped when nil
+
+	// postmasterAccount is the lowercased address of the account that receives
+	// postmaster@ and abuse@ when a domain has no live owner. Set once at
+	// startup before the resolver is shared; not safe to change afterwards.
+	postmasterAccount string
+}
+
+// SetPostmasterAccount sets the fallback account (a full local address) for
+// postmaster@ and abuse@. Call before the resolver is shared between
+// goroutines.
+func (r *RecipientResolver) SetPostmasterAccount(addr string) {
+	r.postmasterAccount = strings.ToLower(strings.TrimSpace(addr))
+}
+
+// PostmasterAccount returns the configured fallback address, or "".
+func (r *RecipientResolver) PostmasterAccount() string { return r.postmasterAccount }
+
+// isRoleLocalPart reports whether local is one of the role mailboxes the
+// postmaster tier serves. Exact match only: no plus-tags, no prefixes.
+func isRoleLocalPart(local string) bool {
+	return local == "postmaster" || local == "abuse"
+}
+
+// postmasterTarget returns the live recipient for postmaster@/abuse@ on a
+// hosted domain: the domain owner first, then the configured account. ok is
+// false when the domain is not hosted, a read fails, or neither is live.
+func (r *RecipientResolver) postmasterTarget(domain string) (userID string, ok bool) {
+	// A "/" would address a sub-key such as /system/domain/{d}/owner.
+	if r.pebble == nil || domain == "" || strings.Contains(domain, "/") {
+		return "", false
+	}
+	if hosted, err := DomainHosted(r.pebble, domain); err != nil || !hosted {
+		return "", false
+	}
+	if data, err := r.pebble.Get(domainOwnerKey(domain)); err == nil {
+		if id := strings.TrimSpace(string(data)); id != "" {
+			if exists, disabled, perr := profileState(r.pebble, id); perr == nil && exists && !disabled {
+				return id, true
+			}
+		}
+	}
+	return r.configuredPostmaster()
+}
+
+// configuredPostmaster resolves smtp.postmaster_account. Strict mode skips the
+// identity, catch-all and postmaster tiers, so it cannot recurse.
+func (r *RecipientResolver) configuredPostmaster() (string, bool) {
+	if r.postmasterAccount == "" {
+		return "", false
+	}
+	id, err := r.resolve(r.postmasterAccount, true)
+	return id, err == nil
+}
+
+// HasPostmasterTarget reports whether postmaster@ and abuse@ on domain have a
+// live target. Used by the startup report.
+func (r *RecipientResolver) HasPostmasterTarget(domain string) bool {
+	_, ok := r.postmasterTarget(strings.ToLower(domain))
+	return ok
 }
 
 // NewRecipientResolver constructs a RecipientResolver.
@@ -107,6 +178,15 @@ func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
 
 	if email == "" {
 		return "", fmt.Errorf("resolve recipient: empty address")
+	}
+
+	// Bare "postmaster" (RFC 5321 allows it) maps to the configured account.
+	// go-smtp refuses this form before the session sees it; see SECURITY.md.
+	if email == "postmaster" && !strict {
+		if id, ok := r.configuredPostmaster(); ok {
+			return id, nil
+		}
+		return "", fmt.Errorf("resolve recipient: %s: not a local address", email)
 	}
 
 	// The reserved no-relay sender is never a mailbox: not a user, alias or
@@ -191,6 +271,15 @@ func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
 		return r.live(email, identityOwner, strict)
 	}
 
+	// Tier 2d: postmaster@ and abuse@ (see type comment).
+	if !strict {
+		if local, domain, found := strings.Cut(email, "@"); found && isRoleLocalPart(local) {
+			if id, ok := r.postmasterTarget(domain); ok {
+				return id, nil
+			}
+		}
+	}
+
 	// Tier 3: per-domain catch-all.
 	// Reads /system/catchall/{domain} directly from Pebble — correct on all nodes.
 	// Open-relay guard: no key == no acceptance; domains without an explicit
@@ -210,6 +299,19 @@ func (r *RecipientResolver) resolve(email string, strict bool) (string, error) {
 				if ownerID != "" {
 					return r.live(email, ownerID, strict)
 				}
+			}
+		}
+	}
+
+	// postmaster@ and abuse@ on a hosted domain with no target (and no
+	// catch-all) are ours, so they are refused as an unavailable mailbox
+	// (550 5.1.1). A plain miss would read as "not local": an unauthenticated
+	// session would get 5.7.1 and an authenticated one would relay the mail
+	// out to our own MX.
+	if !strict && r.pebble != nil {
+		if local, domain, found := strings.Cut(email, "@"); found && isRoleLocalPart(local) && !strings.Contains(domain, "/") {
+			if hosted, err := DomainHosted(r.pebble, domain); err == nil && hosted {
+				return "", unavailable(email)
 			}
 		}
 	}
@@ -263,6 +365,38 @@ func (r *RecipientResolver) live(email, userID string, strict bool) (string, err
 		return "", unavailable(email)
 	}
 	return userID, nil
+}
+
+// DomainsWithoutPostmaster lists the hosted, enabled domains on which
+// postmaster@ and abuse@ have no live target, sorted. Read-only; used by the
+// startup report. Sub-keys of a domain (/owner, /dkim, ...) are skipped.
+func (r *RecipientResolver) DomainsWithoutPostmaster() (out []string, rErr error) {
+	if r.pebble == nil {
+		return nil, nil
+	}
+	it, err := r.pebble.PrefixScan([]byte("/system/domain/"))
+	if err != nil {
+		return nil, fmt.Errorf("scan domains: %w", err)
+	}
+	defer closeIter(it, &rErr)
+	for it.Next() {
+		name := strings.TrimPrefix(string(it.Key()), "/system/domain/")
+		if name == "" || strings.Contains(name, "/") {
+			continue
+		}
+		val, err := it.Value()
+		if err != nil {
+			return nil, fmt.Errorf("read domain %s: %w", name, err)
+		}
+		if string(val) == "disabled" {
+			continue
+		}
+		if !r.HasPostmasterTarget(name) {
+			out = append(out, strings.ToLower(name))
+		}
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 func unavailable(email string) error {

@@ -136,7 +136,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /user/{user_id}/mailbox/{name}/meta  → mailbox metadata (uid_next, uid_validity)
 /user/{user_id}/mailbox/{name}/msg/{uid} → MailboxMessage (flags, tags, mail guid)
 /user/{user_id}/preferences          → user preferences
-/user/{user_id}/rule/{guid}          → mail filter rule
+/user/{user_id}/rule/{guid}          → mail filter rule (FilterRule: 1-10 `actions`; field `action` holds the first, for older nodes)
 /user/{user_id}/tag/{name}           → TagMeta protobuf (colour, sort_order)
 /user/{user_id}/addrverify/{address} → send-as verification challenge
 /user/{user_id}/sendlog/{send_id}/{step} → web compose send step done (40-byte record, not a protobuf)
@@ -154,6 +154,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /system/settings/require_2fa         → global 2FA policy flag
 /system/raft/applied_index           → last applied Raft index (replay skips up to it)
 /system/migration/fwdtargets         → forwarding-target migration done marker
+/system/migrations/rules-first-match-v1 → rules first-match migration done marker (sets stop_processing on pre-v0.14 rules)
 /user/{user_id}/fwdtarget/{address}  → verified forwarding target
 /user/{user_id}/fwdverify/{address}  → pending forwarding verification
 /queue/pending/{unix_ts}-{id}        → queued outbound message (zero-padded ts)

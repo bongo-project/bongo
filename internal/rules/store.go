@@ -57,8 +57,17 @@ func (s *RuleStore) List(userID string) ([]*bongov1.FilterRule, error) {
 		rules = append(rules, &rule)
 	}
 
-	sort.Slice(rules, func(i, j int) bool {
-		return rules[i].Priority < rules[j].Priority
+	// Order now decides which rule's actions win, so equal priorities must not
+	// resolve differently from one read to the next.
+	sort.SliceStable(rules, func(i, j int) bool {
+		a, b := rules[i], rules[j]
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+		}
+		if a.CreatedAt != b.CreatedAt {
+			return a.CreatedAt < b.CreatedAt
+		}
+		return a.Id < b.Id
 	})
 
 	return rules, nil

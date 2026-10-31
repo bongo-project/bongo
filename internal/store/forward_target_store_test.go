@@ -162,3 +162,31 @@ func TestForwardTargetStore_MigrationMarker(t *testing.T) {
 		t.Fatalf("after mark: done=%v err=%v, want true, nil", done, err)
 	}
 }
+
+// A forward that is not the rule's first action is grandfathered too, and a
+// rule with a list but no field 6 is still read.
+func TestMigrateForwardTargetsReadsEveryAction(t *testing.T) {
+	fts, ps := newForwardTargetTestStore(t)
+	rule := &bongov1.FilterRule{Id: "r1"}
+	SetRuleActions(rule, []*bongov1.FilterAction{
+		{Type: "flag"},
+		{Type: "forward", Target: "second@other.example"},
+		{Type: "forward", Target: "third@other.example"},
+	})
+	if err := ps.Set([]byte("/user/u1/rule/r1"), mustMarshal(t, rule)); err != nil {
+		t.Fatal(err)
+	}
+	listOnly := &bongov1.FilterRule{Id: "r2", Actions: []*bongov1.FilterAction{{Type: "forward", Target: "listonly@other.example"}}}
+	if err := ps.Set([]byte("/user/u1/rule/r2"), mustMarshal(t, listOnly)); err != nil {
+		t.Fatal(err)
+	}
+	n, err := fts.MigrateForwardTargets(nil)
+	if err != nil || n != 3 {
+		t.Fatalf("Migrate = %d, %v; want 3", n, err)
+	}
+	for _, addr := range []string{"second@other.example", "third@other.example", "listonly@other.example"} {
+		if rec, ok, _ := fts.Get("u1", addr); !ok || rec.State != ForwardStateGrandfathered {
+			t.Errorf("%s not grandfathered", addr)
+		}
+	}
+}
