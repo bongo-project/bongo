@@ -30,10 +30,12 @@ change under review introduced it.
 | C | Publishing and subscriptions | US-010 to US-011 |
 | D | Reminders, tasks and resources | US-012 to US-015 |
 | E | Views | US-016 to US-017 |
+| F | Mail stories moved from v0.14 | US-018, US-019 |
 
 TASKS rows are assigned by `norman import`. Dependencies: US-002 needs
 US-001; US-004 and US-005 need US-003; Phase B needs US-001 (overrides) and
-US-006 first; US-015 needs Phase B; US-017 needs US-008 and US-014.
+US-006 first; US-015 needs Phase B; US-017 needs US-008, US-014 and
+US-019.
 
 ### Size key
 
@@ -479,8 +481,8 @@ and free/busy.
       v0.13 US-009 specification first, then extended.
 
 ### US-017: Summary page
-**Source:** audit #88. **Size:** M. **Needs:** US-008, US-016; v0.14
-US-016 for "to me".
+**Source:** audit #88. **Size:** M. **Needs:** US-008, US-016, US-019
+(for "to me").
 
 **What exists:** `/` redirects to `/mail/INBOX` (`agent.go:1120-1122`). A
 starred view exists (`store.VirtualMailboxes`), contrary to what the
@@ -488,7 +490,7 @@ audit's silence suggests, so the "starred" section reuses it.
 
 **Acceptance Criteria:**
 - [ ] `/summary` shows four sections, each with at most 10 items and a link
-      to its full view: unread mail to me (the v0.14 "to me" view; unread
+      to its full view: unread mail to me (the US-019 "to me" view; unread
       INBOX if that has not shipped), starred mail, invitations awaiting an
       answer (REQUESTs from US-008 with PARTSTAT NEEDS-ACTION), and events
       and due tasks in the next 7 days.
@@ -499,9 +501,57 @@ audit's silence suggests, so the "starred" section reuses it.
 - [ ] The page loads in under 300 ms with 10,000 messages in INBOX (a
       benchmark in the handler tests).
 
+### Phase F: Mail stories moved from v0.14
+
+Release note: DSN parameters are passed to the next server, and the "To
+me", "From my contacts" and "Mailing lists" views.
+
+### US-018: DSN parameters relayed onward (from v0.14 US-011)
+**Source:** audit #6. **Size:** M. **Needs:** v0.14 US-010.
+
+**What exists:** `Relay.Deliver` (`internal/smtp/relay.go:90`) uses the
+standard library's `net/smtp`, whose `Mail` and `Rcpt` cannot carry DSN or
+SIZE parameters.
+
+**Acceptance Criteria:**
+- [ ] The relay moves to the go-smtp client. STARTTLS, MTA-STS, DANE,
+      timeouts and error mapping are unchanged (the existing relay tests
+      pass unmodified).
+- [ ] When the remote advertises `DSN`, RET, ENVID, NOTIFY and ORCPT are
+      passed on; when it does not and NOTIFY includes SUCCESS, an
+      `Action: relayed` report is sent.
+- [ ] `SIZE=` is sent when the remote advertises SIZE.
+
+### US-019: "To me", "From my contacts" and "Mailing lists" views (from v0.14 US-016)
+**Source:** audit #89. **Size:** M. **Needs:** v0.14 US-015.
+
+**What exists:** none of the three views. The SQLite `maildocument` table
+has a `list_id` column (`internal/store/metadata.go:106`) that no insert
+fills. The existing virtual views (`unread`, `starred`, `all-mail`,
+`store.VirtualMailboxes`, `mailbox.go:898-958`) are Pebble scans over every
+mailbox, which does not scale to header-based views.
+
+**Acceptance Criteria:**
+- [ ] The derived index fills `list_id` and gains `to_me` (any of the user's
+      addresses in To or Cc at delivery) and the normalised sender address;
+      existing indexes are filled by the existing rebuild path, resumable
+      and rate-limited.
+- [ ] Views `/mail/to-me`, `/mail/from-contacts`, `/mail/lists` and
+      `/mail/lists/{list-id}` list messages from INBOX and user folders,
+      excluding Junk, Trash, Sent and Drafts, newest first, paginated like a
+      mailbox.
+- [ ] "From my contacts" matches the normalised sender against the user's
+      contact addresses; adding a contact changes the view without a
+      re-index.
+- [ ] `/mail/lists` groups by List-Id with the list name and count; each
+      group links to its list view.
+- [ ] Actions in a view act on the underlying message in its real mailbox.
+- [ ] A user can only see their own messages (a test with two users sharing
+      a list).
+
 ## 4. Functional Requirements
 
-FR-1 to FR-17 are the acceptance criteria of US-001 to US-017. In every
+FR-1 to FR-19 are the acceptance criteria of US-001 to US-019. In every
 story:
 
 - Every cookie-authenticated mutation is behind CSRF and same-origin checks.
@@ -597,7 +647,7 @@ upgrade completes. Production runs one node.
 
 ### 6.5 Dependencies on other releases
 
-US-017 uses v0.14 US-016 ("to me"). US-016 depends on v0.13 27.9. v0.16
+US-017 uses US-019 ("to me"). US-016 depends on v0.13 27.9. v0.16
 builds on the grant key space from US-003.
 
 ## 7. Success Metrics
@@ -634,7 +684,8 @@ builds on the grant key space from US-003.
 4. (operator, 2026-10-27) The Summary page becomes the default start page
    after login, with a user preference to start in the inbox instead.
 5. (operator, 2026-10-27) The mail views (v0.14 US-016) and DSN relay
-   (v0.14 US-011) move into this release, per the v0.14 split.
+   (v0.14 US-011) move into this release, per the v0.14 split. They are
+   US-019 and US-018 here.
 
 ### 8.2 Candidates for the next release
 
