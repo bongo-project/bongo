@@ -3333,7 +3333,7 @@ func (a *Agent) bounceCopyHostedDomain(domain string) bool {
 const maxReportedDomains = 20
 
 // reportPostmasterTargets warns once about hosted, enabled domains on which
-// postmaster@ and abuse@ resolve to nobody, and about a configured
+// postmaster@ or abuse@ resolves to nobody, and about a configured
 // smtp.postmaster_account that matches no account yet. Read-only, non-fatal,
 // safe on any node.
 func (a *Agent) reportPostmasterTargets() {
@@ -3368,10 +3368,10 @@ func logPostmasterReport(r *store.RecipientResolver, logger *slog.Logger) {
 	if len(shown) > maxReportedDomains {
 		shown = shown[:maxReportedDomains]
 	}
-	logger.Warn("startup: domains with no postmaster@ and abuse@ target; mail to them is refused",
+	logger.Warn("startup: domains where postmaster@ or abuse@ does not resolve; mail to them is refused",
 		"count", len(missing),
 		"domains", shown,
-		"fix", "give each domain an owner, or set smtp.postmaster_account")
+		"fix", "set smtp.postmaster_account, or give each domain an owner or explicit postmaster@ and abuse@ addresses")
 }
 
 // reportMixedCaseAddresses logs any alias or account address stored with

@@ -31,7 +31,7 @@ func TestPostmasterReportRunsAtBoot(t *testing.T) {
 	})
 
 	out := buf.String()
-	const marker = "no postmaster@ and abuse@ target"
+	const marker = "postmaster@ or abuse@ does not resolve"
 	if n := strings.Count(out, marker); n != 1 {
 		t.Fatalf("want exactly one %q warning, got %d:\n%s", marker, n, out)
 	}

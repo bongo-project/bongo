@@ -890,3 +890,12 @@ Fixed after verification (Phase 29, 2026-11-01):
   `--domain example.com.` (the server normalises the filter). A domain
   stored only under a mixed-case key is listed although delivery treats it
   as not hosted.
+
+Found in the v0.14.0 production deploy (2026-11-01, fixed in v0.14.1):
+
+- The startup report "domains with no postmaster@ and abuse@ target"
+  checked only the owner/account tier and ignored explicit postmaster@ and
+  abuse@ addresses, legacy aliases and catch-alls, which still win and
+  delivered postmaster@ before v0.14. It named domains whose postmaster@
+  worked and said their mail was refused. It now asks whether postmaster@
+  and abuse@ actually resolve and names a domain when either does not.

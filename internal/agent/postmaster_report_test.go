@@ -37,7 +37,7 @@ func TestReportPostmasterTargets(t *testing.T) {
 	if strings.Contains(out, "off.pmreport.test") {
 		t.Errorf("warning names a disabled domain:\n%s", out)
 	}
-	if strings.Count(out, "no postmaster@ and abuse@ target") != 1 {
+	if strings.Count(out, "postmaster@ or abuse@ does not resolve") != 1 {
 		t.Errorf("want exactly one domain warning:\n%s", out)
 	}
 	if !strings.Contains(out, "ghost@pmreport.test") {
