@@ -10,6 +10,7 @@ import (
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
+	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
 )
@@ -430,5 +431,69 @@ func TestDataLocalFanOutFailureIs451(t *testing.T) {
 	envs, _ := spool.List("incoming")
 	if len(envs) != 0 {
 		t.Errorf("incoming = %d envelopes, want 0", len(envs))
+	}
+}
+
+// EnqueueLocal copies the transaction's DSN RET and ENVID into every envelope
+// and each recipient's NOTIFY and ORCPT into that recipient's own envelope.
+// Assertions are keyed by recipient because spool order is not guaranteed.
+func TestEnqueueLocalCopiesDSNParameters(t *testing.T) {
+	rcpts := []string{"a@example.com", "b@example.com", "c@example.com"}
+	full := []RcptDSN{
+		{Notify: mail.NotifySuccess, ORCPTType: "rfc822", ORCPT: "orig-a@example.net"},
+		{Notify: mail.NotifyFailure | mail.NotifyDelay, ORCPTType: "utf-8", ORCPT: "orig-b@example.net"},
+		{Notify: mail.NotifySuccess | mail.NotifyFailure, ORCPTType: "rfc822", ORCPT: "orig-c@example.net"},
+	}
+	tests := []struct {
+		name string
+		dsn  []RcptDSN
+		want map[string]RcptDSN
+	}{
+		{"one entry per recipient", full, map[string]RcptDSN{
+			rcpts[0]: full[0], rcpts[1]: full[1], rcpts[2]: full[2],
+		}},
+		{"shorter than recipients", full[:2], map[string]RcptDSN{
+			rcpts[0]: full[0], rcpts[1]: full[1], rcpts[2]: {},
+		}},
+		{"nil", nil, map[string]RcptDSN{rcpts[0]: {}, rcpts[1]: {}, rcpts[2]: {}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dp, blobs, spool, _ := setupTestPipelineDir(t)
+			hash, err := blobs.Put([]byte("Subject: x\r\n\r\nbody\r\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			meta := &InboundMeta{DSNRet: "HDRS", DSNEnvID: "env-42", DSNRcpts: tt.dsn}
+			if err := dp.EnqueueLocal("bob@example.org", rcpts, hash, meta); err != nil {
+				t.Fatalf("EnqueueLocal: %v", err)
+			}
+			envs, err := spool.List("incoming")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(envs) != len(rcpts) {
+				t.Fatalf("envelopes = %d, want %d", len(envs), len(rcpts))
+			}
+			seen := map[string]bool{}
+			for _, e := range envs {
+				if len(e.Recipients) != 1 {
+					t.Fatalf("envelope %s has %d recipients", e.Id, len(e.Recipients))
+				}
+				rcpt := e.Recipients[0]
+				want, ok := tt.want[rcpt]
+				if !ok || seen[rcpt] {
+					t.Fatalf("unexpected or repeated recipient %q", rcpt)
+				}
+				seen[rcpt] = true
+				if e.DsnRet != "HDRS" || e.DsnEnvid != "env-42" {
+					t.Errorf("%s: RET/ENVID = %q/%q", rcpt, e.DsnRet, e.DsnEnvid)
+				}
+				got := RcptDSN{Notify: e.DsnNotify, ORCPTType: e.DsnOrcptType, ORCPT: e.DsnOrcpt}
+				if got != want {
+					t.Errorf("%s: DSN = %+v, want %+v", rcpt, got, want)
+				}
+			}
+		})
 	}
 }

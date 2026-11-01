@@ -183,6 +183,13 @@ func TestNormaliseDirectoryDomain(t *testing.T) {
 		{"a b", "", false},
 		{strings.Repeat("a", 254), "", false},
 		{strings.Repeat("a", 253), strings.Repeat("a", 253), true},
+		{"example.com.", "example.com", true},
+		{" Example.COM. ", "example.com", true},
+		{".", "", false},
+		{" . ", "", false},
+		{"example.com..", "", false},
+		{strings.Repeat("a", 253) + ".", strings.Repeat("a", 253), true},
+		{strings.Repeat("a", 254) + ".", "", false},
 	}
 	for _, tc := range tests {
 		got, ok := NormaliseDirectoryDomain(tc.in)
@@ -201,5 +208,51 @@ func TestCapRows(t *testing.T) {
 	got, trunc = capRows(rows[:DirectoryListLimit])
 	if trunc || len(got) != DirectoryListLimit {
 		t.Errorf("at limit: len=%d trunc=%v", len(got), trunc)
+	}
+}
+
+func TestDedupeHostedDomains(t *testing.T) {
+	lower := hostedDomain{name: "legacy.test", raw: "legacy.test", state: "disabled"}
+	mixed := hostedDomain{name: "legacy.test", raw: "Legacy.Test", state: "enabled"}
+	mixed2 := hostedDomain{name: "legacy.test", raw: "LEGACY.test", state: "disabled"}
+	tests := []struct {
+		name string
+		in   []hostedDomain
+		want string // expected state of the single survivor
+	}{
+		{"mixed first", []hostedDomain{mixed, lower}, "disabled"},
+		{"lower first", []hostedDomain{lower, mixed}, "disabled"},
+		{"two mixed, lowest raw wins (a)", []hostedDomain{mixed, mixed2}, "disabled"},
+		{"two mixed, lowest raw wins (b)", []hostedDomain{mixed2, mixed}, "disabled"},
+	}
+	for _, tc := range tests {
+		got := dedupeHostedDomains(append([]hostedDomain{}, tc.in...))
+		if len(got) != 1 || got[0].state != tc.want {
+			t.Errorf("%s: got %+v, want one entry with state %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestListDomainSummariesPrefersLowercaseKey(t *testing.T) {
+	tests := []struct {
+		name, mixedState, lowerState string
+		wantEnabled                  bool
+	}{
+		{"lowercase disabled wins", "enabled", "disabled", false},
+		{"lowercase enabled wins", "disabled", "enabled", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ps := dirTestStore(t)
+			dirSet(t, ps, "/system/domain/Legacy.Test", tc.mixedState)
+			dirSet(t, ps, "/system/domain/legacy.test", tc.lowerState)
+			got, _, err := ListDomainSummaries(ps)
+			if err != nil || len(got) != 1 {
+				t.Fatalf("got %+v err=%v", got, err)
+			}
+			if got[0].Name != "legacy.test" || got[0].Enabled != tc.wantEnabled {
+				t.Errorf("got %+v, want enabled=%v", got[0], tc.wantEnabled)
+			}
+		})
 	}
 }

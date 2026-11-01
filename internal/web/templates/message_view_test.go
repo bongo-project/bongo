@@ -280,12 +280,13 @@ func TestArchiveButtonLabelFollowsRealMailbox(t *testing.T) {
 		name          string
 		mailbox, real string
 		want, notWant string
+		label         string
 	}{
-		{"inbox archives", "INBOX", "INBOX", "/mail/INBOX/7/archive", "/unarchive"},
-		{"archive unarchives", "Archive", "Archive", "/mail/Archive/7/unarchive", "/archive\""},
-		{"virtual view of an archived message", "starred", "Archive", "/mail/starred/7/unarchive", "/archive\""},
-		{"virtual view of an inbox message", "starred", "INBOX", "/mail/starred/7/archive", "/unarchive"},
-		{"real mailbox unset falls back to the URL mailbox", "Archive", "", "/mail/Archive/7/unarchive", "/archive\""},
+		{"inbox archives", "INBOX", "INBOX", "/mail/INBOX/7/archive", "/unarchive", "Archive"},
+		{"archive unarchives", "Archive", "Archive", "/mail/Archive/7/unarchive", "/archive\"", "Unarchive"},
+		{"virtual view of an archived message", "starred", "Archive", "/mail/starred/7/unarchive", "/archive\"", "Unarchive"},
+		{"virtual view of an inbox message", "starred", "INBOX", "/mail/starred/7/archive", "/unarchive", "Archive"},
+		{"real mailbox unset falls back to the URL mailbox", "Archive", "", "/mail/Archive/7/unarchive", "/archive\"", "Unarchive"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -298,6 +299,11 @@ func TestArchiveButtonLabelFollowsRealMailbox(t *testing.T) {
 			}
 			if strings.Contains(out, tt.notWant) {
 				t.Errorf("unexpected %s", tt.notWant)
+			}
+			for _, attr := range []string{"aria-label", "title"} {
+				if want := attr + `="` + tt.label + `"`; !strings.Contains(out, `data-action="`+strings.ToLower(tt.label)+`"`) || !strings.Contains(out, want) {
+					t.Errorf("archive button should carry %s and data-action %q", want, strings.ToLower(tt.label))
+				}
 			}
 			if !strings.Contains(out, `data-action="archive"`) && !strings.Contains(out, `data-action="unarchive"`) {
 				t.Error("no data-action hook for the e shortcut")

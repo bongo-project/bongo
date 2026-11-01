@@ -183,7 +183,13 @@ func humanBytes(n int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+	f := float64(n) / float64(div)
+	// %.1f would print 1023.95 and above as 1024.0 of this unit.
+	if f >= 1023.95 && exp < len("KMGTPE")-1 {
+		f /= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", f, "KMGTPE"[exp])
 }
 
 func quotaBytes(n int64) string {

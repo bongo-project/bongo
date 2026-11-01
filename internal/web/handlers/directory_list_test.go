@@ -95,6 +95,10 @@ func TestDirectoryListHandlerOutputs(t *testing.T) {
 	if als.Count != 1 {
 		t.Errorf("aliases = %+v", als)
 	}
+	_, dotted := getDirectory(t, h.AddressAliases, "/internal/aliases?domain=example.com.")
+	if dotted.Count != 1 {
+		t.Errorf("trailing-dot filter listed %d aliases, want 1", dotted.Count)
+	}
 	_, none := getDirectory(t, h.AddressAliases, "/internal/aliases?domain=other.test")
 	if none.Count != 0 || none.Items == nil || none.Truncated {
 		t.Errorf("empty listing must be an empty array, got %+v", none)
@@ -126,7 +130,7 @@ func TestDirectoryListHandlerLeaksNoSecrets(t *testing.T) {
 
 func TestDirectoryListHandlerRejectsBadDomain(t *testing.T) {
 	h := seedDirectory(t)
-	for _, q := range []string{"a%2Fb", "a%40b", "a%0Ab", strings.Repeat("a", 254)} {
+	for _, q := range []string{"a%2Fb", "a%40b", "a%0Ab", strings.Repeat("a", 254), ".", "example.com.."} {
 		for name, fn := range map[string]http.HandlerFunc{"users": h.Users, "aliases": h.AddressAliases} {
 			if rec, _ := getDirectory(t, fn, "/internal/"+name+"?domain="+q); rec.Code != http.StatusBadRequest {
 				t.Errorf("%s domain=%q: status %d, want 400", name, q, rec.Code)

@@ -902,14 +902,46 @@ var VirtualMailboxes = map[string]bool{
 	"all-mail": true,
 }
 
-// ListVirtualMessages returns messages matching a virtual folder filter across all mailboxes.
-func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limit int) ([]*bongov1.MailboxMessage, int, error) {
+// located pairs a message with the real mailbox it lives in.
+type located struct {
+	msg     *bongov1.MailboxMessage
+	mailbox string
+}
+
+// pageLocated reverses all (newest first), applies offset and limit, and
+// splits the result into parallel message and mailbox-name slices so the two
+// can never fall out of step.
+func pageLocated(all []located, offset, limit int) ([]*bongov1.MailboxMessage, []string, int) {
+	total := len(all)
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+	if offset >= len(all) {
+		return nil, nil, total
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	page := all[offset:end]
+	msgs := make([]*bongov1.MailboxMessage, len(page))
+	names := make([]string, len(page))
+	for i, l := range page {
+		msgs[i], names[i] = l.msg, l.mailbox
+	}
+	return msgs, names, total
+}
+
+// ListVirtualMessages returns messages matching a virtual folder filter across
+// all mailboxes. The second result holds the real mailbox of each message,
+// index for index, because UIDs are only unique within one mailbox.
+func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
 	mailboxes, err := ms.ListMailboxes(userID)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 
-	var all []*bongov1.MailboxMessage
+	var all []located
 	for _, mb := range mailboxes {
 		msgs, err := ms.ListMessages(userID, mb.Name)
 		if err != nil {
@@ -919,11 +951,11 @@ func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limi
 			switch virtual {
 			case "unread":
 				if msg.Flags&FlagSeen == 0 {
-					all = append(all, msg)
+					all = append(all, located{msg, mb.Name})
 				}
 			case "starred":
 				if msg.Flags&FlagFlagged != 0 {
-					all = append(all, msg)
+					all = append(all, located{msg, mb.Name})
 				}
 			case "all-mail":
 				// All Mail excludes Trash, so a deleted message (moved to
@@ -932,38 +964,26 @@ func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limi
 				if mb.Name == "Trash" {
 					continue
 				}
-				all = append(all, msg)
+				all = append(all, located{msg, mb.Name})
 			}
 		}
 	}
 
-	total := len(all)
-
-	// Sort newest first by InternalDate.
-	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-		all[i], all[j] = all[j], all[i]
-	}
-
-	if offset >= len(all) {
-		return nil, total, nil
-	}
-	end := offset + limit
-	if end > len(all) {
-		end = len(all)
-	}
-	return all[offset:end], total, nil
+	msgs, names, total := pageLocated(all, offset, limit)
+	return msgs, names, total, nil
 }
 
 // ListMessagesByGUIDs returns paged MailboxMessage records whose MailGuid is in the
-// provided set. It scans all mailboxes for the user and filters by GUID membership.
+// provided set, with the real mailbox of each one in the second result. It scans
+// all mailboxes for the user and filters by GUID membership.
 // Results are sorted newest first by InternalDate.
-func (ms *MailboxStore) ListMessagesByGUIDs(userID string, guidSet map[string]bool, offset, limit int) ([]*bongov1.MailboxMessage, int, error) {
+func (ms *MailboxStore) ListMessagesByGUIDs(userID string, guidSet map[string]bool, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
 	mailboxes, err := ms.ListMailboxes(userID)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 
-	var all []*bongov1.MailboxMessage
+	var all []located
 	for _, mb := range mailboxes {
 		msgs, err := ms.ListMessages(userID, mb.Name)
 		if err != nil {
@@ -971,26 +991,13 @@ func (ms *MailboxStore) ListMessagesByGUIDs(userID string, guidSet map[string]bo
 		}
 		for _, msg := range msgs {
 			if guidSet[msg.MailGuid] {
-				all = append(all, msg)
+				all = append(all, located{msg, mb.Name})
 			}
 		}
 	}
 
-	total := len(all)
-
-	// Sort newest first by InternalDate.
-	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-		all[i], all[j] = all[j], all[i]
-	}
-
-	if offset >= len(all) {
-		return nil, total, nil
-	}
-	end := offset + limit
-	if end > len(all) {
-		end = len(all)
-	}
-	return all[offset:end], total, nil
+	msgs, names, total := pageLocated(all, offset, limit)
+	return msgs, names, total, nil
 }
 
 // UnreadCount returns the number of unread messages in a single mailbox for a

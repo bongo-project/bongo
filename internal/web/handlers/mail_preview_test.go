@@ -46,7 +46,7 @@ func TestFillPreviewsReadsIndexNotBlobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sums := env.handler.buildMessageSummaries("u1", msgs)
+	sums := env.handler.buildMessageSummaries("u1", msgs, nil)
 	env.handler.fillPreviews("u1", sums)
 
 	if len(sums) != 2 {
@@ -72,7 +72,7 @@ func TestFillPreviewsWithoutMetadataIsNoop(t *testing.T) {
 	env := newMailTagsTestEnv(t)
 	env.seedMessage(t, "u1", "INBOX", "g1", nil)
 	msgs, _, _ := env.mailboxes.ListMessagesPaged("u1", "INBOX", 0, 10)
-	sums := env.handler.buildMessageSummaries("u1", msgs)
+	sums := env.handler.buildMessageSummaries("u1", msgs, nil)
 	env.handler.fillPreviews("u1", sums)
 	if strings.TrimSpace(sums[0].Preview) != "" {
 		t.Fatal("preview set without metadata")
@@ -100,7 +100,7 @@ func TestPageSummariesFillsPreviews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sums, page, totalPages := env.handler.pageSummaries("u1", msgs, 9, 10)
+	sums, page, totalPages := env.handler.pageSummaries("u1", msgs, nil, 9, 10)
 	if page != 1 || totalPages != 1 || len(sums) != 1 {
 		t.Fatalf("page=%d totalPages=%d n=%d", page, totalPages, len(sums))
 	}

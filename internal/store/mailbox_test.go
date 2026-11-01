@@ -651,7 +651,7 @@ func TestListVirtualMessagesAllMailExcludesTrash(t *testing.T) {
 		t.Fatalf("deliver trash: %v", err)
 	}
 
-	msgs, total, err := ms.ListVirtualMessages(userID, "all-mail", 0, 100)
+	msgs, _, total, err := ms.ListVirtualMessages(userID, "all-mail", 0, 100)
 	if err != nil {
 		t.Fatalf("ListVirtualMessages: %v", err)
 	}

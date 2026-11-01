@@ -51,12 +51,21 @@ type AddressAliasSummary struct {
 	Target  string `json:"target"`
 }
 
-// NormaliseDirectoryDomain lowercases and trims a --domain filter and reports
-// whether it is acceptable: at most 253 bytes and free of '/', '@', whitespace
-// and control characters. The filter is only ever compared against in memory,
-// never turned into a key.
+// NormaliseDirectoryDomain lowercases and trims a --domain filter, strips one
+// trailing dot, and reports whether it is acceptable (blank means no filter):
+// at most 253 bytes and free of '/', '@', whitespace and control characters.
+// The filter is only ever compared against in memory, never turned into a key.
 func NormaliseDirectoryDomain(raw string) (string, bool) {
 	d := strings.ToLower(strings.TrimSpace(raw))
+	if d == "" {
+		return "", true
+	}
+	// One trailing dot (the fully qualified form) is accepted; a filter that
+	// is then empty or still dotted must not widen to "no filter".
+	d = strings.TrimSuffix(d, ".")
+	if d == "" || strings.HasSuffix(d, ".") {
+		return "", false
+	}
 	if len(d) > 253 || strings.ContainsAny(d, "/@") {
 		return "", false
 	}
@@ -183,14 +192,35 @@ func capRows[T any](rows []T) ([]T, bool) {
 	return rows, false
 }
 
+// hostedDomain is one /system/domain/{raw} record; name is raw lowercased.
+type hostedDomain struct{ name, raw, state string }
+
+// dedupeHostedDomains sorts by name and keeps one record per name. The exact
+// lowercase key wins because domainState reads only that key; failing that,
+// the lowest raw key, so the result never depends on input order.
+func dedupeHostedDomains(domains []hostedDomain) []hostedDomain {
+	slices.SortFunc(domains, func(a, b hostedDomain) int {
+		if c := strings.Compare(a.name, b.name); c != 0 {
+			return c
+		}
+		if (a.raw == a.name) != (b.raw == b.name) {
+			if a.raw == a.name {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.raw, b.raw)
+	})
+	return slices.CompactFunc(domains, func(a, b hostedDomain) bool { return a.name == b.name })
+}
+
 // ListDomainSummaries lists hosted domains (plain /system/domain/{d} keys),
 // sorted by name. A catch-all whose account is gone is shown as the raw user
 // ID with a "(missing account)" marker rather than failing. DKIM is true when
 // a /dkim key exists under any casing of the name, since rotations before
 // keys were lowercased wrote mixed-case keys.
 func ListDomainSummaries(ps *PebbleStore) ([]DomainSummary, bool, error) {
-	type hosted struct{ name, state string }
-	var domains []hosted
+	var domains []hostedDomain
 	dkim := map[string]bool{}
 	err := directoryScan(ps, domainPrefix, func(key string, val []byte) error {
 		name := strings.TrimPrefix(key, domainPrefix)
@@ -201,14 +231,13 @@ func ListDomainSummaries(ps *PebbleStore) ([]DomainSummary, bool, error) {
 		if name == "" || strings.Contains(name, "/") {
 			return nil
 		}
-		domains = append(domains, hosted{name: strings.ToLower(name), state: string(val)})
+		domains = append(domains, hostedDomain{name: strings.ToLower(name), raw: name, state: string(val)})
 		return nil
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("list domains: %w", err)
 	}
-	slices.SortFunc(domains, func(a, b hosted) int { return strings.Compare(a.name, b.name) })
-	domains = slices.CompactFunc(domains, func(a, b hosted) bool { return a.name == b.name })
+	domains = dedupeHostedDomains(domains)
 	domains, trunc := capRows(domains)
 
 	targets, err := AliasDomains(ps)

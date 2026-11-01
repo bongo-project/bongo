@@ -1815,9 +1815,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// ensureConfiguredDomain / autoconfig: DKIM domain -> registered domain
 		// from SMTP hostname -> SMTP hostname -> os.Hostname() -> "localhost".
 		if smtpPipeline != nil {
-			bounceDomain := mail.ResolveServerDomain(a.Config.SMTP.DKIM.Domain, a.Config.SMTP.Hostname)
-			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger, bounceDomain, a.DKIMRegistry)
-			a.configureBouncePostmasterCopy(a.BounceGen)
+			a.BounceGen = a.newBounceGenerator(smtpPipeline)
 			// NOTIFY=SUCCESS reports go out through the same generator, and so
 			// the same local inbound pipeline, as bounces.
 			if deliverProc != nil {
@@ -3276,10 +3274,21 @@ func (a *Agent) newRecipientResolver(sys *store.SystemIndex) *store.RecipientRes
 	return r
 }
 
+// newBounceGenerator builds the bounce generator Run shares with the queue
+// worker, with the postmaster copy configured before it is shared.
+func (a *Agent) newBounceGenerator(d mail.Deliverer) *mail.BounceGenerator {
+	domain := mail.ResolveServerDomain(a.Config.SMTP.DKIM.Domain, a.Config.SMTP.Hostname)
+	g := mail.NewBounceGenerator(d, a.Blobs, a.logger, domain, a.DKIMRegistry)
+	a.configureBouncePostmasterCopy(g)
+	return g
+}
+
 // configureBouncePostmasterCopy applies queue.bounce_copy_postmaster to g. The
 // hosted check is read-only. A disabled domain counts as not hosted: it
 // receives no mail, so postmaster@ there would be dropped; the copy goes to
-// smtp.postmaster_account instead. A store error also counts as not hosted.
+// smtp.postmaster_account instead. An alias domain whose alias_of target is
+// disabled counts only if postmaster@ the alias still resolves (its own live
+// owner). A store error also counts as not hosted.
 func (a *Agent) configureBouncePostmasterCopy(g *mail.BounceGenerator) {
 	if !a.Config.Queue.BounceCopyToPostmaster() {
 		return
@@ -3288,7 +3297,9 @@ func (a *Agent) configureBouncePostmasterCopy(g *mail.BounceGenerator) {
 }
 
 // bounceCopyHostedDomain reports whether a bounce copy may go to postmaster@
-// domain: the domain is hosted here and not disabled.
+// domain: the domain is hosted here and not disabled. An alias domain whose
+// alias_of target is disabled counts only while postmaster@ the alias still
+// has a live target (its own owner), as the recipient resolver decides.
 func (a *Agent) bounceCopyHostedDomain(domain string) bool {
 	if a.Store == nil {
 		return false
@@ -3298,7 +3309,24 @@ func (a *Agent) bounceCopyHostedDomain(domain string) bool {
 		return false
 	}
 	disabled, err := store.DomainDisabled(a.Store, domain)
-	return err == nil && !disabled
+	if err != nil || disabled {
+		return false
+	}
+	target, isAlias, err := store.DomainAliasOf(a.Store, domain)
+	if err != nil {
+		return false
+	}
+	if !isAlias {
+		return true
+	}
+	targetOff, err := store.DomainDisabled(a.Store, target)
+	if err != nil {
+		return false
+	}
+	if !targetOff {
+		return true
+	}
+	return a.newRecipientResolver(nil).HasPostmasterTarget(domain)
 }
 
 // maxReportedDomains bounds the domain list in the postmaster warning.
