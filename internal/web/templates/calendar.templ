@@ -3,6 +3,7 @@ package templates
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bongo-project/bongo/internal/icalevent"
@@ -70,7 +71,7 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 				</a>
 				for _, e := range day.Events {
 					<a
-						href={ templ.SafeURL("/calendar/event/" + e.Guid) }
+						href={ EventHref(e) }
 						class={ "event-chip", eventBlockColourClass(e, calColors) }
 						data-cal-id={ eventCalendarID(e) }
 						title={ e.Title }
@@ -153,6 +154,11 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 			} else {
 				<h3>{ t(ctx, "calendar.editEvent") }</h3>
 			}
+			if occ := occurrenceFromCtx(ctx); occ != nil && !isNew {
+				<p class="meta event-meta" role="note">
+					{ fmt.Sprintf(t(ctx, "calendar.occurrenceNotice"), occurrenceWhen(ctx, occ), occ.Title) }
+				</p>
+			}
 			<form
 				if isNew {
 					method="post"
@@ -179,6 +185,45 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 					{ t(ctx, "calendar.location") }
 					<input type="text" name="location" value={ eventLocation(event) }/>
 				</label>
+				<div class="attendee-field">
+					<label for="attendees">{ t(ctx, "calendar.attendees") }</label>
+					<div x-data="galAutocomplete" data-gal-multi class="attendee-autocomplete">
+						<input
+							type="text"
+							id="attendees"
+							name="attendees"
+							value={ eventAttendeesValue(event) }
+							placeholder={ t(ctx, "calendar.attendeesPlaceholder") }
+							autocomplete="off"
+							:value="query"
+							@input.debounce.300ms="onInput($el)"
+							@keydown="onKeydown($event)"
+						/>
+						<ul class="attendee-suggestions" x-show="show" x-cloak role="listbox">
+							<template x-for="r in results" :key="r.email">
+								<li role="option">
+									<button type="button" class="attendee-suggestion" @click="select(r)">
+										<span x-text="r.display_name"></span>
+										<span class="attendee-suggestion-email" x-text="r.email"></span>
+									</button>
+								</li>
+							</template>
+						</ul>
+					</div>
+					if event != nil && event.Organizer != "" {
+						<p class="meta">{ t(ctx, "calendar.organizer") }: { event.Organizer }</p>
+					}
+					if event != nil && len(event.Attendees) > 0 {
+						<ul class="attendee-list">
+							for _, a := range event.Attendees {
+								<li class="attendee-item">
+									<span class="attendee-name">{ attendeeLabel(a) }</span>
+									<span class={ "attendee-badge", attendeeStatusClass(a.Partstat) }>{ t(ctx, attendeeStatusKey(a.Partstat)) }</span>
+								</li>
+							}
+						</ul>
+					}
+				</div>
 				<label>
 					{ t(ctx, "nav.calendar") }
 					<select name="calendar_id">
@@ -307,7 +352,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 			<div class={ "all-day-cell", templ.KV("today", day.IsToday) }>
 				for _, e := range day.AllDay {
 					<a
-						href={ templ.SafeURL("/calendar/event/" + e.Guid) }
+						href={ EventHref(e) }
 						class={ "event-chip", eventBlockColourClass(e, calColors) }
 						data-cal-id={ eventCalendarID(e) }
 					>
@@ -338,9 +383,11 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 				}
 				for _, block := range day.Blocks {
 					<a
-						href={ templ.SafeURL("/calendar/event/" + block.Event.Guid) }
+						href={ EventHref(block.Event) }
 						class={ "event-block", calendarTopClass(block.TopMinutes), calendarHeightClass(block.HeightMinutes), block.ColourClass }
+						if block.Event.Rrule == "" {
 						data-guid={ block.Event.Guid }
+					}
 						data-cal-id={ eventCalendarID(block.Event) }
 						data-start={ fmt.Sprint(block.Event.StartTime) }
 						data-end={ fmt.Sprint(block.Event.EndTime) }
@@ -379,7 +426,7 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 			<div class={ "all-day-cell", templ.KV("today", col.IsToday) }>
 				for _, e := range col.AllDay {
 					<a
-						href={ templ.SafeURL("/calendar/event/" + e.Guid) }
+						href={ EventHref(e) }
 						class={ "event-chip", eventBlockColourClass(e, calColors) }
 						data-cal-id={ eventCalendarID(e) }
 					>
@@ -409,9 +456,11 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 			}
 			for _, block := range col.Blocks {
 				<a
-					href={ templ.SafeURL("/calendar/event/" + block.Event.Guid) }
+					href={ EventHref(block.Event) }
 					class={ "event-block", calendarTopClass(block.TopMinutes), calendarHeightClass(block.HeightMinutes), block.ColourClass }
-					data-guid={ block.Event.Guid }
+					if block.Event.Rrule == "" {
+						data-guid={ block.Event.Guid }
+					}
 						data-cal-id={ eventCalendarID(block.Event) }
 					data-start={ fmt.Sprint(block.Event.StartTime) }
 					data-end={ fmt.Sprint(block.Event.EndTime) }
@@ -617,7 +666,7 @@ templ CalendarSearchResults(events []*bongov1.Event, query string, email string)
 						for _, e := range events {
 							<tr>
 								<td>
-									<a href={ templ.SafeURL("/calendar/event/" + e.Guid) } class="u-text-decoration-none">
+									<a href={ EventHref(e) } class="u-text-decoration-none">
 										{ e.Title }
 									</a>
 								</td>
@@ -688,6 +737,74 @@ func truncateTitle(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-1] + "..."
+}
+
+// eventAttendeesValue is the attendees input's initial text: one "Name <addr>"
+// entry per attendee, in the form parseAttendees reads back.
+func eventAttendeesValue(e *bongov1.Event) string {
+	if e == nil {
+		return ""
+	}
+	parts := make([]string, 0, len(e.Attendees))
+	for _, a := range e.Attendees {
+		parts = append(parts, attendeeEntry(a))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// attendeeEntry is one "Name <addr>" entry. It is built by hand because
+// mail.Address.String would RFC 2047-encode a non-ASCII name, and the field
+// is plain text the user reads and edits. A name holding an RFC 5322 special
+// is quoted, with the quote and backslash escaped, so the list parser reads it
+// back unchanged.
+func attendeeEntry(a *bongov1.Attendee) string {
+	if a.Name == "" {
+		return a.Address
+	}
+	name := a.Name
+	if strings.ContainsAny(name, "()<>[]:;@\\,.\"") {
+		name = `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(name) + `"`
+	}
+	return name + " <" + a.Address + ">"
+}
+
+// attendeeLabel is the name an attendee is listed under.
+func attendeeLabel(a *bongov1.Attendee) string {
+	if a.Name != "" {
+		return a.Name + " <" + a.Address + ">"
+	}
+	return a.Address
+}
+
+// attendeeStatusClass is the CSS modifier for an attendee's PARTSTAT. An
+// unset or unknown value reads as needs-action.
+func attendeeStatusClass(partstat string) string {
+	switch strings.ToUpper(partstat) {
+	case "ACCEPTED":
+		return "accepted"
+	case "DECLINED":
+		return "declined"
+	case "TENTATIVE":
+		return "tentative"
+	case "DELEGATED":
+		return "delegated"
+	}
+	return "needs-action"
+}
+
+// attendeeStatusKey is the message ID of the badge text for a PARTSTAT.
+func attendeeStatusKey(partstat string) string {
+	switch attendeeStatusClass(partstat) {
+	case "accepted":
+		return "calendar.partstat.accepted"
+	case "declined":
+		return "calendar.partstat.declined"
+	case "tentative":
+		return "calendar.partstat.tentative"
+	case "delegated":
+		return "calendar.partstat.delegated"
+	}
+	return "calendar.partstat.needsAction"
 }
 
 func eventTitle(e *bongov1.Event) string {
@@ -1054,7 +1171,7 @@ templ AgendaContent(data AgendaData) {
 								</span>
 								<span class={ "agenda-bar", it.ColourClass }></span>
 								<span class="agenda-body">
-									<a href={ templ.SafeURL("/calendar/event/" + it.Event.Guid) } class="agenda-title">{ it.Event.Title }</a>
+									<a href={ EventHref(it.Event) } class="agenda-title">{ it.Event.Title }</a>
 									if it.Event.Location != "" {
 										<span class="agenda-location">{ it.Event.Location }</span>
 									}

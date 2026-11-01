@@ -336,12 +336,21 @@ document.addEventListener('alpine:init', () => {
     show: false,
     loading: false,
     selected: -1,
+    // multi is set by data-gal-multi on the wrapper: the field then holds a
+    // comma-separated list (the event form's attendees) and a search or a pick
+    // concerns only the entry being typed, the last one. Every other field is
+    // a single value and keeps the whole-field behaviour.
+    multi: false,
 
     init() {
+      this.multi = this.$el.hasAttribute('data-gal-multi');
       // Read the server-rendered value attribute to seed the query.
       // We use getAttribute('value') because it reads the HTML attribute
       // directly, not the DOM property which Alpine may have already cleared.
-      const initial = this.$el.getAttribute('value');
+      // When the component wraps the input (the event form's attendees field,
+      // which needs room for a suggestion list) the value is on that input.
+      const src = this.$el.hasAttribute('value') ? this.$el : this.$el.querySelector('input[name]');
+      const initial = src ? src.getAttribute('value') : null;
       if (initial) {
         this.query = initial;
       }
@@ -354,15 +363,41 @@ document.addEventListener('alpine:init', () => {
       this.search();
     },
 
+    // lastSeparator is the index of the comma that ends the last complete
+    // entry, or -1. A comma inside a quoted name ("Doe, Jane" <j@x>) does not
+    // separate entries.
+    lastSeparator() {
+      let quoted = false;
+      let last = -1;
+      for (let i = 0; i < this.query.length; i++) {
+        const c = this.query.charAt(i);
+        if (c === '\\') {
+          i++;
+        } else if (c === '"') {
+          quoted = !quoted;
+        } else if (c === ',' && !quoted) {
+          last = i;
+        }
+      }
+      return last;
+    },
+
+    // searchTerm is what the GAL is asked about.
+    searchTerm() {
+      if (!this.multi) return this.query;
+      return this.query.slice(this.lastSeparator() + 1).trim();
+    },
+
     async search() {
-      if (this.query.length < 2) {
+      const term = this.searchTerm();
+      if (term.length < 2) {
         this.results = [];
         this.show = false;
         return;
       }
       this.loading = true;
       try {
-        const resp = await fetch('/api/gal?q=' + encodeURIComponent(this.query));
+        const resp = await fetch('/api/gal?q=' + encodeURIComponent(term));
         if (resp.ok) {
           this.results = await resp.json();
           this.show = this.results.length > 0;
@@ -374,7 +409,12 @@ document.addEventListener('alpine:init', () => {
     },
 
     select(entry) {
-      this.query = entry.email;
+      if (this.multi) {
+        const cut = this.lastSeparator() + 1;
+        this.query = (cut > 0 ? this.query.slice(0, cut) + ' ' : '') + entry.email;
+      } else {
+        this.query = entry.email;
+      }
       this.show = false;
       this.results = [];
     },

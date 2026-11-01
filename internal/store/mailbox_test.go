@@ -36,6 +36,10 @@ func (a *directApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) 
 		return nil
 	}
 
+	if cmd.Op == bongov1.Op_OP_PUT && IsACLSyntheticCommand(cmd.Key) {
+		return ApplyACLCommand(a.store, cmd)
+	}
+
 	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:

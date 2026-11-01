@@ -123,7 +123,11 @@ func (a *Agent) checkReminders(now time.Time, mu *sync.Mutex, sent map[string]bo
 			reminderTime := start.Add(-time.Duration(e.ReminderMinutes) * time.Minute)
 			// Fire if reminder time is in the past but event hasn't started yet.
 			if now.After(reminderTime) && now.Before(start) {
-				sentKey := fmt.Sprintf("%s:%s:%d", userID, e.Guid, e.ReminderMinutes)
+				// Occurrences share the series guid, so the start tells them
+				// apart: without it every occurrence of an HOURLY series
+				// inside the cleared-hourly window would share one key and
+				// only the first would ever be announced.
+				sentKey := fmt.Sprintf("%s:%s:%d:%d", userID, e.Guid, e.ReminderMinutes, start.Unix())
 				mu.Lock()
 				alreadySent := sent[sentKey]
 				if !alreadySent {

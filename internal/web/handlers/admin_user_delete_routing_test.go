@@ -130,3 +130,78 @@ func TestDeleteUserRoutingPurgeFailureFlagsPartialDelete(t *testing.T) {
 		t.Fatalf("flash = %q, want a partial-failure flash", loc)
 	}
 }
+
+// Deleting a user revokes the grants they own and the grants they hold, in the
+// same request, and leaves everyone else's grants alone.
+func TestDeleteUserRevokesCalendarGrants(t *testing.T) {
+	h, applier, md := newAdminDeleteTestHandler(t)
+	bossID, err := auth.CreateUser(applier, md, "boss@keep.test", "Boss", "adminpass123", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aID, err := auth.CreateUser(applier, md, "a@d.test", "A", "passpass123", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acl := store.NewACLStore(h.store, applier)
+	now := time.Unix(1000, 0)
+	set := func(owner, cal, grantee string) {
+		t.Helper()
+		if err := acl.SetCalendarGrant(owner, cal, grantee, store.GrantLevelRead, store.GrantStateAccepted, owner, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(aID, "own", bossID)  // a owns
+	set(bossID, "hers", aID) // a holds
+	set("other", "x", bossID)
+
+	if w := deleteUserRequest(t, h, aID, bossID); w.Code >= 400 {
+		t.Fatalf("DeleteUser = %d", w.Code)
+	}
+	refs, err := acl.ListGrantRefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].Owner != "other" {
+		t.Errorf("grants left = %+v, want only other's", refs)
+	}
+	// Both key families, not just the forward one.
+	revs, err := h.store.PrefixScan([]byte("/aclrev/"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer revs.Close()
+	n := 0
+	for revs.Next() {
+		n++
+	}
+	if n != 1 {
+		t.Errorf("reverse markers left = %d, want 1", n)
+	}
+}
+
+type aclFailApplier struct{ *directApplierTags }
+
+func (a aclFailApplier) ApplyCommand(cmd *bongov1.RaftCommand, d time.Duration) error {
+	if store.IsACLSyntheticCommand(cmd.Key) {
+		return errors.New("injected acl failure")
+	}
+	return a.directApplierTags.ApplyCommand(cmd, d)
+}
+
+// The revoke is best-effort: the user is gone either way and the orphan sweep
+// removes what was missed, so a failure does not turn the delete into an error.
+func TestDeleteUserGrantRevokeFailureIsBestEffort(t *testing.T) {
+	h, applier, md := newAdminDeleteTestHandler(t)
+	bossID, _ := auth.CreateUser(applier, md, "boss@keep.test", "Boss", "adminpass123", true)
+	aID, _ := auth.CreateUser(applier, md, "a@d.test", "A", "passpass123", false)
+	h.applier = aclFailApplier{applier}
+
+	w := deleteUserRequest(t, h, aID, bossID)
+	if w.Code >= 400 || strings.Contains(w.Header().Get("Location"), "some+errors") {
+		t.Fatalf("delete failed or flagged partial: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if _, err := h.store.Get([]byte("/user/" + aID + "/profile")); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("profile still present: %v", err)
+	}
+}

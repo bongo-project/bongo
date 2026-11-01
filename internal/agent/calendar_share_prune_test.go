@@ -71,9 +71,14 @@ func TestPruneLegacyCalendarShares_LeaderRunsAtStartup(t *testing.T) {
 		seedFullSharedCalendar(t, a.Store)
 	})
 
-	// Run() invoked the pass, not this test.
-	if got := sharedWithCount(t, a.Store); got != 40 {
-		t.Fatalf("SharedWith after boot = %d, want 40", got)
+	// Run() invoked the pass, not this test. The prune dropped the 10 legacy
+	// strings and the grants migration then turned the remaining 40 into
+	// grants and cleared the field.
+	if got := sharedWithCount(t, a.Store); got != 0 {
+		t.Fatalf("SharedWith after boot = %d, want 0 (migrated)", got)
+	}
+	if n, err := a.ACL.CountCalendarGrants("owner", "calfull"); err != nil || n != 40 {
+		t.Fatalf("grants after boot = %d, %v; want 40", n, err)
 	}
 	var line string
 	for _, l := range strings.Split(buf.String(), "\n") {
@@ -105,6 +110,7 @@ func TestPruneLegacyCalendarShares_LeaderRunsAtStartup(t *testing.T) {
 	}
 	h := handlers.NewCalendarHandler(store.NewEventStore(a.Store, a), ca, nil)
 	h.SetShareResolver(store.NewRecipientResolver(addrs, a.Store, nil))
+	h.SetACL(a.ACL)
 
 	form := url.Values{"share_with": {"newbie@d.test"}}
 	req := httptest.NewRequest(http.MethodPost, "/calendar/calfull/share", strings.NewReader(form.Encode()))
@@ -118,8 +124,8 @@ func TestPruneLegacyCalendarShares_LeaderRunsAtStartup(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("share after cleanup = %d (%s)", rr.Code, rr.Body.String())
 	}
-	if got := sharedWithCount(t, a.Store); got != 41 {
-		t.Errorf("SharedWith = %d, want 41", got)
+	if n, err := a.ACL.CountCalendarGrants("owner", "calfull"); err != nil || n != 41 {
+		t.Errorf("grants = %d, %v; want 41", n, err)
 	}
 }
 

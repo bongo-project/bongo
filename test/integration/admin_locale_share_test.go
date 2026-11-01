@@ -91,12 +91,16 @@ func TestShareCalendarThroughRouter(t *testing.T) {
 	if c := share("bob@localhost"); c != http.StatusOK {
 		t.Errorf("existing target: status %d, want 200", c)
 	}
-	cal, err := a.Calendars.Get(adminID, calID)
-	if err != nil {
-		t.Fatal(err)
+	grantCount := func() int {
+		t.Helper()
+		n, err := a.ACL.CountCalendarGrants(adminID, calID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
 	}
-	if len(cal.SharedWith) != 1 || cal.SharedWith[0] != bobID {
-		t.Errorf("SharedWith = %v, want [%s]", cal.SharedWith, bobID)
+	if g, err := a.ACL.GetCalendarGrant(adminID, calID, bobID); err != nil || g == nil || g.Level != "freebusy" || g.State != "accepted" {
+		t.Errorf("grant for bob = %+v, %v; want freebusy/accepted", g, err)
 	}
 
 	// Unshare goes through the same router: mutating route, 200 with the
@@ -113,12 +117,8 @@ func TestShareCalendarThroughRouter(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("HX-Trigger") != "calendarRefresh" {
 		t.Errorf("unshare: status %d, HX-Trigger %q; want 200 and calendarRefresh", resp.StatusCode, resp.Header.Get("HX-Trigger"))
 	}
-	cal, err = a.Calendars.Get(adminID, calID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cal.SharedWith) != 0 {
-		t.Errorf("SharedWith after unshare = %v, want empty", cal.SharedWith)
+	if n := grantCount(); n != 0 {
+		t.Errorf("grants after unshare = %d, want 0", n)
 	}
 	if resp := unshare(bobID); resp.StatusCode != http.StatusOK {
 		t.Errorf("repeat unshare: status %d, want 200", resp.StatusCode)
@@ -136,8 +136,8 @@ func TestShareCalendarThroughRouter(t *testing.T) {
 	if r.StatusCode == http.StatusOK {
 		t.Errorf("sessionless unshare: status 200, want a refusal")
 	}
-	if cal, err = a.Calendars.Get(adminID, calID); err != nil || len(cal.SharedWith) != 1 {
-		t.Errorf("SharedWith after sessionless unshare = %v, %v; want bob kept", cal.SharedWith, err)
+	if n := grantCount(); n != 1 {
+		t.Errorf("grants after sessionless unshare = %d; want bob kept", n)
 	}
 }
 
@@ -182,11 +182,7 @@ func TestShareCalendarRateLimitThroughRouter(t *testing.T) {
 	if resp.Header.Get("Retry-After") == "" {
 		t.Error("missing Retry-After header")
 	}
-	cal, err := a.Calendars.Get(adminID, calID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cal.SharedWith) != 0 {
-		t.Errorf("SharedWith = %v, want empty", cal.SharedWith)
+	if n, err := a.ACL.CountCalendarGrants(adminID, calID); err != nil || n != 0 {
+		t.Errorf("grants = %d, %v; want 0", n, err)
 	}
 }

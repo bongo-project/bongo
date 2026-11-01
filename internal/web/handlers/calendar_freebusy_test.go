@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -51,7 +52,10 @@ func TestFreeBusySharedCalendarAuthorises(t *testing.T) {
 	events := store.NewEventStore(ps, applier)
 	calendars := store.NewCalendarStore(ps, applier)
 	h := NewCalendarHandler(events, calendars, nil)
+	h.SetACL(store.NewACLStore(ps, applier))
 
+	// A share made before grants existed: it reaches free/busy only through
+	// the migration, which must keep its meaning.
 	if _, err := calendars.Create("victim", &bongov1.Calendar{Name: "Work", SharedWith: []string{"friend"}}); err != nil {
 		t.Fatalf("Create calendar: %v", err)
 	}
@@ -65,6 +69,13 @@ func TestFreeBusySharedCalendarAuthorises(t *testing.T) {
 		rr := httptest.NewRecorder()
 		h.FreeBusy(rr, req)
 		return rr.Code, rr.Body.String()
+	}
+
+	if code, _ := do("friend", "victim"); code != 403 {
+		t.Fatalf("unmigrated legacy share: %d, want 403 (free/busy no longer reads shared_with)", code)
+	}
+	if n, err := store.MigrateCalendarGrants(ps, applier, time.Unix(1000, 0)); err != nil || n != 1 {
+		t.Fatalf("MigrateCalendarGrants = %d, %v", n, err)
 	}
 
 	ownCode, ownBody := do("victim", "victim")

@@ -122,6 +122,7 @@ type Agent struct {
 	Contacts     *store.ContactStore
 	Events       *store.EventStore
 	Calendars    *store.CalendarStore
+	ACL          *store.ACLStore
 	BlobSync     *cluster.BlobSyncer
 	AddressStore *store.AddressStore
 	DomainQuota  *store.DomainQuotaStore
@@ -229,6 +230,7 @@ type Agent struct {
 	orphanGCCancel        context.CancelFunc
 	usageCancel           context.CancelFunc
 	rulesMigrationCancel  context.CancelFunc
+	grantsMigrationCancel context.CancelFunc
 	previewCancel         context.CancelFunc
 	addrVerifyCancel      context.CancelFunc
 
@@ -511,6 +513,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 			a.Contacts.SetSearch(a.Search)
 		}
 		a.Calendars = store.NewCalendarStore(pebbleStore, a)
+		a.ACL = store.NewACLStore(pebbleStore, a)
 		a.Events = store.NewEventStore(pebbleStore, a)
 		if a.Search != nil {
 			a.Events.SetSearch(a.Search)
@@ -1447,6 +1450,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				calendarH.SetQuotaChecker(a.DomainQuota)
 			}
 			calendarH.SetShareResolver(sharedResolver)
+			calendarH.SetACL(a.ACL)
 			if a.Preferences != nil {
 				calendarH.SetZoneSource(a.Preferences)
 			}
@@ -2032,6 +2036,19 @@ func (a *Agent) Run(ctx context.Context) error {
 	// must stay before the listeners open: it rewrites whole calendar records.
 	a.pruneLegacyCalendarShares()
 
+	// Turn the remaining shared_with entries into grants. Leader-only and
+	// before the listeners open, because free/busy no longer reads shared_with:
+	// an unmigrated share grants nothing. A node that gains leadership later,
+	// or a boot pass that failed, is covered by the retry worker.
+	a.migrateCalendarGrantsPass(a.IsLeader)
+	if a.Raft != nil && a.ACL != nil {
+		grantsCtx, grantsCancel := context.WithCancel(ctx)
+		a.grantsMigrationCancel = grantsCancel
+		a.goWorker("calendar-grants", func() {
+			a.runCalendarGrantsMigration(grantsCtx, calendarGrantsInterval, a.IsLeader)
+		})
+	}
+
 	// Forwards that predate verification are grandfathered so they keep
 	// working, then listed so the operator can decide. Runs after the address
 	// index is populated so hosted targets resolve and are skipped.
@@ -2236,6 +2253,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 	prevUsers := map[string]bool{}
 	prevGhosts := map[string]bool{}
 	prevBlobs := map[string]bool{}
+	prevGrants := map[string]bool{}
 	// "" is a sentinel BlobGCMode() never returns (it normalises everything to
 	// off/dryrun/on), so blobGCPass treats tick one as a mode change too.
 	// That is harmless -- prevBlobs is already empty on tick one regardless --
@@ -2262,6 +2280,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 			prevBlobs, prevBlobMode = a.blobGCPass(prevBlobs, prevBlobMode, minAge)
 			a.sweepSendLogs(time.Now(), store.SendLogTTL)
 			a.sweepVacationSent(time.Now(), store.VacationSentTTL)
+			prevGrants = a.sweepOrphanedGrants(prevGrants)
 		}
 	}
 }
@@ -3637,6 +3656,109 @@ func (a *Agent) runRulesFirstMatchMigration(ctx context.Context, interval time.D
 	}
 }
 
+// calendarGrantsInterval is how often a node that has not yet seen the
+// calendar-grants marker checks whether it is leader and the migration is due.
+// A variable so tests can shorten it.
+var calendarGrantsInterval = 30 * time.Second
+
+// migrateCalendarGrantsPass turns legacy Calendar.shared_with entries into
+// accepted freebusy grants. The marker at /system/migrations/calendar-grants-v1
+// is written last, only after a run with no errors, so a failure is logged,
+// leaves the marker unset and is retried by the next pass.
+//
+// It writes only when isLeader reports true, checked before anything is read
+// or applied. It reports whether the work is finished: the marker is present.
+// It returns false on a follower and on any error; the caller retries.
+// Startup does not fail on it. The grants travel in /__acl__/ commands, so
+// every node must run this version before the leader migrates.
+func (a *Agent) migrateCalendarGrantsPass(isLeader func() bool) (done bool) {
+	if a.Store == nil || a.ACL == nil || !isLeader() {
+		return false
+	}
+	if marked, err := a.ACL.MigrationDone(); err != nil {
+		a.logger.Warn("calendar-grants: marker unreadable", "error", err)
+		return false
+	} else if marked {
+		return true
+	}
+	n, err := a.ACL.MigrateShares(time.Now())
+	if err != nil {
+		a.logger.Warn("calendar-grants: migration incomplete", "granted", n, "error", err)
+		return false
+	}
+	if n > 0 {
+		a.logger.Info("calendar-grants: converted shared_with entries to grants", "count", n)
+	}
+	if err := a.ACL.MarkMigrationDone(); err != nil {
+		a.logger.Warn("calendar-grants: marker not written", "error", err)
+		return false
+	}
+	return true
+}
+
+// runCalendarGrantsMigration retries migrateCalendarGrantsPass on every tick
+// until it reports done or ctx ends.
+func (a *Agent) runCalendarGrantsMigration(ctx context.Context, interval time.Duration, isLeader func() bool) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if a.migrateCalendarGrantsPass(isLeader) {
+				return
+			}
+		}
+	}
+}
+
+// sweepOrphanedGrants removes grants whose owner profile, calendar or grantee
+// profile is gone. It is the backstop for the best-effort revokes on user
+// delete, which can fail, and for the window between a calendar's revoke and
+// its delete.
+//
+// A grant must be seen orphaned on two consecutive passes, and only
+// store.ErrNotFound counts as gone: any other read error keeps the grant. The
+// deletes are revoke commands. Leader-only. It returns the grants seen
+// orphaned this pass, to be passed in as prev on the next.
+func (a *Agent) sweepOrphanedGrants(prev map[string]bool) map[string]bool {
+	if a.Raft == nil || !a.IsLeader() || a.ACL == nil {
+		return map[string]bool{}
+	}
+	refs, err := a.ACL.ListGrantRefs()
+	if err != nil {
+		a.logger.Warn("orphan-gc: listing grants failed", "error", err)
+		return prev
+	}
+	current := map[string]bool{}
+	removed := 0
+	for _, ref := range refs {
+		orphaned, err := a.ACL.GrantOrphaned(ref)
+		if err != nil {
+			a.logger.Warn("orphan-gc: grant check failed", "owner", ref.Owner, "resource", ref.Resource, "error", err)
+			continue
+		}
+		if !orphaned {
+			continue
+		}
+		id := string(store.ACLKey(ref.Kind, ref.Owner, ref.Resource, ref.Grantee))
+		current[id] = true
+		if !prev[id] {
+			continue // first sighting: wait one more interval
+		}
+		if err := a.ACL.RevokeRef(ref); err != nil {
+			a.logger.Warn("orphan-gc: revoking orphaned grant failed", "owner", ref.Owner, "resource", ref.Resource, "error", err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		a.logger.Info("orphan-gc: reclaimed orphaned grants", "count", removed)
+	}
+	return current
+}
+
 // reportGrandfatheredForwards lists forwards that work only because they
 // predate verification, so the operator can decide whether to keep them.
 // Read-only.
@@ -4368,6 +4490,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	}
 	if a.rulesMigrationCancel != nil {
 		a.rulesMigrationCancel()
+	}
+	if a.grantsMigrationCancel != nil {
+		a.grantsMigrationCancel()
 	}
 	if a.previewCancel != nil {
 		a.previewCancel()

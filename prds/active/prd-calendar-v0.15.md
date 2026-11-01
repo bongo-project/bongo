@@ -766,3 +766,15 @@ Other candidates:
   v0.12 PRD 8.2) and make the SSE reminder dedupe survive the hourly wipe.
 - Week, day and the calendar index place timed events in the server zone,
   not the user's preference zone (v0.12 PRD 8.2).
+
+Found while building Phase A, batch 1 (2026-11-01):
+
+- `CalendarStore.Delete` revokes the calendar's grants, but no route deletes
+  a calendar (web or CalDAV collection DELETE). A story that adds calendar
+  deletion must call it; until then the leader sweep covers orphans.
+- An override whose RECURRENCE-ID is also listed in EXDATE is still shown.
+  RFC 5545 leaves this ambiguous; Google and Apple differ.
+- `GrantOrphaned` probes `/user/{id}/profile` with unescaped IDs. User IDs
+  never contain `/`, so this is hardening only.
+- Web events saved before v0.15 carry no zone and keep expanding in UTC; a
+  series created before the upgrade can still shift by an hour across DST.

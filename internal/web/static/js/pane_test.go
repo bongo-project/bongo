@@ -193,3 +193,66 @@ func TestArchiveSwipeAndShortcut(t *testing.T) {
 		t.Error("e shortcut or its help entry is missing")
 	}
 }
+
+// The event form wraps the attendees input in the galAutocomplete component to
+// make room for the suggestion list, so init must read the seeded value from
+// the inner input; otherwise an edit would start with an empty field and drop
+// every attendee.
+func TestGalAutocompleteSeedsFromWrappedInput(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	start := strings.Index(js, "Alpine.data('galAutocomplete'")
+	if start < 0 {
+		t.Fatal("bongo.js has no galAutocomplete component")
+	}
+	body := js[start : start+strings.Index(js[start:], "onInput(el)")]
+	if !strings.Contains(body, "querySelector('input[name]')") {
+		t.Error("galAutocomplete.init must fall back to the wrapped input value attribute")
+	}
+}
+
+// Picking a suggestion in the attendees field replaces only the entry being
+// typed, and the search asks about only that entry. The mode comes from
+// data-gal-multi on the wrapper, so the compose To/Cc/Bcc fields, which carry
+// no such attribute, keep searching and replacing the whole field.
+func TestGalAutocompleteMultiValueField(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	start := strings.Index(js, "Alpine.data('galAutocomplete'")
+	if start < 0 {
+		t.Fatal("bongo.js has no galAutocomplete component")
+	}
+	end := strings.Index(js[start:], "onKeydown(event)")
+	if end < 0 {
+		t.Fatal("galAutocomplete has no onKeydown")
+	}
+	body := js[start : start+end]
+	for _, want := range []string{
+		"this.$el.hasAttribute('data-gal-multi')",
+		"if (!this.multi) return this.query;",
+		"this.query.slice(this.lastSeparator() + 1).trim()",
+		"encodeURIComponent(term)",
+		"this.query.slice(0, cut)",
+		"this.query = entry.email;",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("galAutocomplete lost %q", want)
+		}
+	}
+	if strings.Contains(body, "encodeURIComponent(this.query)") {
+		t.Error("search must go through searchTerm, not the whole field")
+	}
+
+	tmpl, err := os.ReadFile("../../templates/calendar.templ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(tmpl), `x-data="galAutocomplete" data-gal-multi`) {
+		t.Error("the attendees wrapper must set data-gal-multi")
+	}
+	compose, err := os.ReadFile("../../templates/compose.templ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(compose), "data-gal-multi") {
+		t.Error("compose fields must keep the single-value behaviour")
+	}
+}

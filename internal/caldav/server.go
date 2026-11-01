@@ -422,23 +422,24 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 			vevent.Props.SetText(ical.PropLocation, e.Location)
 		}
 
+		loc := icalevent.ZoneOrUTC(e.Timezone)
 		if e.AllDay {
 			// A date, not an instant: the zone plays no part.
 			vevent.Props.SetDate(ical.PropDateTimeStart, icalevent.AllDayDate(e.StartTime))
 			vevent.Props.SetDate(ical.PropDateTimeEnd, icalevent.AllDayDate(e.EndTime))
 		} else {
-			loc := time.UTC
-			if e.Timezone != "" {
-				if l, err := time.LoadLocation(e.Timezone); err == nil {
-					loc = l
-				}
-			}
 			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).In(loc))
 			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).In(loc))
 		}
+		icalevent.AddRecurrence(vevent, e, loc)
 
 		vevent.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
+		icalevent.SetParticipants(vevent.Props, e)
 
+		// A TZID needs the VTIMEZONE that defines it.
+		if tz := icalevent.VTimezoneFor(e, loc); tz != nil {
+			cal.Children = append(cal.Children, tz)
+		}
 		cal.Children = append(cal.Children, vevent.Component)
 	}
 
