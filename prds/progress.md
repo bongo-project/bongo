@@ -1543,3 +1543,8 @@ PATTERN: [testing] To prove a route is behind CSRF, assert the CSRF refusal body
 PATTERN: [sweep] When a mutation sweep reports every guarantee guarded, check the evidence of the entries without test names before believing it; here each had a named failing test in its notes.
 - 2026-11-01: v0.14.0 tagged on 7d331ef and deployed by infra (PR #6, 465 opened, smtp.postmaster_account set). Infra's restored-backup test found the startup postmaster report naming domains whose postmaster@ was delivered by explicit aliases. Fix (v0.14.1): DomainsWithoutPostmaster resolves postmaster@ and abuse@ through every tier; warning text says "postmaster@ or abuse@ does not resolve". Test first (red with the old tier-only check), abuse@-dropped mutant killed.
 PATTERN: [ops] A startup report that predicts behaviour must ask the same function that decides it (here ResolveRecipient), not one tier of it; a partial check produced a false warning operators acted on.
+
+## 2026-11-01: v0.15 import
+
+- v0.14.1 deployed by infra (PR #7, 11:15 UTC); postmaster report silent with smtp.postmaster_account set, and confirmed firing correctly without it on restored data.
+- Imported prds/backlog/prd-calendar-v0.15.md as Phase 30 (20 tasks). Operator decisions 2026-11-01: no split, all 20 stories in v0.15.0; published feed tokens random and stored; resources same-domain only. Added US-020 (RFC 6638, decision 3 of 2026-10-27) as an L story implemented in Bongo's CalDAV wrapper (go-webdav v0.7.0 has no scheduling support). Corrected at import: US-017 default start page is summary (decision 4), US-016 extends the shipped v0.13 agenda, US-018 also relays reports to external senders (v0.14 PRD 8.2).

@@ -26,7 +26,7 @@ change under review introduced it.
 | Phase | Theme | Stories |
 |-------|-------|---------|
 | A | Recurrence and sharing foundations | US-001 to US-005 |
-| B | Meeting invitations (iTIP/iMIP) | US-006 to US-009 |
+| B | Meeting invitations (iTIP/iMIP) | US-006 to US-009, US-020 |
 | C | Publishing and subscriptions | US-010 to US-011 |
 | D | Reminders, tasks and resources | US-012 to US-015 |
 | E | Views | US-016 to US-017 |
@@ -35,7 +35,7 @@ change under review introduced it.
 TASKS rows are assigned by `norman import`. Dependencies: US-002 needs
 US-001; US-004 and US-005 need US-003; Phase B needs US-001 (overrides) and
 US-006 first; US-015 needs Phase B; US-017 needs US-008, US-014 and
-US-019.
+US-019; US-020 needs US-007 to US-009.
 
 ### Size key
 
@@ -251,10 +251,11 @@ sequence fields; ATTENDEE and ORGANIZER from CalDAV clients survive only in
 ### US-007: Send invitations, updates and cancellations (iMIP)
 **Source:** audit #68. **Size:** M. **Needs:** US-006.
 
-**Design:** server-side sending from the web UI only. CalDAV PUTs do not
-send mail in this release: without CalDAV scheduling (RFC 6638), which
-go-webdav does not support, clients such as Thunderbird send iMIP
-themselves, and a server copy would duplicate it (open question 2).
+**Design:** server-side sending from the web UI. CalDAV PUTs do not send
+mail in this story: until the server advertises CalDAV scheduling, clients
+such as Thunderbird send iMIP themselves, and a server copy would duplicate
+it. US-020 adds implicit scheduling for CalDAV clients and reuses this send
+path.
 
 **Acceptance Criteria:**
 - [ ] Saving an event with attendees from the web sends each attendee an
@@ -309,6 +310,50 @@ shown with a warning when the message failed DMARC.
       mail stays in the INBOX.
 - [ ] COUNTER and REFRESH are shown as ordinary mail (non-goal).
 
+### US-020: CalDAV scheduling (RFC 6638) for CalDAV clients
+**Source:** audit #68, 8.1 decision 3. **Size:** L. **Needs:** US-007,
+US-008, US-009.
+
+**What exists:** nothing. go-webdav v0.7.0 has no scheduling support (no
+inbox or outbox collection, no scheduling properties), so Apple Calendar and
+other CalDAV clients cannot send or answer invitations through Bongo.
+
+**Design:** implemented in Bongo's CalDAV HTTP wrapper and backend, not by
+forking go-webdav: the wrapper answers the scheduling properties and the
+outbox POST, and the backend's object write runs implicit scheduling with
+the same iMIP send and receive paths as US-007 to US-009.
+
+**Acceptance Criteria:**
+- [ ] The DAV header advertises `calendar-auto-schedule`. The principal
+      reports `schedule-inbox-URL`, `schedule-outbox-URL` and
+      `calendar-user-address-set` (the user's primary address and verified
+      send-as identities only).
+- [ ] Implicit scheduling as organiser: a PUT or DELETE of an event whose
+      ORGANIZER is one of the user's addresses sends REQUEST or CANCEL to
+      the attendees through the US-007 path (SEQUENCE rules, local and
+      external delivery, rate limits, DKIM), and sets SCHEDULE-STATUS on
+      each ATTENDEE. An attendee with `SCHEDULE-AGENT=CLIENT` or `NONE` is
+      not sent anything.
+- [ ] Implicit scheduling as attendee: a PUT that changes the user's own
+      PARTSTAT on an event they were invited to sends REPLY to the
+      organiser through the US-008 path.
+- [ ] Incoming REQUEST, REPLY and CANCEL for a local user are placed in
+      their schedule inbox as well as delivered as mail, so CalDAV clients
+      show them; nothing is added to a calendar without the user's action
+      (as US-008). A REPLY is applied to the organiser's event under the
+      US-009 rules (DMARC or authenticated local sender).
+- [ ] A free-busy POST to the outbox answers for local users with the
+      busy times their sharing level permits (US-003), and for others with
+      `3.7;Invalid calendar user`.
+- [ ] No duplicate mail: a client that sees `calendar-auto-schedule` stops
+      sending iMIP itself; a test with Apple Calendar and Thunderbird
+      request recordings shows one REQUEST per attendee.
+- [ ] Limits as US-006 and US-007 (100 attendees, recipient budget); the
+      schedule inbox keeps at most 500 items per user, oldest dropped first.
+
+**Security:** the organiser address must be one the user may send as; an
+ORGANIZER the user does not own is refused with 403 and nothing is sent.
+
 ### Phase C: Publishing and subscriptions
 
 Release note: calendars can be published as a read-only feed, optionally
@@ -318,16 +363,16 @@ password-protected, and users can subscribe to external ICS feeds.
 **Source:** audit #66. **Size:** M.
 
 **What exists:** nothing; there is no unauthenticated token route today.
-Signing keys come from `security.DeriveKey(secret, purpose)`
-(`internal/security/derive.go:18`).
 
-**Design:** `Calendar` gains `published` (9), `publish_generation` (10),
-`publish_detail` (11, `full` or `busy`) and `publish_password_hash` (12,
-bcrypt). The token is
-`HMAC-SHA256(DeriveKey(session_secret, "bongo/calendar-publish/v1"),
-owner_id | calendar_guid | generation)`, so the link can be shown again,
-revoked by bumping the generation, and needs no lookup key. Rotating the
-session secret invalidates every published link (release note).
+**Design (8.1 decision 7):** `Calendar` gains `published` (9),
+`publish_token` (10, 32 random bytes from crypto/rand, base64url in the
+link), `publish_detail` (11, `full` or `busy`) and `publish_password_hash`
+(12, bcrypt). The token is stored, so the link can be shown again, is
+independent of `web.session_secret` (rotating the secret leaves published
+links working), and is revoked or regenerated per calendar by writing a new
+token. The route carries the owner and calendar IDs, so no lookup index is
+needed. The token is a capability: it is never logged, and a backup or
+Pebble export contains it.
 
 **Acceptance Criteria:**
 - [ ] `GET /pub/calendar/{owner_id}/{calendar_guid}/{token}.ics` on the
@@ -341,9 +386,10 @@ session secret invalidates every published link (release note).
 - [ ] With a password set, the feed requires HTTP Basic auth (any user
       name); failures are throttled per IP and per calendar with the
       existing `authlimit`.
-- [ ] Settings show the `https://` and `webcal://` links, a Revoke link
-      button (bumps the generation), and the password field. All mutations
-      carry CSRF.
+- [ ] Settings show the `https://` and `webcal://` links, a Regenerate
+      link button (writes a new token; the old link answers 404 at once), an
+      Unpublish button (clears the token), and the password field. All
+      mutations carry CSRF.
 - [ ] The route is GET-only and sets no cookie.
 
 ### US-011: Subscribe to an external ICS feed
@@ -470,15 +516,13 @@ and free/busy.
 ### US-016: The upcoming (agenda) view
 **Source:** audit #60. **Size:** S.
 
-**What exists:** the audit is correct: an Agenda view is v0.13 US-009 (TASKS
-27.9, TODO); no `/calendar/agenda` exists yet.
+**What exists:** the Agenda view shipped in v0.13 (TASKS 27.9,
+`/calendar/agenda`, next 30 days grouped by day).
 
 **Acceptance Criteria:**
-- [ ] If 27.9 has shipped, the agenda includes accepted shared calendars
-      (US-004), subscriptions (US-011) and tasks with a due date (US-014),
-      each marked by its calendar colour.
-- [ ] If 27.9 has not shipped when this story starts, it is built to the
-      v0.13 US-009 specification first, then extended.
+- [ ] The agenda includes accepted shared calendars (US-004), subscriptions
+      (US-011) and tasks with a due date (US-014), each marked by its
+      calendar colour.
 
 ### US-017: Summary page
 **Source:** audit #88. **Size:** M. **Needs:** US-008, US-016, US-019
@@ -494,8 +538,8 @@ audit's silence suggests, so the "starred" section reuses it.
       INBOX if that has not shipped), starred mail, invitations awaiting an
       answer (REQUESTs from US-008 with PARTSTAT NEEDS-ACTION), and events
       and due tasks in the next 7 days.
-- [ ] A preference `start_page` (`inbox` or `summary`, default `inbox`)
-      decides where `/` and login redirect.
+- [ ] A preference `start_page` (`summary` or `inbox`, default `summary`,
+      8.1 decision 4) decides where `/` and login redirect.
 - [ ] Each section renders its own empty state; one failing section shows
       an error in place and does not fail the page.
 - [ ] The page loads in under 300 ms with 10,000 messages in INBOX (a
@@ -521,6 +565,13 @@ SIZE parameters.
       passed on; when it does not and NOTIFY includes SUCCESS, an
       `Action: relayed` report is sent.
 - [ ] `SIZE=` is sent when the remote advertises SIZE.
+- [ ] Bounces and DSN reports for a sender outside the hosted domains are
+      relayed to that sender instead of being dropped by the deliver stage
+      (v0.14 PRD 8.2), under the existing backscatter rules: null senders
+      and unauthenticated forwards still get nothing, and relayed reports
+      are capped per recipient and globally, the way reversed SRS bounces
+      already are (`srsAddrLimiter`, `srsGlobalLimiter` in the deliver
+      stage).
 
 ### US-019: "To me", "From my contacts" and "Mailing lists" views (from v0.14 US-016)
 **Source:** audit #89. **Size:** M. **Needs:** v0.14 US-015.
@@ -551,7 +602,7 @@ mailbox, which does not scale to header-based views.
 
 ## 4. Functional Requirements
 
-FR-1 to FR-19 are the acceptance criteria of US-001 to US-019. In every
+FR-1 to FR-20 are the acceptance criteria of US-001 to US-020. In every
 story:
 
 - Every cookie-authenticated mutation is behind CSRF and same-origin checks.
@@ -661,16 +712,8 @@ builds on the grant key space from US-003.
 
 ## 8. Open Questions
 
-1. The release is large (section 8.2). Which split does the operator want?
-2. CalDAV clients that expect server-side scheduling (Apple Calendar) will
-   not send invitations through Bongo in this release. Is RFC 6638 wanted
-   later? It needs go-webdav support or a fork.
-3. US-010 ties published links to the session secret. Is invalidating every
-   published link on secret rotation acceptable, or should tokens be random
-   and stored?
-4. US-015: should resources accept bookings from other hosted domains on the
-   same server?
-5. US-017: should the summary become the default start page?
+None open. Questions 1 to 5 are answered in 8.1 (decisions 3, 4, 6, 7
+and 8).
 
 ### 8.1 Decisions
 
@@ -686,6 +729,13 @@ builds on the grant key space from US-003.
 5. (operator, 2026-10-27) The mail views (v0.14 US-016) and DSN relay
    (v0.14 US-011) move into this release, per the v0.14 split. They are
    US-019 and US-018 here.
+6. (operator, 2026-11-01) Open question 1: no split. All 20 stories,
+   US-001 to US-020, ship in v0.15.0. RFC 6638 is US-020 (decision 3).
+7. (operator, 2026-11-01) Open question 3: published feed tokens are
+   random and stored per calendar, not derived from the session secret
+   (US-010).
+8. (operator, 2026-11-01) Open question 4: resources accept bookings only
+   from accounts on their own domain (US-015, as written).
 
 ### 8.2 Candidates for the next release
 
@@ -700,8 +750,10 @@ Audit corrections found while writing this PRD (2026-10-26):
 - The reminder checker's dedupe is wiped hourly, so a 60-minute reminder can
   fire twice, and it scans every key under `/user/` every minute.
 
-Release size: 17 stories (3 S, 13 M, 1 L). That is above the ~15-story guide
-and heavy in M stories. Proposed split:
+Release size (2026-10-26, before US-020 was added): 17 stories (3 S,
+13 M, 1 L). That is above the ~15-story guide and heavy in M stories.
+Proposed split (not taken: 8.1 decision 6 ships all 20 stories in
+v0.15.0):
 
 | Release | Stories | Why |
 |---------|---------|-----|
