@@ -17,7 +17,8 @@ another host.
 sudo ln -s /usr/local/bin/bongo /usr/sbin/sendmail
 ```
 
-When the binary is started through a name that ends in `sendmail`, it behaves as
+When the binary is invoked by the exact name `sendmail` (for example
+`/usr/sbin/sendmail`; `bongo-sendmail` does not count), it behaves as
 `bongo sendmail`. `bongo sendmail ...` works too.
 
 ## Configuration file
@@ -128,8 +129,9 @@ to an address the account is allowed to send as.
 | 78 | `EX_CONFIG` | Configuration missing, unreadable, invalid, or accessible by group or others |
 
 The same reply means different things in different steps, so the code depends on
-the step: `550 5.7.1 Relaying denied` at `RCPT` is 67, while `550 5.7.1 From
-address not owned by authenticated user` at `DATA` is 77. On any failure the
+the step: `550 5.1.1 Mailbox unavailable` at `RCPT` (an unknown address on a
+domain the server hosts, or a typo) is 67, while `550 5.7.1 From address not
+owned by authenticated user` at `DATA` is 77. On any failure the
 server's reply is printed on standard error. The password is never printed or
 logged, and `-v` does nothing.
 

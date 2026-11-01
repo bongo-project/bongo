@@ -831,5 +831,13 @@
   "compose.flashQueued": "Nachricht zur Zustellung eingereiht",
   "compose.flashDraftSaved": "Entwurf gespeichert",
   "admin.domainHasAliases": "Die Domain %s hat die Alias-Domains %s. Löschen Sie zuerst die Alias-Domains.",
+  "admin.errInvalidDomain": "Ungültiger Domainname",
+  "admin.errInvalidAliasTarget": "Ungültiges Alias-Ziel",
+  "admin.errAliasSelf": "Eine Domain kann kein Alias ihrer selbst sein",
+  "admin.errAliasTargetNotHosted": "Das Alias-Ziel ist keine gehostete Domain",
+  "admin.errAliasTargetIsAlias": "Das Alias-Ziel ist selbst eine Alias-Domain",
+  "admin.errAliasCatchAll": "Eine Alias-Domain verwendet den Catch-all ihres Ziels",
+  "rules.flashCreated": "Regel erstellt",
+  "rules.flashUpdated": "Regel aktualisiert",
   "admin.domainAliasesMore": "und %d weitere"
 }

@@ -1520,3 +1520,15 @@ PATTERN: [mail] Parse address headers from the raw value with net/mail, which de
 - 28.15 CLI list commands. Plan PROCEED, review MINOR. The orchestrator made `--http-addr` refuse a non-HTTP scheme with a clear error (test added) and clarified PRD 6.1 (no new /internal/* route on the public router; the control listener carries the US-018 routes). Logged: fetchDirectory is the fifth copy of the signed control-request helper (dedup candidate for the sweep); `--json` adds an `id` field.
 PATTERN: [security] DTOs built field by field for CLI output keep secrets out by construction; embedding the stored proto would leak any secret field added later.
 - Phase 28 complete (15 tasks, 2026-10-31): collapsed into TASKS-archive.md, PRD moved to done/. Sweep (invariants and comments) offered rather than run, since sweep_mode is unset and the session reached its 15-task limit. Next: `norman verify` against the PRD, in a fresh session.
+
+## 2026-11-01: norman verify v0.14 and Phase 29 batch 1
+
+- norman verify (adversarial, 33 agents) on a13cbbe: 1 PASS, 14 PARTIAL, 1 FAIL (US-003, DNS guide without 465). Report in verification.md; the gaps became Phase 29, scoped into v0.14 by the user. The user agreed to tag v0.14.0 after the behaviour fixes (batches 1 and 2), with test-only tasks and the sweep allowed to follow.
+- 29.1 hosted unknown RCPT. Plan PROCEED, review MINOR (address parse now inlined three times in server.go; resolver transient errors become 5.1.1, noted in 8.2). Two mutants killed by the reviewer.
+- 29.2 port 465 follow-through. Review MINOR; the orchestrator moved newDAVHandlers' doc comment back above its function.
+- 29.3 rules migration on leadership. Review MINOR, with one real defect: the worker's new re-read before each PUT treated a deleted rule as "proceed" and would write it back. The orchestrator fixed it (skip on ErrNotFound, test with a delete between scan and PUT, mutant killed) and replaced the timing-dependent Run wiring test with a check that Run registers the worker under a one-hour interval (mutant killed).
+- 29.4 translations. Review PASS.
+- 29.6 reply recipients. Review MINOR (the worker summary wrongly said Reply to List goes through replyRecipients; it does not).
+PATTERN: [store] A re-read guard before a blind PUT must treat a missing key as "skip"; treating NotFound as "proceed" writes back a record the user deleted.
+PATTERN: [testing] A test of a background loop's wiring should not race the loop's own exit; make the loop unable to tick (long interval) and assert it was started, and test the loop's behaviour directly.
+PATTERN: [verify] Most PARTIAL verdicts in an adversarial verify were wiring gaps: the behaviour was right, but deleting the agent line that wires it left the suite green. Ask for one wiring test per option when a story adds an option.

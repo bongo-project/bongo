@@ -53,6 +53,9 @@ func TestValidateListenerPorts(t *testing.T) {
 		c.Server.Agents = []string{"smtp"}
 		c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400", TLS: TLSConfig{CertFile: "c.crt", KeyFile: "c.key", CAFile: "ca.pem"}}
 	}
+	smtpTLS := func(c *Config) {
+		c.SMTP.TLS = TLSConfig{CertFile: "/certs/smtp.crt", KeyFile: "/certs/smtp.key"}
+	}
 	tests := []struct {
 		name    string
 		modify  func(*Config)
@@ -93,17 +96,39 @@ func TestValidateListenerPorts(t *testing.T) {
 		}, nil},
 		{"imap tls port too high", func(c *Config) { c.IMAP.PortTLS = 70000 }, []string{"imap.port_tls"}},
 		{"submission port negative", func(c *Config) { c.SMTP.SubmissionPort = -1 }, []string{"smtp.submission_port"}},
-		{"submissions port negative", func(c *Config) { c.SMTP.SubmissionsPort = -1 }, []string{"smtp.submissions_port"}},
+		{"submissions port negative", func(c *Config) { smtpTLS(c); c.SMTP.SubmissionsPort = -1 }, []string{"smtp.submissions_port"}},
 		{"submissions port against web", func(c *Config) {
+			smtpTLS(c)
 			c.SMTP.SubmissionsPort = 8303
 			c.Web.Port = 8303
 		}, []string{"smtp.submissions_port", "web.port"}},
-		{"submissions port against submission", func(c *Config) { c.SMTP.SubmissionsPort = c.SMTP.SubmissionPort }, []string{"smtp.submissions_port", "smtp.submission_port"}},
+		{"submissions port against submission", func(c *Config) { smtpTLS(c); c.SMTP.SubmissionsPort = c.SMTP.SubmissionPort }, []string{"smtp.submissions_port", "smtp.submission_port"}},
+		{"submissions clash without certificate is accepted", func(c *Config) {
+			c.SMTP.SubmissionsPort = 8303
+			c.Web.Port = 8303
+		}, nil},
+		{"submissions clash with smtp disabled is accepted", func(c *Config) {
+			smtpTLS(c)
+			c.SMTP.Enabled = false
+			c.SMTP.SubmissionsPort = 8303
+			c.Web.Port = 8303
+		}, nil},
+		{"agent submissions clash without certificate is accepted", func(c *Config) {
+			agentSMTP(c)
+			c.SMTP.SubmissionsPort = 8303
+			c.Web.Port = 8303
+		}, nil},
+		{"dev submissions clash needs no certificate", func(c *Config) {
+			c.Server.Role = "dev"
+			c.Server.ControlAddr = "127.0.0.1:8081"
+			c.SMTP.SubmissionsPort = 8080
+		}, []string{"smtp.submissions_port", "web.port"}},
 		{"submissions port zero is skipped", func(c *Config) {
 			c.SMTP.SubmissionsPort = 0
 		}, nil},
 		{"agent smtp submissions against web", func(c *Config) {
 			agentSMTP(c)
+			smtpTLS(c)
 			c.SMTP.SubmissionsPort = 8303
 			c.Web.Port = 8303
 		}, []string{"smtp.submissions_port", "web.port"}},

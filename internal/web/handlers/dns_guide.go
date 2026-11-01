@@ -25,7 +25,7 @@ const dnsGuideTTL = 3600
 // The second return value is true when DKIM is still pending, so the UI can
 // prompt the operator to generate a key instead of publishing a broken
 // empty-p= record.
-func buildDNSGuide(domain, mailHostname, serverIPv4, serverIPv6, dkimSelector, dkimTXTRecord string) ([]templates.DNSGuideRow, bool) {
+func buildDNSGuide(domain, mailHostname string, submissions bool, serverIPv4, serverIPv6, dkimSelector, dkimTXTRecord string) ([]templates.DNSGuideRow, bool) {
 	domain = strings.ToLower(strings.TrimSpace(domain))
 	mailHostname = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(mailHostname), "."))
 
@@ -69,6 +69,10 @@ func buildDNSGuide(domain, mailHostname, serverIPv4, serverIPv6, dkimSelector, d
 	if mailHostname != "" {
 		add("SRV", "_autodiscover._tcp", fmt.Sprintf("0 1 443 %s.", mailHostname))
 		add("SRV", "_imaps._tcp", fmt.Sprintf("0 1 993 %s.", mailHostname))
+		// RFC 8314 prefers implicit TLS, so 465 is listed before 587.
+		if submissions {
+			add("SRV", "_submissions._tcp", fmt.Sprintf("0 1 465 %s.", mailHostname))
+		}
 		add("SRV", "_submission._tcp", fmt.Sprintf("0 1 587 %s.", mailHostname))
 		add("SRV", "_caldavs._tcp", fmt.Sprintf("0 1 443 %s.", mailHostname))
 		add("SRV", "_carddavs._tcp", fmt.Sprintf("0 1 443 %s.", mailHostname))

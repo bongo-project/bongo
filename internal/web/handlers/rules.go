@@ -209,7 +209,7 @@ func (h *RulesHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/rules?flash="+url.QueryEscape("Rule created"+note), http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/rules?flash="+url.QueryEscape(fwdText(r, "rules.flashCreated")+note), http.StatusSeeOther)
 }
 
 // EditRule renders the edit rule form.
@@ -264,7 +264,7 @@ func (h *RulesHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/rules?flash="+url.QueryEscape("Rule updated"+note), http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/rules?flash="+url.QueryEscape(fwdText(r, "rules.flashUpdated")+note), http.StatusSeeOther)
 }
 
 // DeleteRule removes a rule.

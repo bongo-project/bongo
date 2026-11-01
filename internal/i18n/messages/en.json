@@ -831,5 +831,13 @@
   "compose.flashQueued": "Message queued for delivery",
   "compose.flashDraftSaved": "Draft saved",
   "admin.domainHasAliases": "Domain %s is aliased by %s. Delete the alias domains first.",
+  "admin.errInvalidDomain": "invalid domain name",
+  "admin.errInvalidAliasTarget": "invalid alias target",
+  "admin.errAliasSelf": "a domain cannot be an alias of itself",
+  "admin.errAliasTargetNotHosted": "alias target is not a hosted domain",
+  "admin.errAliasTargetIsAlias": "alias target is itself an alias",
+  "admin.errAliasCatchAll": "an alias domain uses the catch-all of its target",
+  "rules.flashCreated": "Rule created",
+  "rules.flashUpdated": "Rule updated",
   "admin.domainAliasesMore": "and %d more"
 }

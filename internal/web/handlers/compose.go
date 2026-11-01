@@ -331,12 +331,45 @@ func firstNonEmpty(a, b string) string {
 }
 
 // replyRecipients returns the To and Cc field values of a plain reply or a
-// reply-all. To is the Reply-To address list when it parses, else From.
+// reply-all.
+//
+// To is the Reply-To address list when it parses, else From, in both cases
+// without the user's own addresses. When nothing foreign is left the message
+// is the user's own (sent by them, or redirecting replies back to them), and
+// To becomes the original To recipients, as mail clients do for both Reply and
+// Reply all. A note to self falls back to the primary, so To is never empty.
 func (h *ComposeHandler) replyRecipients(r *http.Request, userID, primary string, meta *bongov1.MailMeta, env *enmime.Envelope) (to, cc string) {
-	to = meta.From
+	var toAddrs []string // bare addresses in To, for the Cc dedup
 	replyToAddrs := replyToAddresses(firstNonEmpty(meta.ReplyTo, rawAddressHeader(env, "Reply-To")))
-	if len(replyToAddrs) > 0 {
-		to = strings.Join(replyToAddrs, ", ")
+	for _, a := range replyToAddrs {
+		if !h.isOwnAddress(userID, primary, a) {
+			toAddrs = append(toAddrs, a)
+		}
+	}
+	if len(toAddrs) > 0 {
+		to = strings.Join(toAddrs, ", ")
+	} else if from, err := netmail.ParseAddress(meta.From); err != nil {
+		// Ownership cannot be tested on an unparseable From; keep it raw.
+		to = meta.From
+	} else if !h.isOwnAddress(userID, primary, from.Address) {
+		to = meta.From
+		toAddrs = []string{from.Address}
+	}
+	if to == "" {
+		// The user's own message: address its recipients.
+		seenTo := map[string]bool{}
+		for _, a := range replyAllCandidates(env, meta.To, nil) {
+			key := strings.ToLower(a)
+			if seenTo[key] || h.isOwnAddress(userID, primary, a) {
+				continue
+			}
+			seenTo[key] = true
+			toAddrs = append(toAddrs, a)
+		}
+		if len(toAddrs) == 0 {
+			toAddrs = []string{primary}
+		}
+		to = strings.Join(toAddrs, ", ")
 	}
 
 	// Reply-all is used when the request asks for it (?all=1, the message
@@ -352,12 +385,9 @@ func (h *ComposeHandler) replyRecipients(r *http.Request, userID, primary string
 
 	// Cc = original To + original Cc minus the user's own addresses and the
 	// addresses already in To.
-	seen := make(map[string]bool, len(replyToAddrs)+1)
-	for _, a := range replyToAddrs {
+	seen := make(map[string]bool, len(toAddrs)+1)
+	for _, a := range toAddrs {
 		seen[strings.ToLower(a)] = true
-	}
-	if from, err := netmail.ParseAddress(meta.From); err == nil && len(replyToAddrs) == 0 {
-		seen[strings.ToLower(from.Address)] = true
 	}
 	var ccAddrs []string
 	for _, a := range replyAllCandidates(env, meta.To, meta.Cc) {

@@ -224,3 +224,75 @@ func TestReorderKeepsActions(t *testing.T) {
 		t.Errorf("after reorder: actions=%d priority=%d", len(got.Actions), got.Priority)
 	}
 }
+
+// hookApplier runs onFirst before the first command is applied, to model a user
+// saving a rule between the migration's scan and its PUT.
+type hookApplier struct {
+	*directApplier
+	onFirst func()
+	fired   bool
+}
+
+func (h *hookApplier) ApplyCommand(cmd *bongov1.RaftCommand, d time.Duration) error {
+	if !h.fired {
+		h.fired = true
+		h.onFirst()
+	}
+	return h.directApplier.ApplyCommand(cmd, d)
+}
+
+func TestMigrateFirstMatchSkipsRuleSavedMeanwhile(t *testing.T) {
+	rs, app := newMigrationStore(t)
+	putLegacy(t, rs, "u1", "a", 1, "A")
+	putLegacy(t, rs, "u1", "b", 2, "B")
+
+	edited := &bongov1.FilterRule{Id: "b", Priority: 2, Enabled: true}
+	SetActions(edited, []*bongov1.FilterAction{{Type: "flag"}, {Type: "copy", Target: "NEW"}})
+	data, err := proto.Marshal(edited)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs.applier = &hookApplier{directApplier: app, onFirst: func() {
+		if err := rs.pebble.Set(ruleKey("u1", "b"), data); err != nil {
+			t.Fatal(err)
+		}
+	}}
+
+	if _, err := rs.MigrateFirstMatch(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := rs.List("u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range got {
+		if r.Id == "b" && (r.StopProcessing || len(r.Actions) != 2 || r.Actions[1].Target != "NEW") {
+			t.Errorf("user's edit was overwritten: %v", r)
+		}
+	}
+}
+
+func TestMigrateFirstMatchSkipsRuleDeletedMeanwhile(t *testing.T) {
+	rs, app := newMigrationStore(t)
+	putLegacy(t, rs, "u1", "a", 1, "A")
+	putLegacy(t, rs, "u1", "b", 2, "B")
+
+	rs.applier = &hookApplier{directApplier: app, onFirst: func() {
+		if err := rs.pebble.Delete(ruleKey("u1", "b")); err != nil {
+			t.Fatal(err)
+		}
+	}}
+
+	if _, err := rs.MigrateFirstMatch(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := rs.List("u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range got {
+		if r.Id == "b" {
+			t.Errorf("rule deleted during the migration was written back: %v", r)
+		}
+	}
+}

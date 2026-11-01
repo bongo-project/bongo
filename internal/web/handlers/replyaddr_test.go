@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -265,6 +266,115 @@ func TestReplyAllDropsDuplicatesOfTo(t *testing.T) {
 	}
 	if cc := fieldValue(body, "cc"); cc != "dana@example.com" {
 		t.Errorf("Cc = %q, want dana once", cc)
+	}
+}
+
+// TestReplyToExcludesOwnAddresses runs the real store.RecipientResolver (domain
+// alias rewrite, legacy alias tier, verified send-as) through the reply
+// handler. The user's own addresses never stay in To; when nothing foreign is
+// left the original recipients are addressed, and a note to self falls back to
+// the primary. Plain reply and reply-all agree on To.
+func TestReplyToExcludesOwnAddresses(t *testing.T) {
+	tests := []struct {
+		name   string
+		meta   *bongov1.MailMeta
+		wantTo string
+		wantCc string // reply-all only
+	}{
+		{
+			name:   "Reply-To own alias-domain address dropped",
+			meta:   &bongov1.MailMeta{From: "bob@example.com", ReplyTo: "alice@alias.test, team@example.org"},
+			wantTo: "team@example.org",
+		},
+		{
+			name:   "Reply-To all own falls back to From",
+			meta:   &bongov1.MailMeta{From: "Bob <bob@example.com>", ReplyTo: "alice@alias.test, ALICE@example.com", To: []string{"alice@example.com", "dana@example.com"}},
+			wantTo: "Bob &lt;bob@example.com&gt;", wantCc: "dana@example.com",
+		},
+		{
+			name:   "Reply-To on a catch-all address is not own",
+			meta:   &bongov1.MailMeta{From: "bob@example.com", ReplyTo: "ghost@example.com"},
+			wantTo: "ghost@example.com",
+		},
+		{
+			name:   "own sent via legacy alias",
+			meta:   &bongov1.MailMeta{From: "old@example.com", To: []string{"bob@example.com", "alice@alias.test"}, Cc: []string{"dana@example.com", "ALICE@example.com"}},
+			wantTo: "bob@example.com", wantCc: "dana@example.com",
+		},
+		{
+			name:   "own sent via verified send-as identity",
+			meta:   &bongov1.MailMeta{From: "me@sendas.test", To: []string{"bob@example.com"}},
+			wantTo: "bob@example.com",
+		},
+		{
+			name:   "own sent with Reply-To pointing at self",
+			meta:   &bongov1.MailMeta{From: "Me <alice@example.com>", ReplyTo: "alice@alias.test", To: []string{"bob@example.com"}},
+			wantTo: "bob@example.com",
+		},
+		{
+			name:   "own sent: To recipients deduplicated and not repeated in Cc",
+			meta:   &bongov1.MailMeta{From: "alice@example.com", To: []string{"bob@example.com", "BOB@example.com", "dana@example.com"}, Cc: []string{"bob@example.com", "erin@example.com"}},
+			wantTo: "bob@example.com, dana@example.com", wantCc: "erin@example.com",
+		},
+		{
+			name:   "note to self keeps the primary",
+			meta:   &bongov1.MailMeta{From: "alice@example.com", To: []string{"alice@alias.test"}},
+			wantTo: "alice@example.com",
+		},
+		{
+			name:   "no To header keeps the primary",
+			meta:   &bongov1.MailMeta{From: "alice@example.com"},
+			wantTo: "alice@example.com",
+		},
+		{
+			name:   "foreign From without Reply-To is unchanged",
+			meta:   &bongov1.MailMeta{From: "Bob <bob@example.com>", To: []string{"alice@example.com", "dana@example.com"}},
+			wantTo: "Bob &lt;bob@example.com&gt;", wantCc: "dana@example.com",
+		},
+	}
+	for _, tt := range tests {
+		for _, all := range []bool{false, true} {
+			name := tt.name + "/reply"
+			query := ""
+			if all {
+				name = tt.name + "/all"
+				query = "all=1"
+			}
+			t.Run(name, func(t *testing.T) {
+				env, uid, email := newPipelineEnv(t)
+				// The alias domain must be hosted, as must its target, or the
+				// rewrite silently does nothing.
+				for k, v := range map[string]string{
+					"/system/domain/example.com":         "enabled",
+					"/system/domain/alias.test":          "enabled",
+					"/system/domain/alias.test/alias_of": "example.com",
+					"/system/alias/old@example.com":      "alice@example.com",
+				} {
+					if err := env.ps.Set([]byte(k), []byte(v)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := env.ps.Set(store.CatchAllKey("example.com"), []byte(uid)); err != nil {
+					t.Fatal(err)
+				}
+				env.seedAddress(t, "me@sendas.test", uid, "sendas.test", true, true)
+
+				tt.meta.Guid = "g-own-to"
+				tt.meta.Subject = "Hi"
+				putRawMessage(t, env, uid, tt.meta, "")
+				body := replyPage(t, env, uid, email, query)
+				if got := fieldValue(body, "to"); got != tt.wantTo {
+					t.Errorf("To = %q, want %q", got, tt.wantTo)
+				}
+				wantCc := ""
+				if all {
+					wantCc = tt.wantCc
+				}
+				if got := fieldValue(body, "cc"); got != wantCc {
+					t.Errorf("Cc = %q, want %q", got, wantCc)
+				}
+			})
+		}
 	}
 }
 

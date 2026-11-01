@@ -9,7 +9,86 @@ import (
 	"testing"
 
 	"github.com/bongo-project/bongo/internal/i18n"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 )
+
+// TestAliasRefusalsAreTranslated: each alias refusal in CreateDomain and
+// SetCatchAll is served in the request's locale, not hard-coded English.
+func TestAliasRefusalsAreTranslated(t *testing.T) {
+	const target = "target.alias.test"
+	tests := []struct {
+		name    string
+		key     string
+		english string
+		run     func(t *testing.T, env *adminScopeTestEnv, locale string) *httptest.ResponseRecorder
+	}{
+		{name: "invalid domain", key: "admin.errInvalidDomain", english: "invalid domain name",
+			run: func(t *testing.T, env *adminScopeTestEnv, l string) *httptest.ResponseRecorder {
+				return aliasCreateLocale(t, env, "x/owner", target, l)
+			}},
+		{name: "invalid target", key: "admin.errInvalidAliasTarget", english: "invalid alias target",
+			run: func(t *testing.T, env *adminScopeTestEnv, l string) *httptest.ResponseRecorder {
+				return aliasCreateLocale(t, env, "alias.test", "bad target", l)
+			}},
+		{name: "self alias", key: "admin.errAliasSelf", english: "a domain cannot be an alias of itself",
+			run: func(t *testing.T, env *adminScopeTestEnv, l string) *httptest.ResponseRecorder {
+				return aliasCreateLocale(t, env, "selfy.test", "selfy.test", l)
+			}},
+		{name: "target not hosted", key: "admin.errAliasTargetNotHosted", english: "alias target is not a hosted domain",
+			run: func(t *testing.T, env *adminScopeTestEnv, l string) *httptest.ResponseRecorder {
+				return aliasCreateLocale(t, env, "alias.test", "nowhere.test", l)
+			}},
+		{name: "target is alias", key: "admin.errAliasTargetIsAlias", english: "alias target is itself an alias",
+			run: func(t *testing.T, env *adminScopeTestEnv, l string) *httptest.ResponseRecorder {
+				if w := aliasCreate(t, env, "first.test", target, true); w.Code != http.StatusSeeOther {
+					t.Fatalf("setup alias: %d", w.Code)
+				}
+				return aliasCreateLocale(t, env, "second.test", "first.test", l)
+			}},
+		{name: "catch-all on alias", key: "admin.errAliasCatchAll", english: "an alias domain uses the catch-all of its target",
+			run: func(t *testing.T, env *adminScopeTestEnv, l string) *httptest.ResponseRecorder {
+				if w := aliasCreate(t, env, "alias.test", target, true); w.Code != http.StatusSeeOther {
+					t.Fatalf("setup alias: %d", w.Code)
+				}
+				return postToHandler(t, env.h, env.h.SetCatchAll, http.MethodPost, "/admin/domains/alias.test/catchall",
+					url.Values{"owner_user_id": {env.d1UserID}}, map[string]string{"domain": "alias.test"},
+					func(r *http.Request) *http.Request {
+						r = withGlobalAdmin(r, env.globalAdminID)
+						return r.WithContext(middleware.WithLocale(r.Context(), l))
+					})
+			}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newAdminScopeTestEnv(t)
+			cascadePut(t, env, "/system/domain/"+target, []byte("enabled"))
+			w := tc.run(t, env, "de")
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %q)", w.Code, w.Body.String())
+			}
+			want := i18n.T("de", tc.key)
+			if want == tc.key || want == i18n.T("en", tc.key) {
+				t.Fatalf("key %s has no distinct de translation: %q", tc.key, want)
+			}
+			if en := i18n.T("en", tc.key); en != tc.english {
+				t.Fatalf("en text = %q, want %q", en, tc.english)
+			}
+			if got := strings.TrimSpace(w.Body.String()); got != want {
+				t.Fatalf("body = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func aliasCreateLocale(t *testing.T, env *adminScopeTestEnv, domain, aliasOf, locale string) *httptest.ResponseRecorder {
+	t.Helper()
+	form := url.Values{"domain": {domain}, "alias_of": {aliasOf}}
+	return postToHandler(t, env.h, env.h.CreateDomain, http.MethodPost, "/admin/domains", form, nil,
+		func(r *http.Request) *http.Request {
+			r = withGlobalAdmin(r, env.globalAdminID)
+			return r.WithContext(middleware.WithLocale(r.Context(), locale))
+		})
+}
 
 func aliasCreate(t *testing.T, env *adminScopeTestEnv, domain, aliasOf string, asGlobal bool) *httptest.ResponseRecorder {
 	t.Helper()
