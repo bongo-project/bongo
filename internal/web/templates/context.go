@@ -32,6 +32,20 @@ func calendarNow(ctx context.Context) time.Time {
 	return time.Now()
 }
 
+type calendarWarningKey struct{}
+
+// WithCalendarWarning records a translated warning for the calendar views to
+// show under the flash message, such as invitations that were not delivered.
+func WithCalendarWarning(ctx context.Context, text string) context.Context {
+	return context.WithValue(ctx, calendarWarningKey{}, text)
+}
+
+// calendarWarning returns the text recorded by WithCalendarWarning, or "".
+func calendarWarning(ctx context.Context) string {
+	text, _ := ctx.Value(calendarWarningKey{}).(string)
+	return text
+}
+
 // jsMessageIDs are the translation keys that bongo.js needs at runtime. They
 // are serialized into the #i18n-data element by layout.templ and read by the
 // i18n() helper in bongo.js. CSP forbids inline scripts, so a JSON data island

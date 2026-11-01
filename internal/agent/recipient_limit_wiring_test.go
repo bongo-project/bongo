@@ -131,6 +131,14 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	if a.calendarHandler == nil {
 		t.Fatal("Run did not mount the calendar handler")
 	}
+	// Invitations are delivered by the compose handler; deleting either
+	// wiring line in Run leaves the calendar sending nothing.
+	if got := a.calendarHandler.InviteSender(); got == nil || got != any(a.composeHandler) {
+		t.Errorf("calendar invite sender = %v, want the compose handler", got)
+	}
+	if a.AddressStore != nil && !a.calendarHandler.HasAddressStore() {
+		t.Error("calendar handler has no send-as address store after Run")
+	}
 	sl := a.calendarHandler.ShareLimiter()
 	if sl == nil {
 		t.Fatal("calendar handler has no share limiter after Run")

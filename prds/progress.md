@@ -1559,3 +1559,14 @@ PATTERN: [proto] A helper that copies a message field by field drops every field
 PATTERN: [testing] Prove "no write on a repeat" with an applier that fails every write and expect success, not by comparing timestamps.
 PATTERN: [limits] A cap checked before resolving the target must still exempt an existing grantee; carry a `full` flag and apply it after the existing-record lookup.
 PATTERN: [merge] When parallel stories both add proto fields, give the transient one a high field number so numbering never collides; the .pb.go conflict is resolved by regenerating, never by hand.
+
+## 2026-11-01: Phase 30 batch 2 (30.2, 30.4, 30.7)
+
+- 30.2 US-002: scope choice (this / following / all) on edit and delete from an occurrence; "this" writes a RECURRENCE-ID override into ical_raw (synthesised first for web events) in one PUT; "following" sets UNTIL (raw and structured Rrule) then creates the new series, restoring the whole original record if the create fails; COUNT carried over minus instances before the split. Criterion 5 wired after 30.7 merged: instance REQUEST/CANCEL with RECURRENCE-ID and the series' stored UID.
+- 30.4 US-004: sharing section in calendar settings; read/write shares in the views under "Shared with me"; resolveEventTarget/needWrite on every write route; CalDAV shared-{owner}-{guid} collections with current-user-privilege-set; writes land under the owner and count against the owner's quota.
+- 30.7 US-007: internal/imip (BuildCalendar with optional RECURRENCE-ID, BuildMessage, Describe); DeliverGenerated shares compose's local/queue/DKIM/rate-limit path; send after save, translated not-reached warning; only when the caller may send as the organiser.
+- Merge: the instance handlers now take owner (data) and caller (zone) separately; Synthesise reuses SynthVEvent so CalDAV, export and iMIP build one VEVENT. Full gate green; occurrence edit checked in the browser.
+PATTERN: [merge] When parallel stories each extract the same builder, keep one and make the other a thin wrapper before the fix round; two near-identical builders drift on the first change.
+PATTERN: [sharing] When a route gains an owner distinct from the caller, every helper it calls needs both: owner for the data, caller for the caller's zone, locale and send-as.
+PATTERN: [testing] A "no attendees sends nothing" test needs a valid organiser and no attendees; with no organiser an earlier guard returns first and the mutant survives.
+PATTERN: [testing] An agent that leaves a background test run behind skews the next gate; check for stray test binaries before every gate.

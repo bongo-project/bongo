@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -40,6 +39,9 @@ type Backend struct {
 	// storage refuses PUT while the data volume is nearly full. Nil means
 	// never refuse. DELETE and reads are not gated.
 	storage StorageGate
+
+	// grants authorises shared calendars. Nil means none are served.
+	grants GrantReader
 }
 
 // StorageGate is satisfied by *diskspace.Monitor.
@@ -173,29 +175,52 @@ func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 			SupportedComponentSet: []string{"VEVENT"},
 		})
 	}
+
+	// Calendars shared with the user at read or write level. The grant list is
+	// read now, on every listing; a freebusy or pending grant is not in it.
+	if b.grants != nil {
+		held, err := b.grants.ListCalendarGrantsHeld(userID)
+		if err != nil {
+			return nil, fmt.Errorf("listing shared calendars: %w", err)
+		}
+		for _, g := range held {
+			if !store.LevelSatisfies(g.Level, store.GrantLevelRead) || g.Owner == userID {
+				continue
+			}
+			cal, err := b.calendars.Get(g.Owner, g.Calendar)
+			if err != nil {
+				continue
+			}
+			result = append(result, caldav.Calendar{
+				Path:                  calPath(userID, sharedSegment(g.Owner, g.Calendar)),
+				Name:                  b.sharedName(g.Owner, cal.Name),
+				Description:           cal.Description,
+				SupportedComponentSet: []string{"VEVENT"},
+			})
+		}
+	}
 	return result, nil
 }
 
 // GetCalendar returns calendar metadata.
 func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calendar, error) {
-	userID := getUserID(ctx)
-	if userID == "" {
-		return nil, fmt.Errorf("no user in context")
-	}
-
-	calID := calIDFromPath(path)
-	if calID == "" {
-		return nil, fmt.Errorf("invalid calendar path")
-	}
-
-	cal, err := b.calendars.Get(userID, calID)
+	t, err := b.resolve(ctx, path, kindCollection)
 	if err != nil {
-		return nil, fmt.Errorf("calendar not found: %w", err)
+		return nil, err
+	}
+
+	cal, err := b.calendars.Get(t.keyOwner, t.calendar)
+	if err != nil {
+		return nil, webdav.NewHTTPError(http.StatusNotFound, fmt.Errorf("calendar not found: %w", err))
+	}
+	name := cal.Name
+	if t.shared() {
+		name = b.sharedName(t.owner, cal.Name)
 	}
 
 	return &caldav.Calendar{
-		Path:                  calPath(userID, cal.Guid),
-		Name:                  cal.Name,
+		Path:                  calPath(t.user, t.calSeg),
+		Name:                  name,
 		Description:           cal.Description,
 		SupportedComponentSet: []string{"VEVENT"},
 	}, nil
@@ -223,45 +248,56 @@ func (b *Backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 
 // GetCalendarObject returns a single event as a CalDAV calendar object.
 func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
-	userID := getUserID(ctx)
-	if userID == "" {
-		return nil, fmt.Errorf("no user in context")
+	t, err := b.resolve(ctx, path, kindObject)
+	if err != nil {
+		return nil, err
 	}
 
-	guid := guidFromPath(path)
-	if guid == "" {
-		return nil, fmt.Errorf("invalid object path")
-	}
-
-	event, err := b.events.Get(userID, guid)
+	event, err := b.events.Get(t.keyOwner, t.guid)
 	if err != nil {
 		return nil, fmt.Errorf("event not found: %w", err)
 	}
+	// A grant covers one calendar: an event the owner keeps in another
+	// calendar is not reachable through this one, by guid or otherwise.
+	if t.shared() && eventCalendar(event) != t.calendar {
+		return nil, httpErr(http.StatusNotFound, "not found")
+	}
 
-	calID := calIDFromObjectPath(path)
-	return eventToCalendarObject(userID, calID, event)
+	return eventToCalendarObject(t.user, t.calSeg, event)
+}
+
+// eventCalendar is the calendar an event belongs to; none means the default.
+func eventCalendar(e *bongov1.Event) string {
+	if e.CalendarId == "" {
+		return "default"
+	}
+	return e.CalendarId
 }
 
 // ListCalendarObjects returns all events in a calendar.
 func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	userID := getUserID(ctx)
-	if userID == "" {
-		return nil, fmt.Errorf("no user in context")
+	t, err := b.resolve(ctx, path, kindCollection)
+	if err != nil {
+		return nil, err
 	}
 
-	calID := calIDFromPath(path)
-	events, _, err := b.events.ListAll(userID, 0, 0)
+	events, _, err := b.events.ListAll(t.keyOwner, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("listing events: %w", err)
 	}
 
 	var objects []caldav.CalendarObject
 	for _, e := range events {
-		// Filter by calendar.
-		if calID != "" && e.CalendarId != calID {
+		// Filter by calendar. A shared collection matches the shared
+		// calendar exactly, an empty calendar ID meaning the default one.
+		if t.shared() {
+			if eventCalendar(e) != t.calendar {
+				continue
+			}
+		} else if e.CalendarId != t.calendar {
 			continue
 		}
-		obj, err := eventToCalendarObject(userID, calID, e)
+		obj, err := eventToCalendarObject(t.user, t.calSeg, e)
 		if err != nil {
 			continue
 		}
@@ -284,24 +320,22 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	if b.storage != nil && b.storage.Low() {
 		return nil, webdav.NewHTTPError(http.StatusInsufficientStorage, ErrStorageLow)
 	}
-	userID := getUserID(ctx)
-	if userID == "" {
-		return nil, fmt.Errorf("no user in context")
+	t, err := b.resolve(ctx, path, kindObject)
+	if err != nil {
+		return nil, err
 	}
-
-	guid := guidFromPath(path)
-	if guid == "" {
-		return nil, fmt.Errorf("invalid object path")
+	if !t.canWrite() {
+		return nil, httpErr(http.StatusForbidden, "this calendar is shared read-only")
 	}
-
-	calID := calIDFromObjectPath(path)
-	if calID == "" {
-		calID = "default"
-	}
+	// Data and quota belong to the owner of the calendar: for a shared
+	// calendar that is not the authenticated user.
+	userID, guid, calID := t.keyOwner, t.guid, t.calendar
 
 	// Ensure the calendar exists.
-	if _, err := b.calendars.EnsureDefault(userID); err != nil {
-		return nil, fmt.Errorf("ensuring default calendar: %w", err)
+	if !t.shared() {
+		if _, err := b.calendars.EnsureDefault(userID); err != nil {
+			return nil, fmt.Errorf("ensuring default calendar: %w", err)
+		}
 	}
 
 	// Ensure required calendar properties for encoding.
@@ -324,6 +358,13 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 
 	// Check if event exists (update vs create).
 	existing, _ := b.events.Get(userID, guid)
+	// Create with a set guid is an upsert. A PUT through a shared collection
+	// must not overwrite an owner event kept in another calendar, so a guid
+	// that exists elsewhere is refused. The answer is the same 403 as a read
+	// share gives, so it does not confirm the guid exists.
+	if t.shared() && existing != nil && eventCalendar(existing) != calID {
+		return nil, httpErr(http.StatusForbidden, "forbidden")
+	}
 
 	// Honour the conditional headers before writing anything. go-webdav parses
 	// If-Match/If-None-Match into opts; ignoring them made every concurrent
@@ -359,19 +400,26 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		b.logger.Info("caldav: event created", "user", userID, "calendar", calID, "guid", guid)
 	}
 
-	return eventToCalendarObject(userID, calID, event)
+	return eventToCalendarObject(t.user, t.calSeg, event)
 }
 
 // DeleteCalendarObject removes an event.
 func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
-	userID := getUserID(ctx)
-	if userID == "" {
-		return fmt.Errorf("no user in context")
+	t, err := b.resolve(ctx, path, kindObject)
+	if err != nil {
+		return err
 	}
-
-	guid := guidFromPath(path)
-	if guid == "" {
-		return fmt.Errorf("invalid object path")
+	if !t.canWrite() {
+		return httpErr(http.StatusForbidden, "this calendar is shared read-only")
+	}
+	userID, guid := t.keyOwner, t.guid
+	if t.shared() {
+		// Delete only what the grant covers: an owner event in another
+		// calendar answers as if it did not exist.
+		existing, err := b.events.Get(userID, guid)
+		if err != nil || eventCalendar(existing) != t.calendar {
+			return httpErr(http.StatusNotFound, "not found")
+		}
 	}
 
 	if err := b.events.Delete(userID, guid); err != nil {
@@ -405,42 +453,9 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 		}
 	}
 
-	// Otherwise, synthesize from proto fields.
+	// Otherwise, synthesise from proto fields.
 	if cal == nil {
-		cal = ical.NewCalendar()
-		cal.Props.SetText(ical.PropVersion, "2.0")
-		cal.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
-
-		vevent := ical.NewEvent()
-		vevent.Props.SetText(ical.PropUID, e.Guid)
-		vevent.Props.SetText(ical.PropSummary, e.Title)
-
-		if e.Description != "" {
-			vevent.Props.SetText(ical.PropDescription, e.Description)
-		}
-		if e.Location != "" {
-			vevent.Props.SetText(ical.PropLocation, e.Location)
-		}
-
-		loc := icalevent.ZoneOrUTC(e.Timezone)
-		if e.AllDay {
-			// A date, not an instant: the zone plays no part.
-			vevent.Props.SetDate(ical.PropDateTimeStart, icalevent.AllDayDate(e.StartTime))
-			vevent.Props.SetDate(ical.PropDateTimeEnd, icalevent.AllDayDate(e.EndTime))
-		} else {
-			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).In(loc))
-			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).In(loc))
-		}
-		icalevent.AddRecurrence(vevent, e, loc)
-
-		vevent.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
-		icalevent.SetParticipants(vevent.Props, e)
-
-		// A TZID needs the VTIMEZONE that defines it.
-		if tz := icalevent.VTimezoneFor(e, loc); tz != nil {
-			cal.Children = append(cal.Children, tz)
-		}
-		cal.Children = append(cal.Children, vevent.Component)
+		cal = icalevent.Synthesise(e)
 	}
 
 	// Encode to bytes to get content length.
@@ -465,40 +480,6 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 		ETag:          store.ContentETag(e.IcalRaw, e.UpdatedAt),
 		Data:          cal,
 	}, nil
-}
-
-// guidFromPath extracts the GUID from a CalDAV object path (strips .ics suffix).
-func guidFromPath(path string) string {
-	path = strings.TrimSuffix(path, ".ics")
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			return path[i+1:]
-		}
-	}
-	return path
-}
-
-// calIDFromPath extracts the calendar ID from a collection path like
-// /caldav/{userID}/calendars/{calID}/ or /caldav/{userID}/calendars/{calID}
-func calIDFromPath(path string) string {
-	path = strings.TrimSuffix(path, "/")
-	parts := strings.Split(path, "/")
-	// Expected: ["", "caldav", userID, "calendars", calID]
-	if len(parts) >= 5 {
-		return parts[4]
-	}
-	return ""
-}
-
-// calIDFromObjectPath extracts the calendar ID from an object path like
-// /caldav/{userID}/calendars/{calID}/{guid}.ics
-func calIDFromObjectPath(path string) string {
-	parts := strings.Split(path, "/")
-	// Expected: ["", "caldav", userID, "calendars", calID, "guid.ics"]
-	if len(parts) >= 6 {
-		return parts[4]
-	}
-	return ""
 }
 
 // ErrPreconditionFailed is the cause wrapped into every 412 this backend

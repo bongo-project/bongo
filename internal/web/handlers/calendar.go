@@ -45,6 +45,11 @@ type CalendarHandler struct {
 	// zones supplies the user's preferred time zone to the agenda. nil falls
 	// back to the process zone, which the month, week and day views use.
 	zones zoneSource
+	// invites delivers iMIP invitations after a save. nil sends none.
+	invites inviteSender
+	// addresses backs the send-as check for the organiser. nil permits only
+	// the session address.
+	addresses *store.AddressStore
 	// now is the clock; nil means time.Now. Tests inject a fixed one.
 	now func() time.Time
 }
@@ -73,7 +78,11 @@ func (h *CalendarHandler) nowIn(userID string) time.Time {
 // clockRequest returns r carrying the user's current time, so the templates
 // mark today and render times in the same zone the handler grouped days in.
 func clockRequest(r *http.Request, now time.Time) *http.Request {
-	return r.WithContext(templates.WithCalendarNow(r.Context(), now))
+	ctx := templates.WithCalendarNow(r.Context(), now)
+	if warning := inviteWarningText(r); warning != "" {
+		ctx = templates.WithCalendarWarning(ctx, warning)
+	}
+	return r.WithContext(ctx)
 }
 
 // userLocation returns the zone every calendar view groups days in.
@@ -120,7 +129,11 @@ func (h *CalendarHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 func (h *CalendarHandler) CalendarIndex(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	now := h.nowIn(userID)
-	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d", now.Year(), int(now.Month())), http.StatusSeeOther)
+	path := fmt.Sprintf("/calendar/%d/%d", now.Year(), int(now.Month()))
+	if shown, more := parseInviteWarning(r.URL.Query()); len(shown) > 0 {
+		path = appendParams(path, encodeInviteWarning(shown, more))
+	}
+	http.Redirect(w, r, path, http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
 // MonthView renders the calendar month grid.
@@ -161,6 +174,7 @@ func (h *CalendarHandler) MonthView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
 	}
+	r, events = h.withShared(r, userID, events, calColorMap, gridStart.AddDate(0, 0, -1).Unix(), gridEnd.AddDate(0, 0, 1).Unix())
 
 	// Build day cells for the grid.
 	days := buildMonthGrid(year, time.Month(month), events, now)
@@ -209,6 +223,7 @@ func (h *CalendarHandler) WeekView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
 	}
+	r, events = h.withShared(r, userID, events, calColorMap, weekStart.Unix(), weekEnd.Unix())
 
 	days := buildWeekColumns(weekStart, events, calColorMap, now)
 
@@ -259,6 +274,7 @@ func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
 	}
+	r, events = h.withShared(r, userID, events, calColorMap, date.Unix(), dayEnd.Unix())
 
 	col := buildDayColumn(date, events, calColorMap, now)
 
@@ -310,6 +326,7 @@ func (h *CalendarHandler) AgendaView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
 	}
+	r, events = h.withShared(r, userID, events, calColorMap, from.Unix(), to.Unix())
 
 	data := templates.AgendaData{
 		From:      from,
@@ -379,12 +396,12 @@ func buildAgenda(from time.Time, days int, events []*bongov1.Event, calColorMap 
 
 // RescheduleEvent handles POST to update only start/end times (drag-and-drop).
 func (h *CalendarHandler) RescheduleEvent(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	guid := chi.URLParam(r, "guid")
 
-	event, err := h.events.Get(userID, guid)
-	if err != nil {
-		http.Error(w, "event not found", http.StatusNotFound)
+	owner, event, _, status := h.resolveEventTarget(r, userID, guid, needWrite)
+	if status != 0 {
+		http.Error(w, http.StatusText(status), status)
 		return
 	}
 
@@ -432,11 +449,21 @@ func (h *CalendarHandler) RescheduleEvent(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	if err := h.events.Update(userID, guid, event); err != nil {
+	// Without a raw to rewrite, mirror the SEQUENCE bump the raw path makes:
+	// attendees must see the move as a newer version.
+	if len(event.IcalRaw) == 0 && len(event.Attendees) > 0 {
+		event.Sequence = original.Sequence + 1
+	}
+
+	if err := h.events.Update(owner, guid, event); err != nil {
 		http.Error(w, "failed to reschedule event", http.StatusInternalServerError)
 		return
 	}
 
+	// The drag script reads this header and reloads with the warning.
+	if q := inviteWarningParams(h.notifyAttendees(r, userID, email, original, event)); q != "" {
+		w.Header().Set("X-Invites-Query", q)
+	}
 	w.Header().Set("HX-Trigger", "calendarRefresh")
 	w.WriteHeader(http.StatusOK)
 }
@@ -465,6 +492,7 @@ func (h *CalendarHandler) UpdateCalendar(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("HX-Trigger", "calendarRefresh")
+	refreshSettings(w, r)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -567,6 +595,7 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("HX-Trigger", "calendarRefresh")
+	refreshSettings(w, r)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -608,6 +637,7 @@ func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("HX-Trigger", "calendarRefresh")
+	refreshSettings(w, r)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -681,8 +711,19 @@ func (h *CalendarHandler) NewEvent(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 	date := r.URL.Query().Get("date")
 
+	// ?calendar_id= preselects a calendar; a shared one needs write access,
+	// since the form exists to create an event there.
+	if ref := r.URL.Query().Get("calendar_id"); ref != "" {
+		if _, _, status := h.resolveCalendarTarget(userID, ref, needWrite); status != 0 {
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
+		r = r.WithContext(templates.WithPreselectedCalendar(r.Context(), ref))
+	}
+
 	calendars, _ := h.calendars.List(userID)
 	r = clockRequest(r, h.nowIn(userID))
+	r = h.sharedSidebar(r, userID)
 
 	templ.Handler(templates.EventFormPage(nil, calendars, true, date, email)).ServeHTTP(w, r)
 }
@@ -691,17 +732,24 @@ func (h *CalendarHandler) NewEvent(w http.ResponseWriter, r *http.Request) {
 func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 
+	owner, calID, status := h.resolveCalendarTarget(userID, r.FormValue("calendar_id"), needWrite)
+	if status != 0 {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+
 	event, err := parseEventForm(r, h.userLocation(userID))
 	if err != nil {
 		eventFormError(w, r, err)
 		return
 	}
+	event.CalendarId = calID
 	// Record the zone the form times were read in, so a series expands at the
 	// same local time across DST and exports with its VTIMEZONE. Events saved
 	// before this carry no zone and keep expanding in UTC.
 	event.Timezone = h.eventZoneName(userID, event.AllDay)
 
-	// The creator organises the meeting. Nothing is sent in this story.
+	// The creator organises the meeting.
 	if len(event.Attendees) > 0 && icalevent.ValidAddress(email) {
 		event.Organizer = email
 	}
@@ -709,18 +757,21 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	// Best-effort domain quota (usage is a periodic recompute): refuse a new
 	// event that would not fit. The estimate is the stored record size, the
 	// same quantity the usage recompute counts.
-	if quotaExceeded(h.quota, nil, userID, store.EventRecordSize(event)) {
+	// The owner's quota is charged: the event is stored in the owner's key
+	// space, so it is the owner's data.
+	if quotaExceeded(h.quota, nil, owner, store.EventRecordSize(event)) {
 		refuseQuota(w, r)
 		return
 	}
 
-	if _, err := h.events.Create(userID, event); err != nil {
+	if _, err := h.events.Create(owner, event); err != nil {
 		http.Error(w, "failed to create event", http.StatusInternalServerError)
 		return
 	}
 
+	notReached := h.notifyAttendees(r, userID, email, nil, event)
 	t := eventMonthTime(event, h.userLocation(userID))
-	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+created", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
+	http.Redirect(w, r, withInviteWarning(fmt.Sprintf("/calendar/%d/%d?flash=Event+created", t.Year(), int(t.Month())), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
 // ShowEvent renders an event detail/edit view.
@@ -728,19 +779,23 @@ func (h *CalendarHandler) ShowEvent(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 	guid := chi.URLParam(r, "guid")
 
-	event, err := h.events.Get(userID, guid)
-	if err != nil {
-		if h.redirectOldInstanceLink(w, r, userID, guid) {
+	owner, event, level, status := h.resolveEventTarget(r, userID, guid, needRead)
+	if status != 0 {
+		if status == http.StatusNotFound && owner == userID && h.redirectOldInstanceLink(w, r, userID, guid) {
 			return
 		}
-		http.Error(w, "event not found", http.StatusNotFound)
+		http.Error(w, http.StatusText(status), status)
 		return
+	}
+	if owner != userID {
+		r = r.WithContext(templates.WithSharedEvent(r.Context(), owner, level))
 	}
 
 	// ?occurrence= names one instance of a series by its RECURRENCE-ID. Only
 	// a real instance (on the rule and not excluded or cancelled, or an
-	// override) is shown. The form stays bound to the series with the master's
-	// times, so saving it can never move the series start to the occurrence.
+	// override) is shown. The form posts to the series but shows the
+	// occurrence's times; calendar_instance.go decides what a save means for the
+	// scope chosen, and "all events" keeps the series date.
 	if rid := r.URL.Query().Get("occurrence"); rid != "" {
 		occ, ok := store.FindOccurrence(event, rid)
 		if !ok {
@@ -753,6 +808,7 @@ func (h *CalendarHandler) ShowEvent(w http.ResponseWriter, r *http.Request) {
 	calendars, _ := h.calendars.List(userID)
 
 	r = clockRequest(r, h.nowIn(userID))
+	r = h.sharedSidebar(r, userID)
 	templ.Handler(templates.EventFormPage(event, calendars, false, "", email)).ServeHTTP(w, r)
 }
 
@@ -842,15 +898,27 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 	guid := chi.URLParam(r, "guid")
 
-	existing, err := h.events.Get(userID, guid)
-	if err != nil {
-		http.Error(w, "event not found", http.StatusNotFound)
+	owner, existing, _, status := h.resolveEventTarget(r, userID, guid, needWrite)
+	if status != 0 {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	destCal, status := h.resolveMoveTarget(userID, owner, existing, r.FormValue("calendar_id"))
+	if status != 0 {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	if h.updateInstance(w, r, userID, owner, email, existing) { // "this event", "this and following"
 		return
 	}
 
 	updated, err := parseEventForm(r, h.userLocation(userID))
 	if err != nil {
 		eventFormError(w, r, err)
+		return
+	}
+	updated.CalendarId = destCal
+	if !h.bindOccurrenceForm(w, r, userID, existing, updated) { // "all events" from an occurrence
 		return
 	}
 	if !allowedRrule(updated.Rrule, existing.Rrule) {
@@ -905,43 +973,54 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	updated.CreatedAt = existing.CreatedAt
 	updated.Guid = existing.Guid
 	updated.UpdatedAt = existing.UpdatedAt
-	if growth := int64(proto.Size(updated) - proto.Size(existing)); growth > 0 && quotaExceeded(h.quota, nil, userID, growth) {
+	if growth := int64(proto.Size(updated) - proto.Size(existing)); growth > 0 && quotaExceeded(h.quota, nil, owner, growth) {
 		refuseQuota(w, r)
 		return
 	}
-	if err := h.events.Update(userID, guid, updated); err != nil {
+	if err := h.events.Update(owner, guid, updated); err != nil {
 		http.Error(w, "failed to update event", http.StatusInternalServerError)
 		return
 	}
 
+	notReached := h.notifyAttendees(r, userID, email, existing, updated)
 	t := eventMonthTime(updated, h.userLocation(userID))
-	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+updated", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
+	http.Redirect(w, r, withInviteWarning(fmt.Sprintf("/calendar/%d/%d?flash=Event+updated", t.Year(), int(t.Month())), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
 // DeleteEvent handles DELETE to remove an event.
 func (h *CalendarHandler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	guid := chi.URLParam(r, "guid")
 
-	event, _ := h.events.Get(userID, guid)
+	// Deleting an event that is already gone stays a success for the owner's
+	// own calendar; for someone else's it is the same 404 as no access.
+	owner, event, _, status := h.resolveEventTarget(r, userID, guid, needWrite)
+	if status != 0 && (status != http.StatusNotFound || owner != userID) {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	if h.deleteInstance(w, r, userID, owner, email, event) { // "this event", "this and following"
+		return
+	}
 
-	if err := h.events.Delete(userID, guid); err != nil {
+	if err := h.events.Delete(owner, guid); err != nil {
 		http.Error(w, "failed to delete event", http.StatusInternalServerError)
 		return
 	}
 
+	notReached := h.notifyAttendees(r, userID, email, event, nil)
 	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", "/calendar")
+		w.Header().Set("HX-Redirect", withInviteWarning("/calendar", notReached))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	if event != nil {
 		t := eventMonthTime(event, h.userLocation(userID))
-		http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+deleted", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
+		http.Redirect(w, r, withInviteWarning(fmt.Sprintf("/calendar/%d/%d?flash=Event+deleted", t.Year(), int(t.Month())), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 		return
 	}
-	http.Redirect(w, r, "/calendar?flash=Event+deleted", http.StatusSeeOther)
+	http.Redirect(w, r, withInviteWarning("/calendar?flash=Event+deleted", notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path; the parameters are url-encoded
 }
 
 // ExportCalendar exports all events as an .ics file.
@@ -1003,40 +1082,18 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 			}
 		}
 
-		vevent := ical.NewEvent()
-		vevent.Props.SetText(ical.PropUID, e.Guid)
-		vevent.Props.SetText(ical.PropSummary, e.Title)
-		if e.Description != "" {
-			vevent.Props.SetText(ical.PropDescription, e.Description)
-		}
-		if e.Location != "" {
-			vevent.Props.SetText(ical.PropLocation, e.Location)
-		}
-
 		loc := time.UTC
-		if e.AllDay {
-			// A date, not an instant: the zone plays no part.
-			vevent.Props.SetDate(ical.PropDateTimeStart, icalevent.AllDayDate(e.StartTime))
-			vevent.Props.SetDate(ical.PropDateTimeEnd, icalevent.AllDayDate(e.EndTime))
-		} else if span, zoned := spans[e.Timezone]; zoned && e.Rrule != "" {
-			// A zoned series keeps its local time across DST only when it is
-			// written in its zone, with the VTIMEZONE that defines the TZID.
+		// A zoned series keeps its local time across DST only when it is
+		// written in its zone, with the VTIMEZONE that defines the TZID.
+		if span, zoned := spans[e.Timezone]; zoned && e.Rrule != "" && !e.AllDay {
 			loc = span.loc
-			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).In(loc))
-			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).In(loc))
 			if _, dup := seen[loc.String()]; !dup {
 				tz := icalevent.VTimezone(loc, span.from, span.to)
 				seen[loc.String()] = tz
 				zones = append(zones, tz)
 			}
-		} else {
-			// UTC, so no TZID is written without a VTIMEZONE to define it.
-			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).UTC())
-			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).UTC())
 		}
-		icalevent.AddRecurrence(vevent, e, loc)
-		vevent.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
-		icalevent.SetParticipants(vevent.Props, e)
+		vevent := icalevent.SynthVEvent(e, loc, time.Now())
 
 		vevents = append(vevents, vevent.Component)
 	}
@@ -1099,6 +1156,15 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer removeUploadTemp(r)
+
+	// An optional target calendar (own, or a shared display key). Write access
+	// is checked once, before the file is read; absent means the default
+	// calendar of the user, as before.
+	owner, calID, status := h.resolveCalendarTarget(userID, r.FormValue("calendar_id"), needWrite)
+	if status != 0 {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
 	file, hdr, err := r.FormFile("ics")
 	if err != nil {
 		http.Redirect(w, r, "/calendar?flash=No+file+uploaded", http.StatusSeeOther)
@@ -1110,13 +1176,15 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	// would not fit, rather than importing part of it. The upload size is an
 	// approximation: the stored size is roughly the raw bytes plus the copied
 	// fields.
-	if quotaExceeded(h.quota, nil, userID, hdr.Size) {
+	if quotaExceeded(h.quota, nil, owner, hdr.Size) {
 		refuseQuotaFlash(w, r, "/calendar")
 		return
 	}
 
 	// Ensure default calendar.
-	calID, _ := h.calendars.EnsureDefault(userID)
+	if r.FormValue("calendar_id") == "" {
+		calID, _ = h.calendars.EnsureDefault(userID)
+	}
 
 	dec := ical.NewDecoder(file)
 	imported := 0
@@ -1146,7 +1214,7 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 			event.CalendarId = calID
 			event.IcalRaw = raw
 
-			if _, err := h.events.Create(userID, event); err != nil {
+			if _, err := h.events.Create(owner, event); err != nil {
 				failed++
 				continue
 			}

@@ -1089,6 +1089,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			caldavBackend.SetQuotaChecker(a.DomainQuota)
 		}
 		caldavBackend.SetStorageGate(a.storageGate())
+		if a.ACL != nil {
+			caldavBackend.SetGrants(a.ACL)
+		}
 	}
 	carddavHandler, caldavHandler := newDAVHandlers(a.Auth, carddavBackend, caldavBackend, davAuthLimiter, a.logger)
 
@@ -1451,6 +1454,15 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			calendarH.SetShareResolver(sharedResolver)
 			calendarH.SetACL(a.ACL)
+			// Invitations go out through the compose delivery path. The guard
+			// keeps a nil *ComposeHandler (no Mailboxes) from becoming a
+			// non-nil interface.
+			if a.composeHandler != nil {
+				calendarH.SetInviteSender(a.composeHandler)
+			}
+			if a.AddressStore != nil {
+				calendarH.SetAddressStore(a.AddressStore)
+			}
 			if a.Preferences != nil {
 				calendarH.SetZoneSource(a.Preferences)
 			}
@@ -1459,6 +1471,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/calendar", calendarH.CalendarIndex)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/agenda", calendarH.AgendaView)
+			r.Get("/calendar/settings", calendarH.CalendarSettings)
 			r.Get("/calendar/{year}/{month}", calendarH.MonthView)
 			r.Get("/calendar/event/new", calendarH.NewEvent)
 			r.Post("/calendar/event", calendarH.CreateEvent)
@@ -4861,7 +4874,10 @@ func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Backend: h.backend,
 		Prefix:  "/caldav",
 	}
-	serveDAVBody(w, r, h.budget, h.logger, userID, &handler)
+	// go-webdav reports every calendar read-write; tell clients which shares
+	// are read-only. The backend refuses their writes regardless.
+	next := bongocaldav.PrivilegeFilter(&handler, h.backend.ReadOnlyShare, h.logger)
+	serveDAVBody(w, r, h.budget, h.logger, userID, next)
 }
 
 // newHTTPServer builds the web/health listener. ErrorLog routes net/http's

@@ -35,6 +35,14 @@ type EventBlock struct {
 	ColourClass  string
 }
 
+// CalendarWarning shows the warning a calendar handler recorded in the
+// request context, such as invitations that were not delivered.
+templ CalendarWarning() {
+	if warning := calendarWarning(ctx); warning != "" {
+		@FlashMessage(warning, "warning")
+	}
+}
+
 templ CalendarPage(year, month int, days []DayCell, calendars []*bongov1.Calendar, calColors map[string]string, email string, flash string) {
 	@LayoutWithContent(t(ctx, "nav.calendar"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
@@ -44,6 +52,7 @@ templ CalendarPage(year, month int, days []DayCell, calendars []*bongov1.Calenda
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
+			@CalendarWarning()
 			@CalendarMonthGrid(year, month, days, calendars, calColors)
 		</main>
 	}
@@ -168,10 +177,28 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 					action={ templ.SafeURL("/calendar/event/" + event.Guid) }
 				}
 				class="event-form"
-				x-data={ eventFormData(event, isNew, date) }
+				x-data={ eventFormData(ctx, event, isNew, date) }
 			>
 				if !isNew {
 					<input type="hidden" name="_method" value="PUT"/>
+				}
+				if occ := occurrenceFromCtx(ctx); occ != nil && !isNew {
+					<fieldset class="occurrence-scope" id="occurrence-scope">
+						<legend>{ t(ctx, "calendar.scopeLegend") }</legend>
+						<input type="hidden" name="occurrence" value={ occ.RecurrenceId }/>
+						<label class="calendar-inline-label">
+							<input type="radio" name="scope" value="this" x-model="scope" checked class="u-width-auto"/>
+							{ t(ctx, "calendar.scopeThis") }
+						</label>
+						<label class="calendar-inline-label">
+							<input type="radio" name="scope" value="following" x-model="scope" class="u-width-auto"/>
+							{ t(ctx, "calendar.scopeFollowing") }
+						</label>
+						<label class="calendar-inline-label">
+							<input type="radio" name="scope" value="all" x-model="scope" class="u-width-auto"/>
+							{ t(ctx, "calendar.scopeAll") }
+						</label>
+					</fieldset>
 				}
 				<label>
 					{ t(ctx, "calendar.title") }
@@ -224,21 +251,49 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						</ul>
 					}
 				</div>
-				<label>
-					{ t(ctx, "nav.calendar") }
-					<select name="calendar_id">
-						for _, cal := range calendars {
-							<option
-								value={ cal.Guid }
-								if event != nil && event.CalendarId == cal.Guid {
-									selected
-								}
-							>
-								{ cal.Name }
-							</option>
+				if se, ok := sharedEventFromCtx(ctx); ok && !isNew {
+					<input type="hidden" name="owner" value={ se.Owner }/>
+					<p class="meta event-meta" role="note">
+						if se.Level == "write" {
+							{ t(ctx, "calendar.sharedEventWrite") }
+						} else {
+							{ t(ctx, "calendar.sharedEventReadOnly") }
 						}
-					</select>
-				</label>
+					</p>
+					<label>
+						{ t(ctx, "nav.calendar") }
+						<select name="calendar_id">
+							<option value={ SharedKey(se.Owner, eventCalendarID(event)) } selected>
+								{ sharedCalendarLabel(ctx, SharedKey(se.Owner, eventCalendarID(event))) }
+							</option>
+						</select>
+					</label>
+				} else {
+					<label>
+						{ t(ctx, "nav.calendar") }
+						<select name="calendar_id">
+							for _, cal := range calendars {
+								<option
+									value={ cal.Guid }
+									if event != nil && event.CalendarId == cal.Guid {
+										selected
+									}
+								>
+									{ cal.Name }
+								</option>
+							}
+							if len(writableShared(ctx)) > 0 {
+								<optgroup label={ t(ctx, "calendar.sharedWithMe") }>
+									for _, sc := range writableShared(ctx) {
+										<option value={ sc.Key } if isNew && sc.Key == preselectedCalendar(ctx) { selected }>
+											{ sharedCalendarLabel(ctx, sc.Key) }
+										</option>
+									}
+								</optgroup>
+							}
+						</select>
+					</label>
+				}
 				<label class="calendar-inline-label">
 					<input
 						type="checkbox"
@@ -254,25 +309,25 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 				<div class="form-grid-two">
 					<label>
 						{ t(ctx, "calendar.startDate") }
-						<input type="date" name="start_date" value={ eventStartDate(ctx, event, date) } required/>
+						<input type="date" name="start_date" value={ eventStartDate(ctx, formTimes(ctx, event), date) } required/>
 					</label>
 					<label x-bind:hidden="allDay">
 						{ t(ctx, "calendar.startTime") }
-						<input type="time" name="start_time" value={ eventStartTime(ctx, event) }/>
+						<input type="time" name="start_time" value={ eventStartTime(ctx, formTimes(ctx, event)) }/>
 					</label>
 				</div>
 				<div class="form-grid-two">
 					<label>
 						{ t(ctx, "calendar.endDate") }
-						<input type="date" name="end_date" value={ eventEndDate(ctx, event, date) }/>
+						<input type="date" name="end_date" value={ eventEndDate(ctx, formTimes(ctx, event), date) }/>
 					</label>
 					<label x-bind:hidden="allDay">
 						{ t(ctx, "calendar.endTime") }
-						<input type="time" name="end_time" value={ eventEndTime(ctx, event) }/>
+						<input type="time" name="end_time" value={ eventEndTime(ctx, formTimes(ctx, event)) }/>
 					</label>
 				</div>
 				<div class="form-grid-two">
-					<label>
+					<label x-bind:hidden="repeatHidden">
 						{ t(ctx, "calendar.repeat") }
 						<select name="rrule">
 							<option value="">{ t(ctx, "calendar.none") }</option>
@@ -304,19 +359,24 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 					</div>
 				}
 				<div class="u-flex u-gap-05">
-					<button type="submit">
-						if isNew {
-							{ t(ctx, "calendar.createEvent") }
-						} else {
-							{ t(ctx, "common.save") }
-						}
-					</button>
+					if !eventFormReadOnly(ctx) {
+						<button type="submit">
+							if isNew {
+								{ t(ctx, "calendar.createEvent") }
+							} else {
+								{ t(ctx, "common.save") }
+							}
+						</button>
+					}
 					<a href="/calendar" class="btn-secondary">{ t(ctx, "common.cancel") }</a>
-					if !isNew {
+					if !isNew && !eventFormReadOnly(ctx) {
 						<button
 							type="button"
 							class="outline contrast"
-							hx-delete={ "/calendar/event/" + event.Guid }
+							hx-delete={ eventDeleteURL(ctx, event) }
+							if occurrenceFromCtx(ctx) != nil {
+								hx-include="#occurrence-scope"
+							}
 							hx-confirm={ t(ctx, "calendar.confirmDelete") }
 						>
 							{ t(ctx, "calendar.deleteEvent") }
@@ -337,6 +397,7 @@ templ WeekViewPage(year, week int, days []DayColumn, calendars []*bongov1.Calend
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
+			@CalendarWarning()
 			@WeekViewGrid(year, week, days, calendars, calColors)
 		</main>
 	}
@@ -389,6 +450,9 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 						data-guid={ block.Event.Guid }
 					}
 						data-cal-id={ eventCalendarID(block.Event) }
+						if owner := eventOwner(block.Event); owner != "" {
+							data-owner={ owner }
+						}
 						data-start={ fmt.Sprint(block.Event.StartTime) }
 						data-end={ fmt.Sprint(block.Event.EndTime) }
 					>
@@ -411,6 +475,7 @@ templ DayViewPage(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
+			@CalendarWarning()
 			@DayViewGrid(date, col, calendars, calColors)
 		</main>
 	}
@@ -461,7 +526,10 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 					if block.Event.Rrule == "" {
 						data-guid={ block.Event.Guid }
 					}
-						data-cal-id={ eventCalendarID(block.Event) }
+					data-cal-id={ eventCalendarID(block.Event) }
+					if owner := eventOwner(block.Event); owner != "" {
+						data-owner={ owner }
+					}
 					data-start={ fmt.Sprint(block.Event.StartTime) }
 					data-end={ fmt.Sprint(block.Event.EndTime) }
 				>
@@ -638,7 +706,107 @@ templ CalendarListPanel(calendars []*bongov1.Calendar) {
 				</label>
 			</div>
 		}
+		if shared := sharedCalendarsFromCtx(ctx); len(shared) > 0 {
+			<div class="sidebar-label">{ t(ctx, "calendar.sharedWithMe") }</div>
+			for _, sc := range shared {
+				<div class="calendar-list-item">
+					<label class="calendar-list-label">
+						<input
+							type="checkbox"
+							checked
+							data-calendar={ sc.Key }
+							x-bind:checked="isShown($el.dataset.calendar)"
+							x-on:change="toggle($el.dataset.calendar, $el.checked)"
+							class="u-width-auto u-m0"
+						/>
+						<span class={ "cal-color-dot", CalendarColourClass(sc.Colour) }></span>
+						{ sharedCalendarLabel(ctx, sc.Key) }
+					</label>
+				</div>
+			}
+		}
+		<a href="/calendar/settings" class="calendar-settings-link">{ t(ctx, "calendar.settings") }</a>
 	</div>
+}
+
+templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calendar, email string) {
+	@LayoutWithContent(t(ctx, "calendar.settings"), email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@CalendarSidebar(calendars)
+		</aside>
+		<main class="content" id="main-content">
+			<div class="toolbar">
+				<a href="/calendar" class="tool-btn">&larr; { t(ctx, "calendar.backToCalendar") }</a>
+			</div>
+			<h3>{ t(ctx, "calendar.settings") }</h3>
+			for _, card := range cards {
+				<section class="card calendar-settings-card" id={ "calendar-settings-" + card.Calendar }>
+					<form hx-put={ "/calendar/" + card.Calendar } hx-swap="none" class="calendar-settings-form">
+						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+						<label>
+							{ t(ctx, "calendar.name") }
+							<input type="text" name="name" value={ card.Name } required/>
+						</label>
+						<label>
+							{ t(ctx, "calendar.colour") }
+							<input type="color" name="color" value={ settingsColour(card.Colour) }/>
+						</label>
+						<button type="submit">{ t(ctx, "common.save") }</button>
+					</form>
+					if card.CanShare {
+						<h4>{ t(ctx, "calendar.sharing") }</h4>
+						if len(card.Grants) == 0 {
+							<p class="meta">{ t(ctx, "calendar.sharingNone") }</p>
+						}
+						<ul class="share-list">
+							for _, g := range card.Grants {
+								<li class="share-item">
+									<span class="share-target">{ g.Label }</span>
+									if g.Label != g.Grantee {
+										<form hx-post={ "/calendar/" + card.Calendar + "/share" } hx-swap="none" class="share-level-form">
+											<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+											<input type="hidden" name="share_with" value={ g.Label }/>
+											<select name="level" aria-label={ t(ctx, "calendar.shareLevel") }>
+												@levelOption("freebusy", g.Level, t(ctx, "calendar.levelFreebusy"))
+												@levelOption("read", g.Level, t(ctx, "calendar.levelRead"))
+												@levelOption("write", g.Level, t(ctx, "calendar.levelWrite"))
+											</select>
+											<button type="submit" class="tool-btn">{ t(ctx, "common.save") }</button>
+										</form>
+									}
+									<form hx-post={ "/calendar/" + card.Calendar + "/unshare" } hx-swap="none" class="share-remove-form">
+										<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+										<input type="hidden" name="share_with" value={ g.Grantee }/>
+										<button type="submit" class="tool-btn">{ t(ctx, "calendar.shareRemove") }</button>
+									</form>
+								</li>
+							}
+						</ul>
+						<form hx-post={ "/calendar/" + card.Calendar + "/share" } hx-swap="none" class="share-add-form">
+							<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+							<label>
+								{ t(ctx, "calendar.shareAddress") }
+								<input type="email" name="share_with" required autocomplete="off"/>
+							</label>
+							<label>
+								{ t(ctx, "calendar.shareLevel") }
+								<select name="level">
+									@levelOption("freebusy", "freebusy", t(ctx, "calendar.levelFreebusy"))
+									@levelOption("read", "freebusy", t(ctx, "calendar.levelRead"))
+									@levelOption("write", "freebusy", t(ctx, "calendar.levelWrite"))
+								</select>
+							</label>
+							<button type="submit">{ t(ctx, "calendar.shareAdd") }</button>
+						</form>
+					}
+				</section>
+			}
+		</main>
+	}
+}
+
+templ levelOption(level, current, label string) {
+	<option value={ level } if level == current { selected }>{ label }</option>
 }
 
 templ CalendarSearchResults(events []*bongov1.Event, query string, email string) {
@@ -869,12 +1037,19 @@ func eventEndTime(ctx context.Context, e *bongov1.Event) string {
 	return "10:00"
 }
 
-func eventFormData(e *bongov1.Event, isNew bool, date string) string {
+// eventFormData is the x-data of the event form: the registered eventForm
+// component, with the all-day state and the scope choice. A form opened from
+// an occurrence starts on "this event", the least destructive choice.
+func eventFormData(ctx context.Context, e *bongov1.Event, isNew bool, date string) string {
 	allDay := "false"
 	if e != nil && e.AllDay {
 		allDay = "true"
 	}
-	return fmt.Sprintf("{allDay: %s}", allDay)
+	scope := "all"
+	if occurrenceFromCtx(ctx) != nil && !isNew {
+		scope = "this"
+	}
+	return fmt.Sprintf("eventForm(%s, '%s')", allDay, scope)
 }
 
 func prevWeekYear(year, week int) int {
@@ -1143,6 +1318,7 @@ templ AgendaPage(data AgendaData, calendars []*bongov1.Calendar, email string, f
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
+			@CalendarWarning()
 			@AgendaContent(data)
 		</main>
 	}
