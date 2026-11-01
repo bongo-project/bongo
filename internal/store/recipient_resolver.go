@@ -106,6 +106,10 @@ func isRoleLocalPart(local string) bool {
 	return local == "postmaster" || local == "abuse"
 }
 
+// roleLocalParts are the local parts isRoleLocalPart accepts, for callers
+// that need to try each one.
+var roleLocalParts = []string{"postmaster", "abuse"}
+
 // postmasterTarget returns the live recipient for postmaster@/abuse@ on a
 // hosted domain: the domain owner first, then the configured account. For an
 // alias domain the order is the alias's own owner, the target's owner, then the
@@ -457,8 +461,10 @@ func (r *RecipientResolver) live(email, userID string, strict bool) (string, err
 }
 
 // DomainsWithoutPostmaster lists the hosted, enabled domains on which
-// postmaster@ and abuse@ have no live target, sorted. Read-only; used by the
-// startup report. Sub-keys of a domain (/owner, /dkim, ...) are skipped.
+// postmaster@ or abuse@ does not resolve, sorted. It asks ResolveRecipient,
+// so an explicit address, a legacy alias or a catch-all counts as well as the
+// owner/account tier. Read-only; used by the startup report. Sub-keys of a
+// domain (/owner, /dkim, ...) are skipped.
 func (r *RecipientResolver) DomainsWithoutPostmaster() (out []string, rErr error) {
 	if r.pebble == nil {
 		return nil, nil
@@ -480,8 +486,12 @@ func (r *RecipientResolver) DomainsWithoutPostmaster() (out []string, rErr error
 		if string(val) == "disabled" {
 			continue
 		}
-		if !r.HasPostmasterTarget(name) {
-			out = append(out, strings.ToLower(name))
+		name = strings.ToLower(name)
+		for _, role := range roleLocalParts {
+			if _, err := r.ResolveRecipient(role + "@" + name); err != nil {
+				out = append(out, name)
+				break
+			}
 		}
 	}
 	slices.Sort(out)

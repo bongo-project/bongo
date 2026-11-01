@@ -267,3 +267,44 @@ func TestRecipientResolver_DomainsWithoutPostmaster(t *testing.T) {
 		t.Fatalf("with fallback account got %v, want none", got)
 	}
 }
+
+// TestRecipientResolver_DomainsWithoutPostmasterCountsEveryTier checks that the
+// startup report asks whether postmaster@ and abuse@ actually resolve, not
+// only whether the owner/account tier has a target. An explicit address, a
+// legacy alias or a catch-all delivers them, and has done since before the
+// tier existed, so such a domain must not be reported as refusing them.
+func TestRecipientResolver_DomainsWithoutPostmasterCountsEveryTier(t *testing.T) {
+	e := newPMEnv(t)
+
+	e.domain(t, "explicit.test")
+	e.account(t, "pm-id", "ops@explicit.test")
+	putAddress(t, e.as, "postmaster@explicit.test", "pm-id", "alias")
+	putAddress(t, e.as, "abuse@explicit.test", "pm-id", "alias")
+
+	e.domain(t, "legacy.test")
+	e.account(t, "lg-id", "ops@legacy.test")
+	for _, role := range []string{"postmaster", "abuse"} {
+		if err := e.ps.Set([]byte("/system/alias/"+role+"@legacy.test"), []byte("ops@legacy.test")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	e.domain(t, "catchall.test")
+	putUserProfile(t, e.ps, "ca-id", "ca@catchall.test", false)
+	seedCatchAll(t, e.ps, "catchall.test", "ca-id")
+
+	// Only postmaster@ is explicit: abuse@ is still refused, so it is reported.
+	e.domain(t, "half.test")
+	e.account(t, "hf-id", "ops@half.test")
+	putAddress(t, e.as, "postmaster@half.test", "hf-id", "alias")
+
+	e.domain(t, "bare.test")
+
+	got, err := e.r.DomainsWithoutPostmaster()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "bare.test" || got[1] != "half.test" {
+		t.Fatalf("got %v, want [bare.test half.test]", got)
+	}
+}
