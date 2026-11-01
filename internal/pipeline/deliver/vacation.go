@@ -148,8 +148,8 @@ type vacationFacts struct {
 
 // vacationDecision reports whether a reply may be sent and, when not, the
 // first condition that suppressed it. The conditions are RFC 3834 section 2
-// and the US-004 list. It checks nothing stored: the reply interval and the
-// hourly cap are applied afterwards, since they need I/O.
+// and the suppression rules below. It checks nothing stored: the reply
+// interval and the hourly cap are applied afterwards, since they need I/O.
 func vacationDecision(f vacationFacts) (reply bool, reason string) {
 	if !store.VacationActive(f.prefs, f.now) {
 		return false, "vacation not active"

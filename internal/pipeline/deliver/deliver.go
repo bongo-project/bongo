@@ -754,9 +754,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 // they read. No report is sent for mail the pipeline judged spam, junk or
 // quarantined (a report would tell a spammer the address is live). A delete
 // rule that discarded the normal destination and forward-without-copy both
-// skip the recipient before this is called. Hosted SRS and no-relay addresses are skipped
-// earlier in the loop and never get here. A recipient relayed elsewhere
-// produces no "relayed" report in this release.
+// skip the recipient before this is called. Hosted SRS and no-relay addresses
+// are skipped earlier in the loop and never get here. A recipient relayed
+// elsewhere produces no "relayed" report in this release.
 //
 // The report is delivered through the local inbound pipeline, so one for a
 // sender outside the hosted domains is dropped there, as bounces are today.

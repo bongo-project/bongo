@@ -38,15 +38,15 @@ var ErrRecipientUnavailable = errors.New("recipient unavailable")
 //     depend on it.
 //
 //     2d. postmaster@ and abuse@ on a hosted domain (RFC 5321 section 4.5.1).
-//     Matches the exact local parts only, after the explicit tiers and before the
-//     catch-all. The target is the domain owner, else the account named by
+//     Matches the exact local parts only, after the explicit tiers and before
+//     the catch-all. The target is the domain owner, else the account named by
 //     SetPostmasterAccount. The tier applies only when it has a live target: a
-//     disabled or deleted owner falls through to the configured account, and with
+//     disabled or deleted owner falls through to the configured account; with
 //     no live target resolution continues to the catch-all, and with none of
-//     those the address is ErrRecipientUnavailable (550 5.1.1, and never
-//     relayed out on an authenticated session). Never used by ResolveAccount, or sharing a calendar
-//     with postmaster@d would grant the domain owner. A bare "postmaster" (no
-//     domain) maps to the configured account.
+//     those the address is ErrRecipientUnavailable (550 5.1.1, never relayed
+//     out on an authenticated session). Never used by ResolveAccount, or
+//     sharing a calendar with postmaster@d would grant the domain owner. A
+//     bare "postmaster" (no domain) maps to the configured account.
 //
 //     Domain alias rewrite: when email is on an alias domain (hosted, with
 //     /system/domain/{alias}/alias_of naming a hosted target) and tiers 1 to 2d
@@ -73,7 +73,9 @@ var ErrRecipientUnavailable = errors.New("recipient unavailable")
 //     the single place that decides inbound mail for disabled or deleted users.
 //     A profile read error fails open.
 //
-//     Reject: returns a non-nil error. Callers should map this to a 550 (no relay).
+//     Reject: returns a non-nil error, meaning the address is not local. The
+//     SMTP backend refuses it with 550 on a hosted domain and relays it only
+//     for an authenticated session on any other domain.
 //
 // Address normalization (lowercase, strip angle brackets, trim whitespace) is
 // applied before every lookup so that casing differences never cause a silent miss.
