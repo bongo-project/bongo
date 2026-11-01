@@ -1266,6 +1266,20 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Event form state: the all-day toggle and, on a form opened from one
+  // occurrence of a series, which instances a save or delete applies to. An
+  // override of a single instance carries no repeat rule, so the repeat
+  // field is hidden for "this event". The CSP build cannot evaluate an inline
+  // comparison, hence the getter.
+  Alpine.data('eventForm', (allDay, scope) => ({
+    allDay: allDay,
+    scope: scope,
+
+    get repeatHidden() {
+      return this.scope === 'this';
+    }
+  }));
+
   // Calendar sidebar show/hide filter. Events carry data-cal-id; the choice
   // is re-applied after every HTMX swap of the calendar view, since
   // navigating replaces only the main pane, and remembered per browser.
@@ -2737,12 +2751,22 @@ function initEventDrag() {
         const form = new URLSearchParams();
         form.set('start_time', newStart.toString());
         form.set('end_time', newEnd.toString());
+        if (block.dataset.owner) form.set('owner', block.dataset.owner);
 
         fetch('/calendar/event/' + guid + '/reschedule', {
           method: 'POST',
           body: form
         }).then(resp => {
           if (resp.ok) {
+            // Some invitations were not delivered: reload the view with the
+            // warning the server describes.
+            var warn = resp.headers.get('X-Invites-Query');
+            if (warn) {
+              var target = new URL(window.location.href);
+              new URLSearchParams(warn).forEach(function(v, k) { target.searchParams.set(k, v); });
+              window.location.assign(target.toString());
+              return;
+            }
             // Refresh current view.
             htmx.ajax('GET', window.location.pathname, '#main-content');
           }

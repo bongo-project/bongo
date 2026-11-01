@@ -28,8 +28,16 @@ func occurrenceFromCtx(ctx context.Context) *bongov1.Event {
 // guid and names the occurrence in the query, so the link is a real key.
 func EventHref(e *bongov1.Event) templ.SafeURL {
 	u := "/calendar/event/" + url.PathEscape(e.Guid)
+	q := url.Values{}
+	// A shared event is addressed in its owner's key space.
+	if owner := eventOwner(e); owner != "" {
+		q.Set("owner", owner)
+	}
 	if e.RecurrenceId != "" {
-		u += "?occurrence=" + url.QueryEscape(e.RecurrenceId)
+		q.Set("occurrence", e.RecurrenceId)
+	}
+	if len(q) > 0 {
+		u += "?" + q.Encode()
 	}
 	return templ.SafeURL(u)
 }
@@ -41,4 +49,15 @@ func occurrenceWhen(ctx context.Context, occ *bongov1.Event) string {
 		return formatEventListDate(ctx, occ)
 	}
 	return formatEventDate(ctx, occ.StartTime) + " " + formatEventTime(ctx, occ.StartTime)
+}
+
+// formTimes is the event whose date and times the event form shows: the
+// occurrence when the form was opened from one, otherwise the event itself.
+// The form still posts to the series; the server decides what the times mean
+// for the chosen scope.
+func formTimes(ctx context.Context, e *bongov1.Event) *bongov1.Event {
+	if occ := occurrenceFromCtx(ctx); occ != nil && e != nil {
+		return occ
+	}
+	return e
 }

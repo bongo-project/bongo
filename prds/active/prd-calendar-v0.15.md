@@ -778,3 +778,25 @@ Found while building Phase A, batch 1 (2026-11-01):
   never contain `/`, so this is hardening only.
 - Web events saved before v0.15 carry no zone and keep expanding in UTC; a
   series created before the upgrade can still shift by an hour across DST.
+
+Found while building batch 2 (2026-11-01):
+
+- "This and following" counts instances with the bare rule, so splitting at
+  the second instance of a series whose first instance is excluded leaves
+  an original series with no visible instance.
+- An `ical_raw` that does not decode is replaced by a synthesised object on
+  the first single-occurrence edit (expansion already ignores it).
+- Changing the level of a pending grant re-posts to `/share` and writes it
+  as accepted; US-005 must keep the state.
+- `resolveCalendarTarget` accepts a calendar ID the caller owns without
+  checking that it exists, so create and import can file events under a
+  missing calendar of the caller's own.
+- Events with an empty `calendar_id` show in a shared default calendar's
+  CalDAV listing but not in the owner's own CalDAV listing of it.
+- A title-only edit bumps SEQUENCE but sends no REQUEST (the criterion
+  covers time, place and attendees). US-009 and US-020 must tolerate the gap
+  when matching replies.
+- The "CalDAV PUT sends nothing" guard is an import check; US-020 replaces
+  it with a behavioural test.
+- An edit by a delegate with write access sends no invitations unless the
+  delegate may send as the organiser.

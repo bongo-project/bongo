@@ -122,11 +122,13 @@ func TestShowEventOccurrence(t *testing.T) {
 		})
 	}
 
-	// The form is bound to the series: it carries the master's start, not the
-	// occurrence's, so saving it cannot move the series to the occurrence date.
+	// The form shows the occurrence's date, so "this event" and "this and
+	// following" start from it. It is still bound to the series, and saving it
+	// with "all events" keeps the series date (see
+	// TestInstanceEditAllFromAnOccurrenceKeepsTheSeriesDate).
 	body := e.show(t, guid, "?occurrence=20300527T090000Z").Body.String()
-	if got := inputValue(body, "start_date"); got != "2030-05-06" {
-		t.Errorf("start_date = %q, want the series start 2030-05-06", got)
+	if got := inputValue(body, "start_date"); got != "2030-05-27" {
+		t.Errorf("start_date = %q, want the occurrence date 2030-05-27", got)
 	}
 	if !strings.Contains(body, `action="/calendar/event/`+guid+`"`) {
 		t.Error("the form does not post to the series")

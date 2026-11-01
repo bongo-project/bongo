@@ -651,21 +651,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Split recipients into local and external before any user-visible writes
 	// so pre-delivery rejection does not leave a partial Sent copy behind.
 	allRecipients := append(splitRecipients(to), splitRecipients(cc)...)
-	var localRecipients, externalRecipients []string
-	for _, rcpt := range allRecipients {
-		// Reduce to the bare local@domain address: the To/Cc fields may carry a
-		// display name or angle brackets ("Alice <a@b.com>"), which must not
-		// leak into the SMTP envelope or the MX-lookup domain ("b.com>").
-		rcpt = normalizeRecipient(rcpt)
-		if rcpt == "" {
-			continue
-		}
-		if h.resolveLocalUser(rcpt) != "" {
-			localRecipients = append(localRecipients, rcpt)
-		} else {
-			externalRecipients = append(externalRecipients, rcpt)
-		}
-	}
+	localRecipients, externalRecipients := h.splitLocal(allRecipients)
 
 	maxRcpts := h.maxRecipients
 	if maxRcpts <= 0 {
@@ -869,15 +855,8 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			if stepDone[step] {
 				continue
 			}
-			env := &bongov1.QueueEnvelope{
-				Id:         derivedSendID(userID, sendID, "local:"+strings.ToLower(rcpt)).String(),
-				Sender:     fromAddr, // already checked against send-as
-				Recipients: []string{rcpt},
-				ReceivedAt: time.Now().Unix(),
-				BlobHash:   envHash,
-				Trusted:    true,
-				AuthUserId: userID,
-			}
+			// fromAddr was already checked against send-as.
+			env := localEnvelope(derivedSendID(userID, sendID, "local:"+strings.ToLower(rcpt)).String(), userID, fromAddr, rcpt, envHash)
 			if err := h.spool.Enqueue(env); err != nil {
 				h.logger.Warn("web: failed to spool local recipient copy", "recipient", rcpt, "guid", guid, "error", err)
 				composeError(w, r, "compose.errLocalCopy", http.StatusInternalServerError)
@@ -905,17 +884,11 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		// The entry may already be queued by an attempt that died before
 		// recording the step.
 		if _, err := h.queueStore.Get(outID); err != nil {
-			outMsg := &bongov1.OutboundMessage{
-				Id:          outID,
-				SenderId:    userID,
-				SenderEmail: fromAddr, // envelope MAIL FROM / return-path follows the chosen From
-				Recipients:  externalRecipients,
-				BlobHash:    rawHash, // skeleton hash when split; the queue reconstructs before relaying
-				Layout:      layout,
-				Attachments: metaAttachments,
-				MessageGuid: meta.MessageId,
-				Origin:      bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
-			}
+			// rawHash is the skeleton hash when split; the queue reconstructs
+			// before relaying.
+			outMsg := outboundMessage(outID, userID, fromAddr, externalRecipients, rawHash, meta.MessageId)
+			outMsg.Layout = layout
+			outMsg.Attachments = metaAttachments
 			if err := h.queueStore.Enqueue(outMsg); err != nil {
 				h.logger.Warn("web: failed to enqueue outbound delivery", "user", userID, "guid", guid, "error", err)
 				composeError(w, r, "compose.errEnqueue", http.StatusInternalServerError)
