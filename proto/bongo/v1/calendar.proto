@@ -16,4 +16,33 @@ message Calendar {
   // this field is read only by the calendar-grants-v1 migration, which then
   // clears it. Do not write it and do not reuse the number.
   repeated string shared_with = 8;
+  // Publishing as a tokenised read-only feed. publish_token is 32 random
+  // bytes (base64url only in the link); publish_detail is "full" or "busy"
+  // (empty means full); publish_password_hash is bcrypt, empty for none.
+  bool published = 9;
+  bytes publish_token = 10;
+  string publish_detail = 11;
+  string publish_password_hash = 12;
+  // subscription is set on a calendar that mirrors an external ICS feed.
+  CalendarSubscription subscription = 13;
+}
+
+// CalendarSubscription marks a calendar as a read-only copy of an external
+// ICS feed and holds its refresh state. source_url is a secret: it may carry
+// a token, so it is shown to the owner as a host only, never to a grantee,
+// and never written to a log, an export or a CalDAV property.
+message CalendarSubscription {
+  string source_url = 1;
+  // etag and last_modified are the validators of the last 200 response, sent
+  // back as If-None-Match and If-Modified-Since.
+  string etag = 2;
+  string last_modified = 3;
+  int64 last_attempt_at = 4;
+  int64 last_success_at = 5;
+  // last_error is the reason the last attempt failed; empty after a success.
+  // It carries a host at most, never the URL.
+  string last_error = 6;
+  // next_refresh_at is when the worker next fetches; 0 means at once.
+  int64 next_refresh_at = 7;
+  int32 event_count = 8;
 }

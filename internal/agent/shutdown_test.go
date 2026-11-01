@@ -300,8 +300,8 @@ func TestShutdownStopsRealWorkersWithoutCtxCancel(t *testing.T) {
 	if !a.Ready() {
 		t.Fatal("agent not ready")
 	}
-	if a.orphanGCCancel == nil || a.usageCancel == nil {
-		t.Fatal("orphan GC / usage recompute lack their own cancel")
+	if a.orphanGCCancel == nil || a.usageCancel == nil || a.subscriptionsCancel == nil {
+		t.Fatal("orphan GC / usage recompute / calendar subscriptions lack their own cancel")
 	}
 	// Queue worker, reminder checker, blob sync, orphan GC, usage recompute.
 	if n := a.bgStarted.Load(); n < 5 {

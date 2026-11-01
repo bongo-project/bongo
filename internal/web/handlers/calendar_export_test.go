@@ -10,6 +10,7 @@ import (
 
 	"github.com/emersion/go-ical"
 
+	"github.com/bongo-project/bongo/internal/icalevent"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -58,7 +59,7 @@ func zoneCounts(t *testing.T, ics string) (defined map[string]int, referenced ma
 		case ical.CompTimezone:
 			defined[c.Props.Get(ical.PropTimezoneID).Value]++
 		case ical.CompEvent:
-			for _, tz := range referencedTZIDs(c) {
+			for _, tz := range icalevent.ReferencedTZIDs(c) {
 				referenced[tz] = true
 			}
 		}

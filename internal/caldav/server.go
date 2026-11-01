@@ -365,6 +365,13 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	if t.shared() && existing != nil && eventCalendar(existing) != calID {
 		return nil, httpErr(http.StatusForbidden, "forbidden")
 	}
+	// The same upsert reaches an event of a subscribed calendar through any
+	// other collection of the owner: the stored calendar decides, not the path.
+	if subscribed, err := b.inSubscription(userID, existing); err != nil {
+		return nil, err
+	} else if subscribed {
+		return nil, httpErr(http.StatusForbidden, "this calendar is a read-only subscription")
+	}
 
 	// Honour the conditional headers before writing anything. go-webdav parses
 	// If-Match/If-None-Match into opts; ignoring them made every concurrent
@@ -420,6 +427,18 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 		if err != nil || eventCalendar(existing) != t.calendar {
 			return httpErr(http.StatusNotFound, "not found")
 		}
+	}
+	// An event of a subscribed calendar is not deletable through any
+	// collection: the next refresh would only bring it back.
+	// A read error other than not-found fails closed: the check cannot be made.
+	if existing, err := b.events.Get(userID, guid); err == nil {
+		if subscribed, err := b.inSubscription(userID, existing); err != nil {
+			return err
+		} else if subscribed {
+			return httpErr(http.StatusForbidden, "this calendar is a read-only subscription")
+		}
+	} else if !errors.Is(err, store.ErrEventNotFound) {
+		return fmt.Errorf("reading event: %w", err)
 	}
 
 	if err := b.events.Delete(userID, guid); err != nil {

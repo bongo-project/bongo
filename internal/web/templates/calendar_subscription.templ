@@ -1,0 +1,50 @@
+package templates
+
+// calendarSubscribeForm is the form that subscribes to an external ICS feed.
+templ calendarSubscribeForm() {
+	<section class="card calendar-subscribe-card" id="calendar-subscribe">
+		<h4>{ t(ctx, "calendar.subscribe") }</h4>
+		<p class="meta">{ t(ctx, "calendar.subscribeHelp") }</p>
+		<form hx-post="/calendar/subscribe" hx-swap="none" class="calendar-subscribe-form">
+			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+			<label>
+				{ t(ctx, "calendar.subscribeUrl") }
+				<input type="text" name="url" required autocomplete="off" spellcheck="false" placeholder="https://example.com/calendar.ics"/>
+			</label>
+			<label>
+				{ t(ctx, "calendar.name") }
+				<input type="text" name="name" maxlength="100"/>
+			</label>
+			<button type="submit">{ t(ctx, "calendar.subscribeAdd") }</button>
+		</form>
+	</section>
+}
+
+// calendarSubscriptionInfo is the subscription part of a settings card: the
+// feed's host, the last refresh and its error, and the unsubscribe button. The
+// feed URL is a secret and is not rendered.
+templ calendarSubscriptionInfo(card CalendarSettings) {
+	<div class="calendar-subscription">
+		<h4>{ t(ctx, "calendar.subscription") }</h4>
+		<p class="meta">{ t(ctx, "calendar.subscriptionHost") }: { card.Subscription.Host }</p>
+		<p class="meta">{ t(ctx, "calendar.subscriptionReadOnly") }</p>
+		if card.Subscription.LastSuccess == "" && card.Subscription.LastError == "" {
+			<p class="meta">{ t(ctx, "calendar.subscriptionPending") }</p>
+		}
+		if card.Subscription.LastSuccess != "" {
+			<p class="meta">{ t(ctx, "calendar.subscriptionLastSuccess") }: { card.Subscription.LastSuccess } ({ subscriptionEventCount(ctx, card.Subscription.EventCount) })</p>
+		}
+		if card.Subscription.LastError != "" {
+			<p class="meta form-error" role="alert">{ t(ctx, "calendar.subscriptionLastError") }: { card.Subscription.LastError }</p>
+		}
+		<form hx-post={ "/calendar/" + card.Calendar + "/unsubscribe" } hx-swap="none" hx-confirm={ t(ctx, "calendar.unsubscribeConfirm") } class="calendar-unsubscribe-form">
+			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+			<button type="submit" class="tool-btn">{ t(ctx, "calendar.unsubscribe") }</button>
+		</form>
+	</div>
+}
+
+// calendarReadOnlyEventNote tells the owner an event comes from a feed.
+templ calendarReadOnlyEventNote() {
+	<p class="meta event-meta" role="note">{ t(ctx, "calendar.subscribedEventReadOnly") }</p>
+}

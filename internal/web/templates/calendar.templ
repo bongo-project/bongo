@@ -251,6 +251,9 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						</ul>
 					}
 				</div>
+				if readOnlyEventFromCtx(ctx) && !isNew {
+					@calendarReadOnlyEventNote()
+				}
 				if se, ok := sharedEventFromCtx(ctx); ok && !isNew {
 					<input type="hidden" name="owner" value={ se.Owner }/>
 					<p class="meta event-meta" role="note">
@@ -273,14 +276,16 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						{ t(ctx, "nav.calendar") }
 						<select name="calendar_id">
 							for _, cal := range calendars {
-								<option
-									value={ cal.Guid }
-									if event != nil && event.CalendarId == cal.Guid {
-										selected
-									}
-								>
-									{ cal.Name }
-								</option>
+								if calendarOffered(cal, event) {
+									<option
+										value={ cal.Guid }
+										if event != nil && event.CalendarId == cal.Guid {
+											selected
+										}
+									>
+										{ cal.Name }
+									</option>
+								}
 							}
 							if len(writableShared(ctx)) > 0 {
 								<optgroup label={ t(ctx, "calendar.sharedWithMe") }>
@@ -446,9 +451,9 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 					<a
 						href={ EventHref(block.Event) }
 						class={ "event-block", calendarTopClass(block.TopMinutes), calendarHeightClass(block.HeightMinutes), block.ColourClass }
-						if block.Event.Rrule == "" {
-						data-guid={ block.Event.Guid }
-					}
+						if eventMovable(ctx, calendars, block.Event) {
+							data-guid={ block.Event.Guid }
+						}
 						data-cal-id={ eventCalendarID(block.Event) }
 						if owner := eventOwner(block.Event); owner != "" {
 							data-owner={ owner }
@@ -523,7 +528,7 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 				<a
 					href={ EventHref(block.Event) }
 					class={ "event-block", calendarTopClass(block.TopMinutes), calendarHeightClass(block.HeightMinutes), block.ColourClass }
-					if block.Event.Rrule == "" {
+					if eventMovable(ctx, calendars, block.Event) {
 						data-guid={ block.Event.Guid }
 					}
 					data-cal-id={ eventCalendarID(block.Event) }
@@ -739,6 +744,7 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 				<a href="/calendar" class="tool-btn">&larr; { t(ctx, "calendar.backToCalendar") }</a>
 			</div>
 			<h3>{ t(ctx, "calendar.settings") }</h3>
+			@calendarSubscribeForm()
 			for _, card := range cards {
 				<section class="card calendar-settings-card" id={ "calendar-settings-" + card.Calendar }>
 					<form hx-put={ "/calendar/" + card.Calendar } hx-swap="none" class="calendar-settings-form">
@@ -753,6 +759,9 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 						</label>
 						<button type="submit">{ t(ctx, "common.save") }</button>
 					</form>
+					if card.Subscription != nil {
+						@calendarSubscriptionInfo(card)
+					}
 					if card.CanShare {
 						<h4>{ t(ctx, "calendar.sharing") }</h4>
 						if len(card.Grants) == 0 {
@@ -799,6 +808,7 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 							<button type="submit">{ t(ctx, "calendar.shareAdd") }</button>
 						</form>
 					}
+					@CalendarPublishSection(card.Publish)
 				</section>
 			}
 		</main>
@@ -1117,7 +1127,12 @@ func eventCalendarID(e *bongov1.Event) string {
 }
 
 func eventBlockColourClass(e *bongov1.Event, calColors map[string]string) string {
-	return CalendarColourClass(eventBlockColor(e, calColors))
+	c := CalendarColourClass(eventBlockColor(e, calColors))
+	if e.GetStatus() == "CANCELLED" {
+		// Drawn struck through; the event stays removable like any other.
+		c += " event-cancelled"
+	}
+	return c
 }
 
 // EventColourClass is the cal-colour-* class for an event's calendar.
@@ -1347,7 +1362,7 @@ templ AgendaContent(data AgendaData) {
 								</span>
 								<span class={ "agenda-bar", it.ColourClass }></span>
 								<span class="agenda-body">
-									<a href={ EventHref(it.Event) } class="agenda-title">{ it.Event.Title }</a>
+									<a href={ EventHref(it.Event) } class={ "agenda-title", templ.KV("event-cancelled", it.Event.GetStatus() == "CANCELLED") }>{ it.Event.Title }</a>
 									if it.Event.Location != "" {
 										<span class="agenda-location">{ it.Event.Location }</span>
 									}

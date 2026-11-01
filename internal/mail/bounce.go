@@ -39,6 +39,55 @@ type BounceGenerator struct {
 	hostedDomain    func(domain string) bool
 	postmasterAcct  string
 	noTargetLogOnce sync.Once
+
+	// External relay (SetExternalRelay): reports for a sender outside this
+	// server go to the outbound queue instead of the local inbound pipeline.
+	// Set once before the generator is shared; read-only afterwards.
+	extQueue   ReportEnqueuer
+	extIsLocal func(addr string) bool
+	extPerAddr ReportLimiter
+	extGlobal  ReportLimiter
+}
+
+// ReportEnqueuer is the slice of the outbound queue the generator needs to
+// relay a report to an external sender.
+type ReportEnqueuer interface {
+	Enqueue(msg *bongov1.OutboundMessage) error
+}
+
+// ReportLimiter caps relayed reports. *RateLimiter satisfies it.
+type ReportLimiter interface {
+	Allow(key string) bool
+}
+
+// External report limiter keys. They are separate buckets from the SRS bounce
+// limiters in the deliver stage, even where the limits are the same.
+const (
+	reportAddrKeyPrefix = "dsn:"
+	reportGlobalKey     = "dsn:global"
+)
+
+// SetExternalRelay enables relaying of reports to senders outside the hosted
+// domains. isLocal reports whether an address belongs to this server: a hosted
+// domain, or an address that resolves to a local user (a send-as identity on
+// an external domain is local, and its reports must reach the local inbox, not
+// be mailed to that domain). Anything isLocal says is local keeps going
+// through the local inbound pipeline, with its SRS reversal, no-relay and
+// unknown-user handling unchanged.
+//
+// A report to an external sender is dropped, never queued for later, when
+// either limiter refuses it: perAddr is keyed by the sender address and global
+// is one bucket. Limiters are per process, so a cluster allows up to its node
+// count times the global cap, as for SRS bounces.
+//
+// Without a queue, an isLocal func and both limiters nothing is enabled and a
+// report to an external sender is dropped as before. Call before the
+// generator is shared with the queue worker.
+func (bg *BounceGenerator) SetExternalRelay(q ReportEnqueuer, isLocal func(addr string) bool, perAddr, global ReportLimiter) {
+	if q == nil || isLocal == nil || perAddr == nil || global == nil {
+		return
+	}
+	bg.extQueue, bg.extIsLocal, bg.extPerAddr, bg.extGlobal = q, isLocal, perAddr, global
 }
 
 // SetPostmasterCopy enables the best-effort postmaster copy of each bounce.
@@ -99,10 +148,10 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 // GenerateDelayReport delivers an "Action: delayed" report (RFC 3464) to the
 // sender: the message is still queued and will be retried until retryUntil.
 // The caller decides whether a delay report is wanted and allowed (NOTIFY=DELAY,
-// not a null or unauthenticated-forward sender); like every report it is
-// delivered through the local inbound pipeline, so one addressed to a sender
-// outside the hosted domains is dropped there. It never produces a postmaster
-// copy: that copy is for bounces only.
+// not a null or unauthenticated-forward sender); like every report it goes
+// through the local inbound pipeline, or to the outbound queue for a sender
+// outside the hosted domains (see SetExternalRelay). It never produces a
+// postmaster copy: that copy is for bounces only.
 func (bg *BounceGenerator) GenerateDelayReport(original *bongov1.OutboundMessage, recipients []string, reason string, retryUntil time.Time) error {
 	return bg.generate(original, recipients, reason, reportDelayed, retryUntil)
 }
@@ -112,6 +161,14 @@ func (bg *BounceGenerator) GenerateDelayReport(original *bongov1.OutboundMessage
 // backscatter gate as for a bounce. No postmaster copy.
 func (bg *BounceGenerator) GenerateDeliveredReport(original *bongov1.OutboundMessage, recipients []string) error {
 	return bg.generate(original, recipients, "", reportDelivered, time.Time{})
+}
+
+// GenerateRelayedReport sends an "Action: relayed" report (RFC 3464 section
+// 2.3.3) for recipients the message was handed to, via a server that cannot
+// report on delivery. The caller has already applied the backscatter gate. No
+// postmaster copy.
+func (bg *BounceGenerator) GenerateRelayedReport(original *bongov1.OutboundMessage, recipients []string) error {
+	return bg.generate(original, recipients, "", reportRelayed, time.Time{})
 }
 
 func (bg *BounceGenerator) generate(original *bongov1.OutboundMessage, recipients []string, reason string, kind reportKind, retryUntil time.Time) error {
@@ -143,6 +200,16 @@ func (bg *BounceGenerator) generate(original *bongov1.OutboundMessage, recipient
 		"reason", reason,
 	)
 
+	// A sender outside this server gets the report through the outbound queue.
+	// The queue worker DKIM-signs it (server-generated mail has origin LOCAL),
+	// so it is stored unsigned here or it would be signed twice.
+	var senderErr error
+	if bg.relaysExternally(original.SenderEmail) {
+		senderErr = bg.relayExternal(original.SenderEmail, bounceMsg)
+		bg.postmasterCopy(original, recipients, reason, kind, domain, originalHeaders)
+		return senderErr
+	}
+
 	signed := bg.signBounce(bounceMsg)
 
 	// RFC 5321 s6.1: a DSN's envelope sender (MAIL FROM) must be null (<>) so
@@ -154,10 +221,10 @@ func (bg *BounceGenerator) generate(original *bongov1.OutboundMessage, recipient
 	// envelope sender is null.
 	//
 	// The report goes through the local inbound pipeline, whose deliver stage
-	// drops a recipient it cannot resolve. A report for a sender outside the
-	// hosted domains is therefore dropped, as bounces already are; relaying
-	// DSNs onward is a later release.
-	senderErr := bg.deliverer.Deliver(
+	// drops a recipient it cannot resolve. A sender outside the hosted domains
+	// is handled above when SetExternalRelay is configured; without it such a
+	// report is dropped there.
+	senderErr = bg.deliverer.Deliver(
 		"",
 		[]string{original.SenderEmail},
 		bytes.NewReader(signed),
@@ -169,10 +236,77 @@ func (bg *BounceGenerator) generate(original *bongov1.OutboundMessage, recipient
 	// unauthenticated forward), so a suppressed bounce is never copied. Only
 	// failure reports are copied, and never with the original body (RET=FULL
 	// applies to the sender's report only).
+	bg.postmasterCopy(original, recipients, reason, kind, domain, originalHeaders)
+	return senderErr
+}
+
+// postmasterCopy delivers the best-effort postmaster copy of a failure report.
+func (bg *BounceGenerator) postmasterCopy(original *bongov1.OutboundMessage, recipients []string, reason string, kind reportKind, domain, originalHeaders string) {
 	if bg.copyPostmaster && kind == reportFailed {
 		bg.deliverPostmasterCopy(original, recipients, reason, domain, originalHeaders)
 	}
-	return senderErr
+}
+
+// relaysExternally reports whether a report to sender goes to the outbound
+// queue: relaying is configured, sender is a well-formed address, and it is not
+// one this server owns. An address that cannot be judged local or external
+// (isLocal says local on any doubt) never leaves the server.
+func (bg *BounceGenerator) relaysExternally(sender string) bool {
+	if bg.extQueue == nil || !externalReportAddress(sender) {
+		return false
+	}
+	return !bg.extIsLocal(sender)
+}
+
+// externalReportAddress reports whether addr is a plain addr-spec safe to put
+// in an SMTP RCPT command: a single '@' with a local part and a dotted domain,
+// and no whitespace, control characters or address punctuation.
+func externalReportAddress(addr string) bool {
+	if addr == "" || len(addr) > 254 || addr != strings.TrimSpace(addr) {
+		return false
+	}
+	at := strings.IndexByte(addr, '@')
+	if at <= 0 || at != strings.LastIndexByte(addr, '@') || at == len(addr)-1 {
+		return false
+	}
+	for _, r := range addr {
+		if r <= ' ' || r == 0x7f || r == '<' || r == '>' || r == ',' || r == ';' || r == '"' || r == '\\' {
+			return false
+		}
+	}
+	return strings.Contains(addr[at+1:], ".")
+}
+
+// relayExternal queues an unsigned report for sender, which has already been
+// judged external. The envelope sender is null (RFC 5321 s6.1) so a failure of
+// this report cannot produce another, and origin LOCAL marks it server-
+// generated. A report over either cap is dropped and logged, never queued for
+// later. The report body is not logged.
+func (bg *BounceGenerator) relayExternal(sender string, report []byte) error {
+	// Global first, so a report the global cap refuses does not spend the
+	// sender's per-address token. A dropped report does not suppress the
+	// postmaster copy of a failure report, which is sent separately.
+	if !bg.extGlobal.Allow(reportGlobalKey) || !bg.extPerAddr.Allow(reportAddrKeyPrefix+strings.ToLower(sender)) {
+		bg.logger.Warn("bounce: report to external sender dropped, rate limit reached", "sender", sender)
+		return nil
+	}
+	if bg.blobs == nil {
+		return fmt.Errorf("relaying report to %s: no blob store", sender)
+	}
+	hash, err := bg.blobs.Put(report)
+	if err != nil {
+		return fmt.Errorf("storing report for %s: %w", sender, err)
+	}
+	msg := &bongov1.OutboundMessage{
+		Id:         uuid.New().String(),
+		Recipients: []string{sender},
+		BlobHash:   hash,
+		Origin:     bongov1.OutboundOrigin_OUTBOUND_ORIGIN_LOCAL,
+	}
+	if err := bg.extQueue.Enqueue(msg); err != nil {
+		return fmt.Errorf("queueing report for %s: %w", sender, err)
+	}
+	return nil
 }
 
 // signBounce DKIM-signs a built DSN. Never fails the bounce: on a signing
@@ -316,6 +450,9 @@ const (
 	reportFailed reportKind = iota
 	reportDelayed
 	reportDelivered
+	// reportRelayed is "Action: relayed": the message was handed to a server
+	// that does not return delivery notifications.
+	reportRelayed
 )
 
 // action is the RFC 3464 Action field value.
@@ -325,9 +462,14 @@ func (k reportKind) action() string {
 		return "delayed"
 	case reportDelivered:
 		return "delivered"
+	case reportRelayed:
+		return "relayed"
 	}
 	return "failed"
 }
+
+// hasReason reports whether the report states a failure or delay reason.
+func (k reportKind) hasReason() bool { return k != reportDelivered && k != reportRelayed }
 
 func (k reportKind) subject() string {
 	switch k {
@@ -335,6 +477,8 @@ func (k reportKind) subject() string {
 		return "Delayed Mail (still being retried)"
 	case reportDelivered:
 		return "Successful Mail Delivery Report"
+	case reportRelayed:
+		return "Mail Relayed Report"
 	}
 	return "Undelivered Mail Returned to Sender"
 }
@@ -598,7 +742,7 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	switch opts.kind {
 	case reportDelayed:
 		status = parseEnhancedStatusClass(reason, "4")
-	case reportDelivered:
+	case reportDelivered, reportRelayed:
 		status = "2.0.0"
 	default:
 		status = parseEnhancedStatus(reason)
@@ -644,6 +788,8 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 		part1.WriteString("Delivery of the following message to one or more recipients has been delayed. It is still queued and delivery will be retried:\r\n\r\n")
 	case reportDelivered:
 		part1.WriteString("The following message was delivered to one or more recipients:\r\n\r\n")
+	case reportRelayed:
+		part1.WriteString("The following message was relayed to a server that does not return delivery notifications. Delivery is not confirmed:\r\n\r\n")
 	default:
 		part1.WriteString("The following message could not be delivered to one or more recipients:\r\n\r\n")
 	}
@@ -653,7 +799,7 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	if opts.kind == reportDelayed && !opts.retryUntil.IsZero() {
 		fmt.Fprintf(&part1, "\r\nDelivery will be retried until %s.\r\n", opts.retryUntil.UTC().Format(time.RFC1123Z))
 	}
-	if opts.kind != reportDelivered {
+	if opts.kind.hasReason() {
 		fmt.Fprintf(&part1, "\r\nReason: %s\r\n", safeReason)
 	}
 	// Error ignored: the sink is a bytes.Buffer, whose Write never fails. The
@@ -684,7 +830,7 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 		fmt.Fprintf(&buf, "Final-Recipient: rfc822; %s\r\n", rcpt)
 		fmt.Fprintf(&buf, "Action: %s\r\n", action)
 		fmt.Fprintf(&buf, "Status: %s\r\n", status)
-		if opts.kind != reportDelivered {
+		if opts.kind.hasReason() {
 			fmt.Fprintf(&buf, "Diagnostic-Code: smtp; %s\r\n", diagCode)
 		}
 		if opts.kind == reportDelayed && !opts.retryUntil.IsZero() {

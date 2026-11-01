@@ -132,7 +132,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /user/{user_id}/mail/{guid}          → MailMeta protobuf + BlobRef
 /user/{user_id}/event/{guid}         → Event protobuf (ical_raw inline, NOT a blob)
 /user/{user_id}/contact/{guid}       → Contact protobuf (vcard_raw inline, NOT a blob)
-/user/{user_id}/calendar/{guid}      → calendar metadata
+/user/{user_id}/calendar/{guid}      → calendar metadata (also the publish state: published, publish_token = the feed capability, publish_detail, publish_password_hash; the token is in backups and is never logged); a subscription calendar (external ICS feed) holds `Calendar.subscription`: source_url (a secret: logs and the UI show its host only) and refresh state. Read-only for everyone
 /user/{user_id}/mailbox/{name}/meta  → mailbox metadata (uid_next, uid_validity)
 /user/{user_id}/mailbox/{name}/msg/{uid} → MailboxMessage (flags, tags, mail guid)
 /user/{user_id}/preferences          → user preferences
@@ -205,6 +205,14 @@ Deleting a calendar or a user revokes their grants in the same request, and a le
 grants whose owner, calendar or grantee is gone (two consecutive sightings, `ErrNotFound` only).
 Domain-admin delegation (`/system/domain_admin/...`) and send-as grants (`AddressRecord.CanSend`/`Verified`)
 stay separate mechanisms.
+
+Calendar subscriptions add no key. A subscribed calendar is an ordinary `/user/{id}/calendar/{guid}` record
+with `Calendar.subscription` set; its events are ordinary event keys under a guid derived from
+(calendar, feed UID), `sub-` plus 32 hex, never the UID. The calendar is read-only for everyone, owner and
+write grantees included: `calendarAccess` (web) and `resolve` / `inSubscription` (CalDAV) check the event's
+STORED calendar. A leader worker (`internal/agent/calsubscriptions.go`) refreshes it; the feed is parsed
+whole before any write, and the writes are convergent, not atomic (see that file's comment). Fetching goes
+through `internal/netx`, whose dialer refuses non-public addresses on every connection.
 
 ## Key Technology Choices
 

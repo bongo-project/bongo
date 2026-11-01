@@ -84,6 +84,10 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"vacation", "/settings/vacation", func(string) url.Values {
 			return url.Values{"vacation_enabled": {"0"}}
 		}},
+		{"calendar subscribe", "/calendar/subscribe", func(n string) url.Values {
+			return url.Values{"url": {"https://feeds.example.com/" + n + ".ics"}}
+		}},
+		{"calendar unsubscribe", "/calendar/missing/unsubscribe", func(string) url.Values { return url.Values{} }},
 		{"domain alias", "/admin/domains", func(n string) url.Values {
 			return url.Values{"domain": {n + ".example"}, "alias_of": {"localhost"}}
 		}},

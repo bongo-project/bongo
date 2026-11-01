@@ -12,6 +12,7 @@ import (
 	webdav "github.com/emersion/go-webdav"
 
 	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // GrantReader is the part of the grant store the backend consults. It is read
@@ -162,21 +163,46 @@ func (b *Backend) resolve(ctx context.Context, path string, want ...pathKind) (t
 		return target{}, httpErr(http.StatusForbidden, "forbidden")
 	}
 	t := target{davPath: p, user: user, keyOwner: user, level: store.GrantLevelWrite}
-	if !p.shared() {
-		return t, nil
+	if p.shared() {
+		if b.grants == nil || p.owner == user {
+			return target{}, httpErr(http.StatusNotFound, "not found")
+		}
+		level, err := b.grants.CalendarAccessLevel(p.owner, p.calendar, user)
+		if err != nil {
+			return target{}, fmt.Errorf("reading grant: %w", err)
+		}
+		if !store.LevelSatisfies(level, store.GrantLevelRead) {
+			return target{}, httpErr(http.StatusNotFound, "not found")
+		}
+		t.keyOwner, t.level = p.owner, level
 	}
-	if b.grants == nil || p.owner == user {
-		return target{}, httpErr(http.StatusNotFound, "not found")
+	// A subscription mirrors an external feed and is read-only for everyone,
+	// its owner and a write grantee included: the next refresh would undo an
+	// edit. Only a collection path has a calendar to ask about.
+	if p.kind == kindCollection || p.kind == kindObject {
+		subscribed, err := b.calendars.CalendarIsSubscribed(t.keyOwner, p.calendar)
+		if err != nil {
+			return target{}, fmt.Errorf("reading calendar: %w", err)
+		}
+		if subscribed {
+			t.level = store.GrantLevelRead
+		}
 	}
-	level, err := b.grants.CalendarAccessLevel(p.owner, p.calendar, user)
-	if err != nil {
-		return target{}, fmt.Errorf("reading grant: %w", err)
-	}
-	if !store.LevelSatisfies(level, store.GrantLevelRead) {
-		return target{}, httpErr(http.StatusNotFound, "not found")
-	}
-	t.keyOwner, t.level = p.owner, level
 	return t, nil
+}
+
+// inSubscription reports whether event lives in one of owner's subscribed
+// calendars. PUT and DELETE act on an event by its guid whatever collection
+// the path names, so the stored calendar is what decides, never the path.
+func (b *Backend) inSubscription(owner string, event *bongov1.Event) (bool, error) {
+	if event == nil {
+		return false, nil
+	}
+	subscribed, err := b.calendars.CalendarIsSubscribed(owner, eventCalendar(event))
+	if err != nil {
+		return false, fmt.Errorf("reading calendar: %w", err)
+	}
+	return subscribed, nil
 }
 
 func slicesContains(kinds []pathKind, k pathKind) bool {
@@ -194,11 +220,26 @@ func slicesContains(kinds []pathKind, k pathKind) bool {
 func (b *Backend) ReadOnlyShare(ctx context.Context, href string) bool {
 	user := getUserID(ctx)
 	p := parseDAVPath(href)
-	if user == "" || b.grants == nil || p.kind != kindCollection || !p.shared() || p.user != user {
+	if user == "" || p.kind != kindCollection || p.user != user {
 		return false
 	}
-	level, err := b.grants.CalendarAccessLevel(p.owner, p.calendar, user)
-	return err == nil && level == store.GrantLevelRead
+	owner := user
+	if p.shared() {
+		if b.grants == nil {
+			return false
+		}
+		owner = p.owner
+		level, err := b.grants.CalendarAccessLevel(p.owner, p.calendar, user)
+		if err != nil || !store.LevelSatisfies(level, store.GrantLevelRead) {
+			return false
+		}
+		if level == store.GrantLevelRead {
+			return true
+		}
+	}
+	// A write grantee, or the owner, of a subscription: read-only as well.
+	subscribed, err := b.calendars.CalendarIsSubscribed(owner, p.calendar)
+	return err == nil && subscribed
 }
 
 // sharedName is the display name of a shared collection: the calendar's name

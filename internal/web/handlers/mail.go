@@ -99,6 +99,9 @@ type MailHandler struct {
 	metadata     *store.MetadataManager
 	search       *store.SearchManager
 	tags         *store.TagStore
+	// invitations answers iMIP invitations found in a message. nil shows no
+	// card.
+	invitations invitationService
 
 	// ensureMailboxMu serialises lazy mailbox creation (see ensureMailbox).
 	ensureMailboxMu sync.Mutex
@@ -494,7 +497,10 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load raw message body and attachments (single MIME parse).
-	h.applyEnvelopeBody(&detail, meta)
+	env := h.applyEnvelopeBody(&detail, meta)
+	if env != nil && h.invitations != nil {
+		detail.Invitation = h.invitationCard(r, userID, email, mailbox, msg.Uid, env, meta)
+	}
 
 	detail.Thread = h.loadThreadMessageDetails(userID, msg.MailGuid, realMailbox)
 
@@ -580,7 +586,10 @@ func (h *MailHandler) findMailboxMessageByGUID(userID, preferredMailbox, guid st
 // in. This is the single MIME-parse path shared by ShowMessage and the thread
 // sibling rendering in messageDetailFromMeta, so each message's envelope is
 // parsed at most once per render.
-func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *bongov1.MailMeta) {
+//
+// It returns the parsed envelope, or nil when the message could not be parsed.
+func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *bongov1.MailMeta) *enmime.Envelope {
+	var parsed *enmime.Envelope
 	// The stored List-Post decides the button; the blob is the fallback below
 	// for messages that lack the stored field.
 	detail.HasListPost = listPostAddress(meta.ListPost) != ""
@@ -589,6 +598,7 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 		if err == nil {
 			env, degraded, perr := mimesafe.ReadEnvelope(rawMsg)
 			if perr == nil {
+				parsed = env
 				if meta.ListPost == "" {
 					detail.HasListPost = listPostAddress(env.GetHeader("List-Post")) != ""
 				}
@@ -660,6 +670,7 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 			})
 		}
 	}
+	return parsed
 }
 
 // servableParts returns the parts addressable as /attachment/{idx}: the

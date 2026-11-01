@@ -56,6 +56,9 @@ type MessageDetail struct {
 	Tags             []TagInfo
 	AllTags          []TagInfo
 	Thread           []MessageDetail
+	// Invitation is the card for a message that carries an iTIP REQUEST or
+	// CANCEL; nil for every other message and for thread siblings.
+	Invitation *InvitationCard
 }
 
 // tagPaletteColours maps colour_index (0-15) to a CSS hex colour.
@@ -181,6 +184,9 @@ templ messageView(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
 						{ t(ctx, "mail.loadRemoteImages") }
 					</button>
 				</div>
+			}
+			if msg.Invitation != nil {
+				@invitationCard(msg.Invitation)
 			}
 			<div class="msg-body">
 				if msg.MIMETooComplex {

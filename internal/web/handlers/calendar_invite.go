@@ -33,7 +33,13 @@ func (h *CalendarHandler) SetInviteSender(s inviteSender) { h.invites = s }
 
 // SetAddressStore wires the send-as check that decides whether the acting user
 // may send as an event's organiser. nil permits only the session address.
-func (h *CalendarHandler) SetAddressStore(as *store.AddressStore) { h.addresses = as }
+func (h *CalendarHandler) SetAddressStore(as *store.AddressStore) {
+	h.addresses = as
+	h.owned = nil
+	if as != nil {
+		h.owned = as
+	}
+}
 
 // InviteSender returns the wired invitation sender, or nil.
 func (h *CalendarHandler) InviteSender() inviteSender { return h.invites }

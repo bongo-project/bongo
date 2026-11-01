@@ -1,0 +1,118 @@
+package templates
+
+import "fmt"
+
+// invitationCard is the card shown above the body of a message that carries an
+// iTIP REQUEST or CANCEL. Nothing here is linked: the values are escaped text.
+templ invitationCard(c *InvitationCard) {
+	{{ action := fmt.Sprintf("/mail/%s/%d/invitation", encMailbox(c.Mailbox), c.UID) }}
+	<section class="invite-card" aria-label={ t(ctx, "invite.heading") }>
+		<h3 class="invite-heading">
+			if c.Method == "CANCEL" {
+				{ t(ctx, "invite.headingCancel") }
+			} else {
+				{ t(ctx, "invite.heading") }
+			}
+		</h3>
+		if c.ReplyFailed {
+			@FlashMessage(t(ctx, "invite.replyFailed"), "warning")
+		}
+		if c.DMARCFailed {
+			@FlashMessage(t(ctx, "invite.dmarcWarning"), "warning")
+		}
+		if c.OrganiserDiffersFrom != "" {
+			@FlashMessage(fmt.Sprintf(t(ctx, "invite.senderDiffers"), c.OrganiserDiffersFrom), "warning")
+		}
+		<p class="invite-title">{ c.Title }</p>
+		<dl class="invite-facts">
+			<dt>{ t(ctx, "invite.when") }</dt>
+			<dd>{ c.When }</dd>
+			if c.Where != "" {
+				<dt>{ t(ctx, "invite.where") }</dt>
+				<dd>{ c.Where }</dd>
+			}
+			<dt>{ t(ctx, "invite.organiser") }</dt>
+			<dd>{ c.Organiser }</dd>
+			if len(c.Attendees) > 0 {
+				<dt>{ t(ctx, "invite.attendees") }</dt>
+				<dd>
+					<ul class="invite-attendees">
+						for _, a := range c.Attendees {
+							<li>
+								if a.Name != "" {
+									{ a.Name }
+									<span class="invite-address">{ a.Address }</span>
+								} else {
+									{ a.Address }
+								}
+								<span class="invite-partstat">{ t(ctx, partstatKey(a.Partstat)) }</span>
+							</li>
+						}
+						if c.MoreAttendees > 0 {
+							<li>{ fmt.Sprintf(t(ctx, "invite.moreAttendees"), c.MoreAttendees) }</li>
+						}
+					</ul>
+				</dd>
+			}
+		</dl>
+		if c.Description != "" {
+			<pre class="invite-description u-white-space-prewrap u-font-inherit">{ c.Description }</pre>
+		}
+		if c.ConflictsChecked {
+			if len(c.Conflicts) > 0 {
+				<div class="invite-conflicts" role="status">
+					<strong>{ t(ctx, "invite.conflicts") }</strong>
+					<ul>
+						for _, x := range c.Conflicts {
+							<li>{ x.Title } <span class="invite-address">{ x.When }</span></li>
+						}
+					</ul>
+				</div>
+			} else {
+				<p class="invite-noconflicts">{ t(ctx, "invite.noConflicts") }</p>
+			}
+			if c.FirstInstanceOnly {
+				<p class="invite-note">{ t(ctx, "invite.firstInstanceOnly") }</p>
+			}
+		}
+		if c.Status != "" {
+			<p class="invite-status" role="status">{ t(ctx, c.Status) }</p>
+		}
+		for _, n := range c.Notes {
+			<p class="invite-note">{ t(ctx, n) }</p>
+		}
+		if c.CanAnswer {
+			<form method="post" action={ action } class="invite-actions">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				<input type="hidden" name="action" value="answer"/>
+				if len(c.Calendars) > 1 {
+					<label class="invite-calendar">
+						{ t(ctx, "invite.calendar") }
+						<select name="calendar_id">
+							for _, cal := range c.Calendars {
+								<option value={ cal.ID } selected?={ cal.Selected }>{ cal.Name }</option>
+							}
+						</select>
+					</label>
+				}
+				<button type="submit" name="partstat" value="ACCEPTED" class="btn-primary">{ t(ctx, "invite.accept") }</button>
+				<button type="submit" name="partstat" value="TENTATIVE" class="btn-secondary">{ t(ctx, "invite.tentative") }</button>
+				<button type="submit" name="partstat" value="DECLINED" class="btn-secondary">{ t(ctx, "invite.decline") }</button>
+			</form>
+		}
+		if c.CanUpdate || c.CanMarkCancelled || c.CanRemove {
+			<form method="post" action={ action } class="invite-actions">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				if c.CanUpdate {
+					<button type="submit" name="action" value="update" class="btn-secondary">{ t(ctx, "invite.update") }</button>
+				}
+				if c.CanMarkCancelled {
+					<button type="submit" name="action" value="cancel" class="btn-secondary">{ t(ctx, "invite.markCancelled") }</button>
+				}
+				if c.CanRemove {
+					<button type="submit" name="action" value="remove" class="btn-secondary">{ t(ctx, "invite.remove") }</button>
+				}
+			</form>
+		}
+	</section>
+}

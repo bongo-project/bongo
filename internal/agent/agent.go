@@ -149,6 +149,7 @@ type Agent struct {
 	// composeHandler and addrVerifyHandler are the handlers Run mounted, kept
 	// so tests can confirm the limiters were wired in the real startup path.
 	composeHandler    *handlers.ComposeHandler
+	mailHandler       *handlers.MailHandler
 	addrVerifyHandler *handlers.AddressVerifyHandler
 	calendarHandler   *handlers.CalendarHandler
 	// ForwardTargets holds verified external forwarding targets per user; the
@@ -229,6 +230,9 @@ type Agent struct {
 	quarantinePurgeCancel context.CancelFunc
 	orphanGCCancel        context.CancelFunc
 	usageCancel           context.CancelFunc
+	subscriptionsCancel   context.CancelFunc
+	// subscriptionClient is the SSRF-safe feed fetcher; tests read its options.
+	subscriptionClient    *netx.Client
 	rulesMigrationCancel  context.CancelFunc
 	grantsMigrationCancel context.CancelFunc
 	previewCancel         context.CancelFunc
@@ -1111,6 +1115,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		})
 	}
 
+	// Published calendar feeds. Public on purpose and read-only: the link's
+	// token is the credential. The route sits on r outside every group, so no
+	// session, CSRF or locale middleware reads or sets a cookie.
+	if a.Events != nil && a.Calendars != nil {
+		r.Get("/pub/calendar/{owner}/{calendar}/{token}.ics", handlers.NewCalendarPublishHandler(a.Events, a.Calendars).ServeFeed)
+	}
+
 	// Mail-client autoconfiguration (public: clients fetch these before any
 	// credentials exist). Advertises the mail hostname + standard ports so
 	// Thunderbird/Outlook/Apple Mail can self-configure from an email address.
@@ -1324,8 +1335,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/settings/security/totp/disable", securityH.DisableTOTP)
 		r.Post("/settings/security/password", securityH.ChangePassword)
 
+		var mailH *handlers.MailHandler
 		if a.Mailboxes != nil {
-			mailH := handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes, a.logger)
+			mailH = handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes, a.logger)
+			a.mailHandler = mailH
 			mailH.SetApplier(a)
 			if a.DomainQuota != nil {
 				mailH.SetQuotaChecker(a.DomainQuota)
@@ -1361,6 +1374,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/mail/{mailbox}/{uid}/export", mailH.ExportEML)
 			r.Get("/mail/{mailbox}/{uid}/source", mailH.ViewSource)
 			r.Get("/mail/{mailbox}/{uid}/attachment/{idx}", mailH.ServeAttachment)
+			// The user's answer to an iMIP invitation in the message: CSRF
+			// protected like the other cookie-authenticated POSTs above, and
+			// a write like event create, so it stops when storage is low.
+			r.With(refuseLowStorage).Post("/mail/{mailbox}/{uid}/invitation", mailH.AnswerInvitation)
 			r.Get("/mail/{mailbox}/{uid}", mailH.ShowMessage)
 			r.Get("/mail/blob/{hash}", mailH.ServeBlob)
 			r.Post("/mail/{mailbox}/{uid}/flags", mailH.ToggleFlags)
@@ -1466,6 +1483,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			if a.Preferences != nil {
 				calendarH.SetZoneSource(a.Preferences)
 			}
+			// The delivery stage stamps Authentication-Results under this
+			// authserv-id; the invitation card reads the DMARC verdict from it.
+			calendarH.SetAuthservID(a.Config.SMTP.Hostname)
+			if mailH != nil {
+				mailH.SetInvitations(calendarH)
+			}
 			a.wireCalendarShareLimiter(calendarH)
 			a.calendarHandler = calendarH
 			r.Get("/calendar", calendarH.CalendarIndex)
@@ -1484,6 +1507,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Put("/calendar/{calendarID}", calendarH.UpdateCalendar)
 			r.Post("/calendar/{calendarID}/share", calendarH.ShareCalendar)
 			r.Post("/calendar/{calendarID}/unshare", calendarH.UnshareCalendar)
+			r.Post("/calendar/{calendarID}/publish", calendarH.PublishCalendar)
+			r.Post("/calendar/{calendarID}/publish/regenerate", calendarH.RegeneratePublish)
+			r.Post("/calendar/{calendarID}/publish/password", calendarH.SetPublishPassword)
+			r.Post("/calendar/{calendarID}/unpublish", calendarH.UnpublishCalendar)
+			r.Post("/calendar/subscribe", calendarH.SubscribeCalendar)
+			r.Post("/calendar/{calendarID}/unsubscribe", calendarH.UnsubscribeCalendar)
 			r.Get("/calendar/freebusy", calendarH.FreeBusy)
 			r.Get("/calendar/export", calendarH.ExportCalendar)
 			r.With(refuseLowStorage).Post("/calendar/import", calendarH.ImportCalendar)
@@ -2097,6 +2126,18 @@ func (a *Agent) Run(ctx context.Context) error {
 		usageCtx, usageCancel := context.WithCancel(ctx)
 		a.usageCancel = usageCancel
 		a.goWorker("usage-recompute", func() { a.runUsageRecompute(usageCtx, usageRecomputeInterval) })
+	}
+
+	// Keep subscribed calendars in step with their external ICS feeds.
+	// Leader-only, periodic; see calsubscriptions.go.
+	if a.Raft != nil && a.Events != nil && a.Calendars != nil && a.Metadata != nil {
+		subsCtx, subsCancel := context.WithCancel(ctx)
+		a.subscriptionsCancel = subsCancel
+		a.subscriptionClient = netx.NewClient(netx.Options{AllowPrivateNetworks: a.Config.SubscriptionsAllowPrivateNetworks()})
+		feedClient := a.subscriptionClient
+		a.goWorker("calendar-subscriptions", func() {
+			a.runCalendarSubscriptions(subsCtx, subscriptionTick, a.IsLeader, feedClient)
+		})
 	}
 
 	// Send-as verification mail is built and queued off the request path. The
@@ -3312,7 +3353,50 @@ func (a *Agent) newBounceGenerator(d mail.Deliverer) *mail.BounceGenerator {
 	domain := mail.ResolveServerDomain(a.Config.SMTP.DKIM.Domain, a.Config.SMTP.Hostname)
 	g := mail.NewBounceGenerator(d, a.Blobs, a.logger, domain, a.DKIMRegistry)
 	a.configureBouncePostmasterCopy(g)
+	a.configureBounceExternalRelay(g)
 	return g
+}
+
+// configureBounceExternalRelay lets g relay reports to senders outside the
+// hosted domains through the outbound queue. Without a queue (an edge node)
+// nothing is enabled and such reports are dropped.
+//
+// The two limiters are new instances with the SRS bounce limits, built whether
+// or not SRS is configured, so reports and SRS-reversed bounces never share a
+// bucket. 0 disables a cap, as for SRS. They are per node and in memory, so a
+// cluster allows up to its node count times the global cap.
+func (a *Agent) configureBounceExternalRelay(g *mail.BounceGenerator) {
+	if a.QueueStore == nil || a.Store == nil {
+		return
+	}
+	resolver := a.newRecipientResolver(nil)
+	g.SetExternalRelay(a.QueueStore,
+		func(addr string) bool { return a.bounceSenderIsLocal(resolver, addr) },
+		mail.NewRateLimiter(a.Config.SMTP.SRSBouncesPerAddressPerHour),
+		mail.NewRateLimiter(a.Config.SMTP.SRSBouncesPerHour))
+}
+
+// bounceSenderIsLocal reports whether a report to addr belongs in the local
+// inbound pipeline: the domain is hosted (even if disabled, since it is ours),
+// the address is a known identity, or it resolves to a local user (a send-as
+// identity on an external domain). A store error counts as local, so
+// uncertainty never turns into mail leaving the server.
+func (a *Agent) bounceSenderIsLocal(resolver *store.RecipientResolver, addr string) bool {
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	at := strings.LastIndexByte(addr, '@')
+	if at < 0 {
+		return true
+	}
+	if hosted, err := store.DomainHosted(a.Store, strings.TrimSuffix(addr[at+1:], ".")); err != nil || hosted {
+		return true
+	}
+	if a.AddressStore != nil {
+		if _, found, err := a.AddressStore.Get(addr); err != nil || found {
+			return true
+		}
+	}
+	_, err := resolver.ResolveRecipient(addr)
+	return err == nil
 }
 
 // configureBouncePostmasterCopy applies queue.bounce_copy_postmaster to g. The
@@ -4497,6 +4581,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	}
 	if a.orphanGCCancel != nil {
 		a.orphanGCCancel()
+	}
+	if a.subscriptionsCancel != nil {
+		a.subscriptionsCancel()
 	}
 	if a.usageCancel != nil {
 		a.usageCancel()

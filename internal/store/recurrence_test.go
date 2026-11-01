@@ -367,3 +367,41 @@ func TestExpandRecurrenceInstanceCarriesOrganiserAndAttendees(t *testing.T) {
 		t.Error("instance shares attendee memory with the master")
 	}
 }
+
+func TestExpandRecurrenceOverrideCarriesAttendeePartstat(t *testing.T) {
+	start := utcAt(2030, 5, 6, 9, 0)
+	ev := &bongov1.Event{
+		Guid: "x", Title: "Sync", StartTime: start, EndTime: start + 3600,
+		Rrule:     "FREQ=WEEKLY;BYDAY=MO",
+		Attendees: []*bongov1.Attendee{{Address: "Me@Example.com", Partstat: "ACCEPTED"}, {Address: "b@example.com", Partstat: "ACCEPTED"}},
+		IcalRaw: ics(
+			"BEGIN:VEVENT", "UID:u", "DTSTAMP:20300101T000000Z", "DTSTART:20300506T090000Z", "DTEND:20300506T100000Z",
+			"RRULE:FREQ=WEEKLY;BYDAY=MO", "END:VEVENT",
+			"BEGIN:VEVENT", "UID:u", "DTSTAMP:20300101T000000Z", "RECURRENCE-ID:20300513T090000Z",
+			"DTSTART:20300513T090000Z", "DTEND:20300513T100000Z",
+			"ATTENDEE;PARTSTAT=DECLINED:MAILTO:me@example.com", "END:VEVENT",
+		),
+	}
+	got, err := ExpandRecurrence(ev, utcAt(2030, 5, 1, 0, 0), utcAt(2030, 5, 24, 0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d instances, want 3", len(got))
+	}
+	for _, inst := range got {
+		want := "ACCEPTED"
+		if inst.RecurrenceId == "20300513T090000Z" {
+			want = "DECLINED"
+		}
+		if ps := inst.Attendees[0].Partstat; ps != want {
+			t.Errorf("instance %s: my PARTSTAT %q, want %q", inst.RecurrenceId, ps, want)
+		}
+		if inst.Attendees[1].Partstat != "ACCEPTED" {
+			t.Errorf("instance %s: another attendee changed to %q", inst.RecurrenceId, inst.Attendees[1].Partstat)
+		}
+	}
+	if ev.Attendees[0].Partstat != "ACCEPTED" {
+		t.Error("the master's attendee was changed")
+	}
+}

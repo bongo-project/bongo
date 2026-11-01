@@ -1570,3 +1570,15 @@ PATTERN: [merge] When parallel stories each extract the same builder, keep one a
 PATTERN: [sharing] When a route gains an owner distinct from the caller, every helper it calls needs both: owner for the data, caller for the caller's zone, locale and send-as.
 PATTERN: [testing] A "no attendees sends nothing" test needs a valid organiser and no attendees; with no organiser an earlier guard returns first and the mutant survives.
 PATTERN: [testing] An agent that leaves a background test run behind skews the next gate; check for stray test binaries before every gate.
+
+## 2026-11-01: Phase 30 batch 3 (30.8, 30.11, 30.12, 30.13)
+
+- 30.8 US-008: imip.Parse (256 KiB cap, METHOD must match the Content-Type, one UID); invitation card in the message view (escaped text, DMARC warning from the local Authentication-Results); POST /mail/{mailbox}/{uid}/invitation re-parses the stored message, never trusts form data; deterministic guid from the UID hash; decline as PARTSTAT=DECLINED hidden from views and free/busy; updates and cancels only when the organiser matches and SEQUENCE is not lower; REPLY sent through DeliverGenerated.
+- 30.11 US-010: Calendar 9-12; GET /pub/calendar/{owner}/{cal}/{token}.ics with one 404 for every failure, constant-time compare, Basic password throttled per IP and per calendar; CalendarStore.Mutate per-calendar read-modify-write; shared buildCalendarICS.
+- 30.12 US-011: internal/netx safe client (dial Control check after resolution, redirects, ports, size, userinfo refused); calendar.subscriptions.allow_private_networks; leader refresh worker with conditional GET, replace by UID, caps 20/5000; generic connect error so the refresh state is not an address oracle; VALARMs stripped from feed events.
+- 30.13 US-018: relay on go-smtp with STARTTLS over textproto (go-smtp exports no client StartTLS), DSN and SIZE parameters passed on, relayed reports, reports to external senders under the SRS limiters; existing relay tests unmodified.
+- Merge: 30.11 and 30.12 collided in calendar.proto, the settings card, agent routes and CLAUDE.md; both kept, regenerated. Fix round: per-occurrence PARTSTAT carried into expanded instances, subscription state through Mutate, one eventMovable helper for drag handles. Full gate green on a quiet machine, including the four tests that failed under load for the worker. Browser: Alice invites Bob, Bob accepts from the card.
+PATTERN: [store] A background worker that writes refresh state onto a user-editable record must use the same per-record Mutate as the user's edits, or each overwrites the other.
+PATTERN: [calendar] Pull per-occurrence override state (PARTSTAT, status) into the expanded instance, so every filter sees it without reading ical_raw.
+PATTERN: [security] An error shown to the user from a server-side fetch must not distinguish network failures (refused address, DNS, timeout); collapse them to one message or the field becomes an internal-network oracle.
+PATTERN: [testing] A browser check after green tests still finds things: here an end-before-start event that the form has always accepted, now sent as an invitation.

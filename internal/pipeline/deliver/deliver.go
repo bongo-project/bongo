@@ -756,10 +756,12 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 // rule that discarded the normal destination and forward-without-copy both
 // skip the recipient before this is called. Hosted SRS and no-relay addresses
 // are skipped earlier in the loop and never get here. A recipient relayed
-// elsewhere produces no "relayed" report in this release.
+// elsewhere is not reported from here: the outbound queue worker sends the
+// "relayed" report itself, when the remote server did not advertise DSN.
 //
-// The report is delivered through the local inbound pipeline, so one for a
-// sender outside the hosted domains is dropped there, as bounces are today.
+// The reporter routes the report: a local sender through the inbound pipeline,
+// an external one through the outbound queue (BounceGenerator.SetExternalRelay),
+// so this stage never relays a report itself.
 func (p *DeliverProcessor) reportDelivered(env *bongov1.QueueEnvelope, rcpt, messageID string, spamScore, spamTag float32) {
 	if p.reporter == nil || !bongomail.NotifyWantsSuccess(env.GetDsnNotify()) {
 		return
