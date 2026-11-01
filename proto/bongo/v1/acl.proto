@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
+
+// Grant is one principal's access to one resource, stored at
+// /acl/{kind}/{owner}/{resource}/{grantee}. A reverse marker at
+// /aclrev/{grantee}/{kind}/{owner}/{resource} is always written and removed
+// together with it by the composite /__acl__/ Raft command.
+message Grant {
+  // level is the permission level. Calendars: freebusy, read, write.
+  string level = 1;
+  // rights is reserved for mailbox rights (RFC 4314 letters).
+  string rights = 2;
+  // state is pending or accepted. Only an accepted grant authorises.
+  string state = 3;
+  // granted_by is the user ID that created the grant.
+  string granted_by = 4;
+  int64 created_at = 5;
+  int64 updated_at = 6;
+}

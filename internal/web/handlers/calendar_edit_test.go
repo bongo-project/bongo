@@ -11,6 +11,7 @@ import (
 
 	"github.com/emersion/go-ical"
 
+	"github.com/bongo-project/bongo/internal/icalevent"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -66,6 +67,11 @@ func seedClientEvent(t *testing.T, env *quotaEnv, raw []byte, start, end int64, 
 		Title: "Team sync", CalendarId: "default", StartTime: start, EndTime: end,
 		Rrule: "FREQ=WEEKLY;BYDAY=MO,WE", Timezone: tz, IcalRaw: raw,
 	}
+	// A CalDAV PUT stores the participant fields ToEvent reads from the raw.
+	if cal, err := ical.NewDecoder(bytes.NewReader(raw)).Decode(); err == nil {
+		parsed, _ := icalevent.ToEvent(cal)
+		ev.Organizer, ev.Attendees, ev.Sequence, ev.Status = parsed.Organizer, parsed.Attendees, parsed.Sequence, parsed.Status
+	}
 	guid, err := env.events.Create(quotaUser, ev)
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +98,7 @@ func browserForm(ev *bongov1.Event, over map[string]string) url.Values {
 		"end_time":         {e.Format("15:04")},
 		"rrule":            {ev.Rrule},
 		"reminder_minutes": {"0"},
+		"attendees":        {attendeesFieldValue(ev)},
 	}
 	for k, v := range over {
 		f.Set(k, v)
@@ -337,12 +344,34 @@ func TestUpdateEventPreservesIcalRaw(t *testing.T) {
 	})
 }
 
+// dropStructuredRrule makes the seeded event a single one as far as the
+// reschedule route is concerned: dragging a repeating event is refused (it
+// would move the whole series), so the raw-rewrite tests use a non-repeating
+// summary over the same stored object. It returns the stored event.
+func dropStructuredRrule(t *testing.T, env *quotaEnv, guid string) *bongov1.Event {
+	t.Helper()
+	ev, err := env.events.Get(quotaUser, guid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev.Rrule = ""
+	if err := env.events.Update(quotaUser, guid, ev); err != nil {
+		t.Fatal(err)
+	}
+	got, err := env.events.Get(quotaUser, guid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
 func TestRescheduleEventRewritesIcalRaw(t *testing.T) {
 	env := newQuotaEnv(t)
 	h := NewCalendarHandler(env.events, env.calendars, nil)
 	start, end := utcUnix(2030, 5, 6, 9, 0), utcUnix(2030, 5, 6, 10, 0)
 	raw := clientICS("DTSTART:20300506T090000Z", "DTEND:20300506T100000Z")
-	guid, before := seedClientEvent(t, env, raw, start, end, "")
+	guid, _ := seedClientEvent(t, env, raw, start, end, "")
+	before := dropStructuredRrule(t, env, guid)
 
 	form := url.Values{
 		"start_time": {"1904000000"}, // 2030-05-03T... fixed instants, not round times
@@ -596,6 +625,7 @@ func TestEventEditRawFailurePaths(t *testing.T) {
 		env := newQuotaEnv(t)
 		h := NewCalendarHandler(env.events, env.calendars, nil)
 		guid, _ := seedClientEvent(t, env, garbage, start, end, "")
+		dropStructuredRrule(t, env, guid)
 		form := url.Values{"start_time": {"1904000000"}, "end_time": {"1904003777"}}
 		w := httptest.NewRecorder()
 		h.RescheduleEvent(w, withGUID(formReq(http.MethodPost, "/calendar/event/"+guid+"/reschedule", form), guid))
@@ -627,4 +657,23 @@ func TestEventEditRawFailurePaths(t *testing.T) {
 			t.Errorf("event changed: title %q, raw kept %v", ev.Title, bytes.Equal(ev.IcalRaw, unencodable))
 		}
 	})
+}
+
+// A stored ical_raw that does not decode is dropped and the edit is saved from
+// the structured fields; SEQUENCE still goes up, as on every other edit.
+func TestUpdateEventUndecodableRawBumpsSequence(t *testing.T) {
+	env := newQuotaEnv(t)
+	h := NewCalendarHandler(env.events, env.calendars, nil)
+	guid, existing := seedClientEvent(t, env, []byte("not an icalendar object"), utcUnix(2030, 5, 6, 9, 0), utcUnix(2030, 5, 6, 10, 0), "")
+	if existing.Sequence != 0 {
+		t.Fatalf("seeded sequence = %d", existing.Sequence)
+	}
+	w := putEdit(t, h, guid, browserForm(existing, map[string]string{"title": "Renamed sync"}))
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d: %s", w.Code, w.Body)
+	}
+	ev, _ := decodeStored(t, env, guid)
+	if ev.Sequence != 1 {
+		t.Errorf("Sequence = %d, want 1", ev.Sequence)
+	}
 }

@@ -19,5 +19,34 @@ message Event {
   int64 created_at = 12;
   int64 updated_at = 13;
   int32 reminder_minutes = 14;
+  // Excluded occurrences of a web-created series (no ical_raw), one per
+  // excluded instance. Canonical format: the instance's start as an RFC 5545
+  // local date-time ("20300513T090000") in the event's timezone, or a date
+  // ("20300513") for an all-day series. The expander also accepts the legacy
+  // "2006-01-02" date, which excludes every instance starting on that day. A
+  // series with ical_raw takes its EXDATEs from there and ignores this field.
   repeated string exdates = 15;
+  // Organiser address, bare (no mailto:), original case.
+  string organizer = 16;
+  repeated Attendee attendees = 17;
+  // iCalendar SEQUENCE; 0 when absent.
+  int32 sequence = 18;
+  // iCalendar STATUS (TENTATIVE, CONFIRMED, CANCELLED), upper case.
+  string status = 19;
+  // Set only on instances produced by recurrence expansion, never persisted:
+  // the RECURRENCE-ID of the occurrence, as UTC basic date-time
+  // ("20300513T090000Z") or a date ("20300513") for an all-day series. The
+  // instance's guid stays the series guid. High number so it cannot collide
+  // with the stored fields added alongside it.
+  string recurrence_id = 50;
+}
+
+// Attendee is the structured copy of an ATTENDEE property. ical_raw stays the
+// source of truth for parameters this message does not model.
+message Attendee {
+  string address = 1;  // bare address, no mailto:
+  string name = 2;     // CN
+  string role = 3;     // ROLE, upper case
+  string partstat = 4; // PARTSTAT, upper case
+  bool rsvp = 5;
 }

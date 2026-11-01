@@ -402,6 +402,18 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 		return nil
 	}
 
+	// Grant changes arrive as one composite command so a grant and its reverse
+	// marker commit in one Pebble batch. Like Bayes and the queue it skips
+	// derived-index updates. The payload carries its own timestamp: the FSM
+	// must not read the clock.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsACLSyntheticCommand(cmd.Key) {
+		if err := store.ApplyACLCommand(f.store, cmd); err != nil {
+			f.logger.Error("fsm: acl synthetic command failed", "error", err)
+			return err
+		}
+		return nil
+	}
+
 	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:

@@ -2,8 +2,6 @@ package store
 
 import (
 	"fmt"
-	"slices"
-	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -15,7 +13,7 @@ import (
 type CalendarStore struct {
 	pebble  *PebbleStore
 	applier RaftApplier
-	// scan is the prefix scan used by List and IsSharedWith. It defaults to
+	// scan is the prefix scan used by List. It defaults to
 	// pebble.PrefixScan and exists so tests can record which prefixes are read.
 	scan func(prefix []byte) (Iterator, error)
 }
@@ -124,8 +122,22 @@ func (s *CalendarStore) Update(userID, guid string, cal *bongov1.Calendar) error
 	return nil
 }
 
-// Delete removes a calendar by GUID.
+// Delete removes a calendar by GUID and revokes every grant on it.
+//
+// These are two Raft commands, not one: the revoke goes first, then the
+// calendar DELETE. A failure between them leaves a calendar with no grants,
+// which loses access rather than leaking it, and a retry finishes the job. The
+// reverse order could leave grants on a deleted calendar; HasCalendarAccess
+// ignores those and the leader sweep removes them, but revoking first never
+// relies on either.
 func (s *CalendarStore) Delete(userID, guid string) error {
+	revoke, err := BuildACLCommand(ACLRequest{Op: ACLOpRevokeResource, Kind: ACLKindCalendar, Owner: userID, Resource: guid})
+	if err != nil {
+		return fmt.Errorf("building calendar grant revoke: %w", err)
+	}
+	if err := s.applier.ApplyCommand(revoke, 5*time.Second); err != nil {
+		return fmt.Errorf("revoking calendar grants: %w", err)
+	}
 	cmd := &bongov1.RaftCommand{
 		Op:  bongov1.Op_OP_DELETE,
 		Key: calendarKey(userID, guid),
@@ -159,24 +171,4 @@ func (s *CalendarStore) List(userID string) ([]*bongov1.Calendar, error) {
 	}
 
 	return calendars, nil
-}
-
-// IsSharedWith reports whether any of ownerID's calendars is shared with
-// userID. It reads only ownerID's calendar prefix, so it is safe on a request
-// path. IDs are opaque and compared exactly.
-func (s *CalendarStore) IsSharedWith(ownerID, userID string) (bool, error) {
-	// A "/" in ownerID would steer the prefix into another key family.
-	if ownerID == "" || userID == "" || strings.Contains(ownerID, "/") {
-		return false, nil
-	}
-	calendars, err := s.List(ownerID)
-	if err != nil {
-		return false, fmt.Errorf("listing calendars for share check: %w", err)
-	}
-	for _, cal := range calendars {
-		if slices.Contains(cal.SharedWith, userID) {
-			return true, nil
-		}
-	}
-	return false, nil
 }

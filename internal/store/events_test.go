@@ -1,7 +1,6 @@
 package store
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -236,9 +235,12 @@ func TestExpandRecurrence_Weekly(t *testing.T) {
 		t.Errorf("first occurrence: got %v, want Jan 6", first)
 	}
 
-	// Check GUID format includes date.
-	if !strings.HasPrefix(occurrences[0].Guid, "recurring-1_2025-01-06") {
-		t.Errorf("GUID: got %q, want prefix recurring-1_2025-01-06", occurrences[0].Guid)
+	// Instances keep the series guid and name the occurrence separately.
+	if occurrences[0].Guid != "recurring-1" {
+		t.Errorf("GUID: got %q, want recurring-1", occurrences[0].Guid)
+	}
+	if occurrences[0].RecurrenceId != "20250106T100000Z" {
+		t.Errorf("RecurrenceId: got %q, want 20250106T100000Z", occurrences[0].RecurrenceId)
 	}
 }
 

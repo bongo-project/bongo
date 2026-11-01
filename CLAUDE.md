@@ -106,7 +106,7 @@ Auth with a lockout limiter instead of cookies.
 
 ### Key Architectural Patterns
 
-**RaftApplier interface**: All writes go through Raft consensus. Handlers never write to Pebble directly — they call `ApplyCommand()` which serializes a `RaftCommand` protobuf (PUT/DELETE) through the Raft log. The FSM applies committed entries to Pebble. Multi-key operations travel as composite commands under synthetic key prefixes (`/__mailbox_{append,copy,delete,deliver,expunge,move,rename,subscribe}__/`, `/__queue_move__/`, `/__bayes_train__/`) that the FSM expands.
+**RaftApplier interface**: All writes go through Raft consensus. Handlers never write to Pebble directly — they call `ApplyCommand()` which serializes a `RaftCommand` protobuf (PUT/DELETE) through the Raft log. The FSM applies committed entries to Pebble. Multi-key operations travel as composite commands under synthetic key prefixes (`/__mailbox_{append,copy,delete,deliver,expunge,move,rename,subscribe}__/`, `/__queue_move__/`, `/__bayes_train__/`, `/__acl__/`) that the FSM expands.
 
 **Handler dependency injection via setters**: Handlers receive stores via `SetXXX()` methods, enabling nil-check graceful degradation on edge nodes:
 ```go
@@ -156,6 +156,9 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /system/raft/applied_index           → last applied Raft index (replay skips up to it)
 /system/migration/fwdtargets         → forwarding-target migration done marker
 /system/migrations/rules-first-match-v1 → rules first-match migration done marker (sets stop_processing on pre-v0.14 rules)
+/system/migrations/calendar-grants-v1 → calendar-grants migration done marker (shared_with turned into grants; written last)
+/acl/{kind}/{owner_id}/{resource_id}/u:{grantee_id} → Grant protobuf (level, rights, state, granted_by); kind is `calendar`; every ID segment is url.PathEscape'd
+/aclrev/u:{grantee_id}/{kind}/{owner_id}/{resource_id} → empty reverse marker; only ever written and deleted together with its forward key
 /user/{user_id}/fwdtarget/{address}  → verified forwarding target
 /user/{user_id}/fwdverify/{address}  → pending forwarding verification
 /user/{user_id}/vacation/sent/{hex(sha256(lower(sender)))} → 8-byte BE unix seconds of the last vacation reply to that sender (not a protobuf); leader sweep after 30 days; deleted on disable
@@ -189,11 +192,19 @@ users, so a byte-identical message delivered to several people is one blob — d
 single owner's code path destroys everyone's copy. The reference set spans Pebble mail, the
 outbound queue, and the on-disk spool.
 
-There is no generic ACL or share key space. Sharing is three separate mechanisms: domain-admin
-delegation (`/system/domain_admin/...`), send-as grants (`AddressRecord.CanSend`/`Verified`), and
-calendar sharing (the `shared_with` field on the Calendar protobuf). An earlier revision of this
-file documented `/system/acl/{resource}/{principal}` and `/share/{target}/...`; neither was ever
-built.
+Calendar sharing is the grant key space (`/acl/...` and `/aclrev/...`, `internal/store/aclcommand.go`).
+A grant has a level (`freebusy`, `read`, `write`; anything else is refused) and a state (`pending`,
+`accepted`); only an accepted grant authorises, and a grant on a deleted calendar authorises nothing.
+The forward key and its reverse marker are written and removed only by the composite `/__acl__/`
+command (`set`, `revoke`, `revoke_resource`, `revoke_owner`, `revoke_grantee`), applied in one Pebble
+batch, so they never disagree. "What have I shared" is a prefix scan of `/acl/{kind}/{owner}/`; "what is
+shared with me" is a prefix scan of `/aclrev/u:{me}/{kind}/`. Every prefix ends in `/`, so owner `ab`
+never matches `abc`. `Calendar.shared_with` is legacy: the `calendar-grants-v1` leader migration turns
+each entry into an accepted `freebusy` grant and clears the field, and nothing else reads it.
+Deleting a calendar or a user revokes their grants in the same request, and a leader sweep removes
+grants whose owner, calendar or grantee is gone (two consecutive sightings, `ErrNotFound` only).
+Domain-admin delegation (`/system/domain_admin/...`) and send-as grants (`AddressRecord.CanSend`/`Verified`)
+stay separate mechanisms.
 
 ## Key Technology Choices
 
@@ -248,6 +259,8 @@ built.
 - Chi route ordering: static segments (`/mail/tag/{name}`) must be registered before wildcard segments (`/mail/{mailbox}`).
 
 ## Repo-Specific Guardrails
+
+- **Grants are one composite Raft command (`/__acl__/`, `internal/store/aclcommand.go`).** An older-binary node applies it as a literal key and holds no grants, so replicas diverge for as long as the cluster runs mixed versions. Upgrade every node before anyone shares a calendar, and before the leader runs the `calendar-grants-v1` migration (it writes `/__acl__/` commands too). Production runs one node. Never write `/acl/` or `/aclrev/` keys any other way, and give every test applier that can see a grant an `IsACLSyntheticCommand` dispatch, or the command is stored as a literal key and negative tests pass vacuously.
 
 - **Bayes training is one composite Raft command** (`/__bayes_train__/{user}`, `internal/store/bayescommand.go`) counted inside the FSM, capped at 1024 tokens. An older-binary node applies it as a literal key and counts nothing, so replicas diverge for as long as the cluster runs mixed versions. Upgrade every node before anyone trains; counts trained during a mixed window are not recoverable by replay.
 

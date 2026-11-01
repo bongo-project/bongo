@@ -93,6 +93,8 @@ func ToEvent(cal *ical.Calendar) (event *bongov1.Event, fallback bool) {
 		event.Rrule = rruleProp.Value
 	}
 
+	fillParticipants(event, vevent.Props)
+
 	return event, fallback
 }
 

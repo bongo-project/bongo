@@ -49,6 +49,12 @@ func (a *directApplierTags) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Durati
 		return store.ApplyBayesTrainCommand(a.ps, cmd)
 	}
 
+	// Grants are a composite command too; stored as a literal key they would
+	// make every grant negative test pass vacuously.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsACLSyntheticCommand(cmd.Key) {
+		return store.ApplyACLCommand(a.ps, cmd)
+	}
+
 	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:

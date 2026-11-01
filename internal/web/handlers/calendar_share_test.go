@@ -25,6 +25,7 @@ type shareEnv struct {
 	h         *CalendarHandler
 	ps        *store.PebbleStore
 	calendars *store.CalendarStore
+	acl       *store.ACLStore
 	calID     string
 	fullID    string // calendar already holding 50 shares
 	bobCalID  string // bob's own calendar
@@ -71,13 +72,16 @@ func newShareEnv(t *testing.T, withResolver bool) *shareEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var full []string
-	for i := range 50 {
-		full = append(full, "filler-"+string(rune('a'+i%26))+string(rune('a'+i/26)))
-	}
-	fullID, err := calendars.Create("alice", &bongov1.Calendar{Name: "Full", SharedWith: full})
+	acl := store.NewACLStore(ps, applier)
+	fullID, err := calendars.Create("alice", &bongov1.Calendar{Name: "Full"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	for i := range 50 {
+		filler := "filler-" + string(rune('a'+i%26)) + string(rune('a'+i/26))
+		if err := acl.SetCalendarGrant("alice", fullID, filler, store.GrantLevelFreeBusy, store.GrantStateAccepted, "alice", time.Unix(1, 0)); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	bobCalID, err := calendars.Create("bob", &bongov1.Calendar{Name: "Bob"})
@@ -86,10 +90,11 @@ func newShareEnv(t *testing.T, withResolver bool) *shareEnv {
 	}
 
 	h := NewCalendarHandler(events, calendars, nil)
+	h.SetACL(acl)
 	if withResolver {
 		h.SetShareResolver(store.NewRecipientResolver(addrs, ps, nil))
 	}
-	e := &shareEnv{h: h, ps: ps, calendars: calendars, calID: calID, fullID: fullID, bobCalID: bobCalID,
+	e := &shareEnv{h: h, ps: ps, calendars: calendars, acl: acl, calID: calID, fullID: fullID, bobCalID: bobCalID,
 		now: time.Date(2026, 10, 23, 9, 0, 0, 0, time.UTC)}
 	limiter := mail.NewRateLimiter(20)
 	limiter.SetClock(func() time.Time { return e.now })
@@ -98,7 +103,14 @@ func newShareEnv(t *testing.T, withResolver bool) *shareEnv {
 }
 
 func (e *shareEnv) share(caller, calID, target string) *httptest.ResponseRecorder {
+	return e.shareLevel(caller, calID, target, "")
+}
+
+func (e *shareEnv) shareLevel(caller, calID, target, level string) *httptest.ResponseRecorder {
 	form := url.Values{"share_with": {target}}
+	if level != "" {
+		form.Set("level", level)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/calendar/"+calID+"/share", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rctx := chi.NewRouteContext()
@@ -110,13 +122,34 @@ func (e *shareEnv) share(caller, calID, target string) *httptest.ResponseRecorde
 	return rr
 }
 
-func (e *shareEnv) shared(t *testing.T, calID string) []string {
+// sharedBy lists the grantees of owner's calendar, sorted.
+func (e *shareEnv) sharedBy(t *testing.T, owner, calID string) []string {
 	t.Helper()
-	cal, err := e.calendars.Get("alice", calID)
+	refs, err := e.acl.ListGrantRefs()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return cal.SharedWith
+	var out []string
+	for _, r := range refs {
+		if r.Owner == owner && r.Resource == calID {
+			out = append(out, r.Grantee)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+func (e *shareEnv) shared(t *testing.T, calID string) []string {
+	t.Helper()
+	return e.sharedBy(t, "alice", calID)
+}
+
+func (e *shareEnv) freeBusy(caller, target string) int {
+	req := httptest.NewRequest("GET", "/calendar/freebusy?user="+target+"&start=0&end=9999999999", nil)
+	req = req.WithContext(middleware.WithUserContext(req.Context(), caller, caller+"@d.test"))
+	rr := httptest.NewRecorder()
+	e.h.FreeBusy(rr, req)
+	return rr.Code
 }
 
 func TestShareCalendarValidatesTargets(t *testing.T) {
@@ -151,22 +184,109 @@ func TestShareCalendarValidatesTargets(t *testing.T) {
 		t.Fatalf("share bob alias: status = %d", rr.Code)
 	}
 	if got := e.shared(t, e.calID); len(got) != 1 || got[0] != "bob" {
-		t.Fatalf("SharedWith = %v, want [bob]", got)
+		t.Fatalf("grantees = %v, want [bob]", got)
+	}
+	g, err := e.acl.GetCalendarGrant("alice", e.calID, "bob")
+	if err != nil || g == nil {
+		t.Fatalf("grant = %v, %v", g, err)
+	}
+	if g.Level != store.GrantLevelFreeBusy || g.State != store.GrantStateAccepted || g.GrantedBy != "alice" {
+		t.Errorf("default grant = %+v, want freebusy/accepted/granted_by alice", g)
 	}
 
 	// FreeBusy: bob allowed, an unshared user forbidden.
-	fb := func(caller string) int {
-		req := httptest.NewRequest("GET", "/calendar/freebusy?user=alice&start=0&end=9999999999", nil)
-		req = req.WithContext(middleware.WithUserContext(req.Context(), caller, caller+"@d.test"))
-		rr := httptest.NewRecorder()
-		e.h.FreeBusy(rr, req)
-		return rr.Code
-	}
-	if c := fb("bob"); c != http.StatusOK {
+	if c := e.freeBusy("bob", "alice"); c != http.StatusOK {
 		t.Errorf("freebusy as bob = %d, want 200", c)
 	}
-	if c := fb("carol"); c != http.StatusForbidden {
+	if c := e.freeBusy("carol", "alice"); c != http.StatusForbidden {
 		t.Errorf("freebusy as carol = %d, want 403", c)
+	}
+}
+
+func TestShareCalendarLevels(t *testing.T) {
+	e := newShareEnv(t, true)
+	for _, level := range []string{store.GrantLevelRead, store.GrantLevelWrite} {
+		if rr := e.shareLevel("alice", e.calID, "bob@d.test", level); rr.Code != http.StatusOK {
+			t.Fatalf("share at %s: status = %d", level, rr.Code)
+		}
+		g, _ := e.acl.GetCalendarGrant("alice", e.calID, "bob")
+		if g == nil || g.Level != level {
+			t.Fatalf("grant after %s share = %+v", level, g)
+		}
+		// Already shared at this level: a repeat is a 200 and writes nothing.
+		// A store that refuses every write proves no write was attempted.
+		live := e.h.acl
+		e.h.acl = store.NewACLStore(e.ps, failingApplier{})
+		rr := e.shareLevel("alice", e.calID, "bob@d.test", level)
+		e.h.acl = live
+		if rr.Code != http.StatusOK {
+			t.Fatalf("repeat: status = %d, want 200 with no write", rr.Code)
+		}
+		if err := e.acl.RevokeCalendarGrant("alice", e.calID, "bob"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Anything else is refused with nothing stored, and the refusal does not
+	// depend on whether the address exists (the level is checked first).
+	var first string
+	for _, level := range []string{"admin", "READ", "owner", "freebusy,write", "pending"} {
+		for _, target := range []string{"bob@d.test", "nobody@d.test", "not an address"} {
+			rr := e.shareLevel("alice", e.calID, target, level)
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("level %q target %q: status = %d, want 400", level, target, rr.Code)
+			}
+			if first == "" {
+				first = rr.Body.String()
+			} else if rr.Body.String() != first {
+				t.Errorf("level %q target %q: body %q differs from %q", level, target, rr.Body.String(), first)
+			}
+		}
+	}
+	if got := e.shared(t, e.calID); len(got) != 0 {
+		t.Errorf("invalid level stored a grant: %v", got)
+	}
+}
+
+func TestShareCalendarWriteFailureIs500(t *testing.T) {
+	e := newShareEnv(t, true)
+	e.h.acl = store.NewACLStore(e.ps, failingApplier{})
+	if rr := e.share("alice", e.calID, "bob@d.test"); rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+	if got := e.shared(t, e.calID); len(got) != 0 {
+		t.Errorf("grant stored despite failure: %v", got)
+	}
+}
+
+func TestFreeBusyNeedsAnAcceptedGrantOnALiveCalendar(t *testing.T) {
+	e := newShareEnv(t, true)
+	grant := func(who, level, state string) {
+		t.Helper()
+		if err := e.acl.SetCalendarGrant("alice", e.calID, who, level, state, "alice", e.now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	grant("bob", store.GrantLevelWrite, store.GrantStatePending)
+	if c := e.freeBusy("bob", "alice"); c != http.StatusForbidden {
+		t.Errorf("pending write grant: freebusy = %d, want 403", c)
+	}
+	for _, level := range []string{store.GrantLevelFreeBusy, store.GrantLevelRead, store.GrantLevelWrite} {
+		grant("bob", level, store.GrantStateAccepted)
+		if c := e.freeBusy("bob", "alice"); c != http.StatusOK {
+			t.Errorf("accepted %s grant: freebusy = %d, want 200", level, c)
+		}
+	}
+	// A grant on a calendar that no longer exists authorises nothing.
+	if err := e.ps.Delete([]byte("/user/alice/calendar/" + e.calID)); err != nil {
+		t.Fatal(err)
+	}
+	if c := e.freeBusy("bob", "alice"); c != http.StatusForbidden {
+		t.Errorf("grant on deleted calendar: freebusy = %d, want 403", c)
+	}
+	// The grants belong to alice: they do not open bob's schedule to alice.
+	if c := e.freeBusy("alice", "bob"); c != http.StatusForbidden {
+		t.Errorf("reverse direction: freebusy = %d, want 403", c)
 	}
 }
 
@@ -224,7 +344,7 @@ func TestShareCalendarRateLimitReached(t *testing.T) {
 		t.Errorf("Retry-After = %d, want 3600 (all entries logged at the same instant)", secs)
 	}
 	if got := e.shared(t, e.calID); len(got) != 0 {
-		t.Errorf("SharedWith = %v, want empty", got)
+		t.Errorf("grantees = %v, want empty", got)
 	}
 }
 
@@ -265,12 +385,8 @@ func TestShareCalendarRateLimitKeyedByUser(t *testing.T) {
 	if rr := e.share("bob", e.bobCalID, "alice@d.test"); rr.Code != http.StatusOK {
 		t.Fatalf("bob while alice limited: status = %d, want 200", rr.Code)
 	}
-	cal, err := e.calendars.Get("bob", e.bobCalID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(cal.SharedWith) != 1 || cal.SharedWith[0] != "alice" {
-		t.Errorf("bob SharedWith = %v, want [alice]", cal.SharedWith)
+	if got := e.sharedBy(t, "bob", e.bobCalID); len(got) != 1 || got[0] != "alice" {
+		t.Errorf("bob grantees = %v, want [alice]", got)
 	}
 }
 
@@ -287,7 +403,7 @@ func TestShareCalendarRateLimitWindow(t *testing.T) {
 			t.Fatalf("at 60m01s: status = %d, want 200", rr.Code)
 		}
 		if got := e.shared(t, e.calID); len(got) != 1 || got[0] != "bob" {
-			t.Errorf("SharedWith = %v, want [bob]", got)
+			t.Errorf("grantees = %v, want [bob]", got)
 		}
 	})
 	t.Run("rolling", func(t *testing.T) {
@@ -336,34 +452,19 @@ func TestUnshareCalendar(t *testing.T) {
 		write  bool
 	}{
 		{"user id", []string{"bob", "dave"}, "bob", []string{"dave"}, http.StatusOK, true},
-		{"legacy string", []string{"bob", "bob@d.test"}, "bob@d.test", []string{"bob"}, http.StatusOK, true},
-		{"exact match keeps whitespace", []string{" legacy "}, " legacy ", nil, http.StatusOK, true},
-		{"whitespace variant keeps the real share", []string{"bob", " bob "}, " bob ", []string{"bob"}, http.StatusOK, true},
-		{"duplicates all removed", []string{"x", "bob", "x"}, "x", []string{"bob"}, http.StatusOK, true},
 		{"absent entry", []string{"bob"}, "dave", []string{"bob"}, http.StatusOK, false},
 		{"substring is not a match", []string{"bob@d.test"}, "bob", []string{"bob@d.test"}, http.StatusOK, false},
+		{"case differs", []string{"bob"}, "BOB", []string{"bob"}, http.StatusOK, false},
+		{"whitespace variant is not the grant", []string{"bob"}, " bob ", []string{"bob"}, http.StatusOK, false},
 		{"empty entry", []string{"bob"}, "", []string{"bob"}, http.StatusBadRequest, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := newShareEnv(t, true)
-			if err := e.calendars.Update("alice", e.calID, &bongov1.Calendar{Name: "Work", SharedWith: tt.seed}); err != nil {
-				t.Fatal(err)
-			}
-			before, err := e.calendars.Get("alice", e.calID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// UpdatedAt has one-second resolution, so a write made straight
-			// after the seed would not show. Age the stored stamp instead of
-			// sleeping past the second boundary.
-			before.UpdatedAt -= 3600
-			aged, err := proto.Marshal(before)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := e.ps.Set([]byte("/user/alice/calendar/"+e.calID), aged); err != nil {
-				t.Fatal(err)
+			for _, who := range tt.seed {
+				if err := e.acl.SetCalendarGrant("alice", e.calID, who, store.GrantLevelRead, store.GrantStateAccepted, "alice", e.now); err != nil {
+					t.Fatal(err)
+				}
 			}
 			rr := e.unshare("alice", e.calID, tt.entry)
 			if rr.Code != tt.status {
@@ -376,15 +477,10 @@ func TestUnshareCalendar(t *testing.T) {
 			if got := rr.Header().Get("HX-Trigger"); got != wantTrigger {
 				t.Errorf("HX-Trigger = %q, want %q", got, wantTrigger)
 			}
-			after, err := e.calendars.Get("alice", e.calID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !slices.Equal(after.SharedWith, tt.want) {
-				t.Errorf("SharedWith = %q, want %q", after.SharedWith, tt.want)
-			}
-			if wrote := after.UpdatedAt != before.UpdatedAt; wrote != tt.write {
-				t.Errorf("wrote = %v, want %v", wrote, tt.write)
+			got := e.shared(t, e.calID)
+			slices.Sort(tt.want)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("grantees = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -407,9 +503,12 @@ func TestUnshareCalendarWriteFailure(t *testing.T) {
 	if rr := e.share("alice", e.calID, "bob@d.test"); rr.Code != http.StatusOK {
 		t.Fatalf("share = %d", rr.Code)
 	}
-	e.h.calendars = store.NewCalendarStore(e.ps, failingApplier{})
+	e.h.acl = store.NewACLStore(e.ps, failingApplier{})
 	if rr := e.unshare("alice", e.calID, "bob"); rr.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+	if got := e.shared(t, e.calID); len(got) != 1 {
+		t.Errorf("grant lost despite failed revoke: %v", got)
 	}
 }
 
@@ -417,4 +516,67 @@ type failingApplier struct{}
 
 func (failingApplier) ApplyCommand(*bongov1.RaftCommand, time.Duration) error {
 	return errors.New("raft down")
+}
+
+// Sharing again at another level changes the level and reports success only
+// because it did; the original creation time and granter stay.
+func TestShareCalendarChangesLevelOfExistingGrant(t *testing.T) {
+	e := newShareEnv(t, true)
+	created := e.now.Add(-48 * time.Hour)
+	if err := e.acl.SetCalendarGrant("alice", e.calID, "bob", store.GrantLevelRead, store.GrantStateAccepted, "alice", created); err != nil {
+		t.Fatal(err)
+	}
+	if rr := e.shareLevel("alice", e.calID, "bob@d.test", store.GrantLevelWrite); rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	g, _ := e.acl.GetCalendarGrant("alice", e.calID, "bob")
+	if g == nil || g.Level != store.GrantLevelWrite {
+		t.Fatalf("level after change = %+v, want write", g)
+	}
+	if g.CreatedAt != created.Unix() || g.GrantedBy != "alice" {
+		t.Errorf("created_at/granted_by not kept: %+v", g)
+	}
+	if got := e.shared(t, e.calID); len(got) != 1 {
+		t.Errorf("grants = %v, want one", got)
+	}
+
+	// Same level: no write, so a failing store still answers 200. A different
+	// level must write, so the same failing store answers 500 rather than
+	// reporting a change that did not happen.
+	e.h.acl = store.NewACLStore(e.ps, failingApplier{})
+	if rr := e.shareLevel("alice", e.calID, "bob@d.test", store.GrantLevelWrite); rr.Code != http.StatusOK {
+		t.Errorf("same level: status = %d, want 200 with no write", rr.Code)
+	}
+	if rr := e.shareLevel("alice", e.calID, "bob@d.test", store.GrantLevelRead); rr.Code != http.StatusInternalServerError {
+		t.Errorf("level change with a failing store: status = %d, want 500", rr.Code)
+	}
+}
+
+// On a calendar at the cap an existing grantee is not a 51st: their level can
+// change, while a new grantee is still refused.
+func TestShareCalendarCapDoesNotCountExistingGrantee(t *testing.T) {
+	e := newShareEnv(t, true)
+	// bob is a new grantee on a full calendar: refused.
+	if rr := e.shareLevel("alice", e.fullID, "bob@d.test", store.GrantLevelWrite); rr.Code != http.StatusBadRequest {
+		t.Fatalf("new grantee at the cap: status = %d, want 400", rr.Code)
+	}
+	// Make bob an existing grantee while the calendar stays at exactly the cap.
+	if err := e.acl.SetCalendarGrant("alice", e.fullID, "bob", store.GrantLevelFreeBusy, store.GrantStateAccepted, "alice", e.now); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.acl.RevokeCalendarGrant("alice", e.fullID, "filler-aa"); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(e.shared(t, e.fullID)); got != maxCalendarShares {
+		t.Fatalf("fixture has %d grants, want %d", got, maxCalendarShares)
+	}
+	if rr := e.shareLevel("alice", e.fullID, "bob@d.test", store.GrantLevelWrite); rr.Code != http.StatusOK {
+		t.Fatalf("existing grantee at the cap: status = %d, want 200", rr.Code)
+	}
+	if g, _ := e.acl.GetCalendarGrant("alice", e.fullID, "bob"); g == nil || g.Level != store.GrantLevelWrite {
+		t.Errorf("level not changed at the cap: %+v", g)
+	}
+	if got := len(e.shared(t, e.fullID)); got != maxCalendarShares {
+		t.Errorf("grants = %d, want %d", got, maxCalendarShares)
+	}
 }

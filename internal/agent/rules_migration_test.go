@@ -42,6 +42,11 @@ func (r *recordingApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duratio
 	if cmd.Op == bongov1.Op_OP_DELETE {
 		return r.ps.Delete(cmd.Key)
 	}
+	// Without this a grant command would be stored as a literal key and every
+	// negative test on grants would pass vacuously.
+	if store.IsACLSyntheticCommand(cmd.Key) {
+		return store.ApplyACLCommand(r.ps, cmd)
+	}
 	return r.ps.Set(cmd.Key, cmd.Value)
 }
 

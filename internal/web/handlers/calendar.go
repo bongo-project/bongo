@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/mail"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/icalevent"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -35,6 +37,9 @@ type CalendarHandler struct {
 	search    *store.SearchManager
 	quota     QuotaChecker // nil = unlimited
 	shares    shareTargetResolver
+	// acl holds calendar grants. nil disables sharing: free/busy then
+	// authorises only the caller's own calendar.
+	acl *store.ACLStore
 	// shareLimiter caps ShareCalendar requests per user. nil = unlimited.
 	shareLimiter shareRateLimiter
 	// zones supplies the user's preferred time zone to the agenda. nil falls
@@ -48,6 +53,9 @@ type CalendarHandler struct {
 type zoneSource interface {
 	Location(userID string) *time.Location
 }
+
+// SetACL wires the grant store behind sharing and free/busy authorisation.
+func (h *CalendarHandler) SetACL(a *store.ACLStore) { h.acl = a }
 
 // SetZoneSource wires the user time-zone preference the agenda reads.
 func (h *CalendarHandler) SetZoneSource(z zoneSource) { h.zones = z }
@@ -380,6 +388,14 @@ func (h *CalendarHandler) RescheduleEvent(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// A dragged block of a repeating event carries the series guid, so moving
+	// it would move the whole series' start and drop its earlier occurrences.
+	// Moving one occurrence is a per-instance edit, not a drag.
+	if event.Rrule != "" {
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "calendar.rescheduleSeriesRefused"), http.StatusConflict)
+		return
+	}
+
 	startStr := r.FormValue("start_time")
 	endStr := r.FormValue("end_time")
 
@@ -468,8 +484,7 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cal, err := h.calendars.Get(userID, calID)
-	if err != nil {
+	if _, err := h.calendars.Get(userID, calID); err != nil {
 		http.Error(w, "calendar not found", http.StatusNotFound)
 		return
 	}
@@ -487,10 +502,28 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 	// Every negative outcome (malformed, unknown, disabled, catch-all only,
 	// self) gets the same reply so the response does not say which it was.
 	const refused = "cannot share with that address"
-	// The cap is checked before resolving so a full calendar cannot be used
-	// to tell a valid address from an invalid one.
-	if len(cal.SharedWith) >= maxCalendarShares {
-		http.Error(w, refused, http.StatusBadRequest)
+	if h.acl == nil {
+		http.Error(w, "sharing is unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	// The cap is read before resolving so a full calendar cannot be used to
+	// tell a valid address from an invalid one: at the cap every outcome but a
+	// change to an existing grantee is the same refusal.
+	count, err := h.acl.CountCalendarGrants(userID, calID)
+	if err != nil {
+		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
+		return
+	}
+	full := count >= maxCalendarShares
+	// The level is validated before resolving too, so a bad level cannot be
+	// used to tell a valid address from an invalid one. A plain share is
+	// free/busy, which is what sharing meant before levels existed.
+	level := strings.TrimSpace(r.FormValue("level"))
+	if level == "" {
+		level = store.GrantLevelFreeBusy
+	}
+	if !store.ValidCalendarLevel(level) {
+		http.Error(w, "invalid level", http.StatusBadRequest)
 		return
 	}
 	parsed, err := mail.ParseAddress(shareWith)
@@ -498,21 +531,37 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, refused, http.StatusBadRequest)
 		return
 	}
-	// The stored value is the target's user ID, which is what
-	// CalendarStore.IsSharedWith compares against; an address would never match.
+	// The stored grantee is the target's user ID; an address would never match.
 	targetID, err := h.shares.ResolveAccount(parsed.Address)
 	if err != nil || targetID == userID {
 		http.Error(w, refused, http.StatusBadRequest)
 		return
 	}
 
-	if slices.Contains(cal.SharedWith, targetID) {
+	existing, err := h.acl.GetCalendarGrant(userID, calID, targetID)
+	if err != nil {
+		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
+		return
+	}
+	// Only a new grantee counts against the cap: someone already granted
+	// access may have the level changed on a full calendar.
+	if existing == nil && full {
+		http.Error(w, refused, http.StatusBadRequest)
+		return
+	}
+	if existing != nil && existing.Level == level {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	cal.SharedWith = append(cal.SharedWith, targetID)
-	if err := h.calendars.Update(userID, calID, cal); err != nil {
+	// A direct share is immediate, as it was before grants; invitations that
+	// wait for acceptance create pending grants instead.
+	now := time.Now()
+	if h.now != nil {
+		now = h.now()
+	}
+	if err := h.acl.SetCalendarGrant(userID, calID, targetID, level, store.GrantStateAccepted, userID, now); err != nil {
+		slog.Error("calendar: share failed", "user", userID, "calendar", calID, "error", err)
 		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
 		return
 	}
@@ -521,18 +570,14 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 }
 
-// UnshareCalendar removes one exact entry from a calendar's SharedWith list.
-// The entry is a user ID or a legacy raw string that never matched
-// IsSharedWith; it is compared as sent, without trimming, so an entry with
-// stray whitespace can still be removed. Removing an absent entry is a 200
-// with no write. No rate limit: removal reveals nothing about which accounts
-// exist.
+// UnshareCalendar revokes one grantee's grant on a calendar. The entry is a
+// user ID, compared exactly as sent. Removing an absent grant is a 200 with no
+// write. No rate limit: removal reveals nothing about which accounts exist.
 func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	calID := chi.URLParam(r, "calendarID")
 
-	cal, err := h.calendars.Get(userID, calID)
-	if err != nil {
+	if _, err := h.calendars.Get(userID, calID); err != nil {
 		http.Error(w, "calendar not found", http.StatusNotFound)
 		return
 	}
@@ -542,14 +587,22 @@ func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request
 		http.Error(w, "share_with is required", http.StatusBadRequest)
 		return
 	}
-	if !slices.Contains(cal.SharedWith, entry) {
+	if h.acl == nil {
+		http.Error(w, "sharing is unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	existing, err := h.acl.GetCalendarGrant(userID, calID, entry)
+	if err != nil {
+		http.Error(w, "failed to update calendar", http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	// DeleteFunc also drops duplicate copies of a legacy entry.
-	cal.SharedWith = slices.DeleteFunc(cal.SharedWith, func(s string) bool { return s == entry })
-	if err := h.calendars.Update(userID, calID, cal); err != nil {
+	if err := h.acl.RevokeCalendarGrant(userID, calID, entry); err != nil {
+		slog.Error("calendar: unshare failed", "user", userID, "calendar", calID, "error", err)
 		http.Error(w, "failed to update calendar", http.StatusInternalServerError)
 		return
 	}
@@ -612,14 +665,15 @@ func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// targetSharesWith reports whether targetUser has shared any of their calendars
-// with callerID, which authorizes callerID to view targetUser's free/busy.
+// targetSharesWith reports whether targetUser has granted callerID at least
+// free/busy on any of their calendars, which authorises callerID to view
+// targetUser's free/busy. A pending grant does not count.
 func (h *CalendarHandler) targetSharesWith(targetUser, callerID string) bool {
-	if callerID == "" || h.calendars == nil {
+	if callerID == "" || h.acl == nil {
 		return false
 	}
-	shared, err := h.calendars.IsSharedWith(targetUser, callerID)
-	return err == nil && shared
+	ok, err := h.acl.HasCalendarAccess(targetUser, callerID, store.GrantLevelFreeBusy)
+	return err == nil && ok
 }
 
 // NewEvent renders the create event form.
@@ -635,12 +689,21 @@ func (h *CalendarHandler) NewEvent(w http.ResponseWriter, r *http.Request) {
 
 // CreateEvent handles POST to create a new event.
 func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 
 	event, err := parseEventForm(r, h.userLocation(userID))
 	if err != nil {
-		http.Error(w, "invalid form data: "+err.Error(), http.StatusBadRequest)
+		eventFormError(w, r, err)
 		return
+	}
+	// Record the zone the form times were read in, so a series expands at the
+	// same local time across DST and exports with its VTIMEZONE. Events saved
+	// before this carry no zone and keep expanding in UTC.
+	event.Timezone = h.eventZoneName(userID, event.AllDay)
+
+	// The creator organises the meeting. Nothing is sent in this story.
+	if len(event.Attendees) > 0 && icalevent.ValidAddress(email) {
+		event.Organizer = email
 	}
 
 	// Best-effort domain quota (usage is a periodic recompute): refuse a new
@@ -667,8 +730,24 @@ func (h *CalendarHandler) ShowEvent(w http.ResponseWriter, r *http.Request) {
 
 	event, err := h.events.Get(userID, guid)
 	if err != nil {
+		if h.redirectOldInstanceLink(w, r, userID, guid) {
+			return
+		}
 		http.Error(w, "event not found", http.StatusNotFound)
 		return
+	}
+
+	// ?occurrence= names one instance of a series by its RECURRENCE-ID. Only
+	// a real instance (on the rule and not excluded or cancelled, or an
+	// override) is shown. The form stays bound to the series with the master's
+	// times, so saving it can never move the series start to the occurrence.
+	if rid := r.URL.Query().Get("occurrence"); rid != "" {
+		occ, ok := store.FindOccurrence(event, rid)
+		if !ok {
+			http.Error(w, "event not found", http.StatusNotFound)
+			return
+		}
+		r = r.WithContext(templates.WithOccurrence(r.Context(), occ))
 	}
 
 	calendars, _ := h.calendars.List(userID)
@@ -677,9 +756,90 @@ func (h *CalendarHandler) ShowEvent(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.EventFormPage(event, calendars, false, "", email)).ServeHTTP(w, r)
 }
 
+// oldInstanceLinkRe matches the instance keys earlier versions put in links:
+// the series guid, an underscore and the UTC date of the instance.
+var oldInstanceLinkRe = regexp.MustCompile(`^(.+)_(\d{4}-\d{2}-\d{2})$`)
+
+// redirectOldInstanceLink sends a {guid}_{date} link to the occurrence form of
+// the series. It reports whether it answered. The target is a path built from
+// the stored series guid, never from the request, so it cannot leave the site,
+// and the lookup is scoped to the caller.
+func (h *CalendarHandler) redirectOldInstanceLink(w http.ResponseWriter, r *http.Request, userID, guid string) bool {
+	m := oldInstanceLinkRe.FindStringSubmatch(guid)
+	if m == nil {
+		return false
+	}
+	series, err := h.events.Get(userID, m[1])
+	if err != nil || series.Rrule == "" {
+		return false
+	}
+	day, err := time.ParseInLocation("2006-01-02", m[2], time.UTC)
+	if err != nil {
+		return false
+	}
+	occ := oldLinkOccurrence(series, day)
+	if occ == nil {
+		return false
+	}
+	http.Redirect(w, r, string(templates.EventHref(occ)), http.StatusFound) // #nosec G710 -- path-only URL built from the stored series guid
+	return true
+}
+
+// oldLinkOccurrence finds the occurrence an old {guid}_{date} link meant: the
+// one whose RECURRENCE-ID falls on that UTC date. The day's listing can hold
+// an overnight instance of the previous day or an override moved in from
+// elsewhere, so the RECURRENCE-ID decides, not the first entry. An override
+// that moved its instance off its original date is not listed on that date, so
+// the lookup then runs on the series without its overrides, which names the
+// original slots, and each slot on the date is resolved through FindOccurrence
+// (which applies overrides, exclusions and cancellations).
+func oldLinkOccurrence(series *bongov1.Event, day time.Time) *bongov1.Event {
+	datePrefix := day.Format("20060102")
+	from, to := day.Unix(), day.AddDate(0, 0, 1).Unix()
+	if occs, err := store.ExpandRecurrence(series, from, to); err == nil {
+		for _, o := range occs {
+			if strings.HasPrefix(o.RecurrenceId, datePrefix) {
+				return o
+			}
+		}
+	}
+	bare := proto.Clone(series).(*bongov1.Event)
+	bare.IcalRaw = nil
+	slots, err := store.ExpandRecurrence(bare, from, to)
+	if err != nil {
+		return nil
+	}
+	for _, slot := range slots {
+		if !strings.HasPrefix(slot.RecurrenceId, datePrefix) {
+			continue
+		}
+		if occ, ok := store.FindOccurrence(series, slot.RecurrenceId); ok {
+			return occ
+		}
+	}
+	return nil
+}
+
+// eventZoneName is the IANA name stored on a web-created event: the zone its
+// form times were read in. An all-day event is a date and takes none, and the
+// process zone ("Local") or UTC is no zone worth recording.
+func (h *CalendarHandler) eventZoneName(userID string, allDay bool) string {
+	if allDay {
+		return ""
+	}
+	name := h.userLocation(userID).String()
+	if name == "UTC" {
+		return ""
+	}
+	if _, ok := icalevent.Zone(name); !ok {
+		return ""
+	}
+	return name
+}
+
 // UpdateEvent handles PUT to update an event.
 func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	guid := chi.URLParam(r, "guid")
 
 	existing, err := h.events.Get(userID, guid)
@@ -690,7 +850,7 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := parseEventForm(r, h.userLocation(userID))
 	if err != nil {
-		http.Error(w, "invalid form data: "+err.Error(), http.StatusBadRequest)
+		eventFormError(w, r, err)
 		return
 	}
 	if !allowedRrule(updated.Rrule, existing.Rrule) {
@@ -703,13 +863,24 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	// reminders: it is never mapped onto VALARMs, because CalDAV events do not
 	// populate it and the form would otherwise delete the client's alarms.
 	updated.Timezone = existing.Timezone
+	if len(existing.IcalRaw) == 0 {
+		// A web-created event: its form times were just read in the user's
+		// zone, so that is the zone the series is evaluated in. With no real
+		// zone to record, the stored one stays.
+		if z := h.eventZoneName(userID, updated.AllDay); z != "" {
+			updated.Timezone = z
+		}
+	}
 	updated.Exdates = existing.Exdates
+	carryOverParticipants(updated, existing, email)
 	updated.IcalRaw = nil
 	if len(existing.IcalRaw) > 0 {
 		raw, err := applyEventEditToICal(existing.IcalRaw, existing, updated, time.Now())
 		switch {
 		case errors.Is(err, errICalDecode):
 			slog.Warn("calendar: stored ical_raw does not decode, saving structured fields only", "user", userID, "guid", guid, "error", err)
+			// The raw path bumps SEQUENCE on every edit; so does this one.
+			updated.Sequence = existing.Sequence + 1
 		case err != nil:
 			slog.Error("calendar: rewriting ical_raw failed", "user", userID, "guid", guid, "error", err)
 			http.Error(w, "failed to update event", http.StatusInternalServerError)
@@ -717,6 +888,12 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		default:
 			updated.IcalRaw = raw
 		}
+	} else if len(updated.Attendees) > 0 || existing.Sequence > 0 {
+		// No raw to rewrite: mirror the SEQUENCE bump the raw path makes. It
+		// matters only once there are attendees to tell; skipping it for a
+		// plain event keeps the record from growing, which a user at quota
+		// needs in order to edit.
+		updated.Sequence = existing.Sequence + 1
 	}
 
 	// At or over quota an update is allowed only if the stored record does not
@@ -785,6 +962,7 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 	// events; the first definition of a TZID wins.
 	var zones, vevents []*ical.Component
 	seen := map[string]*ical.Component{}
+	spans := exportZoneSpans(events)
 
 	for _, e := range events {
 		if len(e.IcalRaw) > 0 {
@@ -835,16 +1013,30 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 			vevent.Props.SetText(ical.PropLocation, e.Location)
 		}
 
+		loc := time.UTC
 		if e.AllDay {
 			// A date, not an instant: the zone plays no part.
 			vevent.Props.SetDate(ical.PropDateTimeStart, icalevent.AllDayDate(e.StartTime))
 			vevent.Props.SetDate(ical.PropDateTimeEnd, icalevent.AllDayDate(e.EndTime))
+		} else if span, zoned := spans[e.Timezone]; zoned && e.Rrule != "" {
+			// A zoned series keeps its local time across DST only when it is
+			// written in its zone, with the VTIMEZONE that defines the TZID.
+			loc = span.loc
+			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).In(loc))
+			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).In(loc))
+			if _, dup := seen[loc.String()]; !dup {
+				tz := icalevent.VTimezone(loc, span.from, span.to)
+				seen[loc.String()] = tz
+				zones = append(zones, tz)
+			}
 		} else {
 			// UTC, so no TZID is written without a VTIMEZONE to define it.
 			vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Unix(e.StartTime, 0).UTC())
 			vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).UTC())
 		}
+		icalevent.AddRecurrence(vevent, e, loc)
 		vevent.Props.SetDateTime(ical.PropDateTimeStamp, time.Now().UTC())
+		icalevent.SetParticipants(vevent.Props, e)
 
 		vevents = append(vevents, vevent.Component)
 	}
@@ -861,6 +1053,42 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 	if _, err := w.Write(buf.Bytes()); err != nil {
 		return
 	}
+}
+
+// zoneSpan is the zone of the web-created series in an export and the span its
+// VTIMEZONE must cover. One VTIMEZONE is written per zone, so the span covers
+// every series in that zone.
+type zoneSpan struct {
+	loc      *time.Location
+	from, to time.Time
+}
+
+// exportZoneSpans finds the zones the structured (no ical_raw) recurring
+// events of an export are written in.
+func exportZoneSpans(events []*bongov1.Event) map[string]zoneSpan {
+	spans := map[string]zoneSpan{}
+	for _, e := range events {
+		if len(e.IcalRaw) > 0 || e.Rrule == "" {
+			continue
+		}
+		loc, from, to, ok := icalevent.SeriesZone(e)
+		if !ok {
+			continue
+		}
+		s, found := spans[e.Timezone]
+		if !found {
+			spans[e.Timezone] = zoneSpan{loc: loc, from: from, to: to}
+			continue
+		}
+		if from.Before(s.from) {
+			s.from = from
+		}
+		if to.After(s.to) {
+			s.to = to
+		}
+		spans[e.Timezone] = s
+	}
+	return spans
 }
 
 // ImportCalendar imports events from an .ics file.
@@ -1094,7 +1322,6 @@ func parseEventForm(r *http.Request, loc *time.Location) (*bongov1.Event, error)
 		Description: normaliseNewlines(r.FormValue("description")),
 		Location:    normaliseNewlines(r.FormValue("location")),
 		CalendarId:  r.FormValue("calendar_id"),
-		Timezone:    r.FormValue("timezone"),
 		AllDay:      r.FormValue("all_day") == "on",
 		Rrule:       r.FormValue("rrule"),
 	}
@@ -1102,6 +1329,12 @@ func parseEventForm(r *http.Request, loc *time.Location) (*bongov1.Event, error)
 	if event.CalendarId == "" {
 		event.CalendarId = "default"
 	}
+
+	attendees, err := parseAttendees(r.FormValue("attendees"))
+	if err != nil {
+		return nil, err
+	}
+	event.Attendees = attendees
 
 	// Parse reminder minutes.
 	if rm := r.FormValue("reminder_minutes"); rm != "" {
@@ -1164,6 +1397,99 @@ func parseEventForm(r *http.Request, loc *time.Location) (*bongov1.Event, error)
 	return event, nil
 }
 
+var (
+	errAttendeesTooMany = errors.New("too many attendees")
+	errAttendeeInvalid  = errors.New("invalid attendee")
+)
+
+// maxAttendeesField bounds the raw attendees field before it is parsed.
+const maxAttendeesField = 64 << 10
+
+// parseAttendees reads the attendees field: a comma-separated address list in
+// the "Name <addr>" form the recipient pills produce. Every address is
+// validated, duplicates (case-insensitive) keep the first, and more than
+// icalevent.MaxAttendees after that is refused. An empty field is no
+// attendees. New attendees are required participants who have not answered.
+func parseAttendees(raw string) ([]*bongov1.Attendee, error) {
+	raw = strings.Trim(raw, " \t\r\n,")
+	if raw == "" {
+		return nil, nil
+	}
+	if len(raw) > maxAttendeesField {
+		return nil, errAttendeesTooMany
+	}
+	list, err := mail.ParseAddressList(raw)
+	if err != nil {
+		return nil, errAttendeeInvalid
+	}
+	var out []*bongov1.Attendee
+	seen := map[string]bool{}
+	for _, a := range list {
+		if !icalevent.ValidAddress(a.Address) || !icalevent.ValidName(a.Name) {
+			return nil, errAttendeeInvalid
+		}
+		key := strings.ToLower(a.Address)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, &bongov1.Attendee{
+			Address:  a.Address,
+			Name:     a.Name,
+			Role:     icalevent.RoleRequired,
+			Partstat: icalevent.PartStatNeedsAction,
+			Rsvp:     true,
+		})
+	}
+	if len(out) > icalevent.MaxAttendees {
+		return nil, errAttendeesTooMany
+	}
+	return out, nil
+}
+
+// eventFormError answers a rejected event form with a 400. Attendee errors are
+// translated; the address is not echoed, as it is untrusted input.
+func eventFormError(w http.ResponseWriter, r *http.Request, err error) {
+	locale := middleware.LocaleFromContext(r.Context())
+	switch {
+	case errors.Is(err, errAttendeesTooMany):
+		http.Error(w, fmt.Sprintf(i18n.T(locale, "calendar.attendeesTooMany"), icalevent.MaxAttendees), http.StatusBadRequest)
+	case errors.Is(err, errAttendeeInvalid):
+		http.Error(w, i18n.T(locale, "calendar.attendeeInvalid"), http.StatusBadRequest)
+	default:
+		http.Error(w, "invalid form data: "+err.Error(), http.StatusBadRequest)
+	}
+}
+
+// carryOverParticipants keeps what the event form does not model. The form
+// carries addresses (and names) only, so without this every web edit would
+// reset PARTSTAT and drop ORGANIZER, STATUS and SEQUENCE. A kept attendee
+// retains its stored role, partstat and rsvp; a new one keeps the defaults
+// parseAttendees gave it. The organiser is never changed, and is set to the
+// editing user only when the event had none and now has attendees.
+func carryOverParticipants(updated, existing *bongov1.Event, userEmail string) {
+	updated.Organizer = existing.Organizer
+	updated.Status = existing.Status
+	updated.Sequence = existing.Sequence
+	if updated.Organizer == "" && len(updated.Attendees) > 0 && icalevent.ValidAddress(userEmail) {
+		updated.Organizer = userEmail
+	}
+	old := make(map[string]*bongov1.Attendee, len(existing.Attendees))
+	for _, a := range existing.Attendees {
+		old[strings.ToLower(a.Address)] = a
+	}
+	for _, a := range updated.Attendees {
+		prev, ok := old[strings.ToLower(a.Address)]
+		if !ok {
+			continue
+		}
+		if a.Name == "" {
+			a.Name = prev.Name
+		}
+		a.Role, a.Partstat, a.Rsvp = prev.Role, prev.Partstat, prev.Rsvp
+	}
+}
+
 // eventRrulePresets are the repeat rules the edit form offers.
 var eventRrulePresets = []string{"FREQ=DAILY", "FREQ=WEEKLY", "FREQ=MONTHLY", "FREQ=YEARLY"}
 
@@ -1183,8 +1509,11 @@ var errICalDecode = errors.New("decoding stored ical")
 // returns the re-serialised bytes. It follows the buildVCardFromForm approach:
 // the form is lossy, so a property is changed only when the submitted value
 // differs from the existing structured value, and everything the form does not
-// model (VALARM, ATTENDEE, ORGANIZER, X- properties, UID, EXDATE, VTIMEZONE and
-// RECURRENCE-ID override components) is left untouched.
+// model (VALARM, X- properties, UID, EXDATE, VTIMEZONE and RECURRENCE-ID
+// override components) is left untouched. ATTENDEE properties are touched only
+// for addresses the edit adds or removes, so the others keep every parameter
+// (PARTSTAT, CUTYPE, X-); ORGANIZER is added when absent and attendees exist,
+// and never changed.
 //
 // Limitation: when the start of a recurring event moves, EXDATE and
 // RECURRENCE-ID values are kept verbatim rather than shifted, so they may no
@@ -1232,13 +1561,17 @@ func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time
 		}
 	}
 
+	applyAttendeeEdit(props, existing, updated)
+
 	seq := 0
 	if p := props.Get(ical.PropSequence); p != nil {
 		seq, _ = strconv.Atoi(p.Value)
 	}
+	seq = max(seq, 0) + 1
 	sp := ical.NewProp(ical.PropSequence)
-	sp.Value = strconv.Itoa(max(seq, 0) + 1)
+	sp.Value = strconv.Itoa(seq)
 	props.Set(sp)
+	updated.Sequence = int32(min(seq, 1<<30))
 	props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
 	props.SetDateTime(ical.PropLastModified, now.UTC())
 
@@ -1254,6 +1587,98 @@ func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time
 		return nil, fmt.Errorf("encoding ical: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// applyAttendeeEdit applies the attendee changes of an edit to a master
+// VEVENT: ATTENDEE properties of removed addresses are deleted, new addresses
+// are added, and every other property is left exactly as stored (so the
+// unchanged case is byte-identical). Properties beyond the structured cap or
+// that are not mailto addresses are never in the structured list, so they are
+// never removed here. ORGANIZER is added only when absent.
+func applyAttendeeEdit(props ical.Props, existing, updated *bongov1.Event) {
+	have := make(map[string]bool, len(existing.Attendees))
+	for _, a := range existing.Attendees {
+		have[strings.ToLower(a.Address)] = true
+	}
+	want := make(map[string]bool, len(updated.Attendees))
+	for _, a := range updated.Attendees {
+		want[strings.ToLower(a.Address)] = true
+	}
+
+	var removed bool
+	for k := range have {
+		if !want[k] {
+			removed = true
+		}
+	}
+	if removed {
+		kept := make([]ical.Prop, 0)
+		for _, p := range props.Values(ical.PropAttendee) {
+			if addr, ok := icalevent.AddressFromCalAddress(p.Value); ok && have[strings.ToLower(addr)] && !want[strings.ToLower(addr)] {
+				continue
+			}
+			kept = append(kept, p)
+		}
+		props.Del(ical.PropAttendee)
+		for i := range kept {
+			props.Add(&kept[i])
+		}
+	}
+	applyAttendeeNames(props, existing, updated)
+	// An address the structured copy lacked (beyond the cap) may already be in
+	// the raw; do not add it twice.
+	inRaw := map[string]bool{}
+	for _, p := range props.Values(ical.PropAttendee) {
+		if addr, ok := icalevent.AddressFromCalAddress(p.Value); ok {
+			inRaw[strings.ToLower(addr)] = true
+		}
+	}
+	for _, a := range updated.Attendees {
+		if k := strings.ToLower(a.Address); !have[k] && !inRaw[k] {
+			props.Add(icalevent.AttendeeProp(a))
+		}
+	}
+	if len(updated.Attendees) > 0 && updated.Organizer != "" && props.Get(ical.PropOrganizer) == nil && icalevent.ValidAddress(updated.Organizer) {
+		props.Set(icalevent.OrganizerProp(updated.Organizer))
+	}
+}
+
+// applyAttendeeNames carries a changed display name of a kept attendee onto
+// its ATTENDEE property: CN is set, or removed when the new name is empty, and
+// every other parameter is left alone. An attendee whose name did not change is
+// not touched.
+func applyAttendeeNames(props ical.Props, existing, updated *bongov1.Event) {
+	oldName := make(map[string]string, len(existing.Attendees))
+	for _, a := range existing.Attendees {
+		oldName[strings.ToLower(a.Address)] = a.Name
+	}
+	newName := map[string]*bongov1.Attendee{}
+	for _, a := range updated.Attendees {
+		k := strings.ToLower(a.Address)
+		if prev, ok := oldName[k]; ok && prev != a.Name {
+			newName[k] = a
+		}
+	}
+	if len(newName) == 0 {
+		return
+	}
+	attendees := props[ical.PropAttendee]
+	for i := range attendees {
+		addr, ok := icalevent.AddressFromCalAddress(attendees[i].Value)
+		if !ok {
+			continue
+		}
+		a, ok := newName[strings.ToLower(addr)]
+		if !ok {
+			continue
+		}
+		// AttendeeProp applies the same cleaning a new attendee's CN gets.
+		if cn := icalevent.AttendeeProp(a).Params.Get(ical.ParamCommonName); cn != "" {
+			attendees[i].Params.Set(ical.ParamCommonName, cn)
+		} else {
+			attendees[i].Params.Del(ical.ParamCommonName)
+		}
+	}
 }
 
 // eventTimesChanged reports whether the edit moves the event. All-day events

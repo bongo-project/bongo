@@ -658,6 +658,18 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Cascade: revoke the calendar grants this user owns and holds. They live
+	// under /acl/ and /aclrev/, not /user/{id}/, so the prefix delete above does
+	// not reach them. Best-effort, as the cascades around it: the user IS
+	// deleted either way and the failure is logged. A leftover grant authorises
+	// nothing (access needs the owner's calendar, and an ID is not reused) and
+	// the leader's orphan sweep removes it.
+	if h.applier != nil {
+		if gErr := store.RevokeUserGrants(h.applier, userID); gErr != nil {
+			h.logger.Warn("admin: delete cascade: failed to revoke calendar grants", "user_id", userID, "error", gErr)
+		}
+	}
+
 	// Cascade: remove legacy /system/alias keys targeting this user's email and
 	// the catch-alls it owns, plus the derived SQLite alias rows. A legacy alias
 	// value is an email, so left behind it would route to whoever re-registers

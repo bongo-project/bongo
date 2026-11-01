@@ -28,8 +28,9 @@ type CalendarSharePrune struct {
 
 // PruneCalendarShares removes every Calendar.SharedWith entry that is not the
 // ID of an existing user profile. Shares are stored as user IDs, so older
-// entries holding an address or other raw string never matched IsSharedWith
-// and only filled the per-calendar cap; deleting them changes nobody's access.
+// entries holding an address or other raw string never matched the grant lookup
+// (and calendar-grants-v1 does not carry them over), so they only filled the
+// per-calendar cap; deleting them changes nobody's access.
 // Entries naming a deleted user go too.
 //
 // An entry counts as absent only when its profile read returns ErrNotFound,
