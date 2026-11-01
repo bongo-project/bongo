@@ -544,3 +544,23 @@ func pruneRecipients(all, remove []string) []string {
 func shouldSign(msg *bongov1.OutboundMessage) bool {
 	return msg.GetOrigin() != bongov1.OutboundOrigin_OUTBOUND_ORIGIN_FORWARD
 }
+
+// WorkerSettings is a read-only snapshot of the delivery tuning a Worker was
+// built with.
+type WorkerSettings struct {
+	MaxLifetime       time.Duration
+	MaxRetryInterval  time.Duration
+	Concurrency       int
+	DelayWarningAfter time.Duration
+}
+
+// Settings returns the delivery tuning in effect. The fields are set only in
+// NewWorker, so reading them while Run is active is race-free.
+func (w *Worker) Settings() WorkerSettings {
+	return WorkerSettings{
+		MaxLifetime:       w.maxLifetime,
+		MaxRetryInterval:  w.maxRetryInterval,
+		Concurrency:       w.concurrency,
+		DelayWarningAfter: w.delayWarning,
+	}
+}
