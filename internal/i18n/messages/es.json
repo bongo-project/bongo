@@ -831,5 +831,13 @@
   "compose.flashQueued": "Mensaje en cola para su entrega",
   "compose.flashDraftSaved": "Borrador guardado",
   "admin.domainHasAliases": "El dominio %s tiene los dominios alias %s. Elimine primero los dominios alias.",
+  "admin.errInvalidDomain": "Nombre de dominio no válido",
+  "admin.errInvalidAliasTarget": "Destino de alias no válido",
+  "admin.errAliasSelf": "Un dominio no puede ser alias de sí mismo",
+  "admin.errAliasTargetNotHosted": "El destino del alias no es un dominio alojado",
+  "admin.errAliasTargetIsAlias": "El destino del alias es a su vez un dominio alias",
+  "admin.errAliasCatchAll": "Un dominio alias usa el catch-all de su destino",
+  "rules.flashCreated": "Regla creada",
+  "rules.flashUpdated": "Regla actualizada",
   "admin.domainAliasesMore": "y %d más"
 }

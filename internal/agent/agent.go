@@ -228,6 +228,7 @@ type Agent struct {
 	quarantinePurgeCancel context.CancelFunc
 	orphanGCCancel        context.CancelFunc
 	usageCancel           context.CancelFunc
+	rulesMigrationCancel  context.CancelFunc
 	previewCancel         context.CancelFunc
 	addrVerifyCancel      context.CancelFunc
 
@@ -1111,13 +1112,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	// and 465 only when the SMTP server will serve it: the same predicate
 	// NewServer uses, evaluated here because the router is built before SMTP
 	// starts.
-	isDevRole := a.Config.Server.Role == "dev"
-	imapPort, imapsPort := a.Config.IMAP.ListenPorts(isDevRole)
-	_, submissionPort := a.Config.SMTP.ListenPorts(isDevRole)
-	submissionsPort := 0
-	if a.Config.SMTP.SubmissionsEnabled(isDevRole) {
-		submissionsPort = a.Config.SMTP.SubmissionsListenPort(isDevRole)
-	}
+	imapPort, imapsPort, submissionPort, submissionsPort := autoconfigPorts(a.Config)
 	autoconfigH := handlers.NewAutoconfigHandler(
 		a.Config.SMTP.Hostname,
 		imapPort,
@@ -1258,6 +1253,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 		adminH.SetMailHostname(mailHost)
+		_, _, _, submissionsAdvertised := autoconfigPorts(a.Config)
+		adminH.SetSubmissionsEnabled(submissionsAdvertised != 0)
 
 		r.Get("/admin", adminH.Dashboard)
 		r.Get("/admin/users", adminH.ListUsers)
@@ -1754,7 +1751,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				a.logger.Error("smtp server error", "error", err)
 			}
 		}()
-		a.logger.Info("smtp: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr())
+		a.logger.Info("smtp: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr(), "submissions", a.SMTP.SubmissionsAddr())
 	}
 
 	// Initialize outbound queue subsystem. a.QueueStore was already created
@@ -2044,9 +2041,18 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.reportGrandfatheredForwards()
 
 	// Rules written before several-actions-per-rule keep their first-match
-	// behaviour. Leader-only and before the listeners open, so it cannot race
-	// a user editing a rule.
-	a.migrateRulesFirstMatch()
+	// behaviour. Leader-only. On the node that is leader here it runs before
+	// the listeners open, so it cannot race a user editing a rule. A node that
+	// gains leadership later is covered by the worker below, which can overlap
+	// user edits (see MigrateFirstMatch).
+	a.migrateRulesFirstMatchPass(a.IsLeader)
+	if a.Raft != nil && a.Rules != nil {
+		rulesCtx, rulesCancel := context.WithCancel(ctx)
+		a.rulesMigrationCancel = rulesCancel
+		a.goWorker("rules-first-match", func() {
+			a.runRulesFirstMatchMigration(rulesCtx, rulesFirstMatchInterval, a.IsLeader)
+		})
+	}
 
 	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
 	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
@@ -3543,32 +3549,63 @@ func (a *Agent) migrateForwardTargets() {
 	}
 }
 
-// migrateRulesFirstMatch sets stop_processing on every rule written before
+// rulesFirstMatchInterval is how often a node that has not yet seen the
+// first-match marker checks whether it is leader and the migration is due.
+// A variable so tests can shorten it.
+var rulesFirstMatchInterval = 30 * time.Second
+
+// migrateRulesFirstMatchPass sets stop_processing on every rule written before
 // several actions per rule existed, so a message still fires only the first
 // matching rule as it did. Each rule is one idempotent PUT and the marker at
 // /system/migrations/rules-first-match-v1 is written last, so a failure is
-// logged, leaves the marker unset and is resumed by the next boot. Startup
-// does not fail on it.
-func (a *Agent) migrateRulesFirstMatch() {
-	if a.Rules == nil || a.Raft == nil || !a.IsLeader() {
-		return
+// logged, leaves the marker unset and is retried by the next pass.
+//
+// It writes only when isLeader reports true, checked before anything is read
+// or applied. It reports whether the work is finished: the marker is present
+// (written by this pass or already replicated). It returns false on a
+// follower, on any error, and when leadership is lost part-way; the caller
+// retries. Startup does not fail on it.
+func (a *Agent) migrateRulesFirstMatchPass(isLeader func() bool) (done bool) {
+	if a.Rules == nil || !isLeader() {
+		return false
 	}
-	if done, err := a.Rules.FirstMatchMigrationDone(); err != nil {
-		a.logger.Warn("startup: rules first-match migration marker unreadable", "error", err)
-		return
-	} else if done {
-		return
+	if marked, err := a.Rules.FirstMatchMigrationDone(); err != nil {
+		a.logger.Warn("rules-migration: first-match marker unreadable", "error", err)
+		return false
+	} else if marked {
+		return true
 	}
 	n, err := a.Rules.MigrateFirstMatch()
 	if err != nil {
-		a.logger.Warn("startup: rules first-match migration failed", "migrated", n, "error", err)
-		return
+		a.logger.Warn("rules-migration: first-match migration failed", "migrated", n, "error", err)
+		return false
 	}
 	if n > 0 {
-		a.logger.Info("startup: set stop_processing on existing rules", "count", n)
+		a.logger.Info("rules-migration: set stop_processing on existing rules", "count", n)
 	}
 	if err := a.Rules.MarkFirstMatchMigrationDone(); err != nil {
-		a.logger.Warn("startup: rules first-match migration marker not written", "error", err)
+		a.logger.Warn("rules-migration: first-match marker not written", "error", err)
+		return false
+	}
+	return true
+}
+
+// runRulesFirstMatchMigration retries migrateRulesFirstMatchPass on every tick
+// until it reports done or ctx ends, so a node that becomes leader after boot
+// still runs the migration. Followers poll until the marker replicates to
+// them, then stop.
+func (a *Agent) runRulesFirstMatchMigration(ctx context.Context, interval time.Duration, isLeader func() bool) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if a.migrateRulesFirstMatchPass(isLeader) {
+				return
+			}
+		}
 	}
 }
 
@@ -3935,7 +3972,7 @@ func (a *Agent) startSMTPAgent() error {
 			a.logger.Error("smtp agent server error", "error", err)
 		}
 	}()
-	a.logger.Info("smtp agent: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr())
+	a.logger.Info("smtp agent: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr(), "submissions", a.SMTP.SubmissionsAddr())
 	return nil
 }
 
@@ -4301,6 +4338,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	if a.usageCancel != nil {
 		a.usageCancel()
 	}
+	if a.rulesMigrationCancel != nil {
+		a.rulesMigrationCancel()
+	}
 	if a.previewCancel != nil {
 		a.previewCancel()
 	}
@@ -4595,6 +4635,22 @@ func davBodyReadError(w http.ResponseWriter, err error) {
 		return
 	}
 	http.Error(w, "Bad request", http.StatusBadRequest)
+}
+
+// autoconfigPorts returns the ports that client autoconfiguration (Mozilla,
+// Autodiscover, Apple profile) and the admin DNS guide advertise. They are the
+// ports the listeners really bind (dev substitutes its own). The implicit-TLS
+// submissions port is 0 unless the SMTP listeners start (smtp.enabled) and
+// SMTPConfig.SubmissionsEnabled holds: the same predicate NewServer uses,
+// evaluated here because the router is built before SMTP starts.
+func autoconfigPorts(cfg *config.Config) (imap, imaps, submission, submissions int) {
+	dev := cfg.Server.Role == "dev"
+	imap, imaps = cfg.IMAP.ListenPorts(dev)
+	_, submission = cfg.SMTP.ListenPorts(dev)
+	if cfg.SMTP.Enabled && cfg.SMTP.SubmissionsEnabled(dev) {
+		submissions = cfg.SMTP.SubmissionsListenPort(dev)
+	}
+	return imap, imaps, submission, submissions
 }
 
 // newDAVHandlers builds both DAV handlers around one body budget, so the

@@ -711,6 +711,20 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: "Mailbox unavailable"}
 	}
 
+	// A local part that does not exist on a domain we host is a typo or a
+	// guess, not a recipient to relay. Without this an authenticated session
+	// would send it out to our own MX, and an unauthenticated one would get
+	// 5.7.1 for what is really an unknown mailbox. The reply matches every
+	// other refusal here, and it sits before the budget peek below so a
+	// refused recipient never touches the budget.
+	if hd := s.backend.hostedDomain; hd != nil {
+		addr := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(to), "<"), ">")
+		if at := strings.LastIndexByte(addr, '@'); at >= 0 && at < len(addr)-1 && hd(strings.ToLower(addr[at+1:])) {
+			s.logger.Warn("smtp: RCPT rejected: unknown mailbox on hosted domain", "to", to)
+			return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 1, 1}, Message: "Mailbox unavailable"}
+		}
+	}
+
 	// Non-local recipient: relay is only permitted for authenticated senders.
 	if !s.authed {
 		s.logger.Warn("smtp: relay denied for non-local recipient", "to", to, "from", s.from, "ip", s.remoteIP)

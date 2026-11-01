@@ -64,10 +64,11 @@ type AdminHandler struct {
 	authorizedDomainsFn func(userID string, isGlobalAdmin bool) ([]string, error)
 	// domainKeyExistsFn reports whether a domain key exists in any
 	// capitalisation. Defaults to store.DomainKeyExists; replaceable in tests.
-	domainKeyExistsFn func(domain string) (bool, error)
-	domainQuota       *store.DomainQuotaStore
-	startTime         time.Time
-	mailHostname      string // configured SMTP hostname; used as MX expected-value hint
+	domainKeyExistsFn  func(domain string) (bool, error)
+	domainQuota        *store.DomainQuotaStore
+	startTime          time.Time
+	submissionsEnabled bool   // publish the _submissions._tcp SRV row (port 465)
+	mailHostname       string // configured SMTP hostname; used as MX expected-value hint
 }
 
 // GossipLister returns gossip member info.
@@ -164,6 +165,10 @@ func (h *AdminHandler) SetDomainQuotaStore(dqs *store.DomainQuotaStore) {
 func (h *AdminHandler) SetMailHostname(hostname string) {
 	h.mailHostname = hostname
 }
+
+// SetSubmissionsEnabled makes the DNS guide publish a _submissions._tcp SRV
+// row for implicit-TLS submission (port 465).
+func (h *AdminHandler) SetSubmissionsEnabled(on bool) { h.submissionsEnabled = on }
 
 // SetStorageGate installs the free-space gate behind the dashboard banner.
 func (h *AdminHandler) SetStorageGate(g storageGate) { h.storage = g }
@@ -869,7 +874,7 @@ func (h *AdminHandler) loadDomain(name string) (templates.DomainInfo, bool) {
 	// Reuses the same dnsCtx deadline as the status checks.
 	v4, v6 := h.resolveServerIPs(dnsCtx)
 	di.MailHostname = h.mailHostname
-	di.DNSGuide, di.DKIMPending = buildDNSGuide(name, h.mailHostname, v4, v6, di.DkimSelector, di.DkimTXTRecord)
+	di.DNSGuide, di.DKIMPending = buildDNSGuide(name, h.mailHostname, h.submissionsEnabled, v4, v6, di.DkimSelector, di.DkimTXTRecord)
 
 	h.enrichDomainCatchAll(&di)
 	h.enrichDomainOwner(&di)
@@ -1265,7 +1270,7 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validDomainName(domain) {
-		http.Error(w, "invalid domain name", http.StatusBadRequest)
+		fwdError(w, r, "admin.errInvalidDomain", http.StatusBadRequest)
 		return
 	}
 
@@ -1273,11 +1278,11 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 	aliasOf := strings.ToLower(strings.TrimSpace(r.FormValue("alias_of")))
 	if aliasOf != "" {
 		if !validDomainName(aliasOf) {
-			http.Error(w, "invalid alias target", http.StatusBadRequest)
+			fwdError(w, r, "admin.errInvalidAliasTarget", http.StatusBadRequest)
 			return
 		}
 		if aliasOf == domain {
-			http.Error(w, "a domain cannot be an alias of itself", http.StatusBadRequest)
+			fwdError(w, r, "admin.errAliasSelf", http.StatusBadRequest)
 			return
 		}
 		hosted, err := store.DomainHosted(h.store, aliasOf)
@@ -1287,7 +1292,7 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !hosted {
-			http.Error(w, "alias target is not a hosted domain", http.StatusBadRequest)
+			fwdError(w, r, "admin.errAliasTargetNotHosted", http.StatusBadRequest)
 			return
 		}
 		_, isAlias, err := store.DomainAliasOf(h.store, aliasOf)
@@ -1297,7 +1302,7 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if isAlias {
-			http.Error(w, "alias target is itself an alias", http.StatusBadRequest)
+			fwdError(w, r, "admin.errAliasTargetIsAlias", http.StatusBadRequest)
 			return
 		}
 	}
@@ -1693,7 +1698,7 @@ func (h *AdminHandler) SetCatchAll(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to set catch-all", http.StatusInternalServerError)
 		return
 	} else if isAlias {
-		http.Error(w, "an alias domain uses the catch-all of its target", http.StatusBadRequest)
+		fwdError(w, r, "admin.errAliasCatchAll", http.StatusBadRequest)
 		return
 	}
 

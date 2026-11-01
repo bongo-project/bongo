@@ -12,9 +12,49 @@ import (
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/rules"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 )
+
+// TestRuleFlashesAreTranslated: the created and updated flashes use the
+// request's locale.
+func TestRuleFlashesAreTranslated(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	store := rules.NewRuleStore(env.ps, env.applier)
+	h := NewRulesHandler(store, env.mailboxes, env.ps, nil)
+	const user = "u1"
+
+	post := func(handler http.HandlerFunc, path, id string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(matchForm(nil).Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rc := chi.NewRouteContext()
+		rc.URLParams.Add("id", id)
+		ctx := middleware.WithLocale(middleware.WithUserContext(r.Context(), user, user+"@example.com"), "de")
+		r = r.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rc))
+		w := httptest.NewRecorder()
+		handler(w, r)
+		return w
+	}
+	check := func(w *httptest.ResponseRecorder, key string) {
+		t.Helper()
+		flash := flashOf(t, w)
+		want := i18n.T("de", key)
+		if want == key || want == i18n.T("en", key) {
+			t.Fatalf("key %s has no distinct de translation: %q", key, want)
+		}
+		if !strings.HasPrefix(flash, want) {
+			t.Fatalf("flash = %q, want prefix %q", flash, want)
+		}
+	}
+
+	check(post(h.CreateRule, "/settings/rules", ""), "rules.flashCreated")
+	list, _ := store.List(user)
+	if len(list) != 1 {
+		t.Fatalf("stored %d rules", len(list))
+	}
+	check(post(h.UpdateRule, "/settings/rules/"+list[0].Id, list[0].Id), "rules.flashUpdated")
+}
 
 func matchForm(match *string) url.Values {
 	form := formFor(row{"flag", "INBOX", "", ""})

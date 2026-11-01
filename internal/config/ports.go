@@ -122,6 +122,10 @@ type listenerPort struct {
 //   - the control listener runs in every role except agent.
 //   - smtp, imap and pop3 bind on server and dev nodes when enabled; the smtp
 //     agent binds the smtp ports when "smtp" is in server.agents.
+//   - smtp.submissions_port is listed only when SubmissionsEnabled holds: the
+//     port is not 0 and the node is dev or has an smtp.tls certificate and
+//     key. Without a certificate the listener never binds, so a bad or
+//     clashing value there passes validation (NewServer warns and skips it).
 //   - raft binds TCP only for the server role; dev raft is in-memory.
 //   - gossip runs on server and dev nodes.
 //   - the peer listener runs only when ClusterHasPeers.
@@ -155,8 +159,8 @@ func (c *Config) enabledListenerPorts() ([]listenerPort, error) {
 		mx, sub := c.SMTP.ListenPorts(false)
 		add("smtp.port", mx)
 		add("smtp.submission_port", sub)
-		if p := c.SMTP.SubmissionsListenPort(false); p != 0 {
-			add("smtp.submissions_port", p)
+		if c.SMTP.SubmissionsEnabled(false) {
+			add("smtp.submissions_port", c.SMTP.SubmissionsListenPort(false))
 		}
 	}
 	if mailNode {
@@ -164,8 +168,8 @@ func (c *Config) enabledListenerPorts() ([]listenerPort, error) {
 			mx, sub := c.SMTP.ListenPorts(dev)
 			add("smtp.port", mx)
 			add("smtp.submission_port", sub)
-			if p := c.SMTP.SubmissionsListenPort(dev); p != 0 {
-				add("smtp.submissions_port", p)
+			if c.SMTP.SubmissionsEnabled(dev) {
+				add("smtp.submissions_port", c.SMTP.SubmissionsListenPort(dev))
 			}
 		}
 		if c.IMAP.Enabled {

@@ -47,6 +47,9 @@ func (s *RuleStore) MarkFirstMatchMigrationDone() error {
 // touched and a rerun after a crash skips what an earlier run already wrote,
 // whether or not the marker exists. Each rule is one PUT; the marker is the
 // caller's last write, so a crash part-way is resumed by the next run. The
+// run may overlap user edits when it starts after boot, so each rule is
+// re-read just before its PUT; the remaining window is a read-then-PUT with no
+// compare-and-set, which the release deliberately does not add. The
 // writes are not atomic as a set: until the run finishes, some rules may fire
 // first-match and others not. It returns the number of rules rewritten.
 func (s *RuleStore) MigrateFirstMatch() (int, error) {
@@ -87,6 +90,19 @@ func (s *RuleStore) MigrateFirstMatch() (int, error) {
 		data, err := proto.Marshal(p.rule)
 		if err != nil {
 			return written, fmt.Errorf("marshaling rule %s: %w", p.rule.Id, err)
+		}
+		// The scan above may be stale when the run starts after the server is
+		// already serving: skip a rule a user has since deleted, or saved in
+		// the new form. A small window between this read and the PUT remains.
+		cur, gErr := s.pebble.Get(p.key)
+		if errors.Is(gErr, store.ErrNotFound) {
+			continue
+		}
+		if gErr == nil {
+			var now bongov1.FilterRule
+			if proto.Unmarshal(cur, &now) == nil && len(now.Actions) > 0 {
+				continue
+			}
 		}
 		cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: p.key, Value: data}
 		if err := s.applier.ApplyCommand(cmd, 5*time.Second); err != nil {

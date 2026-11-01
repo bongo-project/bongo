@@ -55,7 +55,7 @@ software:
   testing; real clients will not trust it), and SMTP offers no STARTTLS at all,
   so authenticated submission on port 587 is unavailable because AUTH is only
   offered over TLS.
-- Ports open: `25`, `587` (SMTP), `143`, `993` (IMAP), optionally `110`, `995`
+- Ports open: `25`, `587` (SMTP), `465` (SMTP over implicit TLS; needs `smtp.tls`, otherwise it is not started), `143`, `993` (IMAP), optionally `110`, `995`
   (POP3), and `443` (web UI). Binding ports below 1024 needs root or a
   capability grant (see step 6).
 

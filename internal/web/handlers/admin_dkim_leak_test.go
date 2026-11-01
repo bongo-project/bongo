@@ -87,7 +87,7 @@ func TestDomainDetailRender_NoPrivateKeyMaterial(t *testing.T) {
 	if di.DkimTXTRecord == "" {
 		t.Fatal("enrichDomainDKIM produced no TXT record")
 	}
-	di.DNSGuide, di.DKIMPending = buildDNSGuide(di.Name, "mail.example.com", "", "", di.DkimSelector, di.DkimTXTRecord)
+	di.DNSGuide, di.DKIMPending = buildDNSGuide(di.Name, "mail.example.com", false, "", "", di.DkimSelector, di.DkimTXTRecord)
 
 	var buf bytes.Buffer
 	if err := templates.AdminDomainDetail(di, "admin@example.com", "", true).Render(context.Background(), &buf); err != nil {

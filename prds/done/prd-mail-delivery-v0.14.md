@@ -846,10 +846,34 @@ Found while implementing (2026-10-31):
   unqualified `From:` are replaced by the account address. Quota refusal at
   DATA exits 69. `insecure_skip_verify` is allowed for a literal loopback
   IP or `localhost` only, not for a name that resolves to loopback.
-- Found while implementing US-017: an authenticated submission to an
-  unknown local part on a hosted domain (for example `nobody@localhost` in
-  dev) is accepted and relayed instead of refused at RCPT, so `bongo
-  sendmail` cannot report exit 67 for it. Candidate for v0.15.
 - US-018 as built: `--json` output carries an `id` field the text table
   does not show (a superset, for scripts). Each list is capped at 100000
   rows; a truncated list prints the rows and exits non-zero.
+
+Fixed after verification (Phase 29, 2026-11-01):
+
+- Release notes (29.1): an RCPT to an unknown local part on a hosted
+  domain, alias domains included, is refused with `550 5.1.1` for every
+  session. Before, an authenticated session relayed it to our own MX and
+  the sender got a bounce later, and an unauthenticated one got `5.7.1`.
+  `bongo sendmail` now exits 67 for a mistyped local recipient. A transient
+  resolver error on a hosted domain is also refused permanently; a typed
+  transient error that maps to 451 is a candidate.
+- 29.2: autoconfig still advertises 587 when `smtp.enabled` is false and
+  on an edge node, where no SMTP listener starts. Candidate for the next
+  release.
+- Release notes (29.3): the first-match rules migration now also runs on a
+  node that becomes leader later, retried every 30 seconds until done. A
+  rule saved through an older node after the marker is set is never
+  revisited; on new nodes it keeps the new engine's all-matching-rules
+  behaviour, not first-match. Upgrade every node before editing rules.
+  Candidate: `migrateAddressIndex`, `ensureConfiguredDomain`,
+  `pruneLegacyCalendarShares` and `migrateForwardTargets` also run only on
+  a node that is leader at startup.
+- 29.4: user-visible strings from before v0.14 are still English only:
+  several admin domain and user flashes, "Rule deleted", "Rule not found",
+  the address verification flashes, and the 500 bodies of the domain
+  handlers. Candidate for the next release.
+- Release notes (29.6): Reply on your own sent message now addresses its
+  original recipients, as Reply all does, instead of yourself. Your own
+  addresses are removed from To as well as Cc. Reply to List is unchanged.

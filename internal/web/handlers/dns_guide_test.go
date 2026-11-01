@@ -27,7 +27,7 @@ func TestBuildDNSGuide(t *testing.T) {
 	)
 
 	t.Run("shared-host MX and SRV point at the server hostname", func(t *testing.T) {
-		rows, _ := buildDNSGuide(domain, mailHost, v4, v6, "mail", dkimTXT)
+		rows, _ := buildDNSGuide(domain, mailHost, false, v4, v6, "mail", dkimTXT)
 
 		mx, ok := findRow(rows, "MX", "@")
 		if !ok || mx.Value != "10 mail.example.com." {
@@ -44,7 +44,7 @@ func TestBuildDNSGuide(t *testing.T) {
 	})
 
 	t.Run("A records include autoconfig and autodiscover", func(t *testing.T) {
-		rows, _ := buildDNSGuide(domain, mailHost, v4, v6, "mail", dkimTXT)
+		rows, _ := buildDNSGuide(domain, mailHost, false, v4, v6, "mail", dkimTXT)
 		for _, h := range []string{"@", "mail", "autoconfig", "autodiscover"} {
 			r, ok := findRow(rows, "A", h)
 			if !ok || r.Value != v4 {
@@ -54,7 +54,7 @@ func TestBuildDNSGuide(t *testing.T) {
 	})
 
 	t.Run("SPF and DMARC use canonical expected values", func(t *testing.T) {
-		rows, _ := buildDNSGuide(domain, mailHost, v4, v6, "mail", dkimTXT)
+		rows, _ := buildDNSGuide(domain, mailHost, false, v4, v6, "mail", dkimTXT)
 		spf, ok := findRow(rows, "TXT", "@")
 		if !ok || spf.Value != "v=spf1 mx ~all" {
 			t.Fatalf("SPF: got %q ok=%v", spf.Value, ok)
@@ -66,7 +66,7 @@ func TestBuildDNSGuide(t *testing.T) {
 	})
 
 	t.Run("DKIM present emits real value and pending=false", func(t *testing.T) {
-		rows, pending := buildDNSGuide(domain, mailHost, v4, v6, "mail", dkimTXT)
+		rows, pending := buildDNSGuide(domain, mailHost, false, v4, v6, "mail", dkimTXT)
 		if pending {
 			t.Fatal("expected pending=false when a DKIM record is supplied")
 		}
@@ -77,7 +77,7 @@ func TestBuildDNSGuide(t *testing.T) {
 	})
 
 	t.Run("no DKIM key: pending=true and no _domainkey record (never empty p=)", func(t *testing.T) {
-		rows, pending := buildDNSGuide(domain, mailHost, v4, v6, "", "")
+		rows, pending := buildDNSGuide(domain, mailHost, false, v4, v6, "", "")
 		if !pending {
 			t.Fatal("expected pending=true when no DKIM record is supplied")
 		}
@@ -87,7 +87,7 @@ func TestBuildDNSGuide(t *testing.T) {
 	})
 
 	t.Run("missing server IPs omit A/AAAA but keep MX/TXT/SRV", func(t *testing.T) {
-		rows, _ := buildDNSGuide(domain, mailHost, "", "", "mail", dkimTXT)
+		rows, _ := buildDNSGuide(domain, mailHost, false, "", "", "mail", dkimTXT)
 		if _, ok := findRow(rows, "A", "@"); ok {
 			t.Fatal("A record should be omitted when serverIPv4 is empty")
 		}
@@ -100,7 +100,7 @@ func TestBuildDNSGuide(t *testing.T) {
 	})
 
 	t.Run("all rows carry the default TTL", func(t *testing.T) {
-		rows, _ := buildDNSGuide(domain, mailHost, v4, v6, "mail", dkimTXT)
+		rows, _ := buildDNSGuide(domain, mailHost, false, v4, v6, "mail", dkimTXT)
 		for _, r := range rows {
 			if r.TTL != dnsGuideTTL {
 				t.Fatalf("row %s/%s TTL=%d, want %d", r.Type, r.Host, r.TTL, dnsGuideTTL)

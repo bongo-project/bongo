@@ -831,5 +831,13 @@
   "compose.flashQueued": "Message en file d'attente pour remise",
   "compose.flashDraftSaved": "Brouillon enregistré",
   "admin.domainHasAliases": "Le domaine %s a les domaines alias %s. Supprimez d'abord les domaines alias.",
+  "admin.errInvalidDomain": "Nom de domaine non valide",
+  "admin.errInvalidAliasTarget": "Cible d'alias non valide",
+  "admin.errAliasSelf": "Un domaine ne peut pas être un alias de lui-même",
+  "admin.errAliasTargetNotHosted": "La cible de l'alias n'est pas un domaine hébergé",
+  "admin.errAliasTargetIsAlias": "La cible de l'alias est elle-même un domaine alias",
+  "admin.errAliasCatchAll": "Un domaine alias utilise le catch-all de sa cible",
+  "rules.flashCreated": "Règle créée",
+  "rules.flashUpdated": "Règle mise à jour",
   "admin.domainAliasesMore": "et %d autres"
 }
