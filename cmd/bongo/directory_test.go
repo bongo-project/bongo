@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -20,6 +21,13 @@ import (
 const directoryTestSecret = "directory-cli-test-secret-0123456789"
 
 func directoryTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return directoryTestServerWith(t, nil)
+}
+
+// directoryTestServerWith seeds the base fixture, then calls extra to add
+// more records before the handler starts.
+func directoryTestServerWith(t *testing.T, extra func(ps *store.PebbleStore)) *httptest.Server {
 	t.Helper()
 	ps, err := store.NewPebbleStore(t.TempDir())
 	if err != nil {
@@ -40,6 +48,9 @@ func directoryTestServer(t *testing.T) *httptest.Server {
 	}
 	if err := ps.Set([]byte("/user/u1/profile"), prof); err != nil {
 		t.Fatal(err)
+	}
+	if extra != nil {
+		extra(ps)
 	}
 	h := handlers.NewDirectoryListHandler(ps, nil)
 	mux := http.NewServeMux()
@@ -188,5 +199,122 @@ func TestDirectoryCLITruncatedExitsNonZero(t *testing.T) {
 	}
 	if !strings.Contains(out, "a@b.c") {
 		t.Errorf("rows should still be printed: %q", out)
+	}
+}
+
+// tableRow returns the whitespace-separated tokens of the first line of out
+// that starts with prefix.
+func tableRow(t *testing.T, out, prefix string) []string {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.Fields(line)
+		}
+	}
+	t.Fatalf("no line starting %q in:\n%s", prefix, out)
+	return nil
+}
+
+func TestDirectoryCLITableRenderings(t *testing.T) {
+	srv := directoryTestServerWith(t, func(ps *store.PebbleStore) {
+		off, _ := proto.Marshal(&bongov1.UserProfile{Email: "bob@example.com", Disabled: true, PasswordHash: []byte("HASHBYTES")})
+		q, _ := proto.Marshal(&bongov1.DomainQuota{MaxUsers: 5, MaxStorageBytes: 1536})
+		usage := make([]byte, 8)
+		binary.LittleEndian.PutUint64(usage, 1048575)
+		for _, kv := range []struct {
+			k string
+			v []byte
+		}{
+			{"/user/u2/profile", off},
+			{"/system/domain_admin/example.com/u1", []byte("1")},
+			{string(store.CatchAllKey("example.com")), []byte("u1")},
+			{string(store.DomainQuotaKey("example.com")), q},
+			{string(store.DomainUsageKey("example.com")), usage},
+			{"/system/domain/example.com/dkim", []byte("DKIMPRIVATEBYTES")},
+		} {
+			if err := ps.Set([]byte(kv.k), kv.v); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	out, err := runDirectoryCLI(t, listArgs([]string{"user", "list"}, addr, directoryTestSecret, "", false)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.SplitN(out, "\n", 2)[0], "ADMIN DOMAINS") {
+		t.Errorf("header lacks ADMIN DOMAINS:\n%s", out)
+	}
+	// EMAIL NAME STATE ADMIN ADMIN-DOMAINS
+	amy := tableRow(t, out, "amy@example.com")
+	if len(amy) < 5 || amy[len(amy)-1] != "example.com" || amy[len(amy)-3] != "enabled" {
+		t.Errorf("amy row = %v", amy)
+	}
+	bob := tableRow(t, out, "bob@example.com")
+	if len(bob) < 5 || bob[len(bob)-3] != "disabled" || bob[len(bob)-1] != "-" {
+		t.Errorf("bob row = %v", bob)
+	}
+
+	out, err = runDirectoryCLI(t, listArgs([]string{"domain", "list"}, addr, directoryTestSecret, "", false)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex := tableRow(t, out, "example.com")
+	// DOMAIN STATE ALIAS-OF CATCH-ALL MAX-USERS MAX-STORAGE USAGE DKIM
+	want := []string{"example.com", "enabled", "-", "amy@example.com", "5", "1.5", "KiB", "1.0", "MiB", "yes"}
+	if strings.Join(ex, " ") != strings.Join(want, " ") {
+		t.Errorf("example.com row = %v, want %v", ex, want)
+	}
+	alias := tableRow(t, out, "alias.test")
+	if alias[len(alias)-1] != "no" {
+		t.Errorf("alias.test row = %v, want DKIM no", alias)
+	}
+	if strings.Contains(out, "DKIMPRIVATEBYTES") || strings.Contains(out, "HASHBYTES") {
+		t.Error("secret in table output")
+	}
+	out, err = runDirectoryCLI(t, listArgs([]string{"user", "list"}, addr, directoryTestSecret, "", true)...)
+	if err != nil || strings.Contains(out, "HASHBYTES") {
+		t.Errorf("json: err=%v leak=%v", err, strings.Contains(out, "HASHBYTES"))
+	}
+}
+
+func TestHumanBytes(t *testing.T) {
+	tests := []struct {
+		in   int64
+		want string
+	}{
+		{0, "0 B"},
+		{1, "1 B"},
+		{1023, "1023 B"},
+		{1024, "1.0 KiB"},
+		{1536, "1.5 KiB"},
+		// One byte short of a MiB rounds to the next unit, not 1024.0 KiB.
+		{1048575, "1.0 MiB"},
+		{1047552, "1023.0 KiB"},
+		{1048576, "1.0 MiB"},
+		{1572864, "1.5 MiB"},
+	}
+	for _, tc := range tests {
+		if got := humanBytes(tc.in); got != tc.want {
+			t.Errorf("humanBytes(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestQuotaBytes(t *testing.T) {
+	tests := []struct {
+		in   int64
+		want string
+	}{
+		{-1, "unlimited"},
+		{0, "unlimited"},
+		{1023, "1023 B"},
+		{1536, "1.5 KiB"},
+	}
+	for _, tc := range tests {
+		if got := quotaBytes(tc.in); got != tc.want {
+			t.Errorf("quotaBytes(%d) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }

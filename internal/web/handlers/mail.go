@@ -196,14 +196,14 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	msgs, err := h.listDisplayCandidates(userID, mailbox)
+	msgs, realMailboxes, err := h.listDisplayCandidates(userID, mailbox)
 	if err != nil {
 		http.Error(w, "Error loading messages", http.StatusInternalServerError)
 		return
 	}
 
 	counts := countListMessages(msgs)
-	summaries, page, totalPages := h.pageSummaries(userID, msgs, page, perPage)
+	summaries, page, totalPages := h.pageSummaries(userID, msgs, realMailboxes, page, perPage)
 
 	// Load user preferences for infinite scroll setting.
 	infiniteScroll := false
@@ -275,9 +275,10 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var msgs []*bongov1.MailboxMessage
+	var realMailboxes []string
 	if len(guidSet) > 0 {
 		var err error
-		msgs, _, err = h.mailboxes.ListMessagesByGUIDs(userID, guidSet, 0, maxMessagePageLimit)
+		msgs, realMailboxes, _, err = h.mailboxes.ListMessagesByGUIDs(userID, guidSet, 0, maxMessagePageLimit)
 		if err != nil {
 			http.Error(w, "Error loading messages", http.StatusInternalServerError)
 			return
@@ -285,7 +286,7 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	counts := countListMessages(msgs)
-	summaries, page, totalPages := h.pageSummaries(userID, msgs, page, perPage)
+	summaries, page, totalPages := h.pageSummaries(userID, msgs, realMailboxes, page, perPage)
 
 	infiniteScroll := false
 	if h.prefs != nil {
@@ -311,26 +312,34 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
 }
 
-func (h *MailHandler) listDisplayCandidates(userID, mailbox string) ([]*bongov1.MailboxMessage, error) {
+// listDisplayCandidates returns the messages for a list view and, index for
+// index, the real mailbox each one lives in (nil for a real mailbox, where it
+// is the list mailbox itself).
+func (h *MailHandler) listDisplayCandidates(userID, mailbox string) ([]*bongov1.MailboxMessage, []string, error) {
 	if store.VirtualMailboxes[mailbox] {
-		msgs, _, err := h.mailboxes.ListVirtualMessages(userID, mailbox, 0, maxMessagePageLimit)
-		return msgs, err
+		msgs, names, _, err := h.mailboxes.ListVirtualMessages(userID, mailbox, 0, maxMessagePageLimit)
+		return msgs, names, err
 	}
 	msgs, _, err := h.mailboxes.ListMessagesPaged(userID, mailbox, 0, maxMessagePageLimit)
-	return msgs, err
+	return msgs, nil, err
 }
 
-func (h *MailHandler) buildMessageSummaries(userID string, msgs []*bongov1.MailboxMessage) []templates.MessageSummary {
+// buildMessageSummaries builds one summary per thread. realMailboxes, when
+// non-nil, is parallel to msgs; nil means every message is in the list mailbox.
+func (h *MailHandler) buildMessageSummaries(userID string, msgs []*bongov1.MailboxMessage, realMailboxes []string) []templates.MessageSummary {
 	summaries := make([]templates.MessageSummary, 0, len(msgs))
 	seenRoots := make(map[string]bool)
 
-	for _, msg := range msgs {
+	for i, msg := range msgs {
 		summary := templates.MessageSummary{
 			UID:      msg.Uid,
 			MailGUID: msg.MailGuid,
 			Date:     time.Unix(msg.InternalDate, 0),
 			Seen:     msg.Flags&store.FlagSeen != 0,
 			Flagged:  msg.Flags&store.FlagFlagged != 0,
+		}
+		if i < len(realMailboxes) {
+			summary.Mailbox = realMailboxes[i]
 		}
 
 		meta := h.loadMailMeta(userID, msg.MailGuid)
@@ -2275,8 +2284,8 @@ func countListMessages(msgs []*bongov1.MailboxMessage) templates.ListCounts {
 // pageSummaries builds the summaries for msgs, clamps page into range and
 // returns that page with previews filled from the index. Both list views share
 // it so neither can skip the preview step.
-func (h *MailHandler) pageSummaries(userID string, msgs []*bongov1.MailboxMessage, page, perPage int) ([]templates.MessageSummary, int, int) {
-	all := h.buildMessageSummaries(userID, msgs)
+func (h *MailHandler) pageSummaries(userID string, msgs []*bongov1.MailboxMessage, realMailboxes []string, page, perPage int) ([]templates.MessageSummary, int, int) {
+	all := h.buildMessageSummaries(userID, msgs, realMailboxes)
 	totalPages := (len(all) + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1

@@ -877,3 +877,16 @@ Fixed after verification (Phase 29, 2026-11-01):
 - Release notes (29.6): Reply on your own sent message now addresses its
   original recipients, as Reply all does, instead of yourself. Your own
   addresses are removed from To as well as Cc. Reply to List is unchanged.
+- 29.5 follow-up candidates: in a virtual view the message-view Archive
+  button still posts to the virtual mailbox URL, so a UID that exists in
+  two starred mailboxes can resolve to the wrong message; swipe-right
+  delete does not reset the row on failure; `e` gives no feedback on an
+  error; actions in tag views resolve `tag:x` as a literal mailbox; the
+  bulk toolbar always offers Archive in virtual views.
+- 29.8: no change. go-smtp refuses non-xtext ENVID and ORCPT values before
+  Bongo sees them; tests pin it so a go-smtp upgrade cannot loosen it
+  silently.
+- 29.13: a new `bongo` CLI against an older server still lists nothing for
+  `--domain example.com.` (the server normalises the filter). A domain
+  stored only under a mixed-case key is listed although delivery treats it
+  as not hosted.

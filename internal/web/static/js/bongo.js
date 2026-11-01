@@ -771,14 +771,24 @@ document.addEventListener('alpine:init', () => {
       if (deltaX < -60) {
         // Swipe left: archive (move to Archive); in Archive, unarchive (move
         // to INBOX). The list reloads only when the move succeeded.
-        finalizeSwipeState(this.swipeTarget, 'left');
-        var verb = mailbox === 'Archive' ? 'unarchive' : 'archive';
-        fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/' + verb, {
+        // The verb and the URL come from the message's real mailbox: in a
+        // virtual view (Starred, tags) the list mailbox says nothing about
+        // whether it is archived, and UIDs are only unique per mailbox.
+        var row = this.swipeTarget;
+        var real = (row && row.dataset.realMailbox) || mailbox;
+        finalizeSwipeState(row, 'left');
+        var verb = real === 'Archive' ? 'unarchive' : 'archive';
+        fetch('/mail/' + encodeURIComponent(real) + '/' + uid + '/' + verb, {
           method: 'POST'
         }).then(function(resp) {
-          if (!resp.ok) return;
+          if (!resp.ok) {
+            resetSwipeState(row);
+            return;
+          }
           htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
-        }).catch(function() {});
+        }).catch(function() {
+          resetSwipeState(row);
+        });
       } else if (deltaX > 60) {
         finalizeSwipeState(this.swipeTarget, 'right');
         var params2 = new URLSearchParams();
@@ -2112,9 +2122,12 @@ function archiveRow(row, idx) {
   const mailbox = currentMailbox();
   const uid = row.dataset.uid;
   if (!mailbox || !uid) return;
-  const verb = mailbox === 'Archive' ? 'unarchive' : 'archive';
+  // The row knows its real mailbox; the list mailbox is only right for a real
+  // folder, not for a virtual view such as Starred.
+  const real = row.dataset.realMailbox || mailbox;
+  const verb = real === 'Archive' ? 'unarchive' : 'archive';
   const url = '/mail/' + encodeURIComponent(mailbox);
-  fetch(url + '/' + uid + '/' + verb, { method: 'POST' })
+  fetch('/mail/' + encodeURIComponent(real) + '/' + uid + '/' + verb, { method: 'POST' })
     .then(resp => {
       if (!resp.ok) return;
       return htmx.ajax('GET', url, '#main-content').then(() => {

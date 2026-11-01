@@ -21,7 +21,7 @@
 | US-007 MIME and header conditions | PARTIAL | No delivery-pipeline test uses these conditions. Engine and tester tests cover them. |
 | US-008 queue tuning | PARTIAL | Agent wiring is untested, and so is the concurrency limit. No test shows that the attempt count no longer bounces. |
 | US-009 disk full | PARTIAL | The gate wiring into SMTP, IMAP and DAV is untested. Removing any `SetStorageGate` call leaves the suite green. |
-| US-010 DSN parameters | PARTIAL | ENVID and ORCPT accept non-xtext characters such as `=`. The EnqueueLocal parameter copy and `delay_warning_after` wiring are untested. |
+| US-010 DSN parameters | PARTIAL | The EnqueueLocal parameter copy and `delay_warning_after` wiring are untested. (The xtext finding was withdrawn, see item 8.) |
 | US-012 domain aliasing | PARTIAL | No SMTP or integration test covers an alias domain. The alias refusals are untranslated. |
 | US-014 Archive | PARTIAL | Swipe and `e` in a virtual view pick the verb from the URL mailbox, so an archived message gets 400 and the row stays dismissed. CSRF on the routes is untested. |
 | US-015 Reply to List | PARTIAL | Reply-all does not strip the user's own address from the reply's own To. The reply-list route is untested. |
@@ -40,7 +40,7 @@ Totals: 1 PASS, 14 PARTIAL, 1 FAIL. Most PARTIAL verdicts are about the tests, n
 5. **Archive and unarchive in virtual views** (US-014). Swipe and `e` choose the verb from the URL mailbox, so an archived message in Starred gets `400 Already archived` and the swiped row is not reset.
 6. **Reply-all keeps the user's own address** when it is in the reply's own To list, for example Reply-To or a reply to one's own sent message (US-015).
 7. **Bounce copy on an alias domain whose target is disabled** goes to postmaster@ the alias. Nothing resolves it and it is dropped, where a disabled plain domain falls back to `smtp.postmaster_account` (US-002).
-8. **ENVID and ORCPT accept characters outside xtext** (`ENVID=a=b` gets 250, not 501) (US-010).
+8. ~~**ENVID and ORCPT accept characters outside xtext**~~ (US-010). Withdrawn on 2026-11-01: go-smtp v0.24.0 refuses a raw `=` in these parameters and passes Bongo only decoded values, so `ENVID=a=b` already gets 501. The verifier reasoned from `decodeXtext` alone. Task 29.8 added tests that pin the behaviour.
 9. **Untranslated user-visible text:** the CreateDomain alias refusals, the SetCatchAll refusal on an alias domain, and the "Rule created" and "Rule updated" flashes (section 4).
 10. **CLI `--domain` with a trailing dot** silently lists nothing. Duplicate mixed-case legacy domain keys pick their state from an unstable sort (US-018).
 11. **docs/sendmail.md** says any name ending in `sendmail` works (only the exact name does). Its exit 67 example is a reply Bongo never sends to an authenticated session.

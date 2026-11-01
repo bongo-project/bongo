@@ -154,6 +154,30 @@ func TestArchiveSwipeAndShortcut(t *testing.T) {
 			t.Errorf("swipe handler missing %q", want)
 		}
 	}
+	for _, want := range []string{
+		"row.dataset.realMailbox",
+		"real === 'Archive' ? 'unarchive' : 'archive'",
+		"'/mail/' + encodeURIComponent(real) + '/' + uid + '/' + verb",
+		"if (!resp.ok) {\n            resetSwipeState(row);",
+		"}).catch(function() {\n          resetSwipeState(row);",
+	} {
+		if !strings.Contains(swipe, want) {
+			t.Errorf("swipe handler must pick archive or unarchive from the real mailbox and reset the row on failure; missing %q", want)
+		}
+	}
+	if strings.Contains(swipe, "mailbox === 'Archive'") {
+		t.Error("swipe verb must not come from the list mailbox")
+	}
+	row := js[strings.Index(js, "function archiveRow("):]
+	row = row[:strings.Index(row, "// archiveOpenMessage")]
+	for _, want := range []string{"row.dataset.realMailbox", "real === 'Archive' ? 'unarchive' : 'archive'", "encodeURIComponent(real)"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("archiveRow missing %q", want)
+		}
+	}
+	if strings.Contains(row, "mailbox === 'Archive'") {
+		t.Error("archiveRow verb must not come from the list mailbox")
+	}
 	if strings.Contains(swipe, "archive (move to Trash)") {
 		t.Error("swipe comment still claims archive moves to Trash")
 	}

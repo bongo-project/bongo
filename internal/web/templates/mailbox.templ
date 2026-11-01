@@ -45,7 +45,10 @@ type TagDot struct {
 
 // MessageSummary holds data for a single row in the message list.
 type MessageSummary struct {
-	UID          uint32
+	UID uint32
+	// Mailbox is the real mailbox the message lives in. Empty means the list
+	// mailbox; it differs only in virtual views (starred, unread, tags).
+	Mailbox      string
 	From         string
 	Subject      string
 	Date         time.Time
@@ -236,6 +239,15 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 	@ContextMenu()
 }
 
+// rowRealMailbox is the mailbox a row's message really lives in, falling back
+// to the list mailbox when the summary does not carry one.
+func rowRealMailbox(msg MessageSummary, listMailbox string) string {
+	if msg.Mailbox != "" {
+		return msg.Mailbox
+	}
+	return listMailbox
+}
+
 // MessageRows renders the flex-based rows for a list of messages (used by both full page and partial responses).
 templ MessageRows(messages []MessageSummary, mailbox string) {
 	for _, msg := range messages {
@@ -244,6 +256,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			role="listitem"
 			tabindex="0"
 			data-uid={ fmt.Sprint(msg.UID) }
+			data-real-mailbox={ rowRealMailbox(msg, mailbox) }
 			x-on:contextmenu={ fmt.Sprintf("openContextMenu($event, %d, '%s')", msg.UID, mailbox) }
 			x-on:touchstart={ fmt.Sprintf("start($event, %d)", msg.UID) }
 			x-on:touchmove="move($event)"

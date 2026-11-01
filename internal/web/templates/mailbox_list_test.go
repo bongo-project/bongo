@@ -209,3 +209,22 @@ func TestInfiniteScrollSentinelUnchanged(t *testing.T) {
 		t.Errorf("sentinel must load the next page on intersect: %s", buf.String())
 	}
 }
+
+func TestMessageRowsRealMailboxAttribute(t *testing.T) {
+	tests := []struct {
+		name, list, summaryMailbox, want string
+	}{
+		{"virtual view row in Archive", "starred", "Archive", `data-real-mailbox="Archive"`},
+		{"virtual view row in INBOX", "starred", "INBOX", `data-real-mailbox="INBOX"`},
+		{"empty falls back to the list mailbox", "INBOX", "", `data-real-mailbox="INBOX"`},
+		{"name is attribute-escaped", "starred", `A"><b>`, `data-real-mailbox="A&#34;&gt;&lt;b&gt;"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := renderRows(t, []MessageSummary{{UID: 7, Subject: "s", Mailbox: tt.summaryMailbox}}, tt.list)
+			if !strings.Contains(out, tt.want) {
+				t.Errorf("missing %s in %s", tt.want, out)
+			}
+		})
+	}
+}
