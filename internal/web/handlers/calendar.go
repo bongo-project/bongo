@@ -9,7 +9,6 @@ import (
 	"math"
 	"net/http"
 	"net/mail"
-	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -50,6 +49,13 @@ type CalendarHandler struct {
 	// addresses backs the send-as check for the organiser. nil permits only
 	// the session address.
 	addresses *store.AddressStore
+	// owned lists the addresses of a user, for the declined filters. It is the
+	// address store once one is wired.
+	owned addressLister
+	// authservID is the authserv-id of the Authentication-Results header the
+	// delivery stage stamps, which is where the invitation card reads the
+	// DMARC verdict. Empty finds none.
+	authservID string
 	// now is the clock; nil means time.Now. Tests inject a fixed one.
 	now func() time.Time
 }
@@ -174,6 +180,7 @@ func (h *CalendarHandler) MonthView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
 	}
+	events = h.hideDeclined(userID, email, events)
 	r, events = h.withShared(r, userID, events, calColorMap, gridStart.AddDate(0, 0, -1).Unix(), gridEnd.AddDate(0, 0, 1).Unix())
 
 	// Build day cells for the grid.
@@ -223,6 +230,7 @@ func (h *CalendarHandler) WeekView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
 	}
+	events = h.hideDeclined(userID, email, events)
 	r, events = h.withShared(r, userID, events, calColorMap, weekStart.Unix(), weekEnd.Unix())
 
 	days := buildWeekColumns(weekStart, events, calColorMap, now)
@@ -274,6 +282,7 @@ func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
 	}
+	events = h.hideDeclined(userID, email, events)
 	r, events = h.withShared(r, userID, events, calColorMap, date.Unix(), dayEnd.Unix())
 
 	col := buildDayColumn(date, events, calColorMap, now)
@@ -326,6 +335,7 @@ func (h *CalendarHandler) AgendaView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
 	}
+	events = h.hideDeclined(userID, email, events)
 	r, events = h.withShared(r, userID, events, calColorMap, from.Unix(), to.Unix())
 
 	data := templates.AgendaData{
@@ -473,20 +483,23 @@ func (h *CalendarHandler) UpdateCalendar(w http.ResponseWriter, r *http.Request)
 	userID, _ := middleware.UserFromContext(r.Context())
 	calID := chi.URLParam(r, "calendarID")
 
-	cal, err := h.calendars.Get(userID, calID)
-	if err != nil {
+	if _, err := h.calendars.Get(userID, calID); err != nil {
 		http.Error(w, "calendar not found", http.StatusNotFound)
 		return
 	}
 
-	if name := r.FormValue("name"); name != "" {
-		cal.Name = name
-	}
-	if color := r.FormValue("color"); color != "" {
-		cal.Color = color
-	}
-
-	if err := h.calendars.Update(userID, calID, cal); err != nil {
+	name, color := r.FormValue("name"), r.FormValue("color")
+	// Mutate re-reads under the calendar lock, so a rename cannot write back a
+	// stale copy of the publish token.
+	if err := h.calendars.Mutate(userID, calID, func(cal *bongov1.Calendar) error {
+		if name != "" {
+			cal.Name = name
+		}
+		if color != "" {
+			cal.Color = color
+		}
+		return nil
+	}); err != nil {
 		http.Error(w, "failed to update calendar", http.StatusInternalServerError)
 		return
 	}
@@ -643,7 +656,7 @@ func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request
 
 // FreeBusy returns busy time blocks for a user in a date range.
 func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
-	callerID, _ := middleware.UserFromContext(r.Context())
+	callerID, callerEmail := middleware.UserFromContext(r.Context())
 	targetUser := r.URL.Query().Get("user")
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
@@ -683,7 +696,12 @@ func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 		End   int64 `json:"end"`
 	}
 	var blocks []busyBlock
-	for _, e := range events {
+	// The session address names the target only when the target is the caller.
+	targetEmail := ""
+	if targetUser == callerID {
+		targetEmail = callerEmail
+	}
+	for _, e := range h.busyEvents(targetUser, targetEmail, events) {
 		if !e.AllDay {
 			blocks = append(blocks, busyBlock{Start: e.StartTime, End: e.EndTime})
 		}
@@ -789,6 +807,9 @@ func (h *CalendarHandler) ShowEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if owner != userID {
 		r = r.WithContext(templates.WithSharedEvent(r.Context(), owner, level))
+	} else if level != needWrite {
+		// The owner's own event in a subscribed calendar: nobody may save it.
+		r = r.WithContext(templates.WithReadOnlyEvent(r.Context()))
 	}
 
 	// ?occurrence= names one instance of a series by its RECURRENCE-ID. Only
@@ -1033,71 +1054,7 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	cal := ical.NewCalendar()
-	cal.Props.SetText(ical.PropVersion, "2.0")
-	cal.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
-
-	// Each VTIMEZONE a kept event references is written once, ahead of the
-	// events; the first definition of a TZID wins.
-	var zones, vevents []*ical.Component
-	seen := map[string]*ical.Component{}
-	spans := exportZoneSpans(events)
-
-	for _, e := range events {
-		if len(e.IcalRaw) > 0 {
-			dec := ical.NewDecoder(bytes.NewReader(e.IcalRaw))
-			if rawCal, err := dec.Decode(); err == nil {
-				defs := map[string]*ical.Component{}
-				for _, child := range rawCal.Children {
-					if child.Name != ical.CompTimezone {
-						continue
-					}
-					if p := child.Props.Get(ical.PropTimezoneID); p != nil {
-						defs[p.Value] = child
-					}
-				}
-				for _, child := range rawCal.Children {
-					if child.Name != ical.CompEvent {
-						continue
-					}
-					vevents = append(vevents, child)
-					for _, tzid := range referencedTZIDs(child) {
-						def, ok := defs[tzid]
-						if !ok {
-							// Some CalDAV clients omit the VTIMEZONE; there is nothing to copy.
-							slog.Default().Debug("calendar export: TZID has no VTIMEZONE", "tzid", tzid)
-							continue
-						}
-						first, dup := seen[tzid]
-						switch {
-						case !dup:
-							seen[tzid] = def
-							zones = append(zones, def)
-						case !reflect.DeepEqual(first, def):
-							slog.Default().Debug("calendar export: conflicting VTIMEZONE, keeping first", "tzid", tzid)
-						}
-					}
-				}
-				continue
-			}
-		}
-
-		loc := time.UTC
-		// A zoned series keeps its local time across DST only when it is
-		// written in its zone, with the VTIMEZONE that defines the TZID.
-		if span, zoned := spans[e.Timezone]; zoned && e.Rrule != "" && !e.AllDay {
-			loc = span.loc
-			if _, dup := seen[loc.String()]; !dup {
-				tz := icalevent.VTimezone(loc, span.from, span.to)
-				seen[loc.String()] = tz
-				zones = append(zones, tz)
-			}
-		}
-		vevent := icalevent.SynthVEvent(e, loc, time.Now())
-
-		vevents = append(vevents, vevent.Component)
-	}
-	cal.Children = append(zones, vevents...)
+	cal := buildCalendarICS(events, nil, nil)
 
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
@@ -1196,8 +1153,8 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 			break
 		}
 
-		for _, group := range groupEventsByUID(cal) {
-			raw, err := encodeEventGroup(cal, group)
+		for _, group := range icalevent.GroupByUID(cal) {
+			raw, err := icalevent.EncodeGroup(cal, group)
 			if err != nil {
 				failed++
 				continue
@@ -1228,83 +1185,6 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	}
 
 	http.Redirect(w, r, "/calendar?flash="+strings.ReplaceAll(flash, " ", "+"), http.StatusSeeOther)
-}
-
-// groupEventsByUID groups the VEVENTs of cal by UID in first-seen order, so a
-// master and its overrides become one event. A VEVENT without a UID is a group
-// of its own (it fails encoding later and is counted as failed).
-func groupEventsByUID(cal *ical.Calendar) [][]*ical.Component {
-	var groups [][]*ical.Component
-	index := map[string]int{}
-	for _, c := range cal.Children {
-		if c.Name != ical.CompEvent {
-			continue
-		}
-		uid := ""
-		if p := c.Props.Get(ical.PropUID); p != nil {
-			uid = p.Value
-		}
-		if uid == "" {
-			groups = append(groups, []*ical.Component{c})
-			continue
-		}
-		i, ok := index[uid]
-		if !ok {
-			i = len(groups)
-			index[uid] = i
-			groups = append(groups, nil)
-		}
-		groups[i] = append(groups[i], c)
-	}
-	return groups
-}
-
-// referencedTZIDs lists the TZID parameter values on c's properties
-// (DTSTART, DTEND, EXDATE, RDATE, RECURRENCE-ID and so on), in map order.
-func referencedTZIDs(c *ical.Component) []string {
-	var out []string
-	for _, props := range c.Props {
-		for _, p := range props {
-			out = append(out, p.Params["TZID"]...)
-		}
-	}
-	return out
-}
-
-// encodeEventGroup builds a standalone calendar from one UID group plus the
-// VTIMEZONEs its TZID parameters reference, and encodes it. The error from the
-// encoder is returned: an event whose data cannot be encoded is not stored.
-func encodeEventGroup(src *ical.Calendar, group []*ical.Component) ([]byte, error) {
-	zones := map[string]*ical.Component{}
-	for _, c := range src.Children {
-		if c.Name != ical.CompTimezone {
-			continue
-		}
-		if p := c.Props.Get(ical.PropTimezoneID); p != nil {
-			zones[p.Value] = c
-		}
-	}
-
-	out := ical.NewCalendar()
-	out.Props.SetText(ical.PropVersion, "2.0")
-	out.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
-
-	added := map[string]bool{}
-	for _, vevent := range group {
-		for _, tzid := range referencedTZIDs(vevent) {
-			if z, ok := zones[tzid]; ok && !added[tzid] {
-				added[tzid] = true
-				out.Children = append(out.Children, z)
-			}
-		}
-	}
-	out.Children = append(out.Children, group...)
-
-	var buf bytes.Buffer
-	if err := ical.NewEncoder(&buf).Encode(out); err != nil {
-		return nil, fmt.Errorf("encoding imported event: %w", err)
-	}
-	return buf.Bytes(), nil
 }
 
 // MiniCalendar returns the mini calendar sidebar as an HTMX partial.

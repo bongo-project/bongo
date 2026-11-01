@@ -2,6 +2,8 @@ package store
 
 import (
 	"fmt"
+	"hash/fnv"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -16,7 +18,11 @@ type CalendarStore struct {
 	// scan is the prefix scan used by List. It defaults to
 	// pebble.PrefixScan and exists so tests can record which prefixes are read.
 	scan func(prefix []byte) (Iterator, error)
+	// locks serialises Mutate per calendar (striped by key hash).
+	locks [calendarLockStripes]sync.Mutex
 }
+
+const calendarLockStripes = 64
 
 // NewCalendarStore creates a CalendarStore.
 func NewCalendarStore(pebble *PebbleStore, applier RaftApplier) *CalendarStore {
@@ -120,6 +126,31 @@ func (s *CalendarStore) Update(userID, guid string, cal *bongov1.Calendar) error
 	}
 
 	return nil
+}
+
+// Mutate reads a calendar, applies fn and writes the result back, holding a
+// process-local lock keyed on the calendar so two read-modify-write cycles on
+// this node cannot interleave. Without it a rename racing a token
+// regeneration could write the old token back and revive a revoked link.
+//
+// The lock is per node. A write from another node (or a follower forwarding
+// through the leader) is not serialised against this one: cluster-wide
+// serialisation is not provided. If fn returns an error nothing is written.
+func (s *CalendarStore) Mutate(userID, guid string, fn func(*bongov1.Calendar) error) error {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(userID + "\x00" + guid))
+	mu := &s.locks[h.Sum32()%calendarLockStripes]
+	mu.Lock()
+	defer mu.Unlock()
+
+	cal, err := s.Get(userID, guid)
+	if err != nil {
+		return err
+	}
+	if err := fn(cal); err != nil {
+		return err
+	}
+	return s.Update(userID, guid, cal)
 }
 
 // Delete removes a calendar by GUID and revokes every grant on it.

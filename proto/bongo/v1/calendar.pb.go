@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.36.2
-// source: proto/bongo/v1/calendar.proto
+// source: bongo/v1/calendar.proto
 
 package bongov1
 
@@ -33,14 +33,23 @@ type Calendar struct {
 	// shared_with is legacy. Grants live in the /acl/ key space (see acl.proto);
 	// this field is read only by the calendar-grants-v1 migration, which then
 	// clears it. Do not write it and do not reuse the number.
-	SharedWith    []string `protobuf:"bytes,8,rep,name=shared_with,json=sharedWith,proto3" json:"shared_with,omitempty"`
+	SharedWith []string `protobuf:"bytes,8,rep,name=shared_with,json=sharedWith,proto3" json:"shared_with,omitempty"`
+	// Publishing as a tokenised read-only feed. publish_token is 32 random
+	// bytes (base64url only in the link); publish_detail is "full" or "busy"
+	// (empty means full); publish_password_hash is bcrypt, empty for none.
+	Published           bool   `protobuf:"varint,9,opt,name=published,proto3" json:"published,omitempty"`
+	PublishToken        []byte `protobuf:"bytes,10,opt,name=publish_token,json=publishToken,proto3" json:"publish_token,omitempty"`
+	PublishDetail       string `protobuf:"bytes,11,opt,name=publish_detail,json=publishDetail,proto3" json:"publish_detail,omitempty"`
+	PublishPasswordHash string `protobuf:"bytes,12,opt,name=publish_password_hash,json=publishPasswordHash,proto3" json:"publish_password_hash,omitempty"`
+	// subscription is set on a calendar that mirrors an external ICS feed.
+	Subscription  *CalendarSubscription `protobuf:"bytes,13,opt,name=subscription,proto3" json:"subscription,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Calendar) Reset() {
 	*x = Calendar{}
-	mi := &file_proto_bongo_v1_calendar_proto_msgTypes[0]
+	mi := &file_bongo_v1_calendar_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -52,7 +61,7 @@ func (x *Calendar) String() string {
 func (*Calendar) ProtoMessage() {}
 
 func (x *Calendar) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bongo_v1_calendar_proto_msgTypes[0]
+	mi := &file_bongo_v1_calendar_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -65,7 +74,7 @@ func (x *Calendar) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Calendar.ProtoReflect.Descriptor instead.
 func (*Calendar) Descriptor() ([]byte, []int) {
-	return file_proto_bongo_v1_calendar_proto_rawDescGZIP(), []int{0}
+	return file_bongo_v1_calendar_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Calendar) GetGuid() string {
@@ -124,11 +133,155 @@ func (x *Calendar) GetSharedWith() []string {
 	return nil
 }
 
-var File_proto_bongo_v1_calendar_proto protoreflect.FileDescriptor
+func (x *Calendar) GetPublished() bool {
+	if x != nil {
+		return x.Published
+	}
+	return false
+}
 
-const file_proto_bongo_v1_calendar_proto_rawDesc = "" +
+func (x *Calendar) GetPublishToken() []byte {
+	if x != nil {
+		return x.PublishToken
+	}
+	return nil
+}
+
+func (x *Calendar) GetPublishDetail() string {
+	if x != nil {
+		return x.PublishDetail
+	}
+	return ""
+}
+
+func (x *Calendar) GetPublishPasswordHash() string {
+	if x != nil {
+		return x.PublishPasswordHash
+	}
+	return ""
+}
+
+func (x *Calendar) GetSubscription() *CalendarSubscription {
+	if x != nil {
+		return x.Subscription
+	}
+	return nil
+}
+
+// CalendarSubscription marks a calendar as a read-only copy of an external
+// ICS feed and holds its refresh state. source_url is a secret: it may carry
+// a token, so it is shown to the owner as a host only, never to a grantee,
+// and never written to a log, an export or a CalDAV property.
+type CalendarSubscription struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SourceUrl string                 `protobuf:"bytes,1,opt,name=source_url,json=sourceUrl,proto3" json:"source_url,omitempty"`
+	// etag and last_modified are the validators of the last 200 response, sent
+	// back as If-None-Match and If-Modified-Since.
+	Etag          string `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	LastModified  string `protobuf:"bytes,3,opt,name=last_modified,json=lastModified,proto3" json:"last_modified,omitempty"`
+	LastAttemptAt int64  `protobuf:"varint,4,opt,name=last_attempt_at,json=lastAttemptAt,proto3" json:"last_attempt_at,omitempty"`
+	LastSuccessAt int64  `protobuf:"varint,5,opt,name=last_success_at,json=lastSuccessAt,proto3" json:"last_success_at,omitempty"`
+	// last_error is the reason the last attempt failed; empty after a success.
+	// It carries a host at most, never the URL.
+	LastError string `protobuf:"bytes,6,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	// next_refresh_at is when the worker next fetches; 0 means at once.
+	NextRefreshAt int64 `protobuf:"varint,7,opt,name=next_refresh_at,json=nextRefreshAt,proto3" json:"next_refresh_at,omitempty"`
+	EventCount    int32 `protobuf:"varint,8,opt,name=event_count,json=eventCount,proto3" json:"event_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CalendarSubscription) Reset() {
+	*x = CalendarSubscription{}
+	mi := &file_bongo_v1_calendar_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CalendarSubscription) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CalendarSubscription) ProtoMessage() {}
+
+func (x *CalendarSubscription) ProtoReflect() protoreflect.Message {
+	mi := &file_bongo_v1_calendar_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CalendarSubscription.ProtoReflect.Descriptor instead.
+func (*CalendarSubscription) Descriptor() ([]byte, []int) {
+	return file_bongo_v1_calendar_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CalendarSubscription) GetSourceUrl() string {
+	if x != nil {
+		return x.SourceUrl
+	}
+	return ""
+}
+
+func (x *CalendarSubscription) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+func (x *CalendarSubscription) GetLastModified() string {
+	if x != nil {
+		return x.LastModified
+	}
+	return ""
+}
+
+func (x *CalendarSubscription) GetLastAttemptAt() int64 {
+	if x != nil {
+		return x.LastAttemptAt
+	}
+	return 0
+}
+
+func (x *CalendarSubscription) GetLastSuccessAt() int64 {
+	if x != nil {
+		return x.LastSuccessAt
+	}
+	return 0
+}
+
+func (x *CalendarSubscription) GetLastError() string {
+	if x != nil {
+		return x.LastError
+	}
+	return ""
+}
+
+func (x *CalendarSubscription) GetNextRefreshAt() int64 {
+	if x != nil {
+		return x.NextRefreshAt
+	}
+	return 0
+}
+
+func (x *CalendarSubscription) GetEventCount() int32 {
+	if x != nil {
+		return x.EventCount
+	}
+	return 0
+}
+
+var File_bongo_v1_calendar_proto protoreflect.FileDescriptor
+
+const file_bongo_v1_calendar_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/bongo/v1/calendar.proto\x12\bbongo.v1\"\xe5\x01\n" +
+	"\x17bongo/v1/calendar.proto\x12\bbongo.v1\"\xc7\x03\n" +
 	"\bCalendar\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -140,52 +293,72 @@ const file_proto_bongo_v1_calendar_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\a \x01(\x03R\tupdatedAt\x12\x1f\n" +
 	"\vshared_with\x18\b \x03(\tR\n" +
-	"sharedWithB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"sharedWith\x12\x1c\n" +
+	"\tpublished\x18\t \x01(\bR\tpublished\x12#\n" +
+	"\rpublish_token\x18\n" +
+	" \x01(\fR\fpublishToken\x12%\n" +
+	"\x0epublish_detail\x18\v \x01(\tR\rpublishDetail\x122\n" +
+	"\x15publish_password_hash\x18\f \x01(\tR\x13publishPasswordHash\x12B\n" +
+	"\fsubscription\x18\r \x01(\v2\x1e.bongo.v1.CalendarSubscriptionR\fsubscription\"\xa6\x02\n" +
+	"\x14CalendarSubscription\x12\x1d\n" +
+	"\n" +
+	"source_url\x18\x01 \x01(\tR\tsourceUrl\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\x12#\n" +
+	"\rlast_modified\x18\x03 \x01(\tR\flastModified\x12&\n" +
+	"\x0flast_attempt_at\x18\x04 \x01(\x03R\rlastAttemptAt\x12&\n" +
+	"\x0flast_success_at\x18\x05 \x01(\x03R\rlastSuccessAt\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\x06 \x01(\tR\tlastError\x12&\n" +
+	"\x0fnext_refresh_at\x18\a \x01(\x03R\rnextRefreshAt\x12\x1f\n" +
+	"\vevent_count\x18\b \x01(\x05R\n" +
+	"eventCountB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
-	file_proto_bongo_v1_calendar_proto_rawDescOnce sync.Once
-	file_proto_bongo_v1_calendar_proto_rawDescData []byte
+	file_bongo_v1_calendar_proto_rawDescOnce sync.Once
+	file_bongo_v1_calendar_proto_rawDescData []byte
 )
 
-func file_proto_bongo_v1_calendar_proto_rawDescGZIP() []byte {
-	file_proto_bongo_v1_calendar_proto_rawDescOnce.Do(func() {
-		file_proto_bongo_v1_calendar_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_bongo_v1_calendar_proto_rawDesc), len(file_proto_bongo_v1_calendar_proto_rawDesc)))
+func file_bongo_v1_calendar_proto_rawDescGZIP() []byte {
+	file_bongo_v1_calendar_proto_rawDescOnce.Do(func() {
+		file_bongo_v1_calendar_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_bongo_v1_calendar_proto_rawDesc), len(file_bongo_v1_calendar_proto_rawDesc)))
 	})
-	return file_proto_bongo_v1_calendar_proto_rawDescData
+	return file_bongo_v1_calendar_proto_rawDescData
 }
 
-var file_proto_bongo_v1_calendar_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_proto_bongo_v1_calendar_proto_goTypes = []any{
-	(*Calendar)(nil), // 0: bongo.v1.Calendar
+var file_bongo_v1_calendar_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_bongo_v1_calendar_proto_goTypes = []any{
+	(*Calendar)(nil),             // 0: bongo.v1.Calendar
+	(*CalendarSubscription)(nil), // 1: bongo.v1.CalendarSubscription
 }
-var file_proto_bongo_v1_calendar_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+var file_bongo_v1_calendar_proto_depIdxs = []int32{
+	1, // 0: bongo.v1.Calendar.subscription:type_name -> bongo.v1.CalendarSubscription
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_proto_bongo_v1_calendar_proto_init() }
-func file_proto_bongo_v1_calendar_proto_init() {
-	if File_proto_bongo_v1_calendar_proto != nil {
+func init() { file_bongo_v1_calendar_proto_init() }
+func file_bongo_v1_calendar_proto_init() {
+	if File_bongo_v1_calendar_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bongo_v1_calendar_proto_rawDesc), len(file_proto_bongo_v1_calendar_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bongo_v1_calendar_proto_rawDesc), len(file_bongo_v1_calendar_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_proto_bongo_v1_calendar_proto_goTypes,
-		DependencyIndexes: file_proto_bongo_v1_calendar_proto_depIdxs,
-		MessageInfos:      file_proto_bongo_v1_calendar_proto_msgTypes,
+		GoTypes:           file_bongo_v1_calendar_proto_goTypes,
+		DependencyIndexes: file_bongo_v1_calendar_proto_depIdxs,
+		MessageInfos:      file_bongo_v1_calendar_proto_msgTypes,
 	}.Build()
-	File_proto_bongo_v1_calendar_proto = out.File
-	file_proto_bongo_v1_calendar_proto_goTypes = nil
-	file_proto_bongo_v1_calendar_proto_depIdxs = nil
+	File_bongo_v1_calendar_proto = out.File
+	file_bongo_v1_calendar_proto_goTypes = nil
+	file_bongo_v1_calendar_proto_depIdxs = nil
 }

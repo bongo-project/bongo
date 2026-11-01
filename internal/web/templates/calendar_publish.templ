@@ -1,0 +1,79 @@
+package templates
+
+// PublishSettings is the data of the publish section of a calendar's settings
+// card. The links carry the feed token, so they are filled only for the owner.
+type PublishSettings struct {
+	Calendar    string
+	Published   bool
+	Busy        bool
+	HasPassword bool
+	HTTPSLink   string
+	WebcalLink  string
+}
+
+templ CalendarPublishSection(p PublishSettings) {
+	<h4>{ t(ctx, "calendar.publish") }</h4>
+	<div class="calendar-publish">
+		<form hx-post={ "/calendar/" + p.Calendar + "/publish" } hx-swap="none" class="publish-detail-form">
+			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+			<label>
+				{ t(ctx, "calendar.publishDetail") }
+				<select name="detail">
+					@levelOption("full", publishDetailValue(p.Busy), t(ctx, "calendar.publishDetailFull"))
+					@levelOption("busy", publishDetailValue(p.Busy), t(ctx, "calendar.publishDetailBusy"))
+				</select>
+			</label>
+			if p.Published {
+				<button type="submit" class="tool-btn">{ t(ctx, "common.save") }</button>
+			} else {
+				<button type="submit">{ t(ctx, "calendar.publishEnable") }</button>
+			}
+		</form>
+		if p.Published {
+			<p class="meta">{ t(ctx, "calendar.publishLinkNote") }</p>
+			<label>
+				{ t(ctx, "calendar.publishHTTPSLink") }
+				<input type="text" readonly value={ p.HTTPSLink } class="publish-link" autocomplete="off"/>
+			</label>
+			<label>
+				{ t(ctx, "calendar.publishWebcalLink") }
+				<input type="text" readonly value={ p.WebcalLink } class="publish-link" autocomplete="off"/>
+			</label>
+			<form hx-post={ "/calendar/" + p.Calendar + "/publish/regenerate" } hx-swap="none" class="publish-regenerate-form">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				<button type="submit" class="tool-btn">{ t(ctx, "calendar.publishRegenerate") }</button>
+			</form>
+			<form hx-post={ "/calendar/" + p.Calendar + "/unpublish" } hx-swap="none" class="publish-unpublish-form">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				<button type="submit" class="tool-btn">{ t(ctx, "calendar.publishUnpublish") }</button>
+			</form>
+			<form hx-post={ "/calendar/" + p.Calendar + "/publish/password" } hx-swap="none" class="publish-password-form">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				<label>
+					{ t(ctx, "calendar.publishPassword") }
+					<input type="password" name="password" minlength="8" maxlength="72" autocomplete="new-password"/>
+				</label>
+				if p.HasPassword {
+					<p class="meta">{ t(ctx, "calendar.publishPasswordSet") }</p>
+				} else {
+					<p class="meta">{ t(ctx, "calendar.publishPasswordHint") }</p>
+				}
+				<button type="submit" class="tool-btn">{ t(ctx, "common.save") }</button>
+			</form>
+			if p.HasPassword {
+				<form hx-post={ "/calendar/" + p.Calendar + "/publish/password" } hx-swap="none" class="publish-password-remove-form">
+					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+					<input type="hidden" name="remove_password" value="1"/>
+					<button type="submit" class="tool-btn">{ t(ctx, "calendar.publishPasswordRemove") }</button>
+				</form>
+			}
+		}
+	</div>
+}
+
+func publishDetailValue(busy bool) string {
+	if busy {
+		return "busy"
+	}
+	return "full"
+}

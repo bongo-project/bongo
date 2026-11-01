@@ -118,6 +118,16 @@ type messageRelay interface {
 	Deliver(ctx context.Context, from string, recipients []string, rawMsg []byte) (permanentFails []string, err error)
 }
 
+// dsnRelay is the optional richer surface of the relay: it passes the
+// message's DSN parameters to the remote and reports the recipients that asked
+// for a success notice but went to a remote that cannot send one. The worker
+// uses it when the relay offers it and falls back to Deliver otherwise, so
+// test relays implementing only messageRelay keep working. *smtp.Relay
+// satisfies both.
+type dsnRelay interface {
+	DeliverOutbound(ctx context.Context, msg *bongov1.OutboundMessage, rawMsg []byte) (permanentFails, relayedNoDSN []string, err error)
+}
+
 func NewWorker(
 	queueStore *QueueStore,
 	relay messageRelay,
@@ -286,7 +296,13 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 	}
 
 	// Deliver via relay.
-	permanentFails, deliveryErr := w.relay.Deliver(ctx, msg.SenderEmail, msg.Recipients, signed)
+	var permanentFails, relayedNoDSN []string
+	var deliveryErr error
+	if dr, ok := w.relay.(dsnRelay); ok {
+		permanentFails, relayedNoDSN, deliveryErr = dr.DeliverOutbound(ctx, msg, signed)
+	} else {
+		permanentFails, deliveryErr = w.relay.Deliver(ctx, msg.SenderEmail, msg.Recipients, signed)
+	}
 
 	// Handle permanent failures.
 	//
@@ -341,6 +357,23 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 		// latency_seconds is emitted for the Loki dashboard (unwrap); -1 means the
 		// message predates enqueue-time tracking.
 		w.logger.Info("queue: message delivered", "id", msg.Id, "recipients", msg.Recipients, "latency_seconds", latency)
+		// Only after the message is recorded as delivered, so a failed write
+		// (which retries the message) cannot repeat the report.
+		w.reportRelayed(msg, relayedNoDSN)
+	}
+}
+
+// reportRelayed sends the "Action: relayed" report (RFC 3464) for recipients
+// that asked for NOTIFY=SUCCESS and were handed to a remote without the DSN
+// extension. It goes through the same sender gate as every report, so a null
+// sender and an unauthenticated forward get nothing. A failure is logged: the
+// message itself is delivered.
+func (w *Worker) reportRelayed(msg *bongov1.OutboundMessage, recipients []string) {
+	if len(recipients) == 0 || !w.mayReport(msg, recipients, "relayed") {
+		return
+	}
+	if err := w.bouncer.GenerateRelayedReport(msg, recipients); err != nil {
+		w.logger.Error("queue: relayed report generation failed", "id", msg.Id, "error", err)
 	}
 }
 

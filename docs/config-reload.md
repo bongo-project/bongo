@@ -278,6 +278,12 @@ TLS as well as raft transport.
 |---|---|---|---|
 | `caldav.enabled` | none (CalDAV is registered at `agent.go:554` without reading it) | none | NO-OP |
 
+`calendar`
+
+| Key | Consumer | How read today | Class |
+|---|---|---|---|
+| `calendar.subscriptions.allow_private_networks` | `agent.go` Run (`netx.NewClient` for the subscription worker) | ctor; the safe client is built once | RESTART |
+
 `antispam`
 
 | Key | Consumer | How read today | Class |

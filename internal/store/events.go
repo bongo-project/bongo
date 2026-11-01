@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -81,6 +82,9 @@ func (s *EventStore) Create(userID string, event *bongov1.Event) (string, error)
 	return event.Guid, nil
 }
 
+// ErrEventNotFound is returned by Get when no event has the guid.
+var ErrEventNotFound = errors.New("event not found")
+
 // Get returns a single event by GUID.
 func (s *EventStore) Get(userID, guid string) (*bongov1.Event, error) {
 	data, err := s.pebble.Get(eventKey(userID, guid))
@@ -88,7 +92,7 @@ func (s *EventStore) Get(userID, guid string) (*bongov1.Event, error) {
 		return nil, fmt.Errorf("reading event: %w", err)
 	}
 	if len(data) == 0 {
-		return nil, fmt.Errorf("event not found")
+		return nil, ErrEventNotFound
 	}
 
 	var event bongov1.Event

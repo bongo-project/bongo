@@ -800,3 +800,39 @@ Found while building batch 2 (2026-11-01):
   it with a behavioural test.
 - An edit by a delegate with write access sends no invitations unless the
   delegate may send as the organiser.
+
+Found while building batch 3 (2026-11-01):
+
+- Accepted as built (US-010): the `busy` feed keeps UID, DTSTAMP, DURATION,
+  RRULE, RDATE, EXDATE and RECURRENCE-ID as well as DTSTART, DTEND and
+  "Busy"; without them a recurring series shows only its first instance.
+- Accepted as built (US-010): a feed request with no Basic credentials is not
+  counted against the password limiter, because clients probe for the
+  challenge before sending credentials.
+- US-010: the per-calendar lockout (10 failures in 15 minutes from any IP)
+  lets anyone holding the link but not the password keep the feed answering
+  429 for its subscribers. The PRD asked for the throttle; document it in
+  SECURITY.md.
+- US-010: `CalendarStore.Mutate` serialises per node only. A follower can
+  serve a revoked token until replication catches up. The feed has no
+  X-WR-CALNAME. Whether a subscribed calendar may be published is undecided.
+- Accepted as built (US-011): `POST /calendar/{id}/unsubscribe` (CSRF,
+  owner only) was added; a subscription needs a way to end it.
+- US-011: feed events are not counted against the domain quota. Each pass
+  lists all of a user's events once per due subscription.
+- US-008: a known event is matched by the hash of its UID or the UID as the
+  key only; an event a CalDAV client stored under another object name is
+  treated as new, and accepting creates a duplicate.
+- US-018: go-smtp's command (5 minutes) and submission (12 minutes)
+  deadlines now apply to outbound relay, where net/smtp had none after the
+  30-second dial. The STARTTLS step is written over textproto because
+  go-smtp v0.24 exports no client StartTLS, so a plaintext remote sees two
+  EHLOs. Reports to external senders are capped per node (5 per address,
+  200 per hour by default); a cluster of N nodes allows N times that.
+- Found in the browser check: the event form accepts an end before the
+  start (the end date keeps its default when only the start date changes,
+  and `parseEventForm` has never checked the order). Since US-007 such an
+  event is also sent to attendees as an invitation. Predates v0.15.
+- US-008: after answering, the card's attendee list still shows the user's
+  own status as in the received invitation ("no answer"); the "You accepted"
+  line is correct.

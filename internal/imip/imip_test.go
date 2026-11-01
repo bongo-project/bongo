@@ -177,7 +177,7 @@ func TestBuildCalendarRefusals(t *testing.T) {
 		event      *bongov1.Event
 		recurrence string
 	}{
-		{"reply is not built here", "REPLY", structured(), ""},
+		{"counter is not built here", "COUNTER", structured(), ""},
 		{"no organiser", MethodRequest, noOrganiser, ""},
 		{"organiser with control characters", MethodRequest, badOrganiser, ""},
 		{"no identity", MethodRequest, noGuid, ""},
@@ -397,5 +397,62 @@ func TestDescribe(t *testing.T) {
 	_, body := Describe(MethodRequest, false, allDay, nil, tr)
 	if !strings.Contains(body, "When: 2030-05-06 - 2030-05-07\r\n") {
 		t.Errorf("all-day span wrong:\n%s", body)
+	}
+}
+
+func TestBuildCalendarReply(t *testing.T) {
+	e := structured()
+	e.IcalRaw = []byte(rawICS)
+	e.Organizer = "someone@else.example"
+	e.Sequence = 4
+	e.Attendees = []*bongov1.Attendee{{Address: "bob@example.org", Partstat: "DECLINED"}}
+	cal, err := BuildCalendar(MethodReply, e, "", testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cal.Props.Get(ical.PropMethod).Value; got != MethodReply {
+		t.Errorf("METHOD = %q", got)
+	}
+	ve := vevent(t, cal)
+	if got := attendees(ve); len(got) != 1 || !strings.Contains(got[0], "bob@example.org") {
+		t.Errorf("attendees = %v", got)
+	}
+	if got := ve.Props.Get(ical.PropSequence).Value; got != "4" {
+		t.Errorf("SEQUENCE = %q", got)
+	}
+	if got := ve.Props.Get(ical.PropUID).Value; got != "client-uid-7f3a@example.org" {
+		t.Errorf("UID = %q", got)
+	}
+	for _, c := range ve.Children {
+		if c.Name == ical.CompAlarm {
+			t.Error("REPLY carries a VALARM")
+		}
+	}
+}
+
+func TestDescribeReply(t *testing.T) {
+	tr := func(id string) string {
+		return map[string]string{
+			"imip.subjectReplyAccepted": "Accepted: %s", "imip.subjectReplyDeclined": "Declined: %s",
+			"imip.subjectReplyTentative": "Tentative: %s", "imip.introReplyAccepted": "%s accepted.",
+			"imip.introReplyDeclined": "%s declined.", "imip.introReplyTentative": "%s is unsure.",
+			"imip.when": "When", "imip.where": "Where", "imip.organiser": "Organiser",
+		}[id]
+	}
+	for _, tc := range []struct{ partstat, subject, intro string }{
+		{"ACCEPTED", "Accepted: Planning", "bob@example.org accepted."},
+		{"DECLINED", "Declined: Planning", "bob@example.org declined."},
+		{"TENTATIVE", "Tentative: Planning", "bob@example.org is unsure."},
+	} {
+		e := structured()
+		e.Description = "secret agenda"
+		e.Attendees = []*bongov1.Attendee{{Address: "bob@example.org", Partstat: tc.partstat}}
+		subject, body := Describe(MethodReply, false, e, time.UTC, tr)
+		if subject != tc.subject || !strings.Contains(body, tc.intro) {
+			t.Errorf("%s: subject %q body %q", tc.partstat, subject, body)
+		}
+		if strings.Contains(body, "secret agenda") {
+			t.Error("a reply repeats the description")
+		}
 	}
 }

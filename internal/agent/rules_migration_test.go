@@ -26,9 +26,14 @@ type recordingApplier struct {
 	keys   atomic.Pointer[[]string]
 	calls  atomic.Int32
 	failOn int32
+	// onApply, if set, runs before each command is applied.
+	onApply func(cmd *bongov1.RaftCommand)
 }
 
 func (r *recordingApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	if r.onApply != nil {
+		r.onApply(cmd)
+	}
 	n := r.calls.Add(1)
 	if r.failOn != 0 && n == r.failOn {
 		return errors.New("simulated raft failure")

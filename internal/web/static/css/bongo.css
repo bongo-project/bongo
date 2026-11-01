@@ -4936,3 +4936,23 @@ a.admin-nav-item.active,
   color: var(--error);
 }
 .quarantine-subtitle { margin-bottom: 1rem; }
+
+/* A cancelled event stays on the calendar, struck through, until it is removed. */
+.event-cancelled, .event-cancelled * { text-decoration: line-through; opacity: 0.7; }
+
+/* Invitation card on the message view */
+.invite-card { padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-1); font-size: 0.9rem; }
+.invite-heading { margin: 0 0 6px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.invite-title { margin: 0 0 6px; font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
+.invite-facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0 0 8px; }
+.invite-facts dt { color: var(--text-muted); }
+.invite-facts dd { margin: 0; overflow-wrap: anywhere; }
+.invite-attendees { margin: 0; padding: 0; list-style: none; }
+.invite-address, .invite-partstat { color: var(--text-muted); font-size: 0.82rem; margin-left: 6px; }
+.invite-description { margin: 0 0 8px; max-height: 12rem; overflow: auto; }
+.invite-conflicts { margin: 0 0 8px; }
+.invite-conflicts ul { margin: 2px 0 0; padding-left: 18px; }
+.invite-note, .invite-noconflicts { margin: 0 0 6px; color: var(--text-muted); font-size: 0.82rem; }
+.invite-status { margin: 0 0 6px; font-weight: 600; }
+.invite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.invite-calendar { display: flex; align-items: center; gap: 6px; }

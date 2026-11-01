@@ -46,6 +46,10 @@ type override struct {
 	title       *string
 	description *string
 	location    *string
+	// partstats maps a normalised attendee address to the PARTSTAT the
+	// override's ATTENDEE lines carry, so an answer to one occurrence reaches
+	// the expanded instance.
+	partstats map[string]string
 }
 
 type recurrenceSet struct {
@@ -233,6 +237,21 @@ func (s *recurrenceSet) parseOverride(c *ical.Component) *override {
 		}
 		return &v
 	}
+	for _, a := range c.Props.Values(ical.PropAttendee) {
+		ps := a.Params.Get(ical.ParamParticipationStatus)
+		addr := strings.TrimSpace(a.Value)
+		if len(addr) >= 7 && strings.EqualFold(addr[:7], "mailto:") {
+			addr = addr[7:]
+		}
+		addr = NormaliseAddress(addr)
+		if ps == "" || addr == "" {
+			continue
+		}
+		if o.partstats == nil {
+			o.partstats = map[string]string{}
+		}
+		o.partstats[addr] = strings.ToUpper(ps)
+	}
 	o.title = text(ical.PropSummary)
 	o.description = text(ical.PropDescription)
 	o.location = text(ical.PropLocation)
@@ -283,6 +302,13 @@ func (s *recurrenceSet) overrideInstance(key int64, o *override) *bongov1.Event 
 	}
 	if o.location != nil {
 		inst.Location = *o.location
+	}
+	// The master's attendees carry the series answer; an override that holds
+	// its own PARTSTAT for an attendee replaces it for this occurrence only.
+	for _, a := range inst.Attendees {
+		if ps, ok := o.partstats[NormaliseAddress(a.Address)]; ok {
+			a.Partstat = ps
+		}
 	}
 	return inst
 }

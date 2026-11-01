@@ -20,14 +20,17 @@ import (
 
 // Config is the top-level configuration for bongo.
 type Config struct {
-	Server      ServerConfig    `hcl:"server,block" mapstructure:"server"`
-	Cluster     ClusterConfig   `hcl:"cluster,block" mapstructure:"cluster"`
-	Storage     StorageConfig   `hcl:"storage,block" mapstructure:"storage"`
-	SMTP        SMTPConfig      `hcl:"smtp,block" mapstructure:"smtp"`
-	IMAP        IMAPConfig      `hcl:"imap,block" mapstructure:"imap"`
-	POP3        POP3Config      `hcl:"pop3,block" mapstructure:"pop3"`
-	Web         WebConfig       `hcl:"web,block" mapstructure:"web"`
-	CalDAV      CalDAVConfig    `hcl:"caldav,block" mapstructure:"caldav"`
+	Server  ServerConfig  `hcl:"server,block" mapstructure:"server"`
+	Cluster ClusterConfig `hcl:"cluster,block" mapstructure:"cluster"`
+	Storage StorageConfig `hcl:"storage,block" mapstructure:"storage"`
+	SMTP    SMTPConfig    `hcl:"smtp,block" mapstructure:"smtp"`
+	IMAP    IMAPConfig    `hcl:"imap,block" mapstructure:"imap"`
+	POP3    POP3Config    `hcl:"pop3,block" mapstructure:"pop3"`
+	Web     WebConfig     `hcl:"web,block" mapstructure:"web"`
+	CalDAV  CalDAVConfig  `hcl:"caldav,block" mapstructure:"caldav"`
+	// Calendar is a pointer block so a config file without it still decodes:
+	// gohcl treats a non-pointer block field as mandatory.
+	Calendar    *CalendarConfig `hcl:"calendar,block" mapstructure:"calendar"`
 	Antispam    AntispamConfig  `hcl:"antispam,block" mapstructure:"antispam"`
 	Antivirus   AntivirusConfig `hcl:"antivirus,block" mapstructure:"antivirus"`
 	Pipeline    PipelineConfig  `hcl:"pipeline,block" mapstructure:"pipeline"`
@@ -428,6 +431,27 @@ func (c *Config) validateSourceURL() error {
 		return fmt.Errorf("web.source_url: %q must be an absolute http or https URL", c.Web.SourceURL)
 	}
 	return nil
+}
+
+// CalendarConfig holds calendar settings.
+type CalendarConfig struct {
+	Subscriptions *CalendarSubscriptionsConfig `hcl:"subscriptions,block" mapstructure:"subscriptions"`
+}
+
+// CalendarSubscriptionsConfig configures subscriptions to external ICS feeds.
+type CalendarSubscriptionsConfig struct {
+	// AllowPrivateNetworks lets a subscription fetch from loopback, private and
+	// link-local addresses. Off by default: the URL is typed by a user, so on
+	// an internet-facing server it is a way to reach the internal network. It
+	// lifts only the address rule; the port, scheme and user-information rules
+	// stay. A bool has nothing to validate. Restart to change.
+	AllowPrivateNetworks bool `hcl:"allow_private_networks,optional" mapstructure:"allow_private_networks"`
+}
+
+// SubscriptionsAllowPrivateNetworks reports calendar.subscriptions.allow_private_networks;
+// an absent block means false.
+func (c *Config) SubscriptionsAllowPrivateNetworks() bool {
+	return c != nil && c.Calendar != nil && c.Calendar.Subscriptions != nil && c.Calendar.Subscriptions.AllowPrivateNetworks
 }
 
 type CalDAVConfig struct {

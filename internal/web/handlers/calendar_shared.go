@@ -60,7 +60,44 @@ func validOwnerID(owner string) bool {
 
 // calendarAccess authorises actor for need on the one calendar (owner,
 // calID). It returns the actor's level and 0 when allowed, else a status.
+//
+// A subscribed calendar (a copy of an external feed) is read-only for
+// everyone: the level is capped at read whoever holds it, the owner and a
+// write grantee alike, because the next refresh would overwrite any edit.
 func (h *CalendarHandler) calendarAccess(actor, owner, calID, need string) (string, int) {
+	level, status := h.grantedAccess(actor, owner, calID, need)
+	if status != 0 || !store.LevelSatisfies(level, needWrite) {
+		return level, status
+	}
+	switch st := h.refuseSubscribed(owner, calID); {
+	case st == http.StatusInternalServerError:
+		return "", st
+	case st != 0 && need == needWrite:
+		return needRead, st
+	case st != 0:
+		return needRead, 0 // a read is fine; the caller sees the capped level
+	}
+	return level, 0
+}
+
+// refuseSubscribed answers 403 when owner's calendar calID mirrors an external
+// feed, 500 when that cannot be read (a write must not proceed on a guess),
+// else 0. An empty ID is the default calendar, which is never a subscription.
+func (h *CalendarHandler) refuseSubscribed(owner, calID string) int {
+	subscribed, err := h.calendars.CalendarIsSubscribed(owner, calID)
+	if err != nil {
+		slog.Error("calendar: reading calendar failed", "user", owner, "error", err)
+		return http.StatusInternalServerError
+	}
+	if subscribed {
+		return http.StatusForbidden
+	}
+	return 0
+}
+
+// grantedAccess is calendarAccess before the subscription cap: ownership and
+// grants only.
+func (h *CalendarHandler) grantedAccess(actor, owner, calID, need string) (string, int) {
 	if owner == actor {
 		return store.GrantLevelWrite, 0
 	}
@@ -124,6 +161,11 @@ func (h *CalendarHandler) resolveCalendarTarget(actor, ref, need string) (owner,
 		}
 		ref = c
 	}
+	// The actor's own calendar: the owner is no exception to a subscription's
+	// read-only rule.
+	if _, st := h.calendarAccess(actor, actor, ref, need); st != 0 {
+		return actor, ref, st
+	}
 	return actor, ref, 0
 }
 
@@ -145,6 +187,10 @@ func (h *CalendarHandler) resolveMoveTarget(actor, owner string, existing *bongo
 	if owner == actor {
 		if cal == "" {
 			cal = "default"
+		}
+		// Not into a subscription: the next refresh would delete the event.
+		if _, status := h.calendarAccess(actor, actor, cal, needWrite); status != 0 {
+			return "", status
 		}
 		return cal, 0
 	}
@@ -287,7 +333,9 @@ func (h *CalendarHandler) CalendarSettings(w http.ResponseWriter, r *http.Reques
 	for _, c := range calendars {
 		card := templates.CalendarSettings{
 			Calendar: c.Guid, Name: c.Name, Colour: c.Color,
-			CanShare: h.acl != nil && h.shares != nil,
+			CanShare:     h.acl != nil && h.shares != nil,
+			Publish:      publishSettings(r.Host, userID, c),
+			Subscription: h.subscriptionInfo(userID, c.Subscription),
 		}
 		if h.acl != nil {
 			grants, err := h.acl.ListCalendarGrants(userID, c.Guid)

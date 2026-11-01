@@ -2,6 +2,7 @@ package templates
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -51,6 +52,30 @@ func eventOwner(e *bongov1.Event) string {
 	return owner
 }
 
+// eventMovable reports whether a week or day block may carry the drag handle
+// (the data-guid the script looks for). A recurring event is moved through its
+// form, and an event of a subscribed calendar or of a calendar shared read-only
+// is refused by the server, so none of them offers the handle.
+func eventMovable(ctx context.Context, calendars []*bongov1.Calendar, e *bongov1.Event) bool {
+	if e.Rrule != "" {
+		return false
+	}
+	if eventOwner(e) != "" {
+		for _, c := range sharedCalendarsFromCtx(ctx) {
+			if c.Key == e.CalendarId {
+				return c.Level == "write"
+			}
+		}
+		return false
+	}
+	for _, c := range calendars {
+		if c.Guid == e.CalendarId {
+			return c.Subscription == nil || c.Subscription.SourceUrl == ""
+		}
+	}
+	return true
+}
+
 type sharedCalendarsKey struct{}
 
 // WithSharedCalendars records the calendars shared with the viewer.
@@ -97,7 +122,7 @@ func sharedEventFromCtx(ctx context.Context) (SharedEvent, bool) {
 // save it. The server enforces this; the form only avoids offering the buttons.
 func eventFormReadOnly(ctx context.Context) bool {
 	se, ok := sharedEventFromCtx(ctx)
-	return ok && se.Level != "write"
+	return readOnlyEventFromCtx(ctx) || (ok && se.Level != "write")
 }
 
 // sharedCalendarLabel is the name a shared calendar is listed under, with its
@@ -160,4 +185,44 @@ type CalendarSettings struct {
 	Colour   string
 	Grants   []GrantRow
 	CanShare bool // false when sharing is unavailable on this node
+	Publish  PublishSettings
+	// Subscription is set for a calendar that mirrors an external feed.
+	Subscription *SubscriptionInfo
+}
+
+// SubscriptionInfo is the refresh state of a subscribed calendar as the
+// settings card shows it. It carries the feed's host only: the URL is a secret.
+type SubscriptionInfo struct {
+	Host        string
+	LastSuccess string // formatted in the user's zone; empty before the first refresh
+	LastError   string
+	EventCount  int
+}
+
+// calendarOffered reports whether the event form's calendar select lists cal.
+// A subscribed calendar is read-only, so it is not a place to put an event; it
+// is listed only when the event shown already lives in it.
+func calendarOffered(cal *bongov1.Calendar, event *bongov1.Event) bool {
+	if cal.Subscription == nil || cal.Subscription.SourceUrl == "" {
+		return true
+	}
+	return event != nil && event.CalendarId == cal.Guid
+}
+
+// subscriptionEventCount formats the "Events: %d" message.
+func subscriptionEventCount(ctx context.Context, n int) string {
+	return fmt.Sprintf(t(ctx, "calendar.subscriptionEventCount"), n)
+}
+
+type readOnlyEventKey struct{}
+
+// WithReadOnlyEvent marks the event form as showing an event of a subscribed
+// calendar, which nobody may change.
+func WithReadOnlyEvent(ctx context.Context) context.Context {
+	return context.WithValue(ctx, readOnlyEventKey{}, true)
+}
+
+func readOnlyEventFromCtx(ctx context.Context) bool {
+	v, _ := ctx.Value(readOnlyEventKey{}).(bool)
+	return v
 }

@@ -2,8 +2,9 @@
 // carry them (RFC 5546 and RFC 6047). It has no store or handler dependencies:
 // callers decide who may send and how the message is delivered.
 //
-// The web UI sends REQUEST and CANCEL through it. Replies and CalDAV implicit
-// scheduling build on the same functions.
+// The web UI sends REQUEST and CANCEL through it, and answers a received
+// invitation with a REPLY. CalDAV implicit scheduling builds on the same
+// functions.
 package imip
 
 import (
@@ -25,6 +26,7 @@ import (
 const (
 	MethodRequest = "REQUEST"
 	MethodCancel  = "CANCEL"
+	MethodReply   = "REPLY"
 )
 
 const prodID = "-//Bongo//Calendar//EN"
@@ -49,7 +51,7 @@ var recurrenceIDPattern = regexp.MustCompile(`^\d{8}(T\d{6}Z)?$`)
 // RECURRENCE-ID and no RRULE, RDATE or EXDATE. The value is a UTC basic
 // date-time ("20300513T090000Z") or a date ("20300513").
 func BuildCalendar(method string, e *bongov1.Event, recurrenceID string, now time.Time) (*ical.Calendar, error) {
-	if method != MethodRequest && method != MethodCancel {
+	if method != MethodRequest && method != MethodCancel && method != MethodReply {
 		return nil, fmt.Errorf("imip: unsupported method %q", method)
 	}
 	if e == nil {
@@ -119,13 +121,7 @@ func BuildCalendar(method string, e *bongov1.Event, recurrenceID string, now tim
 // and the ATTENDEE list is brought to e.Attendees. Every attendee property
 // that stays keeps its parameters.
 func prepareRaw(vevent *ical.Component, e *bongov1.Event) {
-	kept := vevent.Children[:0]
-	for _, c := range vevent.Children {
-		if c.Name != ical.CompAlarm {
-			kept = append(kept, c)
-		}
-	}
-	vevent.Children = kept
+	StripAlarms(vevent)
 
 	props := vevent.Props
 	want := make(map[string]*bongov1.Attendee, len(e.Attendees))

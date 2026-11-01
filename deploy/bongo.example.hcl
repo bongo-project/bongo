@@ -439,6 +439,24 @@ caldav {
 
 
 # -----------------------------------------------------------------------------
+# calendar — subscriptions to external ICS feeds
+# -----------------------------------------------------------------------------
+# Users can subscribe a calendar to an https/http/webcal feed URL. The server
+# fetches it, so by default it refuses to connect to loopback, private
+# (RFC 1918, fc00::/7), link-local, CGNAT and other non-public addresses, on
+# every connection including redirects. Ports 80, 443 and 8443 only.
+#
+# calendar {
+#   subscriptions {
+#     # RESTART to change. Set true only to subscribe to a feed served from
+#     # inside your own network. It lifts the address rule alone; the port,
+#     # scheme and user-information rules stay.
+#     allow_private_networks = true
+#   }
+# }
+
+
+# -----------------------------------------------------------------------------
 # antispam — inbound spam scoring + DMARC evaluation
 # -----------------------------------------------------------------------------
 antispam {

@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +77,7 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	cfg.IMAP.Enabled = false
 	cfg.SMTP.Limits.OutboundRecipientsPerHour = 9
 	cfg.SMTP.Limits.SendAsVerifyMaxPerHour = 2
+	cfg.SMTP.Hostname = "mx.wiring.test"
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -138,6 +142,31 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	}
 	if a.AddressStore != nil && !a.calendarHandler.HasAddressStore() {
 		t.Error("calendar handler has no send-as address store after Run")
+	}
+	// The message view asks the calendar handler for invitation cards, and the
+	// card reads the DMARC verdict stamped under the SMTP hostname. Deleting
+	// either wiring line in Run leaves invitations unanswerable or the DMARC
+	// warning permanently silent.
+	if a.mailHandler == nil || !a.mailHandler.HasInvitations() {
+		t.Error("mail handler has no invitation service after Run")
+	}
+	if got := a.calendarHandler.AuthservID(); got != "mx.wiring.test" {
+		t.Errorf("calendar authserv-id = %q, want the SMTP hostname", got)
+	}
+	// The answer route is mounted. Without a session it is refused by the auth
+	// middleware; an unmounted route would be a 404.
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/mail/INBOX/1/invitation", cfg.Web.Port),
+		"application/x-www-form-urlencoded", strings.NewReader("action=answer&partstat=ACCEPTED"))
+	if err != nil {
+		t.Fatalf("POST invitation route: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		t.Errorf("POST /mail/{mailbox}/{uid}/invitation = %d, the route is not mounted", resp.StatusCode)
+	}
+	if resp.StatusCode < 300 {
+		t.Errorf("POST /mail/{mailbox}/{uid}/invitation without a session = %d, want a refusal", resp.StatusCode)
 	}
 	sl := a.calendarHandler.ShareLimiter()
 	if sl == nil {
