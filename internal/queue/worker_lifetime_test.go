@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -184,5 +185,50 @@ func TestWorkerOptionsIgnoreInvalid(t *testing.T) {
 		WithMaxLifetime(time.Hour), WithMaxRetryInterval(time.Minute), WithConcurrency(64))
 	if w.maxLifetime != time.Hour || w.maxRetryInterval != time.Minute || w.concurrency != 64 {
 		t.Errorf("valid options not applied")
+	}
+}
+
+// TestWorkerManyAttemptsRecentMessageIsRescheduled: the attempt count is no
+// longer a bounce criterion. A message on its 11th failure that is only a
+// minute old stays in the pending namespace with the next attempt set. (The
+// record's Status is FAILED there; "pending" is the namespace.)
+func TestWorkerManyAttemptsRecentMessageIsRescheduled(t *testing.T) {
+	for _, attempts := range []int32{10, 25} {
+		t.Run(fmt.Sprintf("%d prior attempts", attempts), func(t *testing.T) {
+			now := time.Unix(1_800_000_000, 0)
+			clock := now
+			worker, qs, _, deliverer, hash := newLifetimeEnv(t, &clock)
+
+			if err := qs.Enqueue(&bongov1.OutboundMessage{
+				Id: "many", SenderEmail: "alice@example.com", Recipients: []string{"bob@external.com"},
+				BlobHash: hash, AttemptCount: attempts,
+				CreatedAt: now.Add(-time.Minute).Unix(), NextRetryAt: now.Unix(),
+			}); err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+
+			worker.poll(context.Background())
+
+			got, err := qs.Get("many")
+			if err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.AttemptCount != attempts+1 {
+				t.Errorf("AttemptCount = %d, want %d", got.AttemptCount, attempts+1)
+			}
+			if want := now.Add(worker.maxRetryInterval).Unix(); got.NextRetryAt != want {
+				t.Errorf("NextRetryAt = %d, want %d", got.NextRetryAt, want)
+			}
+			stats, _ := qs.Stats()
+			if stats.PendingCount != 1 || stats.FailedCount != 0 {
+				t.Errorf("pending=%d bounced=%d, want 1 and 0", stats.PendingCount, stats.FailedCount)
+			}
+			if bounced, _ := qs.ListBounced(10); len(bounced) != 0 {
+				t.Errorf("bounced records = %d, want 0", len(bounced))
+			}
+			if n := len(deliverer.messages); n != 0 {
+				t.Errorf("DSNs generated = %d, want 0", n)
+			}
+		})
 	}
 }
