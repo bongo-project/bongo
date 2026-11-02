@@ -1,0 +1,131 @@
+package templates
+
+import (
+	"context"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// SummaryRow is one line of a summary section. The handler builds it from
+// mail headers or iCalendar text, both written by other people, so every
+// string is shown through templ's escaping only.
+type SummaryRow struct {
+	Title string
+	// Fallback is the message ID shown in place of an empty Title.
+	Fallback string
+	// Sub is the second line: a sender, an organiser or a location.
+	Sub  string
+	Href string
+	// Unread marks a mail row that has not been read.
+	Unread bool
+	// When is the date of the row, zero for none. TimeLabel is the time of
+	// day in the user's zone; it is empty for an all-day row.
+	When      time.Time
+	TimeLabel string
+	AllDay    bool
+	// Task marks a task row, which shows the word for it instead of a place.
+	Task bool
+}
+
+// SummarySection is one of the four sections of the summary page. Err is set
+// when the section could not be loaded; it shows a generic message, never the
+// error text.
+type SummarySection struct {
+	Items    []SummaryRow
+	Err      bool
+	MoreHref string
+}
+
+// SummaryData is everything the summary page renders.
+type SummaryData struct {
+	ToMe        SummarySection
+	Starred     SummarySection
+	Invitations SummarySection
+	Upcoming    SummarySection
+	// Warning is a notice shown above the sections, already translated.
+	Warning string
+}
+
+templ SummaryPage(mailboxes []MailboxInfo, tags []SidebarTagInfo, data SummaryData, email string) {
+	@LayoutWithContent(t(ctx, "nav.summary"), email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@Sidebar(mailboxes, tags, "summary")
+		</aside>
+		<main class="content" id="main-content" data-selected-mailbox="summary">
+			@SummaryContent(data)
+		</main>
+	}
+}
+
+templ SummaryContent(data SummaryData) {
+	<div class="mail-view summary-page" data-mailbox="summary">
+		<div class="mail-head">
+			<h1 class="mail-head-title">{ t(ctx, "nav.summary") }</h1>
+		</div>
+		if data.Warning != "" {
+			@FlashMessage(data.Warning, "warning")
+		}
+		<div class="summary-grid">
+			@summarySection("to-me", t(ctx, "summary.toMe"), t(ctx, "summary.toMeEmpty"), data.ToMe)
+			@summarySection("starred", t(ctx, "summary.starred"), t(ctx, "summary.starredEmpty"), data.Starred)
+			@summarySection("invitations", t(ctx, "summary.invitations"), t(ctx, "summary.invitationsEmpty"), data.Invitations)
+			@summarySection("upcoming", t(ctx, "summary.upcoming"), t(ctx, "summary.upcomingEmpty"), data.Upcoming)
+		</div>
+	</div>
+}
+
+templ summarySection(id, title, empty string, sec SummarySection) {
+	<section class="summary-section card" id={ "summary-" + id } data-summary-section={ id } aria-labelledby={ "summary-" + id + "-title" }>
+		<div class="summary-section-head">
+			<h2 class="summary-section-title" id={ "summary-" + id + "-title" }>{ title }</h2>
+			if sec.MoreHref != "" {
+				<a class="summary-more" href={ templ.SafeURL(sec.MoreHref) }>{ t(ctx, "summary.viewAll") }</a>
+			}
+		</div>
+		if sec.Err {
+			<p class="summary-error" role="alert" data-summary-state="error">{ t(ctx, "summary.error") }</p>
+		} else if len(sec.Items) == 0 {
+			<p class="summary-empty" data-summary-state="empty">{ empty }</p>
+		} else {
+			<ul class="summary-list" role="list">
+				for _, row := range sec.Items {
+					<li class={ "summary-row", templ.KV("unread", row.Unread) }>
+						<a class="summary-row-title" href={ templ.SafeURL(row.Href) }>{ summaryRowTitle(ctx, row) }</a>
+						if row.Task {
+							<span class="summary-row-sub">{ t(ctx, "tasks.task") }</span>
+						} else if row.Sub != "" {
+							<span class="summary-row-sub">{ row.Sub }</span>
+						}
+						if !row.When.IsZero() {
+							<span class="summary-row-when">
+								{ summaryDate(ctx, row.When) }
+								if row.AllDay {
+									{ " " + t(ctx, "calendar.allDay") }
+								} else if row.TimeLabel != "" {
+									{ " " + row.TimeLabel }
+								}
+							</span>
+						}
+					</li>
+				}
+			</ul>
+		}
+	</section>
+}
+
+// summaryRowTitle is the row's title, or its translated placeholder when the
+// title is empty.
+func summaryRowTitle(ctx context.Context, row SummaryRow) string {
+	if row.Title == "" && row.Fallback != "" {
+		return t(ctx, row.Fallback)
+	}
+	return row.Title
+}
+
+// summaryDate formats a row date as "Fri 3 May" with the weekday and month
+// names of the request's locale.
+func summaryDate(ctx context.Context, d time.Time) string {
+	day := strings.ToLower(d.Weekday().String()[:3])
+	return t(ctx, "calendar."+day) + " " + strconv.Itoa(d.Day()) + " " + t(ctx, "calendar.monthAbbr."+strconv.Itoa(int(d.Month())))
+}

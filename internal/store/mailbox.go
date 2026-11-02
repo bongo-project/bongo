@@ -1024,6 +1024,14 @@ func HeaderViewExcludes(mailbox string) bool {
 // real mailbox of each message, index for index. The total counts every match,
 // not just the requested page.
 func (ms *MailboxStore) ListViewMessages(userID string, guidSet map[string]bool, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
+	return ms.ListViewMessagesFiltered(userID, guidSet, nil, offset, limit)
+}
+
+// ListViewMessagesFiltered is ListViewMessages with a predicate: a message
+// that is in guidSet is kept only when keep returns true for it (nil keeps
+// every one). The predicate runs before paging, so the total and the page both
+// count only the messages it kept.
+func (ms *MailboxStore) ListViewMessagesFiltered(userID string, guidSet map[string]bool, keep func(*bongov1.MailboxMessage) bool, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
 	if len(guidSet) == 0 {
 		return nil, nil, 0, nil
 	}
@@ -1042,7 +1050,7 @@ func (ms *MailboxStore) ListViewMessages(userID string, guidSet map[string]bool,
 			continue
 		}
 		for _, msg := range msgs {
-			if guidSet[msg.MailGuid] {
+			if guidSet[msg.MailGuid] && (keep == nil || keep(msg)) {
 				all = append(all, located{msg, mb.Name})
 			}
 		}

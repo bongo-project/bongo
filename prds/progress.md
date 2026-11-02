@@ -1615,3 +1615,13 @@ PATTERN: [merge] When two stories each refactor the same helper, merge onto one 
 PATTERN: [templ] A worker running `templ fmt` reformats hundreds of unrelated lines; compare `git diff` with `git diff -w` before export and rebuild the file from HEAD plus the real hunks.
 PATTERN: [calendar] A busy/free rule needs a structured field when expansion drops ical_raw (Event.transparent), or recurring instances lose it.
 PATTERN: [product] Check what mainstream clients default to before stating it: Google and Outlook make all-day events free by default, which changed the form's default.
+
+## 2026-11-02: Phase 30 batch 6 (30.19, 30.20), Phase 30 complete
+
+- 30.19 US-016: CalendarHandler.agendaDays gathers own events (subscriptions included), read/write shares and due tasks, clamps days to [1, 30], writes nothing; task rows carry data-cal-id so the sidebar toggle applies.
+- 30.20 US-017: /summary with four sections (unread to me, starred, invitations awaiting an answer, next 7 days), each at most 10 rows with its own empty and error state; start_page preference (UserPreferences 21, default summary) for / and every login path including recovery codes, which carry an allow-listed, translated warning; benchmark 10 ms/op with 10,000 INBOX messages.
+- Merge: both stories extracted the agenda gathering; kept agendaDays and pointed the summary at it. Fix round: colour assertions scoped to the agenda item (the sidebar repeats the classes), localised fallbacks and dates. TestTOTPSetupAndLogin updated for the summary start page.
+- Separately on main (PR #146): /.well-known/caldav and /carddav redirect every method (Apple sends PROPFIND first and got 405); docs/caldav-carddav.md.
+PATTERN: [testing] A class or colour assertion over a whole page is vacuous when a sidebar or legend repeats it; scope to the element and mutate the producer once.
+PATTERN: [security] A redirect parameter that a page renders is a reflection vector; allow-list its exact shape and re-render it from a translation key.
+PATTERN: [dav] Register discovery redirects (/.well-known/caldav, /carddav) for every method: DAV clients lead with PROPFIND, and a GET-only route answers 405.

@@ -121,6 +121,15 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 										<option value="all" selected?={ prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL }>{ t(ctx, "settings.replyAll") }</option>
 									</select>
 								</div>
+								<div class="settings-row">
+									<div class="settings-row-label">
+										<div class="settings-row-title">{ t(ctx, "settings.startPage") }</div>
+									</div>
+									<select name="start_page" id="start_page" class="settings-select">
+										<option value="summary" selected?={ prefs.StartPage != "inbox" }>{ t(ctx, "settings.startPageSummary") }</option>
+										<option value="inbox" selected?={ prefs.StartPage == "inbox" }>{ t(ctx, "settings.startPageInbox") }</option>
+									</select>
+								</div>
 								<div class="settings-row settings-row-stacked">
 									<div class="settings-row-label">
 										<div class="settings-row-title">{ t(ctx, "settings.signature") }</div>

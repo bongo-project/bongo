@@ -1085,6 +1085,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Raft != nil {
 		authH.SetRaftApplier(a)
 	}
+	if a.Preferences != nil {
+		authH.SetPreferences(a.Preferences)
+	}
 	r.Get("/login", authH.LoginPage)
 	r.With(middleware.RequireSameOrigin(), loginRL.LoginRateLimit()).Post("/login", authH.Login)
 	r.Get("/login/2fa", authH.TwoFactorPage)
@@ -1202,10 +1205,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Apple profile (iOS/macOS Mail): downloadable, unsigned .mobileconfig.
 	r.Get("/.well-known/mobileconfig", autoconfigH.AppleMobileconfig)
 
-	// Redirect root to inbox.
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
-	})
+	// The root redirect to the user's start page is in the protected group below.
 
 	// Construct the domain-admin store before the admin group so the gate
 	// middleware (RequireAdminOrDomainAdmin) can call AuthorizedDomains. It
@@ -1357,6 +1357,18 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Double-submit CSRF token, defence-in-depth on top of same-origin.
 		r.Use(middleware.InjectCSRF(sessionSecret))
 		r.Use(middleware.RequireCSRF(sessionSecret, a.Config.Server.Role != "dev"))
+
+		// Root: the start_page preference decides between the summary page
+		// and the inbox. Visitors who are not signed in are sent to /login by
+		// RequireAuth.
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			var prefs *bongov1.UserPreferences
+			if a.Preferences != nil {
+				userID, _ := middleware.UserFromContext(r.Context())
+				prefs = a.Preferences.Get(userID)
+			}
+			http.Redirect(w, r, store.StartPath(prefs), http.StatusSeeOther)
+		})
 
 		// Security settings (TOTP, password change).
 		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
@@ -1591,6 +1603,31 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.With(refuseLowStorage).Post("/calendar/import", calendarH.ImportCalendar)
 			r.Get("/calendar/search", calendarH.SearchEvents)
 		}
+
+		// Summary page. Each section has its own source and an absent one
+		// shows its empty state.
+		summaryH := handlers.NewSummaryHandler(a.logger)
+		summaryH.SetSidebar(a.Mailboxes, store.NewTagStore(a.Store, a))
+		if a.Mailboxes != nil {
+			var zone func(string) *time.Location
+			if a.Preferences != nil {
+				zone = a.Preferences.Location
+			}
+			if a.Metadata != nil {
+				summaryH.SetMailSource(handlers.NewMailSummary(a.Mailboxes, a.Metadata, a.Store, zone))
+			} else {
+				summaryH.SetMailSource(handlers.NewMailSummary(a.Mailboxes, nil, a.Store, zone))
+			}
+		}
+		if a.calendarHandler != nil {
+			cs := handlers.NewCalendarSummary(a.calendarHandler, a.Mailboxes, a.Store)
+			if a.ScheduleInbox != nil {
+				cs.SetScheduleInbox(a.ScheduleInbox)
+			}
+			summaryH.SetInvitations(cs)
+			summaryH.SetUpcoming(cs)
+		}
+		r.Get("/summary", summaryH.Summary)
 
 		if a.Tasks != nil && a.Calendars != nil {
 			tasksH := handlers.NewTasksHandler(a.Tasks, a.Calendars)

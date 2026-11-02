@@ -916,3 +916,22 @@ Found while building batch 5 (2026-11-02):
   which nobody reads; once its quota fills, bookings stop being answered
   (logged). Built beyond the criteria and kept: the organiser's CANCEL
   releases a booking; admins can edit a resource's name, quota and capacity.
+
+Found while building batch 6 (2026-11-02):
+
+- US-016: tasks in calendars shared with the user are not shown in the
+  agenda (tasks are read from the user's own key space only). The agenda
+  day header and title use English date formats (from v0.13).
+- US-017: the invitations section links to the INBOX (there is no
+  invitations view), and "Unread mail to me" links to `/mail/to-me`, which
+  lists read mail too. The page measured 10 ms per request with 10,000
+  INBOX messages on an M3 Max, against the 300 ms budget.
+- Not part of a story, fixed on main (PR #146): `/.well-known/caldav` and
+  `/.well-known/carddav` answered PROPFIND with 405, so Apple Calendar and
+  Contacts could not add an account; every method now gets the redirect.
+  `docs/caldav-carddav.md` documents DAV setup. The Apple configuration
+  profile still sets up mail only.
+- The INBOX page does not render the `?warning=` parameter, so the
+  "recovery code used" warning after a recovery-code login is lost for users
+  whose start page is the inbox (it was lost for everyone before v0.15). The
+  summary page shows it, allow-listed and translated.

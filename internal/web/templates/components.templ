@@ -203,6 +203,17 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 			<div class="sidebar-label">{ t(ctx, "nav.workspace") }</div>
 			<ul class="nav-list" aria-label={ t(ctx, "nav.applications") }>
 				<li class="nav-item">
+					<a
+						href="/summary"
+						if selected == "summary" {
+							class="active"
+						}
+					>
+						<span class="nav-icon" aria-hidden="true">@Icon("bell", "")</span>
+						<span>{ t(ctx, "nav.summary") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
 					<a href="/calendar">
 						<span class="nav-icon" aria-hidden="true">@Icon("calendar", "")</span>
 						<span>{ t(ctx, "nav.calendar") }</span>

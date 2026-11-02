@@ -56,4 +56,8 @@ message UserPreferences {
   int64 vacation_start = 18;
   int64 vacation_end = 19;
   int32 vacation_interval_days = 20;
+
+  // Page that / and a successful login go to: "summary" or "inbox". Empty
+  // (a record written before the field existed) is read as "summary".
+  string start_page = 21;
 }

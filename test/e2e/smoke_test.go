@@ -110,7 +110,7 @@ func (sc *smokeClient) login(t *testing.T, email, password string) {
 	}
 	resp.Body.Close()
 
-	// The client follows redirects; after login we should land on /mail/INBOX (200).
+	// The client follows redirects; after login we should land on the start page, /summary (200).
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("login: final status = %d, want 200", resp.StatusCode)
 	}
