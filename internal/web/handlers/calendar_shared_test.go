@@ -676,3 +676,99 @@ func TestSharedScopedWriteNeedsWriteAccess(t *testing.T) {
 		})
 	}
 }
+
+const tasksOnlyCal = "tasksOnly"
+
+// A VTODO-only calendar holds no events: CalDAV would not list one filed
+// there. Create, move and import into it are refused with a translated 400
+// and write nothing.
+func TestEventsRefusedIntoTasksOnlyCalendar(t *testing.T) {
+	routes := []struct {
+		name string
+		run  func(e *sharedEnv) *httptest.ResponseRecorder
+	}{
+		{"create", func(e *sharedEnv) *httptest.ResponseRecorder {
+			w := httptest.NewRecorder()
+			e.h.CreateEvent(w, withRoute(sFormReq("POST", "/calendar/event", sEventForm(tasksOnlyCal)), sharedOwner, nil))
+			return w
+		}},
+		{"move", func(e *sharedEnv) *httptest.ResponseRecorder {
+			w := httptest.NewRecorder()
+			e.h.UpdateEvent(w, withRoute(sFormReq("POST", "/calendar/event/"+sharedEvA, sEventForm(tasksOnlyCal)), sharedOwner, map[string]string{"guid": sharedEvA}))
+			return w
+		}},
+		{"import", func(e *sharedEnv) *httptest.ResponseRecorder {
+			w := httptest.NewRecorder()
+			e.h.ImportCalendar(w, icsUpload(t, sharedOwner, tasksOnlyCal))
+			return w
+		}},
+	}
+	for _, rt := range routes {
+		t.Run(rt.name, func(t *testing.T) {
+			e := newSharedEnv(t)
+			e.mustCal(sharedOwner, &bongov1.Calendar{Guid: tasksOnlyCal, Name: "Tasks", Components: []string{store.ComponentTodo}})
+			e.app.writes = 0
+			before := e.eventCount(sharedOwner)
+			w := rt.run(e)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (%q)", w.Code, w.Body.String())
+			}
+			if !strings.Contains(w.Body.String(), "tasks") {
+				t.Errorf("body %q is not the translated refusal", w.Body.String())
+			}
+			if e.app.writes != 0 || e.eventCount(sharedOwner) != before {
+				t.Errorf("refused request wrote (%d commands, events %d -> %d)", e.app.writes, before, e.eventCount(sharedOwner))
+			}
+			if got := e.event(sharedOwner, sharedEvA); got.CalendarId != sharedCalA {
+				t.Errorf("event moved to %q", got.CalendarId)
+			}
+		})
+	}
+}
+
+// An event already in a tasks-only calendar (stored before this rule) can
+// still be edited in place, and the picker keeps listing that calendar for it.
+func TestEventInTasksOnlyCalendarStaysEditable(t *testing.T) {
+	e := newSharedEnv(t)
+	e.mustCal(sharedOwner, &bongov1.Calendar{Guid: tasksOnlyCal, Name: "Tasks", Components: []string{store.ComponentTodo}})
+	if _, err := e.events.Create(sharedOwner, &bongov1.Event{Guid: "ev-t", CalendarId: tasksOnlyCal, Title: "Old", StartTime: sharedEvAWhn, EndTime: sharedEvAWhn + 3600}); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	e.h.UpdateEvent(w, withRoute(sFormReq("POST", "/calendar/event/ev-t", sEventForm(tasksOnlyCal)), sharedOwner, map[string]string{"guid": "ev-t"}))
+	if w.Code >= 400 {
+		t.Fatalf("in-place edit refused: %d %s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	e.h.ShowEvent(w, withRoute(httptest.NewRequest("GET", "/calendar/event/ev-t", nil), sharedOwner, map[string]string{"guid": "ev-t"}))
+	if !strings.Contains(w.Body.String(), `value="`+tasksOnlyCal+`"`) {
+		t.Error("the picker dropped the event's current calendar")
+	}
+}
+
+// The create form's picker does not offer a tasks-only calendar.
+func TestEventFormPickerOmitsTasksOnlyCalendar(t *testing.T) {
+	e := newSharedEnv(t)
+	e.mustCal(sharedOwner, &bongov1.Calendar{Guid: tasksOnlyCal, Name: "Tasks", Components: []string{store.ComponentTodo}})
+	w := httptest.NewRecorder()
+	e.h.NewEvent(w, withRoute(httptest.NewRequest("GET", "/calendar/event/new", nil), sharedOwner, nil))
+	body := w.Body.String()
+	if !strings.Contains(body, `value="`+sharedCalA+`"`) {
+		t.Fatalf("picker lost an event calendar: %s", body)
+	}
+	if strings.Contains(body, `value="`+tasksOnlyCal+`"`) {
+		t.Error("picker offers the tasks-only calendar")
+	}
+}
+
+// An iMIP answer is not filed into a tasks-only calendar either.
+func TestOwnCalendarRefusesTasksOnly(t *testing.T) {
+	e := newSharedEnv(t)
+	e.mustCal(sharedOwner, &bongov1.Calendar{Guid: tasksOnlyCal, Name: "Tasks", Components: []string{store.ComponentTodo}})
+	if _, res := e.h.ownCalendar(sharedOwner, tasksOnlyCal); res.Status != http.StatusBadRequest {
+		t.Errorf("tasks-only: status = %d, want 400", res.Status)
+	}
+	if id, res := e.h.ownCalendar(sharedOwner, sharedCalA); res.Status != 0 || id != sharedCalA {
+		t.Errorf("event calendar: id %q status %d", id, res.Status)
+	}
+}

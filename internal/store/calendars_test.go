@@ -158,3 +158,80 @@ func TestCalendarStore_Delete(t *testing.T) {
 		t.Error("Get after delete should fail or return nil")
 	}
 }
+
+func TestCalendarAllows(t *testing.T) {
+	for name, tc := range map[string]struct {
+		cal         *bongov1.Calendar
+		event, todo bool
+	}{
+		"nil":          {nil, true, false},
+		"empty":        {&bongov1.Calendar{}, true, false},
+		"events":       {&bongov1.Calendar{Components: []string{"VEVENT"}}, true, false},
+		"todos":        {&bongov1.Calendar{Components: []string{"VTODO"}}, false, true},
+		"both":         {&bongov1.Calendar{Components: []string{"VEVENT", "VTODO"}}, true, true},
+		"unknown only": {&bongov1.Calendar{Components: []string{"VJOURNAL"}}, false, false},
+	} {
+		if got := CalendarAllows(tc.cal, ComponentEvent); got != tc.event {
+			t.Errorf("%s: VEVENT = %v, want %v", name, got, tc.event)
+		}
+		if got := CalendarAllows(tc.cal, ComponentTodo); got != tc.todo {
+			t.Errorf("%s: VTODO = %v, want %v", name, got, tc.todo)
+		}
+	}
+}
+
+func TestEnsureDefaultCreatesTasksCalendarForNewUser(t *testing.T) {
+	cs := newCalendarTestEnv(t)
+	if _, err := cs.EnsureDefault("fresh"); err != nil {
+		t.Fatal(err)
+	}
+	tasks, err := cs.Get("fresh", TasksCalendarGUID)
+	if err != nil {
+		t.Fatalf("no Tasks calendar: %v", err)
+	}
+	if tasks.Name != "Tasks" || len(tasks.Components) != 1 || tasks.Components[0] != "VTODO" {
+		t.Errorf("Tasks calendar = %+v", tasks)
+	}
+	personal, err := cs.Get("fresh", "default")
+	if err != nil || !CalendarAllows(personal, ComponentEvent) || CalendarAllows(personal, ComponentTodo) {
+		t.Errorf("Personal = %+v, %v", personal, err)
+	}
+	// A second call neither duplicates nor changes the set.
+	if _, err := cs.EnsureDefault("fresh"); err != nil {
+		t.Fatal(err)
+	}
+	if cals, _ := cs.List("fresh"); len(cals) != 2 {
+		t.Errorf("calendars = %d, want 2", len(cals))
+	}
+}
+
+// A tasks-only calendar must never be chosen as the event default, or web
+// and iMIP events would be filed into a VTODO collection.
+func TestEnsureDefaultNeverReturnsTasksOnlyCalendar(t *testing.T) {
+	cs := newCalendarTestEnv(t)
+	if err := cs.Update("u", TasksCalendarGUID, NewTasksCalendar()); err != nil {
+		t.Fatal(err)
+	}
+	guid, err := cs.EnsureDefault("u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if guid == TasksCalendarGUID {
+		t.Fatal("EnsureDefault returned the VTODO-only calendar")
+	}
+	cal, err := cs.Get("u", guid)
+	if err != nil || !CalendarAllows(cal, ComponentEvent) {
+		t.Errorf("default = %+v, %v", cal, err)
+	}
+
+	// An event calendar that sorts after Tasks is still chosen.
+	cs2 := newCalendarTestEnv(t)
+	for _, c := range []*bongov1.Calendar{NewTasksCalendar(), {Guid: "zzz", Name: "Late"}} {
+		if err := cs2.Update("v", c.Guid, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if guid, err := cs2.EnsureDefault("v"); err != nil || guid != "zzz" {
+		t.Errorf("EnsureDefault = %q, %v; want zzz", guid, err)
+	}
+}

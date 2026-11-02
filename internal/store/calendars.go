@@ -40,21 +40,50 @@ func calendarPrefix(userID string) []byte {
 const defaultCalendarName = "Personal"
 const defaultCalendarColor = "#4A90D9"
 
-// EnsureDefault creates the default calendar if none exist for the user.
-// Returns the default calendar's GUID.
+// TasksCalendarGUID is the fixed ID of the VTODO calendar every user gets. A
+// fixed ID makes two concurrent first calls write the same key, so there are
+// never two. It sorts after "default" and after every generated hex ID.
+const TasksCalendarGUID = "tasks"
+
+const tasksCalendarName = "Tasks"
+
+// NewTasksCalendar returns the VTODO-only Tasks calendar.
+func NewTasksCalendar() *bongov1.Calendar {
+	return &bongov1.Calendar{
+		Guid:       TasksCalendarGUID,
+		Name:       tasksCalendarName,
+		Color:      defaultCalendarColor,
+		Components: []string{ComponentTodo},
+	}
+}
+
+// EnsureDefault returns the GUID of the user's default event calendar: the
+// first calendar that holds events. A new user, and one whose calendars all
+// hold tasks only, gets a Personal calendar created; a new user also gets the
+// Tasks calendar. A tasks-only calendar is never the default, or web and iMIP
+// events would be filed into a VTODO collection.
 func (s *CalendarStore) EnsureDefault(userID string) (string, error) {
 	calendars, err := s.List(userID)
 	if err != nil {
 		return "", fmt.Errorf("listing calendars: %w", err)
 	}
-	if len(calendars) > 0 {
-		return calendars[0].Guid, nil
+	for _, c := range calendars {
+		if CalendarAllows(c, ComponentEvent) {
+			return c.Guid, nil
+		}
 	}
 
 	cal := &bongov1.Calendar{
 		Guid:  "default",
 		Name:  defaultCalendarName,
 		Color: defaultCalendarColor,
+	}
+	// Tasks first: a failure between the two writes leaves a user with Tasks
+	// only, and the next call then creates Personal.
+	if len(calendars) == 0 {
+		if _, err := s.Create(userID, NewTasksCalendar()); err != nil {
+			return "", fmt.Errorf("creating tasks calendar: %w", err)
+		}
 	}
 	guid, err := s.Create(userID, cal)
 	if err != nil {

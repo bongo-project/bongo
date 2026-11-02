@@ -121,6 +121,7 @@ type Agent struct {
 	Rules        *rules.RuleStore
 	Contacts     *store.ContactStore
 	Events       *store.EventStore
+	Tasks        *store.TaskStore
 	Calendars    *store.CalendarStore
 	ACL          *store.ACLStore
 	BlobSync     *cluster.BlobSyncer
@@ -151,7 +152,11 @@ type Agent struct {
 	composeHandler    *handlers.ComposeHandler
 	mailHandler       *handlers.MailHandler
 	addrVerifyHandler *handlers.AddressVerifyHandler
-	calendarHandler   *handlers.CalendarHandler
+	// shareInviter sends calendar share invitation emails; Run starts its worker.
+	shareInviter    *handlers.ShareInviter
+	calendarHandler *handlers.CalendarHandler
+	// deliverProc is the delivery stage Run built, kept for wiring tests.
+	deliverProc *pipelinedeliver.DeliverProcessor
 	// ForwardTargets holds verified external forwarding targets per user; the
 	// deliver stage forwards only to targets recorded here (or hosted ones).
 	ForwardTargets *store.ForwardTargetStore
@@ -232,11 +237,17 @@ type Agent struct {
 	usageCancel           context.CancelFunc
 	subscriptionsCancel   context.CancelFunc
 	// subscriptionClient is the SSRF-safe feed fetcher; tests read its options.
-	subscriptionClient    *netx.Client
-	rulesMigrationCancel  context.CancelFunc
+	subscriptionClient   *netx.Client
+	rulesMigrationCancel context.CancelFunc
+	tasksMigrationCancel context.CancelFunc
+	// migrationApplier, if set, carries the tasks job's marker writes in
+	// place of Raft; tests only.
+	migrationApplier      store.RaftApplier
 	grantsMigrationCancel context.CancelFunc
 	previewCancel         context.CancelFunc
+	headerBackfillCancel  context.CancelFunc
 	addrVerifyCancel      context.CancelFunc
+	shareInviteCancel     context.CancelFunc
 
 	// pipelineDone is closed by startPipelineRunner once Runner.Run has
 	// returned. Nil when no runner was started.
@@ -519,6 +530,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		a.Calendars = store.NewCalendarStore(pebbleStore, a)
 		a.ACL = store.NewACLStore(pebbleStore, a)
 		a.Events = store.NewEventStore(pebbleStore, a)
+		a.Tasks = store.NewTaskStore(pebbleStore, a)
 		if a.Search != nil {
 			a.Events.SetSearch(a.Search)
 			a.Events.SetLogger(a.logger)
@@ -1096,6 +1108,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.ACL != nil {
 			caldavBackend.SetGrants(a.ACL)
 		}
+		if a.Tasks != nil {
+			caldavBackend.SetTaskStore(a.Tasks)
+		}
 	}
 	carddavHandler, caldavHandler := newDAVHandlers(a.Auth, carddavBackend, caldavBackend, davAuthLimiter, a.logger)
 
@@ -1365,6 +1380,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			mailH.SetTagStore(store.NewTagStore(a.Store, a))
 			r.Get("/mail/tag/{name}", mailH.ListTagMessages)
+			// Header-based views, registered before /mail/{mailbox} so they
+			// are not read as a folder name or as /mail/{mailbox}/{uid}.
+			r.Get("/mail/to-me", mailH.ListToMe)
+			r.Get("/mail/from-contacts", mailH.ListFromContacts)
+			r.Get("/mail/lists", mailH.ListMailingLists)
+			r.Get("/mail/lists/{listID}", mailH.ListMailingList)
 			r.Get("/api/mail/unread-counts", mailH.UnreadCounts)
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
@@ -1476,6 +1497,16 @@ func (a *Agent) Run(ctx context.Context) error {
 			// non-nil interface.
 			if a.composeHandler != nil {
 				calendarH.SetInviteSender(a.composeHandler)
+				// Share invitation emails are built and delivered by a
+				// background worker (started in Run), off the request path.
+				var prefs interface {
+					Get(string) *bongov1.UserPreferences
+				}
+				if a.Preferences != nil {
+					prefs = a.Preferences
+				}
+				a.shareInviter = handlers.NewShareInviter(a.composeHandler, prefs, a.logger)
+				calendarH.SetShareInviter(a.shareInviter)
 			}
 			if a.AddressStore != nil {
 				calendarH.SetAddressStore(a.AddressStore)
@@ -1507,6 +1538,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Put("/calendar/{calendarID}", calendarH.UpdateCalendar)
 			r.Post("/calendar/{calendarID}/share", calendarH.ShareCalendar)
 			r.Post("/calendar/{calendarID}/unshare", calendarH.UnshareCalendar)
+			r.Get("/calendar/shares", calendarH.ShareInvitations)
+			r.Post("/calendar/shares/accept", calendarH.AcceptShare)
+			r.Post("/calendar/shares/decline", calendarH.DeclineShare)
+			r.Post("/calendar/{calendarID}/publish/send", calendarH.SendPublicLink)
 			r.Post("/calendar/{calendarID}/publish", calendarH.PublishCalendar)
 			r.Post("/calendar/{calendarID}/publish/regenerate", calendarH.RegeneratePublish)
 			r.Post("/calendar/{calendarID}/publish/password", calendarH.SetPublishPassword)
@@ -1700,6 +1735,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.previewCancel = previewCancel
 			backfill := cluster.NewPreviewBackfill(a.Store, a.Blobs, a.Metadata, a.logger)
 			a.goWorker("preview-backfill", func() { backfill.Run(previewCtx) })
+
+			// Fills the To me / From my contacts / Mailing lists columns of
+			// mail indexed before they existed.
+			headerCtx, headerCancel := context.WithCancel(ctx)
+			a.headerBackfillCancel = headerCancel
+			headerBackfill := cluster.NewHeaderBackfill(a.Store, a.Blobs, a.Metadata, a.logger)
+			a.goWorker("header-backfill", func() { headerBackfill.Run(headerCtx) })
 		}
 
 		a.goWorker("blob-sync", func() { a.BlobSync.Run(blobSyncCtx) })
@@ -1732,6 +1774,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Build pipeline processors from PipelineConfig stage list.
 		var stages []pipeline.Processor
 		stages, deliverProc = a.buildPipelineStages(sharedResolver)
+		// iMIP replies are applied to the organiser's events by the calendar
+		// handler, which the router built above. The nil guard keeps a nil
+		// *CalendarHandler out of the interface.
+		a.deliverProc = deliverProc
+		if deliverProc != nil && a.calendarHandler != nil {
+			deliverProc.SetCalendarReplies(a.calendarHandler)
+		}
 
 		// Create blob reader adapter and start the Runner with config-driven options.
 		blobReader := &bongosmtp.BlobStoreAdapter{Blobs: a.Blobs}
@@ -2111,6 +2160,18 @@ func (a *Agent) Run(ctx context.Context) error {
 		})
 	}
 
+	// Tasks arrive with a Tasks calendar for existing users, and the events
+	// that VTODO PUTs left behind are listed once. Leader-only and marked,
+	// like the rules migration above.
+	a.migrateTasksPass(a.IsLeader)
+	if a.Raft != nil && a.Store != nil && a.Calendars != nil {
+		tasksCtx, tasksCancel := context.WithCancel(ctx)
+		a.tasksMigrationCancel = tasksCancel
+		a.goWorker("tasks-migration", func() {
+			a.runTasksMigration(tasksCtx, tasksMigrationInterval, a.IsLeader)
+		})
+	}
+
 	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
 	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
 	// self-gating; conservative two-pass sweep.
@@ -2150,6 +2211,16 @@ func (a *Agent) Run(ctx context.Context) error {
 		addrVerifyCtx, addrVerifyCancel := context.WithCancel(context.Background())
 		a.addrVerifyCancel = addrVerifyCancel
 		a.goWorker("addr-verify-mail", func() { a.addrVerifyHandler.Run(addrVerifyCtx) })
+	}
+
+	// Share invitation mail follows the same lifecycle as the send-as
+	// verification mail above: its context is not derived from ctx, and
+	// closeListenersAndStopWorkers cancels it after the HTTP server stops, so
+	// the worker drains what the last requests queued.
+	if a.shareInviter != nil {
+		shareInviteCtx, shareInviteCancel := context.WithCancel(context.Background())
+		a.shareInviteCancel = shareInviteCancel
+		a.goWorker("share-invite-mail", func() { a.shareInviter.Run(shareInviteCtx) })
 	}
 
 	// Bind the web port before reporting ready, so Ready() implies a dial to
@@ -3141,7 +3212,7 @@ func (a *Agent) recomputeDomainUsage() {
 // computeAndWriteDomainUsage scans the /user/{id}/mail/{guid} MailMeta keys in
 // pebble and sums raw_message.size per primary domain (derived from the owner's
 // /user/{id}/profile). It also adds the stored (marshalled) size of each
-// /user/{id}/event/{guid} and /user/{id}/contact/{guid} record: those live
+// /user/{id}/event/{guid}, /user/{id}/contact/{guid} and /user/{id}/task/{guid} record: those live
 // inline in Pebble rather than as blobs, and web, CalDAV and CardDAV writes are
 // quota-gated, so they must count. Stored size, not ical_raw/vcard_raw, because
 // web-form records have no raw field. The per-domain totals are written via
@@ -3169,14 +3240,14 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 
 	for iter.Next() {
 		key := string(iter.Key())
-		// We only care about mail, event and contact records.
+		// We only care about mail, event, contact and task records.
 		rest := strings.TrimPrefix(key, "/user/")
 		parts := strings.SplitN(rest, "/", 3)
 		if len(parts) != 3 {
 			continue
 		}
 		kind := parts[1]
-		if kind != "mail" && kind != "event" && kind != "contact" {
+		if kind != "mail" && kind != "event" && kind != "contact" && kind != "task" {
 			continue
 		}
 		userID := parts[0]
@@ -3216,8 +3287,8 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 			if meta.RawMessage != nil {
 				domainBytes[domain] += meta.RawMessage.Size
 			}
-		case "event", "contact":
-			// Events and contacts live inline in Pebble and carry no blobs, so
+		case "event", "contact", "task":
+			// Events, contacts and tasks live inline in Pebble and carry no blobs, so
 			// their stored size is the marshalled record. Counting the raw
 			// iCal/vCard alone would score a web-form record (no raw) as zero.
 			domainBytes[domain] += int64(len(val))
@@ -4591,14 +4662,23 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	if a.rulesMigrationCancel != nil {
 		a.rulesMigrationCancel()
 	}
+	if a.tasksMigrationCancel != nil {
+		a.tasksMigrationCancel()
+	}
 	if a.grantsMigrationCancel != nil {
 		a.grantsMigrationCancel()
 	}
 	if a.previewCancel != nil {
 		a.previewCancel()
 	}
+	if a.headerBackfillCancel != nil {
+		a.headerBackfillCancel()
+	}
 	if a.addrVerifyCancel != nil {
 		a.addrVerifyCancel()
+	}
+	if a.shareInviteCancel != nil {
+		a.shareInviteCancel()
 	}
 	return errs
 }

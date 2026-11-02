@@ -1,0 +1,57 @@
+package templates
+
+import "fmt"
+
+// ListsPage renders the Mailing lists overview with the sidebar.
+templ ListsPage(mailboxes []MailboxInfo, tags []SidebarTagInfo, lists []MailingList, email string) {
+	@LayoutWithContent("lists", email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@Sidebar(mailboxes, tags, "lists")
+		</aside>
+		<main class="content" id="main-content" data-selected-mailbox="lists">
+			@ListsContent(lists)
+		</main>
+	}
+}
+
+// ListsContent is the overview itself: one row per list with its name and the
+// number of messages in the folders the list views show. The name is mail
+// header text, so templ escapes it and it is never rendered as HTML.
+templ ListsContent(lists []MailingList) {
+	<div class="mail-view" data-mailbox="lists">
+		<div class="mail-head">
+			<h1 class="mail-head-title">{ t(ctx, "nav.mailingLists") }</h1>
+		</div>
+		if len(lists) == 0 {
+			@EmptyState(t(ctx, "lists.empty"), t(ctx, "lists.emptyHint"))
+		} else {
+			<ul class="msg-list" role="list" aria-label={ t(ctx, "nav.mailingLists") }>
+				for _, l := range lists {
+					<li class="msg-row" role="listitem">
+						<div class="msg-main">
+							<div class="msg-line">
+								<span class="msg-from">
+									<a
+										href={ templ.SafeURL(listViewURL(l.ID)) }
+										hx-get={ listViewURL(l.ID) }
+										hx-target="#main-content"
+										hx-push-url="true"
+										class="u-text-decoration-none"
+									>
+										{ listLabel(l) }
+									</a>
+								</span>
+								<span class="msg-date" title={ t(ctx, "lists.messages") } aria-label={ t(ctx, "lists.messages") + ": " + fmt.Sprint(l.Count) }>{ fmt.Sprint(l.Count) }</span>
+							</div>
+							if listLabel(l) != l.ID {
+								<div class="msg-line">
+									<span class="msg-preview">{ l.ID }</span>
+								</div>
+							}
+						</div>
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}

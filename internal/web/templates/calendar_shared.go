@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -200,13 +201,17 @@ type SubscriptionInfo struct {
 }
 
 // calendarOffered reports whether the event form's calendar select lists cal.
-// A subscribed calendar is read-only, so it is not a place to put an event; it
+// A subscribed calendar is read-only, and a VTODO-only calendar (Tasks) is
+// not listed by CalDAV for events, so neither is a place to put an event; each
 // is listed only when the event shown already lives in it.
 func calendarOffered(cal *bongov1.Calendar, event *bongov1.Event) bool {
-	if cal.Subscription == nil || cal.Subscription.SourceUrl == "" {
+	if event != nil && event.CalendarId == cal.Guid {
 		return true
 	}
-	return event != nil && event.CalendarId == cal.Guid
+	if cal.Subscription != nil && cal.Subscription.SourceUrl != "" {
+		return false
+	}
+	return store.CalendarAllows(cal, store.ComponentEvent)
 }
 
 // subscriptionEventCount formats the "Events: %d" message.

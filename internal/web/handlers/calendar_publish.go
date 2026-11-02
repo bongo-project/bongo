@@ -8,8 +8,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
+	netmail "net/mail"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -411,4 +415,70 @@ func (h *CalendarHandler) SetPublishPassword(w http.ResponseWriter, r *http.Requ
 		c.PublishPasswordHash = hash
 		return nil
 	})
+}
+
+// SendPublicLink handles POST: email the public feed link of a published
+// calendar to an address the owner types. It is an ordinary message from the
+// owner's session address, not a grant, so it neither needs nor creates an
+// account on the other side.
+//
+// The link is the feed capability, so it is built on the configured host
+// (linkHost), never the request's, and neither it nor the address is logged.
+// The share limiter is charged first and DeliverGenerated applies the send
+// limits for external recipients on top.
+func (h *CalendarHandler) SendPublicLink(w http.ResponseWriter, r *http.Request) {
+	userID, ownerEmail := middleware.UserFromContext(r.Context())
+	calID := chi.URLParam(r, "calendarID")
+	locale := middleware.LocaleFromContext(r.Context())
+	// fail answers with a translated message: the form shows the body.
+	fail := func(status int, key string) { http.Error(w, i18n.T(locale, key), status) }
+
+	if h.shareLimiter != nil && !h.shareLimiter.Allow(userID) {
+		secs := max(int(math.Ceil(h.shareLimiter.RetryAfter(userID).Seconds())), 1)
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+		fail(http.StatusTooManyRequests, "calendar.publicLinkTooMany")
+		return
+	}
+	cal, err := h.calendars.Get(userID, calID)
+	if err != nil {
+		fail(http.StatusNotFound, "calendar.publicLinkNotFound")
+		return
+	}
+	if !cal.Published || len(cal.PublishToken) != publishTokenBytes {
+		fail(http.StatusConflict, "calendar.publicLinkNotPublished")
+		return
+	}
+	parsed, err := netmail.ParseAddress(strings.TrimSpace(r.FormValue("send_to")))
+	if err != nil || parsed.Name != "" || !validMailAddress(parsed.Address) {
+		fail(http.StatusBadRequest, "calendar.publicLinkInvalidAddress")
+		return
+	}
+	host := h.linkHost(r)
+	if h.invites == nil || host == "" || !validMailAddress(ownerEmail) {
+		fail(http.StatusServiceUnavailable, "calendar.publicLinkUnavailable")
+		return
+	}
+
+	owner, name := inviteName(ownerEmail), inviteName(cal.Name)
+	link := publishSettings(host, userID, cal).HTTPSLink
+	subject := fmt.Sprintf(i18n.T(locale, "calendar.publicLinkSubject"), owner, name)
+	body := fmt.Sprintf(i18n.T(locale, "calendar.publicLinkBody"), owner, name, link)
+	raw, err := buildPlainMail(ownerEmail, parsed.Address, subject, body, time.Now())
+	if err != nil {
+		slog.Error("calendar: public link message failed", "user", userID, "calendar", calID, "error", err)
+		fail(http.StatusInternalServerError, "calendar.publicLinkFailed")
+		return
+	}
+	notReached, err := h.invites.DeliverGenerated(userID, ownerEmail, ownerEmail, []string{parsed.Address}, raw)
+	if err != nil || len(notReached) > 0 {
+		slog.Warn("calendar: public link not delivered", "user", userID, "calendar", calID, "error", err)
+		fail(http.StatusBadGateway, "calendar.publicLinkNotDelivered")
+		return
+	}
+	// Nothing on the page changes, so no refresh: the confirmation fragment
+	// goes into the form's status area.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.FlashMessage(i18n.T(locale, "calendar.publicLinkSent"), "success").Render(r.Context(), w); err != nil {
+		slog.Warn("calendar: rendering the public link confirmation failed", "error", err)
+	}
 }

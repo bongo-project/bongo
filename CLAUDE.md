@@ -132,7 +132,8 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /user/{user_id}/mail/{guid}          → MailMeta protobuf + BlobRef
 /user/{user_id}/event/{guid}         → Event protobuf (ical_raw inline, NOT a blob)
 /user/{user_id}/contact/{guid}       → Contact protobuf (vcard_raw inline, NOT a blob)
-/user/{user_id}/calendar/{guid}      → calendar metadata (also the publish state: published, publish_token = the feed capability, publish_detail, publish_password_hash; the token is in backups and is never logged); a subscription calendar (external ICS feed) holds `Calendar.subscription`: source_url (a secret: logs and the UI show its host only) and refresh state. Read-only for everyone
+/user/{user_id}/task/{guid}          → Task protobuf (VTODO: summary, due, start, completed, status, priority, percent; ical_raw inline, NOT a blob)
+/user/{user_id}/calendar/{guid}      → calendar metadata (also the publish state: published, publish_token = the feed capability, publish_detail, publish_password_hash; the token is in backups and is never logged); a subscription calendar (external ICS feed) holds `Calendar.subscription`: source_url (a secret: logs and the UI show its host only) and refresh state. Read-only for everyone. `Calendar.components` (VEVENT, VTODO or both; empty means VEVENT) says what the collection holds; a new user gets "default" (events) and "tasks" (VTODO)
 /user/{user_id}/mailbox/{name}/meta  → mailbox metadata (uid_next, uid_validity)
 /user/{user_id}/mailbox/{name}/msg/{uid} → MailboxMessage (flags, tags, mail guid)
 /user/{user_id}/preferences          → user preferences
@@ -156,6 +157,8 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /system/raft/applied_index           → last applied Raft index (replay skips up to it)
 /system/migration/fwdtargets         → forwarding-target migration done marker
 /system/migrations/rules-first-match-v1 → rules first-match migration done marker (sets stop_processing on pre-v0.14 rules)
+/system/migrations/vtodo-blank-events-v1 → one-time log of events a VTODO PUT left behind is done (nothing deleted)
+/system/migrations/tasks-calendar-v1 → Tasks calendar added to existing users is done
 /system/migrations/calendar-grants-v1 → calendar-grants migration done marker (shared_with turned into grants; written last)
 /acl/{kind}/{owner_id}/{resource_id}/u:{grantee_id} → Grant protobuf (level, rights, state, granted_by); kind is `calendar`; every ID segment is url.PathEscape'd
 /aclrev/u:{grantee_id}/{kind}/{owner_id}/{resource_id} → empty reverse marker; only ever written and deleted together with its forward key
@@ -178,13 +181,14 @@ deleting a user covers the rest. Delivery is at-least-once: a crash between an o
 its marker repeats that one write, and two nodes handling one send ID at once are not serialised.
 
 Only MailMeta and the outbound queue reference blobs. An earlier revision of this table said
-events and contacts carried BlobRefs; they do not. `Event.ical_raw` and `Contact.vcard_raw` are
-inline `bytes` in the protobuf. This is not a cosmetic correction: a maintainer who believes
+events and contacts carried BlobRefs; they do not. `Event.ical_raw`, `Contact.vcard_raw` and
+`Task.ical_raw` are inline `bytes` in the protobuf. This is not a cosmetic correction: a maintainer who believes
 events and contacts pin blobs will either add pointless scanning to the GC or, worse, assume
 coverage that was never needed and reason wrongly about what the reference set must contain.
 The authoritative list is `knownBlobBearingFields` in `internal/agent/blobref_enumeration_test.go`,
 which is checked against the proto descriptors at test time and fails if a new blob-bearing field
-appears without being classified.
+appears without being classified. `TestInlineRecordsNameNoBlob` in the same file asserts Task,
+Event, Contact and Calendar have no such field.
 
 Blob lifecycle: background GC does mark-and-sweep, deletes unreferenced blobs older than 1 hour.
 The GC is the ONLY component that deletes blobs. They are content-addressed and shared across
@@ -196,8 +200,12 @@ Calendar sharing is the grant key space (`/acl/...` and `/aclrev/...`, `internal
 A grant has a level (`freebusy`, `read`, `write`; anything else is refused) and a state (`pending`,
 `accepted`); only an accepted grant authorises, and a grant on a deleted calendar authorises nothing.
 The forward key and its reverse marker are written and removed only by the composite `/__acl__/`
-command (`set`, `revoke`, `revoke_resource`, `revoke_owner`, `revoke_grantee`), applied in one Pebble
-batch, so they never disagree. "What have I shared" is a prefix scan of `/acl/{kind}/{owner}/`; "what is
+command (`set`, `accept`, `revoke`, `revoke_resource`, `revoke_owner`, `revoke_grantee`), applied in one Pebble
+batch, so they never disagree. A web share creates the grant `pending` and mails the grantee a link to
+`/calendar/shares`; `accept` is conditional inside the FSM (it never recreates a revoked grant) and a
+`set` with `keep_state` leaves an existing grant's state alone. Grants made before the invitation flow are
+`accepted`. `accept` and `keep_state` are unknown to a node on an earlier v0.15 batch binary: upgrade every
+node before anyone shares. "What have I shared" is a prefix scan of `/acl/{kind}/{owner}/`; "what is
 shared with me" is a prefix scan of `/aclrev/u:{me}/{kind}/`. Every prefix ends in `/`, so owner `ab`
 never matches `abc`. `Calendar.shared_with` is legacy: the `calendar-grants-v1` leader migration turns
 each entry into an accepted `freebusy` grant and clears the field, and nothing else reads it.
@@ -261,6 +269,8 @@ through `internal/netx`, whose dialer refuses non-public addresses on every conn
 - Pipeline tag flow: rules stage accumulates in `QueueEnvelope.PendingTags`, deliver stage applies via `store.AddTags` before Raft write.
 - Pipeline forwarding flow: rules stage "forward" action and account-level `ForwardAddress` preference both append to `QueueEnvelope.ForwardAddresses`. Deliver stage enqueues an `OutboundMessage` via `ForwardQueuer` after local delivery. `ForwardKeepCopy=false` skips local delivery. Forwarding errors are non-fatal (logged as warnings).
 - IMAP keyword convention: `$` prefix for custom keywords. `separateFlags()` splits system flags from keywords, `tagsToIMAPKeywords()` adds prefix.
+
+- Header views (`/mail/to-me`, `/mail/from-contacts`, `/mail/lists`, `/mail/lists/{id}`) are filters over node-local SQLite columns (`to_me`, `sender_addr`, `list_id`, `list_name` on `maildocument`), not folders and not in `store.VirtualMailboxes`. No Raft command or Pebble key backs them. `to_me IS NULL` marks a row the `HeaderBackfill` worker has not derived yet; `IndexMail` must never reset these columns. `to_me` is judged against the user's addresses when the row is indexed (`users`, `addresses`, `aliases`; a rebuild also reads `/system/address/`), so a later alias does not retro-fit old rows. "From my contacts" reads the contact book per request. Rows carry `data-real-mailbox` and `data-sel-key` (`uid:mailbox`); every action URL for these rows uses the real mailbox, and `BulkAction` takes `targets=uid:mailbox` pairs there (a bare UID is refused, since UIDs are only unique per mailbox).
 
 ### UI Patterns
 - Alpine.js `fetch()` for JSON API endpoints; HTMX for HTML fragment swaps. Don't use HTMX for JSON-returning endpoints.

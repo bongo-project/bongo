@@ -353,9 +353,11 @@ func TestAnswerAddsEventAndRepliesToOrganiser(t *testing.T) {
 			if !strings.Contains(string(ev.IcalRaw), "UID:"+imipUID) {
 				t.Errorf("stored object lost the UID:\n%s", ev.IcalRaw)
 			}
-			cals, _ := e.q.calendars.List(quotaUser)
-			if len(cals) != 1 || ev.CalendarId != cals[0].Guid {
-				t.Errorf("event in %q, calendars %v: want the default calendar", ev.CalendarId, cals)
+			// A new user also has a VTODO-only Tasks calendar; the event must
+			// land in the default event calendar, never in that one.
+			def, err := e.q.calendars.EnsureDefault(quotaUser)
+			if err != nil || def != "default" || ev.CalendarId != def {
+				t.Errorf("event in %q, default %q (%v): want the default event calendar", ev.CalendarId, def, err)
 			}
 			if ev.Organizer != imipOrganiser || ev.Title != "Planning" {
 				t.Errorf("event = %+v", ev)

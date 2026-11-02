@@ -104,6 +104,48 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 						<span>{ t(ctx, "nav.allMail") }</span>
 					</a>
 				</li>
+				<li class="nav-item">
+					<a
+						href="/mail/to-me"
+						if selected == "to-me" {
+							class="active"
+						}
+						hx-get="/mail/to-me"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span>
+						<span>{ t(ctx, "nav.toMe") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
+					<a
+						href="/mail/from-contacts"
+						if selected == "from-contacts" {
+							class="active"
+						}
+						hx-get="/mail/from-contacts"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
+						<span>{ t(ctx, "nav.fromContacts") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
+					<a
+						href="/mail/lists"
+						if isListsSelected(selected) {
+							class="active"
+						}
+						hx-get="/mail/lists"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span class="nav-icon" aria-hidden="true">@Icon("folder", "")</span>
+						<span>{ t(ctx, "nav.mailingLists") }</span>
+					</a>
+				</li>
 			</ul>
 		</div>
 		if hasCustomFolders(mailboxes) {
@@ -343,7 +385,7 @@ templ ContextMenu() {
 		x-on:click.away="close()"
 		x-on:keydown.escape.window="close()"
 		x-on:keydown="onKeydown($event)"
-		x-on:ctx-menu.window="openAt($event.detail.x, $event.detail.y, $event.detail.uid, $event.detail.mailbox)"
+		x-on:ctx-menu.window="openAt($event.detail.x, $event.detail.y, $event.detail.uid, $event.detail.mailbox, $event.detail.real)"
 		class="context-menu"
 		role="menu"
 		x-cloak=""

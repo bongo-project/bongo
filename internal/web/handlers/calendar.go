@@ -52,6 +52,9 @@ type CalendarHandler struct {
 	// owned lists the addresses of a user, for the declined filters. It is the
 	// address store once one is wired.
 	owned addressLister
+	// inviter sends share invitation emails off the request path. nil sends
+	// none: the grant is still created.
+	inviter *ShareInviter
 	// authservID is the authserv-id of the Authentication-Results header the
 	// delivery stage stamps, which is where the invitation card reads the
 	// DMARC verdict. Empty finds none.
@@ -525,7 +528,8 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if _, err := h.calendars.Get(userID, calID); err != nil {
+	cal, err := h.calendars.Get(userID, calID)
+	if err != nil {
 		http.Error(w, "calendar not found", http.StatusNotFound)
 		return
 	}
@@ -595,16 +599,23 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// A direct share is immediate, as it was before grants; invitations that
-	// wait for acceptance create pending grants instead.
 	now := time.Now()
 	if h.now != nil {
 		now = h.now()
 	}
-	if err := h.acl.SetCalendarGrant(userID, calID, targetID, level, store.GrantStateAccepted, userID, now); err != nil {
+	// A new grantee starts pending. A level change keeps the stored state,
+	// decided in the FSM so it cannot undo a Decline or an Accept that lands
+	// between the read above and this write.
+	if err := h.acl.SetCalendarGrantKeepState(userID, calID, targetID, level, store.GrantStatePending, userID, now); err != nil {
 		slog.Error("calendar: share failed", "user", userID, "calendar", calID, "error", err)
 		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
 		return
+	}
+	// Only a newly created grant sends the invitation, so the form cannot be
+	// used to send repeated emails. Best-effort: the grant stands either way.
+	if existing == nil {
+		_, ownerEmail := middleware.UserFromContext(r.Context())
+		h.queueShareInvite(r, userID, ownerEmail, targetID, parsed.Address, cal.Name)
 	}
 
 	w.Header().Set("HX-Trigger", "calendarRefresh")
@@ -753,6 +764,9 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	owner, calID, status := h.resolveCalendarTarget(userID, r.FormValue("calendar_id"), needWrite)
 	if status != 0 {
 		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	if h.refuseNonEventCalendar(w, r, owner, calID) {
 		return
 	}
 
@@ -927,6 +941,10 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	destCal, status := h.resolveMoveTarget(userID, owner, existing, r.FormValue("calendar_id"))
 	if status != 0 {
 		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	// An event already in a tasks-only calendar may stay there; it may not move in.
+	if destCal != existing.CalendarId && h.refuseNonEventCalendar(w, r, owner, destCal) {
 		return
 	}
 	if h.updateInstance(w, r, userID, owner, email, existing) { // "this event", "this and following"
@@ -1120,6 +1138,9 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	owner, calID, status := h.resolveCalendarTarget(userID, r.FormValue("calendar_id"), needWrite)
 	if status != 0 {
 		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	if h.refuseNonEventCalendar(w, r, owner, calID) {
 		return
 	}
 	file, hdr, err := r.FormFile("ics")

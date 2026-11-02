@@ -25,6 +25,10 @@ message Calendar {
   string publish_password_hash = 12;
   // subscription is set on a calendar that mirrors an external ICS feed.
   CalendarSubscription subscription = 13;
+  // components lists the iCalendar component kinds the calendar holds:
+  // "VEVENT", "VTODO" or both. Empty means VEVENT only, so every calendar
+  // written before this field existed keeps its meaning.
+  repeated string components = 14;
 }
 
 // CalendarSubscription marks a calendar as a read-only copy of an external

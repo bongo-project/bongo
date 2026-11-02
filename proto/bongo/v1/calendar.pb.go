@@ -42,7 +42,11 @@ type Calendar struct {
 	PublishDetail       string `protobuf:"bytes,11,opt,name=publish_detail,json=publishDetail,proto3" json:"publish_detail,omitempty"`
 	PublishPasswordHash string `protobuf:"bytes,12,opt,name=publish_password_hash,json=publishPasswordHash,proto3" json:"publish_password_hash,omitempty"`
 	// subscription is set on a calendar that mirrors an external ICS feed.
-	Subscription  *CalendarSubscription `protobuf:"bytes,13,opt,name=subscription,proto3" json:"subscription,omitempty"`
+	Subscription *CalendarSubscription `protobuf:"bytes,13,opt,name=subscription,proto3" json:"subscription,omitempty"`
+	// components lists the iCalendar component kinds the calendar holds:
+	// "VEVENT", "VTODO" or both. Empty means VEVENT only, so every calendar
+	// written before this field existed keeps its meaning.
+	Components    []string `protobuf:"bytes,14,rep,name=components,proto3" json:"components,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -168,6 +172,13 @@ func (x *Calendar) GetSubscription() *CalendarSubscription {
 	return nil
 }
 
+func (x *Calendar) GetComponents() []string {
+	if x != nil {
+		return x.Components
+	}
+	return nil
+}
+
 // CalendarSubscription marks a calendar as a read-only copy of an external
 // ICS feed and holds its refresh state. source_url is a secret: it may carry
 // a token, so it is shown to the owner as a host only, never to a grantee,
@@ -281,7 +292,7 @@ var File_bongo_v1_calendar_proto protoreflect.FileDescriptor
 
 const file_bongo_v1_calendar_proto_rawDesc = "" +
 	"\n" +
-	"\x17bongo/v1/calendar.proto\x12\bbongo.v1\"\xc7\x03\n" +
+	"\x17bongo/v1/calendar.proto\x12\bbongo.v1\"\xe7\x03\n" +
 	"\bCalendar\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -299,7 +310,10 @@ const file_bongo_v1_calendar_proto_rawDesc = "" +
 	" \x01(\fR\fpublishToken\x12%\n" +
 	"\x0epublish_detail\x18\v \x01(\tR\rpublishDetail\x122\n" +
 	"\x15publish_password_hash\x18\f \x01(\tR\x13publishPasswordHash\x12B\n" +
-	"\fsubscription\x18\r \x01(\v2\x1e.bongo.v1.CalendarSubscriptionR\fsubscription\"\xa6\x02\n" +
+	"\fsubscription\x18\r \x01(\v2\x1e.bongo.v1.CalendarSubscriptionR\fsubscription\x12\x1e\n" +
+	"\n" +
+	"components\x18\x0e \x03(\tR\n" +
+	"components\"\xa6\x02\n" +
 	"\x14CalendarSubscription\x12\x1d\n" +
 	"\n" +
 	"source_url\x18\x01 \x01(\tR\tsourceUrl\x12\x12\n" +

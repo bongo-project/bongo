@@ -8,6 +8,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -93,6 +94,24 @@ func (h *CalendarHandler) refuseSubscribed(owner, calID string) int {
 		return http.StatusForbidden
 	}
 	return 0
+}
+
+// refuseNonEventCalendar answers 400 (translated) when owner's calendar calID
+// holds no VEVENTs, such as the VTODO-only Tasks calendar: CalDAV would not
+// list an event filed there. It answers 500 when the calendar cannot be read,
+// and reports true when it has answered.
+func (h *CalendarHandler) refuseNonEventCalendar(w http.ResponseWriter, r *http.Request, owner, calID string) bool {
+	ok, err := h.calendars.CalendarHoldsComponent(owner, calID, store.ComponentEvent)
+	if err != nil {
+		slog.Error("calendar: reading calendar failed", "user", owner, "error", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return true
+	}
+	if !ok {
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "calendar.tasksOnlyRefused"), http.StatusBadRequest)
+		return true
+	}
+	return false
 }
 
 // grantedAccess is calendarAccess before the subscription cap: ownership and

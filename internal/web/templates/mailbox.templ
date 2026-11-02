@@ -101,7 +101,7 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 	<div class="mail-view" data-mailbox={ mailbox } x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
 		<div class="mail-head">
 			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
-			<h1 class="mail-head-title">{ mailboxTitle(mailbox) }</h1>
+			<h1 class="mail-head-title">{ mailboxHeading(ctx, mailbox) }</h1>
 			<span class="mail-head-meta">{ listCountsText(ctx, counts) }</span>
 			<div class="tool-spacer"></div>
 			<div class="mail-head-tools" role="toolbar" aria-label={ t(ctx, "mail.messageActions") }>
@@ -213,7 +213,7 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 			<button type="button" class="tool-btn danger" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>{ t(ctx, "mail.delete") }</button>
 			</div>
 			if len(messages) == 0 {
-				@EmptyState(t(ctx, "mail.noMessages"), t(ctx, "mail.emptyMailbox"))
+				@emptyListState(mailbox)
 			} else {
 				<div class="msg-list" role="list" aria-label={ t(ctx, "mail.messages") }>
 					@MessageRows(messages, mailbox)
@@ -239,6 +239,12 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 	@ContextMenu()
 }
 
+// emptyListState renders the empty state of a list view.
+templ emptyListState(mailbox string) {
+	{{ title, hint := emptyListText(ctx, mailbox) }}
+	@EmptyState(title, hint)
+}
+
 // rowRealMailbox is the mailbox a row's message really lives in, falling back
 // to the list mailbox when the summary does not carry one.
 func rowRealMailbox(msg MessageSummary, listMailbox string) string {
@@ -257,6 +263,9 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			tabindex="0"
 			data-uid={ fmt.Sprint(msg.UID) }
 			data-real-mailbox={ rowRealMailbox(msg, mailbox) }
+			if rowSelKey(msg, mailbox) != "" {
+				data-sel-key={ rowSelKey(msg, mailbox) }
+			}
 			x-on:contextmenu={ fmt.Sprintf("openContextMenu($event, %d, '%s')", msg.UID, mailbox) }
 			x-on:touchstart={ fmt.Sprintf("start($event, %d)", msg.UID) }
 			x-on:touchmove="move($event)"
@@ -267,12 +276,12 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 				class="msg-check"
 				aria-label={ t(ctx, "mail.selectMessage") }
 				x-on:change={ fmt.Sprintf("toggle(%d, $event)", msg.UID) }
-				x-bind:checked={ fmt.Sprintf("isSelected(%d)", msg.UID) }
+				x-bind:checked={ fmt.Sprintf("isSelected(%d, $el)", msg.UID) }
 			/>
 			<button
 				type="button"
 				class={ "msg-star", templ.KV("flagged", msg.Flagged) }
-				hx-post={ fmt.Sprintf("/mail/%s/%d/flags", encMailbox(mailbox), msg.UID) }
+				hx-post={ fmt.Sprintf("/mail/%s/%d/flags", encMailbox(rowActionMailbox(msg, mailbox)), msg.UID) }
 				hx-vals={ flagToggleVals(msg.Flagged) }
 				hx-swap="outerHTML"
 				if msg.Flagged {
@@ -290,7 +299,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			<div class="msg-main">
 				<div class="msg-line">
 					<span class="msg-from">
-						@msgRowLink(mailbox, msg.UID) {
+						@msgRowLink(rowActionMailbox(msg, mailbox), msg.UID) {
 							{ msg.From }
 						}
 					</span>
@@ -298,7 +307,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 				</div>
 				<div class="msg-line">
 					<span class="msg-subject">
-						@msgRowLink(mailbox, msg.UID) {
+						@msgRowLink(rowActionMailbox(msg, mailbox), msg.UID) {
 							{ msg.Subject }
 						}
 					</span>
@@ -308,7 +317,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 					if msg.ThreadCount > 1 {
 						<span
 							class="msg-thread-count"
-							hx-get={ fmt.Sprintf("/mail/%s/thread/%s", encMailbox(mailbox), msg.ThreadRoot) }
+							hx-get={ fmt.Sprintf("/mail/%s/thread/%s", encMailbox(rowActionMailbox(msg, mailbox)), msg.ThreadRoot) }
 							hx-target={ fmt.Sprintf("#thread-%s", msg.ThreadRoot) }
 							hx-swap="innerHTML"
 						>

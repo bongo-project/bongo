@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -976,7 +977,10 @@ func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limi
 // ListMessagesByGUIDs returns paged MailboxMessage records whose MailGuid is in the
 // provided set, with the real mailbox of each one in the second result. It scans
 // all mailboxes for the user and filters by GUID membership.
-// Results are sorted newest first by InternalDate.
+// No sort by InternalDate is applied: the messages are gathered mailbox by
+// mailbox, in UID order within each, and the whole list is then reversed
+// (see pageLocated), so the order is "last mailbox, highest UID first" rather
+// than newest first across mailboxes.
 func (ms *MailboxStore) ListMessagesByGUIDs(userID string, guidSet map[string]bool, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
 	mailboxes, err := ms.ListMailboxes(userID)
 	if err != nil {
@@ -997,6 +1001,79 @@ func (ms *MailboxStore) ListMessagesByGUIDs(userID string, guidSet map[string]bo
 	}
 
 	msgs, names, total := pageLocated(all, offset, limit)
+	return msgs, names, total, nil
+}
+
+// headerViewExcluded are the folders a header-based view never lists.
+var headerViewExcluded = []string{"Junk", "Trash", "Sent", "Drafts"}
+
+// HeaderViewExcludes reports whether the header-based views skip a mailbox:
+// Junk, Trash, Sent and Drafts, and any folder below them.
+func HeaderViewExcludes(mailbox string) bool {
+	for _, name := range headerViewExcluded {
+		if mailbox == name || strings.HasPrefix(mailbox, name+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// ListViewMessages returns the messages whose MailGuid is in guidSet, from
+// INBOX and the user's other folders (never Junk, Trash, Sent or Drafts),
+// newest first by InternalDate across all folders. The second result holds the
+// real mailbox of each message, index for index. The total counts every match,
+// not just the requested page.
+func (ms *MailboxStore) ListViewMessages(userID string, guidSet map[string]bool, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
+	if len(guidSet) == 0 {
+		return nil, nil, 0, nil
+	}
+	mailboxes, err := ms.ListMailboxes(userID)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	var all []located
+	for _, mb := range mailboxes {
+		if HeaderViewExcludes(mb.Name) {
+			continue
+		}
+		msgs, err := ms.ListMessages(userID, mb.Name)
+		if err != nil {
+			continue
+		}
+		for _, msg := range msgs {
+			if guidSet[msg.MailGuid] {
+				all = append(all, located{msg, mb.Name})
+			}
+		}
+	}
+
+	// Mailboxes are scanned one after another, so the scan order is not a date
+	// order across folders. Ties fall back to a stable, total order.
+	sort.SliceStable(all, func(i, j int) bool {
+		a, b := all[i], all[j]
+		if a.msg.InternalDate != b.msg.InternalDate {
+			return a.msg.InternalDate > b.msg.InternalDate
+		}
+		if a.mailbox != b.mailbox {
+			return a.mailbox < b.mailbox
+		}
+		return a.msg.Uid > b.msg.Uid
+	})
+	total := len(all)
+	if offset >= total {
+		return nil, nil, total, nil
+	}
+	end := total
+	if limit < total-offset {
+		end = offset + limit
+	}
+	page := all[offset:end]
+	msgs := make([]*bongov1.MailboxMessage, len(page))
+	names := make([]string, len(page))
+	for i, l := range page {
+		msgs[i], names[i] = l.msg, l.mailbox
+	}
 	return msgs, names, total, nil
 }
 

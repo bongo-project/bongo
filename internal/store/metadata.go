@@ -152,10 +152,32 @@ func (u *UserIndex) createSchema() error {
 	}
 	// Databases created before the preview columns existed. preview stays
 	// NULL-able: NULL means not yet computed, '' means computed and empty.
-	return ensureColumns(u.db, "maildocument", [][2]string{
+	if err := ensureColumns(u.db, "maildocument", [][2]string{
 		{"preview", "TEXT"},
 		{"has_attachments", "INTEGER NOT NULL DEFAULT 0"},
-	})
+		// Header-derived view columns. to_me stays NULL until derived, which
+		// is what the header backfill selects on; list_id is NULL when the
+		// message has no valid List-Id.
+		{"to_me", "INTEGER"},
+		{"sender_addr", "TEXT"},
+		{"list_name", "TEXT"},
+	}); err != nil {
+		return err
+	}
+	// These indexes name columns that an older database only has after
+	// ensureColumns, so they cannot live in the schema string above.
+	_, err := u.db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_maildocument_to_me
+			ON maildocument(to_me, received_at);
+		CREATE INDEX IF NOT EXISTS idx_maildocument_sender
+			ON maildocument(sender_addr);
+		CREATE INDEX IF NOT EXISTS idx_maildocument_list
+			ON maildocument(list_id, received_at);
+	`)
+	if err != nil {
+		return fmt.Errorf("creating header indexes: %w", err)
+	}
+	return nil
 }
 
 // ensureColumns adds any missing column to table. Table, column names and
