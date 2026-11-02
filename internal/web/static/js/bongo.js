@@ -1280,9 +1280,23 @@ document.addEventListener('alpine:init', () => {
   // override of a single instance carries no repeat rule, so the repeat
   // field is hidden for "this event". The CSP build cannot evaluate an inline
   // comparison, hence the getter.
-  Alpine.data('eventForm', (allDay, scope) => ({
+  // The Show as select starts on the default for the all-day state and
+  // follows the checkbox until the user picks a value themselves.
+  Alpine.data('eventForm', (allDay, scope, showAs, showAsTouched) => ({
     allDay: allDay,
     scope: scope,
+    showAs: showAs,
+    showAsTouched: showAsTouched,
+
+    allDayChanged(event) {
+      if (!this.showAsTouched) {
+        this.showAs = event.target.checked ? 'free' : 'busy';
+      }
+    },
+
+    showAsChanged() {
+      this.showAsTouched = true;
+    },
 
     get repeatHidden() {
       return this.scope === 'this';

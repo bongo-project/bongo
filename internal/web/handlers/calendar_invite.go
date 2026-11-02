@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -76,6 +77,12 @@ type invitation struct {
 // A save that changes neither time, place, repeat rule nor attendees sends
 // nothing, so it does not spend the recipient budget.
 func (h *CalendarHandler) notifyAttendees(r *http.Request, userID, email string, before, after *bongov1.Event) (notReached []string) {
+	return h.deliverPlan(r, userID, email, h.planAttendees(userID, email, before, after))
+}
+
+// planAttendees is the part of notifyAttendees that decides what to send,
+// without sending it. CalDAV implicit scheduling plans with it too.
+func (h *CalendarHandler) planAttendees(userID, email string, before, after *bongov1.Event) []invitation {
 	if h.invites == nil || (before == nil && after == nil) {
 		return nil
 	}
@@ -106,14 +113,20 @@ func (h *CalendarHandler) notifyAttendees(r *http.Request, userID, email string,
 			plan = append(plan, invitation{method: imip.MethodCancel, event: gone, to: h.inviteRecipients(userID, email, organiser, removed)})
 		}
 	}
-
-	return h.deliverPlan(r, userID, email, plan)
+	return plan
 }
 
 // deliverPlan sends each invitation of plan that has recipients and returns
 // the addresses that were not reached.
 func (h *CalendarHandler) deliverPlan(r *http.Request, userID, email string, plan []invitation) (notReached []string) {
-	locale := middleware.LocaleFromContext(r.Context())
+	_, notReached = h.deliverPlanIn(middleware.LocaleFromContext(r.Context()), userID, email, plan)
+	return notReached
+}
+
+// deliverPlanIn is deliverPlan with the locale given, for callers that have
+// no request: sent names every address a message was handed to and notReached
+// those it did not reach.
+func (h *CalendarHandler) deliverPlanIn(locale, userID, email string, plan []invitation) (sent, notReached []string) {
 	loc := h.userLocation(userID)
 	now := h.nowIn(userID)
 	for _, inv := range plan {
@@ -122,8 +135,13 @@ func (h *CalendarHandler) deliverPlan(r *http.Request, userID, email string, pla
 		}
 		missed := h.sendInvitation(userID, email, locale, loc, now, inv)
 		notReached = append(notReached, missed...)
+		for _, a := range inv.to {
+			if !slices.Contains(missed, a) {
+				sent = append(sent, a)
+			}
+		}
 	}
-	return notReached
+	return sent, notReached
 }
 
 // notifyInstance sends the iTIP messages that follow an instance edit or

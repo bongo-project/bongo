@@ -21,6 +21,57 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ReminderDelivery says where a reminder goes: the browser (SSE), the
+// owner's primary address, or both.
+type ReminderDelivery int32
+
+const (
+	ReminderDelivery_REMINDER_DELIVERY_BROWSER ReminderDelivery = 0
+	ReminderDelivery_REMINDER_DELIVERY_EMAIL   ReminderDelivery = 1
+	ReminderDelivery_REMINDER_DELIVERY_BOTH    ReminderDelivery = 2
+)
+
+// Enum value maps for ReminderDelivery.
+var (
+	ReminderDelivery_name = map[int32]string{
+		0: "REMINDER_DELIVERY_BROWSER",
+		1: "REMINDER_DELIVERY_EMAIL",
+		2: "REMINDER_DELIVERY_BOTH",
+	}
+	ReminderDelivery_value = map[string]int32{
+		"REMINDER_DELIVERY_BROWSER": 0,
+		"REMINDER_DELIVERY_EMAIL":   1,
+		"REMINDER_DELIVERY_BOTH":    2,
+	}
+)
+
+func (x ReminderDelivery) Enum() *ReminderDelivery {
+	p := new(ReminderDelivery)
+	*p = x
+	return p
+}
+
+func (x ReminderDelivery) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ReminderDelivery) Descriptor() protoreflect.EnumDescriptor {
+	return file_bongo_v1_event_proto_enumTypes[0].Descriptor()
+}
+
+func (ReminderDelivery) Type() protoreflect.EnumType {
+	return &file_bongo_v1_event_proto_enumTypes[0]
+}
+
+func (x ReminderDelivery) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ReminderDelivery.Descriptor instead.
+func (ReminderDelivery) EnumDescriptor() ([]byte, []int) {
+	return file_bongo_v1_event_proto_rawDescGZIP(), []int{0}
+}
+
 type Event struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Guid            string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
@@ -51,6 +102,12 @@ type Event struct {
 	Sequence int32 `protobuf:"varint,18,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	// iCalendar STATUS (TENTATIVE, CONFIRMED, CANCELLED), upper case.
 	Status string `protobuf:"bytes,19,opt,name=status,proto3" json:"status,omitempty"`
+	// How the reminder is delivered. Zero is the browser, so events written
+	// before the field existed keep their behaviour.
+	ReminderEmail ReminderDelivery `protobuf:"varint,20,opt,name=reminder_email,json=reminderEmail,proto3,enum=bongo.v1.ReminderDelivery" json:"reminder_email,omitempty"`
+	// iCalendar TRANSP:TRANSPARENT: the event does not make its owner busy.
+	// Read from ical_raw; the web form writes opaque events only.
+	Transparent bool `protobuf:"varint,21,opt,name=transparent,proto3" json:"transparent,omitempty"`
 	// Set only on instances produced by recurrence expansion, never persisted:
 	// the RECURRENCE-ID of the occurrence, as UTC basic date-time
 	// ("20300513T090000Z") or a date ("20300513") for an all-day series. The
@@ -224,6 +281,20 @@ func (x *Event) GetStatus() string {
 	return ""
 }
 
+func (x *Event) GetReminderEmail() ReminderDelivery {
+	if x != nil {
+		return x.ReminderEmail
+	}
+	return ReminderDelivery_REMINDER_DELIVERY_BROWSER
+}
+
+func (x *Event) GetTransparent() bool {
+	if x != nil {
+		return x.Transparent
+	}
+	return false
+}
+
 func (x *Event) GetRecurrenceId() string {
 	if x != nil {
 		return x.RecurrenceId
@@ -313,7 +384,7 @@ var File_bongo_v1_event_proto protoreflect.FileDescriptor
 
 const file_bongo_v1_event_proto_rawDesc = "" +
 	"\n" +
-	"\x14bongo/v1/event.proto\x12\bbongo.v1\"\xdc\x04\n" +
+	"\x14bongo/v1/event.proto\x12\bbongo.v1\"\xc1\x05\n" +
 	"\x05Event\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1f\n" +
 	"\vcalendar_id\x18\x02 \x01(\tR\n" +
@@ -338,14 +409,20 @@ const file_bongo_v1_event_proto_rawDesc = "" +
 	"\torganizer\x18\x10 \x01(\tR\torganizer\x120\n" +
 	"\tattendees\x18\x11 \x03(\v2\x12.bongo.v1.AttendeeR\tattendees\x12\x1a\n" +
 	"\bsequence\x18\x12 \x01(\x05R\bsequence\x12\x16\n" +
-	"\x06status\x18\x13 \x01(\tR\x06status\x12#\n" +
+	"\x06status\x18\x13 \x01(\tR\x06status\x12A\n" +
+	"\x0ereminder_email\x18\x14 \x01(\x0e2\x1a.bongo.v1.ReminderDeliveryR\rreminderEmail\x12 \n" +
+	"\vtransparent\x18\x15 \x01(\bR\vtransparent\x12#\n" +
 	"\rrecurrence_id\x182 \x01(\tR\frecurrenceId\"|\n" +
 	"\bAttendee\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04role\x18\x03 \x01(\tR\x04role\x12\x1a\n" +
 	"\bpartstat\x18\x04 \x01(\tR\bpartstat\x12\x12\n" +
-	"\x04rsvp\x18\x05 \x01(\bR\x04rsvpB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"\x04rsvp\x18\x05 \x01(\bR\x04rsvp*j\n" +
+	"\x10ReminderDelivery\x12\x1d\n" +
+	"\x19REMINDER_DELIVERY_BROWSER\x10\x00\x12\x1b\n" +
+	"\x17REMINDER_DELIVERY_EMAIL\x10\x01\x12\x1a\n" +
+	"\x16REMINDER_DELIVERY_BOTH\x10\x02B7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_bongo_v1_event_proto_rawDescOnce sync.Once
@@ -359,18 +436,21 @@ func file_bongo_v1_event_proto_rawDescGZIP() []byte {
 	return file_bongo_v1_event_proto_rawDescData
 }
 
+var file_bongo_v1_event_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_bongo_v1_event_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_bongo_v1_event_proto_goTypes = []any{
-	(*Event)(nil),    // 0: bongo.v1.Event
-	(*Attendee)(nil), // 1: bongo.v1.Attendee
+	(ReminderDelivery)(0), // 0: bongo.v1.ReminderDelivery
+	(*Event)(nil),         // 1: bongo.v1.Event
+	(*Attendee)(nil),      // 2: bongo.v1.Attendee
 }
 var file_bongo_v1_event_proto_depIdxs = []int32{
-	1, // 0: bongo.v1.Event.attendees:type_name -> bongo.v1.Attendee
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 0: bongo.v1.Event.attendees:type_name -> bongo.v1.Attendee
+	0, // 1: bongo.v1.Event.reminder_email:type_name -> bongo.v1.ReminderDelivery
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_bongo_v1_event_proto_init() }
@@ -383,13 +463,14 @@ func file_bongo_v1_event_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bongo_v1_event_proto_rawDesc), len(file_bongo_v1_event_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_bongo_v1_event_proto_goTypes,
 		DependencyIndexes: file_bongo_v1_event_proto_depIdxs,
+		EnumInfos:         file_bongo_v1_event_proto_enumTypes,
 		MessageInfos:      file_bongo_v1_event_proto_msgTypes,
 	}.Build()
 	File_bongo_v1_event_proto = out.File

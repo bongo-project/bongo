@@ -69,6 +69,8 @@ type AdminHandler struct {
 	startTime          time.Time
 	submissionsEnabled bool   // publish the _submissions._tcp SRV row (port 465)
 	mailHostname       string // configured SMTP hostname; used as MX expected-value hint
+	// resources reaches the calendar side of resource accounts (bookings).
+	resources func() ResourceBookings
 }
 
 // GossipLister returns gossip member info.
@@ -312,7 +314,8 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	isAdmin := scope.Global && r.FormValue("is_admin") == "1"
 	quotaStr := r.FormValue("quota_bytes")
 
-	if password == "" {
+	resource := isResourceForm(r)
+	if password == "" && !resource {
 		http.Error(w, "password is required", http.StatusBadRequest)
 		return
 	}
@@ -336,6 +339,12 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	// A resource has no password, no admin flag and no welcome mail.
+	if resource {
+		h.createResource(w, r, newEmail)
+		return
 	}
 
 	// Create user via auth package.
@@ -396,6 +405,9 @@ func (h *AdminHandler) renderUserForm(w http.ResponseWriter, r *http.Request, em
 		QuotaBytes:   profile.QuotaBytes,
 		PrimaryEmail: strings.ToLower(strings.TrimSpace(profile.Email)),
 		TempPassword: tempPassword,
+		Kind:         profile.Kind,
+		ResourceType: profile.ResourceType,
+		Capacity:     profile.Capacity,
 	}
 
 	// Populate the address list from the SQLite derived index (best-effort;
@@ -441,8 +453,18 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	quotaStr := r.FormValue("quota_bytes")
 
 	profile.DisplayName = displayName
-	// Field-level guard: only global admins may change the is_admin flag.
-	if scope.Global {
+	// Field-level guard: only global admins may change the is_admin flag. A
+	// resource is never an administrator, and its kind is fixed at creation.
+	if profile.Kind == auth.ResourceKind {
+		if v := r.FormValue("capacity"); v != "" {
+			c, err := strconv.ParseInt(v, 10, 64)
+			if err != nil || c < 0 || c > maxResourceCapacity {
+				http.Error(w, "capacity must be a number from 0 to 100000", http.StatusBadRequest)
+				return
+			}
+			profile.Capacity = c
+		}
+	} else if scope.Global {
 		profile.IsAdmin = r.FormValue("is_admin") == "1"
 	}
 	if quotaStr != "" {
@@ -508,7 +530,13 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	scope := middleware.AdminScopeFromContext(r.Context())
 
 	// Fail fast for a missing or out-of-scope user before spending bcrypt time.
-	if _, ok := h.requireUserAccess(w, scope, userID); !ok {
+	first, ok := h.requireUserAccess(w, scope, userID)
+	if !ok {
+		return
+	}
+	// A resource's password is random and nobody may know it.
+	if first.Kind == auth.ResourceKind {
+		http.Error(w, "a resource has no password", http.StatusBadRequest)
 		return
 	}
 
@@ -536,6 +564,11 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	profile, ok := h.requireUserAccess(w, scope, userID)
 	if !ok {
 		unlock()
+		return
+	}
+	if profile.Kind == auth.ResourceKind {
+		unlock()
+		http.Error(w, "a resource has no password", http.StatusBadRequest)
 		return
 	}
 	profile.PasswordHash = hash
@@ -2974,6 +3007,7 @@ func (h *AdminHandler) loadUsers(query string) []templates.AdminUserInfo {
 			IsAdmin:     profile.IsAdmin,
 			Disabled:    profile.Disabled,
 			QuotaBytes:  profile.QuotaBytes,
+			Kind:        profile.Kind,
 		})
 	}
 	return users

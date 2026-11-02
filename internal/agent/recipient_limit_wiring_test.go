@@ -148,6 +148,14 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	if got := a.deliverProc.CalendarReplies(); got == nil || got != any(a.calendarHandler) {
 		t.Errorf("deliver calendar replies = %v, want the calendar handler", got)
 	}
+	// Resource calendars: booking requests are answered by the calendar
+	// handler, which reads the profiles that tell a room from a person.
+	if got := a.deliverProc.ResourceBookings(); got == nil || got != any(a.calendarHandler) {
+		t.Errorf("deliver resource bookings = %v, want the calendar handler", got)
+	}
+	if !a.calendarHandler.HasProfiles() {
+		t.Error("calendar handler has no profile reader after Run: resources would never answer")
+	}
 	if a.AddressStore != nil && !a.calendarHandler.HasAddressStore() {
 		t.Error("calendar handler has no send-as address store after Run")
 	}
@@ -175,6 +183,25 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	}
 	if resp.StatusCode < 300 {
 		t.Errorf("POST /mail/{mailbox}/{uid}/invitation without a session = %d, want a refusal", resp.StatusCode)
+	}
+	// The booking admin routes sit in the admin group: unmounted would be a
+	// 404 or 405, mounted without a session is a refusal.
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/admin/users/u1/bookings"},
+		{http.MethodPost, "/admin/users/u1/bookings/g1/cancel"},
+	} {
+		req, err := http.NewRequest(route.method, fmt.Sprintf("http://127.0.0.1:%d%s", cfg.Web.Port, route.path), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", route.method, route.path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode < 300 {
+			t.Errorf("%s %s without a session = %d, want a refusal from the admin group", route.method, route.path, resp.StatusCode)
+		}
 	}
 	sl := a.calendarHandler.ShareLimiter()
 	if sl == nil {

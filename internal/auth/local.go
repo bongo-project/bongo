@@ -91,6 +91,14 @@ func (a *LocalAuth) AuthenticateProfile(username, password string) (string, *bon
 		return "", nil, ErrBadCredentials
 	}
 
+	// A room or equipment account has a random password nobody knows; this
+	// refusal covers the rolling-upgrade case and a hash that was somehow set.
+	// After bcrypt, like the disabled check, so it is indistinguishable from
+	// a wrong password in error and timing.
+	if profile.Kind == ResourceKind {
+		return "", nil, ErrBadCredentials
+	}
+
 	return userID, &profile, nil
 }
 

@@ -233,6 +233,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 									<button type="button" class="attendee-suggestion" @click="select(r)">
 										<span x-text="r.display_name"></span>
 										<span class="attendee-suggestion-email" x-text="r.email"></span>
+										<span class="attendee-suggestion-email" x-text="r.label"></span>
 									</button>
 								</li>
 							</template>
@@ -305,12 +306,20 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						type="checkbox"
 						name="all_day"
 						x-model="allDay"
+						x-on:change="allDayChanged"
 						if event != nil && event.AllDay {
 							checked
 						}
 						class="u-width-auto"
 					/>
 					{ t(ctx, "calendar.allDay") }
+				</label>
+				<label>
+					{ t(ctx, "calendar.showAs") }
+					<select name="show_as" x-model="showAs" x-on:change="showAsChanged">
+						<option value="busy" if eventShowAs(event, isNew) == "busy" { selected }>{ t(ctx, "calendar.busy") }</option>
+						<option value="free" if eventShowAs(event, isNew) == "free" { selected }>{ t(ctx, "calendar.free") }</option>
+					</select>
 				</label>
 				<div class="form-grid-two">
 					<label>
@@ -355,6 +364,14 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 							<option value="15" if eventReminderMinutes(event) == "15" { selected }>{ t(ctx, "calendar.reminder15") }</option>
 							<option value="30" if eventReminderMinutes(event) == "30" { selected }>{ t(ctx, "calendar.reminder30") }</option>
 							<option value="60" if eventReminderMinutes(event) == "60" { selected }>{ t(ctx, "calendar.reminder60") }</option>
+						</select>
+					</label>
+					<label>
+						{ t(ctx, "calendar.reminderDelivery") }
+						<select name="reminder_delivery">
+							<option value="browser" if eventReminderDelivery(event) == "browser" { selected }>{ t(ctx, "calendar.reminderDeliveryBrowser") }</option>
+							<option value="email" if eventReminderDelivery(event) == "email" { selected }>{ t(ctx, "calendar.reminderDeliveryEmail") }</option>
+							<option value="both" if eventReminderDelivery(event) == "both" { selected }>{ t(ctx, "calendar.reminderDeliveryBoth") }</option>
 						</select>
 					</label>
 				</div>
@@ -1068,11 +1085,30 @@ func eventFormData(ctx context.Context, e *bongov1.Event, isNew bool, date strin
 	if e != nil && e.AllDay {
 		allDay = "true"
 	}
+	// A saved event keeps its stored choice when the checkbox changes; a new
+	// one follows the checkbox until the user picks.
+	touched := "false"
+	if !isNew {
+		touched = "true"
+	}
 	scope := "all"
 	if occurrenceFromCtx(ctx) != nil && !isNew {
 		scope = "this"
 	}
-	return fmt.Sprintf("eventForm(%s, '%s')", allDay, scope)
+	return fmt.Sprintf("eventForm(%s, '%s', '%s', %s)", allDay, scope, eventShowAs(e, isNew), touched)
+}
+
+// eventShowAs is the Show as choice the form starts on: the stored one for a
+// saved event, Free for a new all-day event and Busy for a new timed one.
+func eventShowAs(e *bongov1.Event, isNew bool) string {
+	free := e != nil && e.Transparent
+	if isNew {
+		free = e != nil && e.AllDay
+	}
+	if free {
+		return "free"
+	}
+	return "busy"
 }
 
 func prevWeekYear(year, week int) int {
@@ -1242,6 +1278,16 @@ func eventReminderMinutes(e *bongov1.Event) string {
 	return fmt.Sprint(e.ReminderMinutes)
 }
 
+func eventReminderDelivery(e *bongov1.Event) string {
+	switch e.GetReminderEmail() {
+	case bongov1.ReminderDelivery_REMINDER_DELIVERY_EMAIL:
+		return "email"
+	case bongov1.ReminderDelivery_REMINDER_DELIVERY_BOTH:
+		return "both"
+	}
+	return "browser"
+}
+
 // MiniCalDay holds data for one day in the mini calendar.
 type MiniCalDay struct {
 	Day        int
@@ -1316,6 +1362,8 @@ func miniNextMonth(month int) int {
 // in the user's zone; it is empty for an all-day event.
 type AgendaItem struct {
 	Event       *bongov1.Event
+	// Task is set for a task row, which has no Event.
+	Task        *bongov1.Task
 	ColourClass string
 	TimeLabel   string
 }
@@ -1365,6 +1413,22 @@ templ AgendaContent(data AgendaData) {
 					<h3 class="agenda-day-head">{ day.Date.Format("Monday, January 2") }</h3>
 					<ul class="agenda-list">
 						for _, it := range day.Items {
+							if it.Task != nil {
+								<li class="agenda-item" data-task-guid={ it.Task.Guid }>
+									<span class="agenda-time">
+										if it.TimeLabel == "" {
+											{ t(ctx, "calendar.allDay") }
+										} else {
+											{ it.TimeLabel }
+										}
+									</span>
+									<span class={ "agenda-bar", it.ColourClass }></span>
+									<span class="agenda-body">
+										<a href={ templ.SafeURL(taskPath(it.Task.Guid)) } class="agenda-title">{ it.Task.Summary }</a>
+										<span class="agenda-location">{ t(ctx, "tasks.task") }</span>
+									</span>
+								</li>
+							} else {
 							<li class="agenda-item" data-cal-id={ eventCalendarID(it.Event) }>
 								<span class="agenda-time">
 									if it.TimeLabel == "" {
@@ -1381,6 +1445,7 @@ templ AgendaContent(data AgendaData) {
 									}
 								</span>
 							</li>
+							}
 						}
 					</ul>
 				</section>

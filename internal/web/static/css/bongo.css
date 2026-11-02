@@ -4847,6 +4847,8 @@ select.settings-select {
   padding: .6rem 1.25rem;
 }
 .agenda-item + .agenda-item { border-top: 1px solid var(--border-subtle); }
+.task-item { grid-template-columns: 5.5rem 4px minmax(0, 1fr) auto; }
+.agenda-actions { display: flex; gap: .5rem; align-items: flex-start; }
 .agenda-time { font-size: .82rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; padding-top: 2px; }
 .agenda-bar { border-radius: 2px; background: var(--accent); }
 .agenda-bar.cal-colour-blue { background-color: var(--cal-blue); }

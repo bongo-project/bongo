@@ -338,3 +338,25 @@ func TestComputeAndWriteDomainUsage_CountsTasks(t *testing.T) {
 		t.Errorf("other.com usage = %d, want %d", got, want2)
 	}
 }
+
+// The schedule inbox holds copies of iTIP parts of mail that is already
+// counted, and Place never adds to usage, so the recompute leaves it out.
+func TestComputeAndWriteDomainUsage_ExcludesScheduleInbox(t *testing.T) {
+	ps, dqs, applier := newRecomputeTestEnv(t)
+	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
+	writeMailMeta(t, ps, "u1", "m1", 1000)
+
+	inbox := store.NewScheduleInboxStore(ps, applier)
+	if err := inbox.Place("u1", "0123456789abcdef", make([]byte, 5000)); err != nil {
+		t.Fatal(err)
+	}
+	if items, err := inbox.List("u1"); err != nil || len(items) != 1 {
+		t.Fatalf("inbox holds %d items, %v; the test needs one", len(items), err)
+	}
+
+	computeAndWriteDomainUsage(ps, dqs, testLogger())
+
+	if got, _ := dqs.GetUsage("example.com"); got != 1000 {
+		t.Errorf("example.com usage = %d, want 1000 (mail only)", got)
+	}
+}

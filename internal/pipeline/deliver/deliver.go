@@ -108,6 +108,13 @@ type DeliverProcessor struct {
 	// calReplies applies iTIP REPLYs to the organiser's events after the
 	// message is stored. Nil leaves them as ordinary mail.
 	calReplies CalendarReplyApplier
+	// resourceBookings answers booking requests sent to room and equipment
+	// accounts (resource_booking.go). Nil leaves them as ordinary mail.
+	resourceBookings ResourceBookingAnswerer
+
+	// schedInbox receives the iTIP messages CalDAV clients show in their
+	// schedule inbox. Nil places none.
+	schedInbox ScheduleInboxPlacer
 
 	// srs and userDomains rewrite the envelope sender of forwards and reverse
 	// bounces addressed to an SRS address. Nil srs leaves forwards untouched
@@ -736,6 +743,8 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	p.enqueueForwards(env, raw, gate.approved)
 	p.sendVacationReplies(env, vacationReplies)
 	p.applyCalendarReplies(env, parsed, raw, dmarcResult, replyUsers)
+	p.answerResourceBookings(env, parsed, raw, dmarcResult, replyUsers)
+	p.placeScheduleInbox(env, parsed, raw, dmarcResult, replyUsers)
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
 	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)

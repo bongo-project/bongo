@@ -43,6 +43,13 @@ type Backend struct {
 
 	// grants authorises shared calendars. Nil means none are served.
 	grants GrantReader
+
+	// scheduler sends invitations and replies for a PUT or DELETE (RFC 6638
+	// implicit scheduling). Nil means none are sent and the scheduling
+	// collections are not served.
+	scheduler Scheduler
+	// inbox is the schedule inbox collection. Nil means it is empty.
+	inbox ScheduleInbox
 }
 
 // StorageGate is satisfied by *diskspace.Monitor.
@@ -438,6 +445,16 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		return nil, err
 	}
 
+	// Decide the scheduling before anything is written: a PUT that would
+	// schedule in a name the user may not send as is refused whole. Events of
+	// a shared calendar are the owner's meetings and are only stored.
+	var plan schedulePlan
+	if b.scheduler != nil && !t.shared() {
+		if plan, err = b.planSchedule(userID, calendar, event, existing); err != nil {
+			return nil, err
+		}
+	}
+
 	// Size the write with the quantity the usage recompute counts: the stored
 	// record. A create is the whole record; an update is its growth.
 	var addBytes int64
@@ -464,7 +481,14 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		b.logger.Info("caldav: event created", "user", userID, "calendar", calID, "guid", guid)
 	}
 
-	return eventToCalendarObject(t.user, t.calSeg, event)
+	// The object is saved; now send what the change calls for. The object
+	// returned, and so its ETag, is the one finally stored, which can differ
+	// from the client's by the SCHEDULE-STATUS the server added.
+	stored := event
+	if plan.mode != 0 {
+		stored = b.scheduleAfterSave(userID, plan, calendar, event, existing)
+	}
+	return eventToCalendarObject(t.user, t.calSeg, stored)
 }
 
 // DeleteCalendarObject removes an event.
@@ -507,11 +531,21 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 		return fmt.Errorf("reading event: %w", err)
 	}
 
+	// An event the user organises is cancelled for its attendees once it is
+	// gone. A shared calendar's events are the owner's and send nothing.
+	var organised *bongov1.Event
+	if b.scheduler != nil && !t.shared() {
+		if e, err := b.events.Get(userID, guid); err == nil {
+			organised = e
+		}
+	}
+
 	if err := b.events.Delete(userID, guid); err != nil {
 		b.logger.Warn("caldav: delete event failed", "user", userID, "guid", guid, "error", err)
 		return err
 	}
 	b.logger.Info("caldav: event deleted", "user", userID, "guid", guid)
+	b.cancelAfterDelete(userID, organised)
 	return nil
 }
 

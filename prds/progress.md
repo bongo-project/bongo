@@ -1601,3 +1601,17 @@ PATTERN: [testing] A browser check after green tests still finds things: here an
 PATTERN: [ui] htmx 2 does not swap 4xx/5xx bodies; a form that must show a server refusal needs a data-form-status target filled from htmx:responseError, and success answered with a fragment rather than HX-Refresh.
 PATTERN: [calendar] A new component kind means auditing every place that lists or files into calendars (pickers, move, import, iMIP), not only CalDAV.
 PATTERN: [ops] A usage-limit interruption mid-workflow loses only the running agents: resume with resumeFromRunId and the same args, and completed plan reviews replay from cache.
+
+## 2026-11-02: Phase 30 batch 5 (30.10, 30.15, 30.17, 30.18) and operator decisions
+
+- 30.10 US-020: ScheduleHandler in Bongo's CalDAV wrapper (calendar-auto-schedule, inbox and outbox, principal properties moved from the 404 propstat); implicit scheduling as organiser (REQUEST/CANCEL through the US-007 core, SCHEDULE-STATUS best-effort second write) and attendee (REPLY, including a create that already carries the answer); schedule inbox /user/{id}/schedinbox/ capped at 500, not counted in usage; outbox answers free-busy only; foreign ORGANIZER 403.
+- 30.15 US-012: Event.reminder_email (20) browser/email/both; leader worker; /user/{id}/remindersent/{guid}/{occurrence} written before the send; one due-reminder computation shared with SSE; reminder_minutes limited to the offered values.
+- 30.17 US-014: /tasks (overdue first, completed filter), CSRF POSTs, COMPLETED/STATUS kept in ical_raw, tasks in the agenda; read-only tasks show no actions.
+- 30.18 US-015: UserProfile kind/capacity/resource_type (12-14); resources refused on every login path like a wrong password; deliver-stage auto-answer from the resource's domain only, verified sender; bookings in the resource calendar; answers in the resource's locale.
+- Merge: 30.10 and 30.18 both hooked the deliver stage (kept both calls) and each split the REPLY sender; merged into replyEvent + deliverReply with the send-as check inside deliverReply, sendReplyIn a thin wrapper. 30.17's templ fmt churn (380 lines for 19 real) was rebuilt from HEAD before export.
+- Operator decisions 2026-11-02: no Tasks calendar for existing users (no users to migrate); the event form refuses an end not after the start; all-day events are busy in free/busy, transparent events are not (Event.transparent 21); the form has Show as Busy/Free, defaulting to Free for all-day and Busy for timed.
+- Full gate green; browser: Show as follows all-day until chosen, end-before-start refused, a task created, completed and listed under Completed.
+PATTERN: [merge] When two stories each refactor the same helper, merge onto one shape and put the security check (send-as) in the innermost function every caller passes through.
+PATTERN: [templ] A worker running `templ fmt` reformats hundreds of unrelated lines; compare `git diff` with `git diff -w` before export and rebuild the file from HEAD plus the real hunks.
+PATTERN: [calendar] A busy/free rule needs a structured field when expansion drops ical_raw (Event.transparent), or recurring instances lose it.
+PATTERN: [product] Check what mainstream clients default to before stating it: Google and Outlook make all-day events free by default, which changed the form's default.

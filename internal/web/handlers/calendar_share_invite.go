@@ -172,6 +172,13 @@ func inviteName(s string) string {
 // encoded by go-message after control characters are removed, so a name cannot
 // add a header.
 func buildPlainMail(from, to, subject, body string, now time.Time) ([]byte, error) {
+	return buildPlainMailAuto(from, to, subject, body, now, false)
+}
+
+// buildPlainMailAuto is buildPlainMail with an optional
+// "Auto-Submitted: auto-generated" header, so vacation replies and other
+// auto-responders do not answer the message.
+func buildPlainMailAuto(from, to, subject, body string, now time.Time, autoSubmitted bool) ([]byte, error) {
 	if !validMailAddress(from) || !validMailAddress(to) {
 		return nil, fmt.Errorf("invalid address")
 	}
@@ -189,6 +196,9 @@ func buildPlainMail(from, to, subject, body string, now time.Time) ([]byte, erro
 	h.SetAddressList("From", []*gomessage.Address{{Address: from}})
 	h.SetAddressList("To", []*gomessage.Address{{Address: to}})
 	h.Set("Content-Type", "text/plain; charset=UTF-8")
+	if autoSubmitted {
+		h.Set("Auto-Submitted", "auto-generated")
+	}
 
 	var out bytes.Buffer
 	w, err := gomessage.CreateSingleInlineWriter(&out, h)

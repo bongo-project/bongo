@@ -413,6 +413,7 @@ func newOverride(s *seriesCal, base *ical.Component, form *bongov1.Event, slot t
 		ov.Props.Set(icalevent.InSeriesForm(ical.PropDateTimeStart, like, time.Unix(form.StartTime, 0)))
 		ov.Props.Set(icalevent.InSeriesForm(ical.PropDateTimeEnd, like, time.Unix(form.EndTime, 0)))
 	}
+	applyTransparency(ov.Props, form.Transparent)
 	stamp(ov, seq, now)
 	return ov
 }
@@ -631,6 +632,8 @@ func newSeriesFrom(in instanceEdit, before int) (*bongov1.Event, error) {
 	ns.RecurrenceId = ""
 	ns.Title, ns.Description, ns.Location = form.Title, form.Description, form.Location
 	ns.CalendarId, ns.AllDay, ns.ReminderMinutes = form.CalendarId, form.AllDay, form.ReminderMinutes
+	ns.ReminderEmail = form.ReminderEmail
+	ns.Transparent = form.Transparent
 	ns.StartTime, ns.EndTime = form.StartTime, form.EndTime
 	ns.Attendees = form.Attendees
 	ns.Rrule = rule

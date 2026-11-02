@@ -15,15 +15,12 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// Markers for the two one-time steps of the tasks start-up job. Each is
-// written after its step succeeds, so a failure is retried by the next pass.
-var (
-	blankEventsMarkerKey   = []byte("/system/migrations/vtodo-blank-events-v1")
-	tasksCalendarMarkerKey = []byte("/system/migrations/tasks-calendar-v1")
-)
+// blankEventsMarkerKey marks the one-time listing as done. It is written after
+// the listing succeeds, so a failure is retried by the next pass.
+var blankEventsMarkerKey = []byte("/system/migrations/vtodo-blank-events-v1")
 
-// tasksMigrationInterval is how often a node that has not yet seen both
-// markers checks whether it is leader and the job is due. A variable so tests
+// tasksMigrationInterval is how often a node that has not yet seen the
+// marker checks whether it is leader and the job is due. A variable so tests
 // can shorten it.
 var tasksMigrationInterval = 30 * time.Second
 
@@ -46,22 +43,20 @@ func (a *Agent) setMarker(key []byte) error {
 	return applier.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: key, Value: []byte("1")}, 5*time.Second)
 }
 
-// migrateTasksPass does the two one-time jobs that come with tasks:
+// migrateTasksPass does the one-time job that comes with tasks: it lists, in
+// the log, the events a VTODO PUT left behind before CalDAV refused them, an
+// event whose iCalendar holds no VEVENT but a VTODO or VJOURNAL. It logs the
+// user, guid and calendar only, never the summary or description, and deletes
+// nothing.
 //
-//  1. Lists, in the log, the events a VTODO PUT left behind before CalDAV
-//     refused them: an event whose iCalendar holds no VEVENT but a VTODO or
-//     VJOURNAL. It logs the user, guid and calendar only, never the summary
-//     or description, and deletes nothing.
-//  2. Gives every existing user who already has calendars a Tasks calendar
-//     for VTODO. go-webdav serves neither MKCALENDAR nor a component set on
-//     MKCOL, so without it an existing account has nowhere to put a task.
-//     A user with no calendars gets one on the first EnsureDefault.
+// Existing users are not given a Tasks calendar here; a new account gets one
+// from EnsureDefault.
 //
 // It writes only when isLeader reports true, checked before anything is read.
-// It reports whether both steps are finished (marked). It returns false on a
+// It reports whether the job is finished (marked). It returns false on a
 // follower and on any error; the caller retries. Startup does not fail on it.
 func (a *Agent) migrateTasksPass(isLeader func() bool) (done bool) {
-	if a.Store == nil || a.Calendars == nil || !isLeader() {
+	if a.Store == nil || !isLeader() {
 		return false
 	}
 	blankDone, err := a.markerSet(blankEventsMarkerKey)
@@ -69,90 +64,53 @@ func (a *Agent) migrateTasksPass(isLeader func() bool) (done bool) {
 		a.logger.Warn("tasks-migration: blank-events marker unreadable", "error", err)
 		return false
 	}
-	calDone, err := a.markerSet(tasksCalendarMarkerKey)
-	if err != nil {
-		a.logger.Warn("tasks-migration: tasks-calendar marker unreadable", "error", err)
-		return false
-	}
-	if blankDone && calDone {
+	if blankDone {
 		return true
 	}
 
-	users, blank, err := a.scanForTasksMigration(!blankDone, isLeader)
+	blank, err := a.scanForBlankEvents()
 	if err != nil {
 		a.logger.Warn("tasks-migration: scan failed", "error", err)
 		return false
 	}
-	if !blankDone {
-		if blank > 0 {
-			a.logger.Warn("tasks-migration: events stored from a VTODO or VJOURNAL PUT are listed above; they were left in place",
-				"count", blank)
-		}
-		if err := a.setMarker(blankEventsMarkerKey); err != nil {
-			a.logger.Warn("tasks-migration: blank-events marker not written", "error", err)
-			return false
-		}
+	if blank > 0 {
+		a.logger.Warn("tasks-migration: events stored from a VTODO or VJOURNAL PUT are listed above; they were left in place",
+			"count", blank)
 	}
-	if !calDone {
-		added := 0
-		for _, userID := range users {
-			if !isLeader() {
-				return false
-			}
-			ok, err := a.addTasksCalendar(userID)
-			if err != nil {
-				a.logger.Warn("tasks-migration: tasks calendar not added", "user", userID, "error", err)
-				return false
-			}
-			if ok {
-				added++
-			}
-		}
-		if added > 0 {
-			a.logger.Info("tasks-migration: added the Tasks calendar", "users", added)
-		}
-		if err := a.setMarker(tasksCalendarMarkerKey); err != nil {
-			a.logger.Warn("tasks-migration: tasks-calendar marker not written", "error", err)
-			return false
-		}
+	if err := a.setMarker(blankEventsMarkerKey); err != nil {
+		a.logger.Warn("tasks-migration: blank-events marker not written", "error", err)
+		return false
 	}
 	return true
 }
 
-// scanForTasksMigration streams the user key space once. It returns the IDs
-// of the users that have a profile and, when logBlank is set, logs each blank
-// event as it is met and returns how many there were. Nothing but the user
-// IDs is kept.
-func (a *Agent) scanForTasksMigration(logBlank bool, isLeader func() bool) (users []string, blank int, err error) {
+// scanForBlankEvents streams the event key space once, logs each blank event
+// as it is met and returns how many there were. Nothing is kept.
+func (a *Agent) scanForBlankEvents() (blank int, err error) {
 	iter, err := a.Store.PrefixScan([]byte("/user/"))
 	if err != nil {
-		return nil, 0, fmt.Errorf("scanning users: %w", err)
+		return 0, fmt.Errorf("scanning events: %w", err)
 	}
 	defer iter.Close()
 
 	for iter.Next() {
 		parts := strings.SplitN(strings.TrimPrefix(string(iter.Key()), "/user/"), "/", 3)
-		if len(parts) < 2 {
+		if len(parts) != 3 || parts[1] != "event" {
 			continue
 		}
-		switch {
-		case len(parts) == 2 && parts[1] == "profile":
-			users = append(users, parts[0])
-		case logBlank && len(parts) == 3 && parts[1] == "event":
-			val, verr := iter.Value()
-			if verr != nil {
-				continue
-			}
-			var ev bongov1.Event
-			if proto.Unmarshal(val, &ev) != nil || !isBlankTodoEvent(ev.IcalRaw) {
-				continue
-			}
-			blank++
-			a.logger.Warn("tasks-migration: event holds no VEVENT, left in place",
-				"user", parts[0], "guid", parts[2], "calendar", ev.CalendarId)
+		val, verr := iter.Value()
+		if verr != nil {
+			continue
 		}
+		var ev bongov1.Event
+		if proto.Unmarshal(val, &ev) != nil || !isBlankTodoEvent(ev.IcalRaw) {
+			continue
+		}
+		blank++
+		a.logger.Warn("tasks-migration: event holds no VEVENT, left in place",
+			"user", parts[0], "guid", parts[2], "calendar", ev.CalendarId)
 	}
-	return users, blank, nil
+	return blank, nil
 }
 
 // isBlankTodoEvent reports whether raw is an iCalendar object with no VEVENT
@@ -175,28 +133,6 @@ func isBlankTodoEvent(raw []byte) bool {
 		}
 	}
 	return other
-}
-
-// addTasksCalendar creates the Tasks calendar for a user who has calendars
-// and none that holds tasks. It reports whether it created one. A user with
-// no calendars is left to EnsureDefault.
-func (a *Agent) addTasksCalendar(userID string) (bool, error) {
-	cals, err := a.Calendars.List(userID)
-	if err != nil {
-		return false, fmt.Errorf("listing calendars: %w", err)
-	}
-	if len(cals) == 0 {
-		return false, nil
-	}
-	for _, c := range cals {
-		if c.Guid == store.TasksCalendarGUID || store.CalendarAllows(c, store.ComponentTodo) {
-			return false, nil
-		}
-	}
-	if _, err := a.Calendars.Create(userID, store.NewTasksCalendar()); err != nil {
-		return false, fmt.Errorf("creating tasks calendar: %w", err)
-	}
-	return true, nil
 }
 
 // runTasksMigration retries migrateTasksPass on every tick until it reports

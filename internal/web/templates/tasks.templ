@@ -1,0 +1,257 @@
+package templates
+
+import (
+	"net/url"
+	"strconv"
+
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
+)
+
+// TaskRow is one task of the list. The handler formats the due label in the
+// user's zone and decides which rows are overdue.
+type TaskRow struct {
+	Task        *bongov1.Task
+	DueLabel    string
+	Overdue     bool
+	Recurring   bool
+	ColourClass string
+	// ReadOnly is set for a task in a subscribed calendar: the server answers
+	// 403 to Complete, Reopen and Delete, so the row does not offer them.
+	ReadOnly bool
+}
+
+// TasksData is everything the task list renders.
+type TasksData struct {
+	Rows      []TaskRow
+	Completed bool
+	// Calendars are the calendars a new task can be filed into.
+	Calendars []*bongov1.Calendar
+	Email     string
+}
+
+// TaskFormData is the edit form of one task. DueDate and DueTime are the
+// values for the date and time inputs, in the user's zone.
+type TaskFormData struct {
+	Task      *bongov1.Task
+	DueDate   string
+	DueTime   string
+	Recurring bool
+	Email     string
+}
+
+func taskPath(guid string) string {
+	return "/tasks/" + url.PathEscape(guid)
+}
+
+func taskAction(guid, action string) string {
+	return taskPath(guid) + "/" + action
+}
+
+func taskPriorityValue(p int32) string {
+	return strconv.Itoa(int(p))
+}
+
+func taskIsDone(t *bongov1.Task) bool {
+	return t.Status == "COMPLETED" || t.Status == "CANCELLED"
+}
+
+templ TasksSidebar() {
+	<nav aria-label={ t(ctx, "tasks.navigation") }>
+		<div class="sidebar-group">
+			<div class="sidebar-label">{ t(ctx, "nav.tasks") }</div>
+			<ul class="nav-list">
+				<li class="nav-item">
+					<a href="/tasks" class="active">
+						<span class="nav-icon" aria-hidden="true">@Icon("check", "")</span>
+						<span>{ t(ctx, "nav.tasks") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
+					<a href="/calendar">
+						<span class="nav-icon" aria-hidden="true">@Icon("calendar", "")</span>
+						<span>{ t(ctx, "nav.calendar") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
+					<a href="/mail/INBOX">
+						<span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span>
+						<span>{ t(ctx, "nav.backToMail") }</span>
+					</a>
+				</li>
+			</ul>
+		</div>
+	</nav>
+}
+
+templ taskPriorityOptions(selected int32) {
+	<option value="0" selected?={ selected == 0 }>{ t(ctx, "tasks.priorityNone") }</option>
+	<option value="1" selected?={ selected == 1 }>{ t(ctx, "tasks.priorityHigh") }</option>
+	<option value="5" selected?={ selected == 5 }>{ t(ctx, "tasks.priorityMedium") }</option>
+	<option value="9" selected?={ selected == 9 }>{ t(ctx, "tasks.priorityLow") }</option>
+	if selected == 2 || selected == 3 || selected == 4 || selected == 6 || selected == 7 || selected == 8 {
+		<option value={ taskPriorityValue(selected) } selected>{ taskPriorityValue(selected) }</option>
+	}
+}
+
+templ TasksPage(data TasksData) {
+	@LayoutWithContent(t(ctx, "nav.tasks"), data.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@TasksSidebar()
+		</aside>
+		<main class="content" id="main-content">
+			<div class="page-head">
+				<h1>{ t(ctx, "nav.tasks") }</h1>
+				<div class="spacer"></div>
+				if data.Completed {
+					<a href="/tasks" class="tool-btn outline">{ t(ctx, "tasks.showOpen") }</a>
+				} else {
+					<a href="/tasks?show=completed" class="tool-btn outline">{ t(ctx, "tasks.showCompleted") }</a>
+				}
+			</div>
+			if !data.Completed {
+				<details class="settings-card u-mt-1">
+					<summary class="settings-row-title u-p-18">{ t(ctx, "tasks.newTask") }</summary>
+					<form method="post" action="/tasks" class="u-p-18">
+						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+						<div class="form-grid-two">
+							<label>
+								<span class="settings-row-title">{ t(ctx, "tasks.summary") }</span>
+								<input type="text" name="summary" class="settings-input u-w-full" required maxlength="255"/>
+							</label>
+							<label>
+								<span class="settings-row-title">{ t(ctx, "tasks.priority") }</span>
+								<select name="priority" class="settings-input u-w-full">
+									@taskPriorityOptions(0)
+								</select>
+							</label>
+							<label>
+								<span class="settings-row-title">{ t(ctx, "tasks.dueDate") }</span>
+								<input type="date" name="due_date" class="settings-input u-w-full"/>
+							</label>
+							<label>
+								<span class="settings-row-title">{ t(ctx, "tasks.dueTime") }</span>
+								<input type="time" name="due_time" class="settings-input u-w-full"/>
+							</label>
+							if len(data.Calendars) > 1 {
+								<label>
+									<span class="settings-row-title">{ t(ctx, "tasks.calendar") }</span>
+									<select name="calendar_id" class="settings-input u-w-full">
+										for _, c := range data.Calendars {
+											<option value={ c.Guid }>{ c.Name }</option>
+										}
+									</select>
+								</label>
+							}
+						</div>
+						<label>
+							<span class="settings-row-title">{ t(ctx, "tasks.description") }</span>
+							<textarea name="description" class="settings-input u-w-full" rows="3"></textarea>
+						</label>
+						<button type="submit" class="tool-btn primary">{ t(ctx, "tasks.create") }</button>
+					</form>
+				</details>
+			}
+			<div class="agenda card u-mt-1" id="tasks">
+				if len(data.Rows) == 0 {
+					<p class="agenda-empty">
+						if data.Completed {
+							{ t(ctx, "tasks.emptyCompleted") }
+						} else {
+							{ t(ctx, "tasks.emptyOpen") }
+						}
+					</p>
+				}
+				<ul class="agenda-list">
+					for _, row := range data.Rows {
+						<li class="agenda-item task-item" data-task-guid={ row.Task.Guid }>
+							<span class="agenda-time">
+								if row.DueLabel != "" {
+									{ row.DueLabel }
+								} else {
+									{ t(ctx, "tasks.noDue") }
+								}
+							</span>
+							<span class={ "agenda-bar", row.ColourClass }></span>
+							<span class="agenda-body">
+								<a href={ templ.SafeURL(taskPath(row.Task.Guid)) } class={ "agenda-title", templ.KV("event-cancelled", row.Task.Status == "CANCELLED") }>{ row.Task.Summary }</a>
+								if row.Overdue {
+									<span class="agenda-location">{ t(ctx, "tasks.overdue") }</span>
+								}
+								if row.Recurring {
+									<span class="agenda-location">{ t(ctx, "tasks.recurring") }</span>
+								}
+							</span>
+							<span class="agenda-actions">
+								if !row.ReadOnly {
+									if taskIsDone(row.Task) {
+										<form method="post" action={ templ.SafeURL(taskAction(row.Task.Guid, "reopen")) } class="u-inline">
+											<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+											<button type="submit" class="tool-btn outline">{ t(ctx, "tasks.reopen") }</button>
+										</form>
+									} else {
+										<form method="post" action={ templ.SafeURL(taskAction(row.Task.Guid, "complete")) } class="u-inline">
+											<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+											<button type="submit" class="tool-btn outline">{ t(ctx, "tasks.complete") }</button>
+										</form>
+									}
+									<form method="post" action={ templ.SafeURL(taskAction(row.Task.Guid, "delete")) } class="u-inline">
+										<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+										<button type="submit" class="tool-btn outline">{ t(ctx, "common.delete") }</button>
+									</form>
+								}
+							</span>
+						</li>
+					}
+				</ul>
+			</div>
+		</main>
+	}
+}
+
+templ TaskEditPage(data TaskFormData) {
+	@LayoutWithContent(t(ctx, "tasks.editTask"), data.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@TasksSidebar()
+		</aside>
+		<main class="content" id="main-content">
+			<div class="page-head">
+				<h1>{ t(ctx, "tasks.editTask") }</h1>
+				<div class="spacer"></div>
+				<a href="/tasks" class="tool-btn outline">&larr; { t(ctx, "tasks.backToTasks") }</a>
+			</div>
+			<div class="settings-card u-mt-1">
+				<form method="post" action={ templ.SafeURL(taskPath(data.Task.Guid)) } class="u-p-18">
+					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+					<div class="form-grid-two">
+						<label>
+							<span class="settings-row-title">{ t(ctx, "tasks.summary") }</span>
+							<input type="text" name="summary" value={ data.Task.Summary } class="settings-input u-w-full" required maxlength="255"/>
+						</label>
+						<label>
+							<span class="settings-row-title">{ t(ctx, "tasks.priority") }</span>
+							<select name="priority" class="settings-input u-w-full">
+								@taskPriorityOptions(data.Task.Priority)
+							</select>
+						</label>
+						<label>
+							<span class="settings-row-title">{ t(ctx, "tasks.dueDate") }</span>
+							<input type="date" name="due_date" value={ data.DueDate } class="settings-input u-w-full"/>
+						</label>
+						<label>
+							<span class="settings-row-title">{ t(ctx, "tasks.dueTime") }</span>
+							<input type="time" name="due_time" value={ data.DueTime } class="settings-input u-w-full"/>
+						</label>
+					</div>
+					<label>
+						<span class="settings-row-title">{ t(ctx, "tasks.description") }</span>
+						<textarea name="description" class="settings-input u-w-full" rows="4">{ data.Task.Description }</textarea>
+					</label>
+					if data.Recurring {
+						<p class="agenda-location">{ t(ctx, "tasks.recurringNote") }</p>
+					}
+					<button type="submit" class="tool-btn primary">{ t(ctx, "common.save") }</button>
+				</form>
+			</div>
+		</main>
+	}
+}

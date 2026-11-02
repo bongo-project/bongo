@@ -64,6 +64,8 @@ type shEnv struct {
 	acl    *store.ACLStore
 	quota  shQuota
 	srv    *httptest.Server
+	// backend is the backend behind srv, for tests that wire more into it.
+	backend *Backend
 }
 
 func newShEnv(t *testing.T) *shEnv {
@@ -112,6 +114,7 @@ func newShEnv(t *testing.T) *shEnv {
 	backend := NewBackend(e.events, e.cals, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	backend.SetGrants(e.acl)
 	backend.SetQuotaChecker(e.quota)
+	e.backend = backend
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	h := PrivilegeFilter(&caldav.Handler{Backend: backend, Prefix: "/caldav"}, backend.ReadOnlyShare, logger)
 	e.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

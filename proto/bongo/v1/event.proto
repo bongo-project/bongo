@@ -33,12 +33,26 @@ message Event {
   int32 sequence = 18;
   // iCalendar STATUS (TENTATIVE, CONFIRMED, CANCELLED), upper case.
   string status = 19;
+  // How the reminder is delivered. Zero is the browser, so events written
+  // before the field existed keep their behaviour.
+  ReminderDelivery reminder_email = 20;
+  // iCalendar TRANSP:TRANSPARENT: the event does not make its owner busy.
+  // Read from ical_raw; the web form writes opaque events only.
+  bool transparent = 21;
   // Set only on instances produced by recurrence expansion, never persisted:
   // the RECURRENCE-ID of the occurrence, as UTC basic date-time
   // ("20300513T090000Z") or a date ("20300513") for an all-day series. The
   // instance's guid stays the series guid. High number so it cannot collide
   // with the stored fields added alongside it.
   string recurrence_id = 50;
+}
+
+// ReminderDelivery says where a reminder goes: the browser (SSE), the
+// owner's primary address, or both.
+enum ReminderDelivery {
+  REMINDER_DELIVERY_BROWSER = 0;
+  REMINDER_DELIVERY_EMAIL = 1;
+  REMINDER_DELIVERY_BOTH = 2;
 }
 
 // Attendee is the structured copy of an ATTENDEE property. ical_raw stays the

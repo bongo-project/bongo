@@ -59,9 +59,39 @@ type CalendarHandler struct {
 	// delivery stage stamps, which is where the invitation card reads the
 	// DMARC verdict. Empty finds none.
 	authservID string
+	// tasks feeds the agenda with the open tasks that are due. nil lists none.
+	tasks *store.TaskStore
+	// profiles tells resources from people, for booking answers and the
+	// free/busy of resources. nil turns resource calendars off.
+	profiles profileReader
+	// locales supplies a user's stored preferred language for mail the server
+	// sends on their behalf with no request to read it from. nil means the
+	// server default.
+	locales localeSource
 	// now is the clock; nil means time.Now. Tests inject a fixed one.
 	now func() time.Time
 }
+
+// SetLocaleSource wires the stored preferences that name the language of a
+// resource's booking answers.
+func (h *CalendarHandler) SetLocaleSource(l localeSource) { h.locales = l }
+
+// serverLocale is the language used when a user has no stored preference.
+const serverLocale = "en"
+
+// storedLocale returns the preferred language stored for userID, or the server
+// default when there is none.
+func (h *CalendarHandler) storedLocale(userID string) string {
+	if h.locales != nil {
+		if p := h.locales.Get(userID); p != nil && p.Locale != "" {
+			return p.Locale
+		}
+	}
+	return serverLocale
+}
+
+// SetTaskStore wires the task store the agenda reads due tasks from.
+func (h *CalendarHandler) SetTaskStore(ts *store.TaskStore) { h.tasks = ts }
 
 // zoneSource resolves a user's preferred time zone.
 type zoneSource interface {
@@ -341,10 +371,18 @@ func (h *CalendarHandler) AgendaView(w http.ResponseWriter, r *http.Request) {
 	events = h.hideDeclined(userID, email, events)
 	r, events = h.withShared(r, userID, events, calColorMap, from.Unix(), to.Unix())
 
+	var dueTasks []*bongov1.Task
+	if h.tasks != nil {
+		if dueTasks, err = h.tasks.ListAll(userID); err != nil {
+			fail(w, r, http.StatusInternalServerError, "tasks.errLoadFailed")
+			return
+		}
+	}
+
 	data := templates.AgendaData{
 		From:      from,
 		To:        to.AddDate(0, 0, -1),
-		Days:      buildAgenda(from, agendaRangeDays, events, calColorMap, loc),
+		Days:      buildAgenda(from, agendaRangeDays, events, dueTasks, calColorMap, loc),
 		PrevPath:  agendaFromPath(from.AddDate(0, 0, -agendaRangeDays)),
 		NextPath:  agendaFromPath(to),
 		TodayPath: "/calendar/agenda",
@@ -361,18 +399,23 @@ func agendaFromPath(d time.Time) string {
 	return "/calendar/agenda?from=" + d.Format("2006-01-02")
 }
 
-// buildAgenda groups events by day over [from, from+days) in loc. All-day
-// events keep their UTC date (eventDateKey). The store query overlaps the
+// buildAgenda groups events and open tasks that are due by day over
+// [from, from+days) in loc. All-day events keep their UTC date (eventDateKey),
+// and so does a task whose DUE is a DATE. The store query overlaps the
 // neighbouring day, so occurrences whose date falls outside the range are
-// dropped here. Within a day, all-day events come first, then start time.
-func buildAgenda(from time.Time, days int, events []*bongov1.Event, calColorMap map[string]string, loc *time.Location) []templates.AgendaDay {
+// dropped here. Within a day, all-day rows come first, then by time; events
+// come before tasks at the same time.
+func buildAgenda(from time.Time, days int, events []*bongov1.Event, tasks []*bongov1.Task, calColorMap map[string]string, loc *time.Location) []templates.AgendaDay {
 	first := from.In(loc)
 	firstKey := first.Format("2006-01-02")
 	endKey := first.AddDate(0, 0, days).Format("2006-01-02")
 
 	type keyed struct {
-		key string
-		ev  *bongov1.Event
+		key    string
+		ev     *bongov1.Event
+		task   *bongov1.Task
+		allDay bool
+		at     int64
 	}
 	var in []keyed
 	for _, e := range events {
@@ -380,16 +423,27 @@ func buildAgenda(from time.Time, days int, events []*bongov1.Event, calColorMap 
 		if k < firstKey || k >= endKey {
 			continue
 		}
-		in = append(in, keyed{k, e})
+		in = append(in, keyed{key: k, ev: e, allDay: e.AllDay, at: e.StartTime})
+	}
+	for _, t := range tasks {
+		if t.Due == 0 || !isOpenTask(t) {
+			continue
+		}
+		dateOnly, _ := icalevent.TodoTraits(t.IcalRaw)
+		k := taskDueDay(t.Due, dateOnly, loc)
+		if k < firstKey || k >= endKey {
+			continue
+		}
+		in = append(in, keyed{key: k, task: t, allDay: dateOnly, at: t.Due})
 	}
 	sort.SliceStable(in, func(a, b int) bool {
 		if in[a].key != in[b].key {
 			return in[a].key < in[b].key
 		}
-		if in[a].ev.AllDay != in[b].ev.AllDay {
-			return in[a].ev.AllDay
+		if in[a].allDay != in[b].allDay {
+			return in[a].allDay
 		}
-		return in[a].ev.StartTime < in[b].ev.StartTime
+		return in[a].at < in[b].at
 	})
 
 	var out []templates.AgendaDay
@@ -398,9 +452,18 @@ func buildAgenda(from time.Time, days int, events []*bongov1.Event, calColorMap 
 			d, _ := time.ParseInLocation("2006-01-02", k.key, loc)
 			out = append(out, templates.AgendaDay{Date: d})
 		}
-		item := templates.AgendaItem{Event: k.ev, ColourClass: templates.EventColourClass(k.ev, calColorMap)}
-		if !k.ev.AllDay {
-			item.TimeLabel = time.Unix(k.ev.StartTime, 0).In(loc).Format("15:04")
+		var item templates.AgendaItem
+		if k.task != nil {
+			colour := defaultTaskColour
+			if c := calColorMap[k.task.CalendarId]; c != "" {
+				colour = c
+			}
+			item = templates.AgendaItem{Task: k.task, ColourClass: templates.CalendarColourClass(colour)}
+		} else {
+			item = templates.AgendaItem{Event: k.ev, ColourClass: templates.EventColourClass(k.ev, calColorMap)}
+		}
+		if !k.allDay {
+			item.TimeLabel = time.Unix(k.at, 0).In(loc).Format("15:04")
 		}
 		out[len(out)-1].Items = append(out[len(out)-1].Items, item)
 	}
@@ -680,7 +743,7 @@ func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	// Authorization: a caller may read their own free/busy, or that of a user
 	// who has shared a calendar with them. Without this check any authenticated
 	// user could read every user's schedule by guessing the ?user= id (IDOR).
-	if targetUser != callerID && !h.targetSharesWith(targetUser, callerID) {
+	if targetUser != callerID && !h.targetSharesWith(targetUser, callerID) && !h.sharedResource(targetUser, callerID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -712,10 +775,8 @@ func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	if targetUser == callerID {
 		targetEmail = callerEmail
 	}
-	for _, e := range h.busyEvents(targetUser, targetEmail, events) {
-		if !e.AllDay {
-			blocks = append(blocks, busyBlock{Start: e.StartTime, End: e.EndTime})
-		}
+	for _, iv := range h.busyIntervals(targetUser, targetEmail, events) {
+		blocks = append(blocks, busyBlock{Start: iv[0], End: iv[1]})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1281,6 +1342,9 @@ func eventMonthTime(e *bongov1.Event, loc *time.Location) time.Time {
 	return time.Unix(e.StartTime, 0).In(loc)
 }
 
+// reminderMinuteOptions are the reminder lead times the form offers.
+var reminderMinuteOptions = []int32{0, 5, 10, 15, 30, 60}
+
 // parseEventForm extracts event data from form values.
 //
 // Timed events are read in loc, the zone the views show them in. All-day
@@ -1299,6 +1363,19 @@ func parseEventForm(r *http.Request, loc *time.Location) (*bongov1.Event, error)
 		event.CalendarId = "default"
 	}
 
+	// Show as: free is TRANSP:TRANSPARENT. Without the field an all-day event
+	// is free and a timed one busy, the form's own defaults.
+	switch r.FormValue("show_as") {
+	case "":
+		event.Transparent = event.AllDay
+	case "free":
+		event.Transparent = true
+	case "busy":
+		event.Transparent = false
+	default:
+		return nil, errEventShowAs
+	}
+
 	attendees, err := parseAttendees(r.FormValue("attendees"))
 	if err != nil {
 		return nil, err
@@ -1306,10 +1383,24 @@ func parseEventForm(r *http.Request, loc *time.Location) (*bongov1.Event, error)
 	event.Attendees = attendees
 
 	// Parse reminder minutes.
+	// Only the offered values are accepted: the email worker's search window
+	// assumes a reminder of an hour or less.
 	if rm := r.FormValue("reminder_minutes"); rm != "" {
-		if v, err := strconv.ParseInt(rm, 10, 32); err == nil {
-			event.ReminderMinutes = int32(v)
+		v, err := strconv.ParseInt(rm, 10, 32)
+		if err != nil || !slices.Contains(reminderMinuteOptions, int32(v)) {
+			return nil, fmt.Errorf("invalid reminder")
 		}
+		event.ReminderMinutes = int32(v)
+	}
+	switch r.FormValue("reminder_delivery") {
+	case "", "browser":
+		event.ReminderEmail = bongov1.ReminderDelivery_REMINDER_DELIVERY_BROWSER
+	case "email":
+		event.ReminderEmail = bongov1.ReminderDelivery_REMINDER_DELIVERY_EMAIL
+	case "both":
+		event.ReminderEmail = bongov1.ReminderDelivery_REMINDER_DELIVERY_BOTH
+	default:
+		return nil, fmt.Errorf("invalid reminder delivery")
 	}
 
 	// Parse start date/time.
@@ -1363,12 +1454,20 @@ func parseEventForm(r *http.Request, loc *time.Location) (*bongov1.Event, error)
 		event.EndTime = t.Unix()
 	}
 
+	// An all-day end is the start of the day after the last date, so a
+	// same-day all-day event passes and an end date before the start does not.
+	if event.EndTime <= event.StartTime {
+		return nil, errEventEndBeforeStart
+	}
+
 	return event, nil
 }
 
 var (
-	errAttendeesTooMany = errors.New("too many attendees")
-	errAttendeeInvalid  = errors.New("invalid attendee")
+	errEventEndBeforeStart = errors.New("event ends before it starts")
+	errEventShowAs         = errors.New("invalid show as value")
+	errAttendeesTooMany    = errors.New("too many attendees")
+	errAttendeeInvalid     = errors.New("invalid attendee")
 )
 
 // maxAttendeesField bounds the raw attendees field before it is parsed.
@@ -1425,6 +1524,8 @@ func eventFormError(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, fmt.Sprintf(i18n.T(locale, "calendar.attendeesTooMany"), icalevent.MaxAttendees), http.StatusBadRequest)
 	case errors.Is(err, errAttendeeInvalid):
 		http.Error(w, i18n.T(locale, "calendar.attendeeInvalid"), http.StatusBadRequest)
+	case errors.Is(err, errEventEndBeforeStart):
+		http.Error(w, i18n.T(locale, "calendar.endBeforeStart"), http.StatusBadRequest)
 	default:
 		http.Error(w, "invalid form data: "+err.Error(), http.StatusBadRequest)
 	}
@@ -1530,6 +1631,7 @@ func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time
 		}
 	}
 
+	applyTransparency(props, updated.Transparent)
 	applyAttendeeEdit(props, existing, updated)
 
 	seq := 0
@@ -1556,6 +1658,23 @@ func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time
 		return nil, fmt.Errorf("encoding ical: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// applyTransparency makes the master's TRANSP match the Show as choice. It is
+// read from the stored properties, not from the structured copy, and a
+// matching value (including an explicit OPAQUE) is left as it is.
+func applyTransparency(props ical.Props, transparent bool) {
+	have := false
+	if p := props.Get(ical.PropTransparency); p != nil {
+		have = strings.EqualFold(strings.TrimSpace(p.Value), "TRANSPARENT")
+	}
+	if have == transparent {
+		return
+	}
+	props.Del(ical.PropTransparency)
+	if transparent {
+		props.SetText(ical.PropTransparency, "TRANSPARENT")
+	}
 }
 
 // applyAttendeeEdit applies the attendee changes of an edit to a master
