@@ -1582,3 +1582,10 @@ PATTERN: [store] A background worker that writes refresh state onto a user-edita
 PATTERN: [calendar] Pull per-occurrence override state (PARTSTAT, status) into the expanded instance, so every filter sees it without reading ical_raw.
 PATTERN: [security] An error shown to the user from a server-side fetch must not distinguish network failures (refused address, DNS, timeout); collapse them to one message or the field becomes an internal-network oracle.
 PATTERN: [testing] A browser check after green tests still finds things: here an end-before-start event that the form has always accepted, now sent as an invitation.
+- PR #143 CI: TestRunSetsInternalSecret failed once on CI (server not ready within its 5 s budget in a 280 s agent package run). Not a regression: the test takes 1.5-1.8 s on the branch against 1.7-2.0 s on main locally, and passed 3/3 locally and on the CI re-run. The 5 s budget is tight on a loaded runner; candidate for a longer wait if it recurs.
+
+## 2026-11-02: Phase 30 batch 4 interrupted (30.5, 30.9, 30.14, 30.16)
+
+- Workflow wf_ec361ff4-5a8: all four advisor plans completed; all four workers stopped part-way when the account hit its weekly usage limit. Nothing reviewed, nothing merged.
+- Partial, untested work is left in .claude/worktrees/wf_ec361ff4-5a8-5 (30.5), -6 (30.14), -7 (30.9), -8 (30.16), each based on main 5ebebac. Do not merge it as is.
+- Resume: rerun the workflow with resumeFromRunId wf_ec361ff4-5a8 (the advisor plans replay from cache; workers restart), or start the four tasks fresh. Remove the four worktrees and worktree-wf_ec361ff4* branches afterwards.
