@@ -1172,7 +1172,14 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 		Email       string `json:"email"`
 		DisplayName string `json:"display_name"`
 		Source      string `json:"source"`
+		// Kind is "resource" for a room or equipment account; ResourceType is
+		// "room" or "equipment"; Label is the translated word for it. All are
+		// empty for a person.
+		Kind         string `json:"kind,omitempty"`
+		ResourceType string `json:"resource_type,omitempty"`
+		Label        string `json:"label,omitempty"`
 	}
+	locale := middleware.LocaleFromContext(r.Context())
 
 	// Merge personal contacts (first) with GAL entries.
 	seen := make(map[string]bool)
@@ -1197,13 +1204,39 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		seen[lower] = true
-		result = append(result, galJSON{Email: e.Email, DisplayName: e.DisplayName, Source: "gal"})
+		item := galJSON{Email: e.Email, DisplayName: e.DisplayName, Source: "gal"}
+		// The stored profile is the authority on the account kind: at most
+		// 10 reads, and no change to the index.
+		if p := h.galProfile(e); p != nil && p.Kind == "resource" {
+			item.Kind, item.ResourceType = p.Kind, p.ResourceType
+			item.Label = i18n.T(locale, "calendar.resourceRoom")
+			if p.ResourceType == "equipment" {
+				item.Label = i18n.T(locale, "calendar.resourceEquipment")
+			}
+		}
+		result = append(result, item)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(result); err != nil {
 		return
 	}
+}
+
+// galProfile returns the stored profile of a GAL hit, or nil.
+func (h *ComposeHandler) galProfile(e store.GALEntry) *bongov1.UserProfile {
+	if h.pebble == nil || !store.IsValidUserID(e.UserID) {
+		return nil
+	}
+	data, err := h.pebble.Get([]byte("/user/" + e.UserID + "/profile"))
+	if err != nil {
+		return nil
+	}
+	var p bongov1.UserProfile
+	if err := proto.Unmarshal(data, &p); err != nil {
+		return nil
+	}
+	return &p
 }
 
 // resolveLocalUser maps a bare email address to a local user ID using the shared

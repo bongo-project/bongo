@@ -67,6 +67,11 @@ type AdminUserInfo struct {
 	// TempPassword is set only on the response to a password reset. It is
 	// rendered once and never stored, redirected or logged.
 	TempPassword string
+	// Kind is "resource" for a room or equipment account, "" for a person.
+	// ResourceType ("room" or "equipment") and Capacity describe a resource.
+	Kind         string
+	ResourceType string
+	Capacity     int64
 }
 
 // DNSCheckRow holds one DNS verification row for the domain detail page.
@@ -316,6 +321,7 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 					</form>
 				</div>
 				<div class="admin-toolbar-group">
+					<a href="/admin/resources/new" class="btn-outline">{ t(ctx, "admin.createResource") }</a>
 					<a href="/admin/users/new" class="btn-primary">{ t(ctx, "admin.createUser") }</a>
 				</div>
 			</div>
@@ -344,7 +350,9 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 								<td><a href={ templ.SafeURL("/admin/users/" + u.UserID) }><strong>{ u.Email }</strong></a></td>
 								<td>{ u.DisplayName }</td>
 								<td>
-									if u.IsAdmin {
+									if u.Kind == "resource" {
+										<span class="badge badge-user">{ t(ctx, "admin.roleResource") }</span>
+									} else if u.IsAdmin {
 										<span class="badge badge-admin">{ t(ctx, "admin.roleAdmin") }</span>
 									} else {
 										<span class="badge badge-user">{ t(ctx, "admin.roleUser") }</span>
@@ -429,12 +437,18 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 					}
 					<label for="quota_bytes" class="form-label">{ t(ctx, "admin.quotaLabel") }</label>
 					<input type="number" name="quota_bytes" id="quota_bytes" class="form-input" value={ fmt.Sprint(userQuota(user)) } min="0"/>
-					<fieldset>
-						<label class="form-check">
-							<input type="checkbox" name="is_admin" value="1" checked?={ user != nil && user.IsAdmin }/>
-							{ t(ctx, "admin.administrator") }
-						</label>
-					</fieldset>
+					if isResourceUser(user) {
+						<label for="capacity" class="form-label">{ t(ctx, "admin.resourceCapacity") }</label>
+						<input type="number" name="capacity" id="capacity" class="form-input" value={ fmt.Sprint(user.Capacity) } min="0" max="100000"/>
+						<p class="u-text-muted u-font-082">{ t(ctx, "admin.resourceType") }: { t(ctx, resourceTypeKey(user.ResourceType)) }. { t(ctx, "admin.resourceNoLogin") }</p>
+					} else {
+						<fieldset>
+							<label class="form-check">
+								<input type="checkbox" name="is_admin" value="1" checked?={ user != nil && user.IsAdmin }/>
+								{ t(ctx, "admin.administrator") }
+							</label>
+						</fieldset>
+					}
 					<div class="u-flex u-gap-05 u-mt-1">
 						<button type="submit" class="btn-primary">
 							if isNew {
@@ -460,9 +474,13 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 								}
 							</button>
 						</form>
-						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/reset-password", user.UserID)) }>
-							<button type="submit" class="btn-outline">{ t(ctx, "admin.resetPassword") }</button>
-						</form>
+						if isResourceUser(user) {
+							<a href={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/bookings", user.UserID)) } class="btn-outline">{ t(ctx, "admin.resourceBookings") }</a>
+						} else {
+							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/reset-password", user.UserID)) }>
+								<button type="submit" class="btn-outline">{ t(ctx, "admin.resetPassword") }</button>
+							</form>
+						}
 						<button
 							type="button"
 							class="btn-danger"
@@ -1325,6 +1343,15 @@ func userFormAction(u *AdminUserInfo, isNew bool) string {
 		return "/admin/users"
 	}
 	return fmt.Sprintf("/admin/users/%s", u.UserID)
+}
+
+func isResourceUser(u *AdminUserInfo) bool { return u != nil && u.Kind == "resource" }
+
+func resourceTypeKey(typ string) string {
+	if typ == "equipment" {
+		return "admin.resourceEquipment"
+	}
+	return "admin.resourceRoom"
 }
 
 func userDisplayName(u *AdminUserInfo) string {

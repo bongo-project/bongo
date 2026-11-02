@@ -104,29 +104,32 @@ type Agent struct {
 	// reloader is set by EnableReload; nil means reload is not configured.
 	reloader *Reloader
 
-	Store        *store.PebbleStore
-	Blobs        *store.BlobStore
-	Metadata     *store.MetadataManager
-	Search       *store.SearchManager
-	Auth         *auth.LocalAuth
-	Raft         *cluster.RaftNode
-	Gossip       *cluster.GossipNode
-	SMTP         *bongosmtp.Server
-	IMAP         *bongoimap.Server
-	POP3         *bongopop3.Server
-	Notifier     *bongoimap.Notifier
-	Mailboxes    *store.MailboxStore
-	Preferences  *store.PreferenceStore
-	Threads      *store.ThreadStore
-	Rules        *rules.RuleStore
-	Contacts     *store.ContactStore
-	Events       *store.EventStore
-	Tasks        *store.TaskStore
-	Calendars    *store.CalendarStore
-	ACL          *store.ACLStore
-	BlobSync     *cluster.BlobSyncer
-	AddressStore *store.AddressStore
-	DomainQuota  *store.DomainQuotaStore
+	Store       *store.PebbleStore
+	Blobs       *store.BlobStore
+	Metadata    *store.MetadataManager
+	Search      *store.SearchManager
+	Auth        *auth.LocalAuth
+	Raft        *cluster.RaftNode
+	Gossip      *cluster.GossipNode
+	SMTP        *bongosmtp.Server
+	IMAP        *bongoimap.Server
+	POP3        *bongopop3.Server
+	Notifier    *bongoimap.Notifier
+	Mailboxes   *store.MailboxStore
+	Preferences *store.PreferenceStore
+	Threads     *store.ThreadStore
+	Rules       *rules.RuleStore
+	Contacts    *store.ContactStore
+	Events      *store.EventStore
+	Tasks       *store.TaskStore
+	// ScheduleInbox holds the iTIP messages CalDAV clients find in their
+	// scheduling inbox (RFC 6638).
+	ScheduleInbox *store.ScheduleInboxStore
+	Calendars     *store.CalendarStore
+	ACL           *store.ACLStore
+	BlobSync      *cluster.BlobSyncer
+	AddressStore  *store.AddressStore
+	DomainQuota   *store.DomainQuotaStore
 	// Storage samples free disk space on the data directory. Nil when
 	// storage.min_free_mb is 0 or the role has no local storage.
 	Storage *diskspace.Monitor
@@ -153,8 +156,12 @@ type Agent struct {
 	mailHandler       *handlers.MailHandler
 	addrVerifyHandler *handlers.AddressVerifyHandler
 	// shareInviter sends calendar share invitation emails; Run starts its worker.
-	shareInviter    *handlers.ShareInviter
+	shareInviter *handlers.ShareInviter
+	// reminderMailer delivers email reminders; Run starts its leader-only worker.
+	reminderMailer  reminderSender
 	calendarHandler *handlers.CalendarHandler
+	// caldavBackend is the CalDAV backend Run built, kept for wiring tests.
+	caldavBackend *bongocaldav.Backend
 	// deliverProc is the delivery stage Run built, kept for wiring tests.
 	deliverProc *pipelinedeliver.DeliverProcessor
 	// ForwardTargets holds verified external forwarding targets per user; the
@@ -531,6 +538,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		a.ACL = store.NewACLStore(pebbleStore, a)
 		a.Events = store.NewEventStore(pebbleStore, a)
 		a.Tasks = store.NewTaskStore(pebbleStore, a)
+		a.ScheduleInbox = store.NewScheduleInboxStore(pebbleStore, a)
 		if a.Search != nil {
 			a.Events.SetSearch(a.Search)
 			a.Events.SetLogger(a.logger)
@@ -1111,6 +1119,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Tasks != nil {
 			caldavBackend.SetTaskStore(a.Tasks)
 		}
+		if a.ScheduleInbox != nil {
+			caldavBackend.SetScheduleInbox(a.ScheduleInbox)
+		}
+		a.caldavBackend = caldavBackend
 	}
 	carddavHandler, caldavHandler := newDAVHandlers(a.Auth, carddavBackend, caldavBackend, davAuthLimiter, a.logger)
 
@@ -1244,6 +1256,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			adminH.SetMailboxStore(a.Mailboxes)
 		}
 		adminH.SetStorageGate(a.storageGate())
+		// The calendar handler is built after this group; resolve it per request.
+		adminH.SetResourceBookings(func() handlers.ResourceBookings {
+			if a.calendarHandler == nil {
+				return nil
+			}
+			return a.calendarHandler
+		})
 		// Wire the DKIM registry so GenerateDKIMKey can register signers
 		// immediately after key generation (registry was created above).
 		adminH.SetDKIMRegistry(a.DKIMRegistry)
@@ -1292,10 +1311,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/users", adminH.ListUsers)
 		r.Get("/admin/users/new", adminH.NewUserForm)
 		r.Post("/admin/users", adminH.CreateUser)
+		r.Get("/admin/resources/new", adminH.NewResourceForm)
 		r.Get("/admin/users/{userID}", adminH.ShowUser)
 		r.Post("/admin/users/{userID}", adminH.UpdateUser)
 		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
 		r.Post("/admin/users/{userID}/reset-password", adminH.ResetPassword)
+		r.Get("/admin/users/{userID}/bookings", adminH.ResourceBookings)
+		r.Post("/admin/users/{userID}/bookings/{guid}/cancel", adminH.CancelResourceBooking)
 		r.Post("/admin/users/{userID}/delete", adminH.DeleteUser)
 		r.Post("/admin/users/{userID}/addresses", adminH.AddAddress)
 		r.Post("/admin/users/{userID}/addresses/delete", adminH.RemoveAddress)
@@ -1492,6 +1514,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			calendarH.SetShareResolver(sharedResolver)
 			calendarH.SetACL(a.ACL)
+			calendarH.SetProfiles(a.Store)
+			if a.Preferences != nil {
+				calendarH.SetLocaleSource(a.Preferences)
+			}
 			// Invitations go out through the compose delivery path. The guard
 			// keeps a nil *ComposeHandler (no Mailboxes) from becoming a
 			// non-nil interface.
@@ -1507,12 +1533,16 @@ func (a *Agent) Run(ctx context.Context) error {
 				}
 				a.shareInviter = handlers.NewShareInviter(a.composeHandler, prefs, a.logger)
 				calendarH.SetShareInviter(a.shareInviter)
+				a.reminderMailer = handlers.NewReminderMailer(a.composeHandler, prefs, a.logger)
 			}
 			if a.AddressStore != nil {
 				calendarH.SetAddressStore(a.AddressStore)
 			}
 			if a.Preferences != nil {
 				calendarH.SetZoneSource(a.Preferences)
+			}
+			if a.Tasks != nil {
+				calendarH.SetTaskStore(a.Tasks)
 			}
 			// The delivery stage stamps Authentication-Results under this
 			// authserv-id; the invitation card reads the DMARC verdict from it.
@@ -1522,6 +1552,18 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			a.wireCalendarShareLimiter(calendarH)
 			a.calendarHandler = calendarH
+			// CalDAV implicit scheduling sends through the calendar handler's
+			// invitation path, so it needs a sender: without one the server
+			// advertises no scheduling and clients keep sending iMIP themselves.
+			if caldavBackend != nil && a.composeHandler != nil {
+				var prefs interface {
+					Get(string) *bongov1.UserPreferences
+				}
+				if a.Preferences != nil {
+					prefs = a.Preferences
+				}
+				caldavBackend.SetScheduler(handlers.NewCalDAVScheduler(calendarH, prefs, a.ACL))
+			}
 			r.Get("/calendar", calendarH.CalendarIndex)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/agenda", calendarH.AgendaView)
@@ -1552,6 +1594,23 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/calendar/export", calendarH.ExportCalendar)
 			r.With(refuseLowStorage).Post("/calendar/import", calendarH.ImportCalendar)
 			r.Get("/calendar/search", calendarH.SearchEvents)
+		}
+
+		if a.Tasks != nil && a.Calendars != nil {
+			tasksH := handlers.NewTasksHandler(a.Tasks, a.Calendars)
+			if a.DomainQuota != nil {
+				tasksH.SetQuotaChecker(a.DomainQuota)
+			}
+			if a.Preferences != nil {
+				tasksH.SetZoneSource(a.Preferences)
+			}
+			r.Get("/tasks", tasksH.List)
+			r.With(refuseLowStorage).Post("/tasks", tasksH.Create)
+			r.Get("/tasks/{guid}", tasksH.Edit)
+			r.Post("/tasks/{guid}", tasksH.Update)
+			r.Post("/tasks/{guid}/complete", tasksH.Complete)
+			r.Post("/tasks/{guid}/reopen", tasksH.Reopen)
+			r.Post("/tasks/{guid}/delete", tasksH.Delete)
 		}
 
 		// Forwarding-target verification, shared by the settings page and the
@@ -1780,6 +1839,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.deliverProc = deliverProc
 		if deliverProc != nil && a.calendarHandler != nil {
 			deliverProc.SetCalendarReplies(a.calendarHandler)
+			deliverProc.SetResourceBookings(a.calendarHandler)
+		}
+		// Incoming REQUEST, REPLY and CANCEL also go to the schedule inbox
+		// CalDAV clients read, when there is a CalDAV endpoint to read it.
+		if deliverProc != nil && a.ScheduleInbox != nil && a.caldavBackend != nil {
+			deliverProc.SetScheduleInbox(a.ScheduleInbox)
 		}
 
 		// Create blob reader adapter and start the Runner with config-driven options.
@@ -2001,11 +2066,18 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	// Start event reminder checker.
+	reminderCtx, reminderCancel := context.WithCancel(ctx)
+	a.reminderCancel = reminderCancel
 	if a.Events != nil && a.Notifier != nil {
-		reminderCtx, reminderCancel := context.WithCancel(ctx)
-		a.reminderCancel = reminderCancel
 		a.goWorker("reminder-checker", func() { a.runReminderChecker(reminderCtx) })
 		a.logger.Info("event reminder checker started")
+	}
+	// Email reminders: one leader-only worker. It is not gated on the
+	// Notifier, which is the browser path's.
+	if a.Events != nil && a.Raft != nil && a.reminderMailer != nil {
+		pass := a.newEmailReminderPass(a.reminderMailer)
+		a.goWorker("reminder-mailer", func() { a.runEmailReminders(reminderCtx, pass) })
+		a.logger.Info("email reminder worker started")
 	}
 
 	// Start IMAP server.
@@ -2160,11 +2232,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		})
 	}
 
-	// Tasks arrive with a Tasks calendar for existing users, and the events
-	// that VTODO PUTs left behind are listed once. Leader-only and marked,
-	// like the rules migration above.
+	// The events that VTODO PUTs left behind are listed once. Leader-only and
+	// marked, like the rules migration above.
 	a.migrateTasksPass(a.IsLeader)
-	if a.Raft != nil && a.Store != nil && a.Calendars != nil {
+	if a.Raft != nil && a.Store != nil {
 		tasksCtx, tasksCancel := context.WithCancel(ctx)
 		a.tasksMigrationCancel = tasksCancel
 		a.goWorker("tasks-migration", func() {
@@ -2405,6 +2476,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 			prevBlobs, prevBlobMode = a.blobGCPass(prevBlobs, prevBlobMode, minAge)
 			a.sweepSendLogs(time.Now(), store.SendLogTTL)
 			a.sweepVacationSent(time.Now(), store.VacationSentTTL)
+			a.sweepReminderSent(time.Now(), store.ReminderSentTTL)
 			prevGrants = a.sweepOrphanedGrants(prevGrants)
 		}
 	}
@@ -3081,6 +3153,12 @@ func (a *Agent) sweepVacationSent(now time.Time, ttl time.Duration) int {
 	return a.sweepAgedUserKeys(now, ttl, "vacation tracking", store.VacationSentPrefix, store.DecodeVacationSent)
 }
 
+// sweepReminderSent deletes email reminder records (store.ReminderSentKey)
+// older than ttl and returns how many it removed. Leader-only.
+func (a *Agent) sweepReminderSent(now time.Time, ttl time.Duration) int {
+	return a.sweepAgedUserKeys(now, ttl, "reminder sent", store.ReminderSentPrefix, store.DecodeReminderSent)
+}
+
 // sweepAgedUserKeys deletes, through Raft, every key under each user's prefix
 // whose record is older than ttl, and returns how many it removed. A record
 // that does not decode is treated as expired: it would otherwise never be
@@ -3240,7 +3318,9 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 
 	for iter.Next() {
 		key := string(iter.Key())
-		// We only care about mail, event, contact and task records.
+		// We only care about mail, event, contact and task records. The schedule
+		// inbox (schedinbox) is left out on purpose: its items copy iTIP parts of
+		// mail that is already counted, and Place never adds to usage.
 		rest := strings.TrimPrefix(key, "/user/")
 		parts := strings.SplitN(rest, "/", 3)
 		if len(parts) != 3 {
@@ -5044,6 +5124,9 @@ func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// go-webdav reports every calendar read-write; tell clients which shares
 	// are read-only. The backend refuses their writes regardless.
 	next := bongocaldav.PrivilegeFilter(&handler, h.backend.ReadOnlyShare, h.logger)
+	// Scheduling (RFC 6638) sits outside it: it answers the inbox and outbox
+	// itself and adds its properties to what go-webdav says.
+	next = bongocaldav.ScheduleHandler(next, h.backend, h.logger)
 	serveDAVBody(w, r, h.budget, h.logger, userID, next)
 }
 

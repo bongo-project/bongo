@@ -111,7 +111,7 @@ func attendeeFromProp(p *ical.Prop) (*bongov1.Attendee, bool) {
 
 var validStatus = map[string]bool{"TENTATIVE": true, "CONFIRMED": true, "CANCELLED": true}
 
-// fillParticipants copies ORGANIZER, ATTENDEE, SEQUENCE and STATUS of a VEVENT
+// fillParticipants copies ORGANIZER, ATTENDEE, SEQUENCE, STATUS and TRANSP of a VEVENT
 // into event. Attendees that are not mailto addresses or fail validation are
 // skipped, duplicates (case-insensitive) keep the first, and the structured
 // list stops at MaxAttendees.
@@ -146,6 +146,9 @@ func fillParticipants(event *bongov1.Event, props ical.Props) {
 		if s := token(p.Value); validStatus[s] {
 			event.Status = s
 		}
+	}
+	if p := props.Get(ical.PropTransparency); p != nil {
+		event.Transparent = token(p.Value) == "TRANSPARENT"
 	}
 }
 

@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -186,7 +188,66 @@ func CheckAddressFreeFor(applier RaftApplier, metadata *store.MetadataManager, e
 // compensation deletes that key too, so the replaced claim is gone as well; it
 // never routed mail or permitted sending, so nothing is lost.
 func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, displayName, password string, isAdmin bool) (string, error) {
-	email = store.NormaliseAddress(email)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), PasswordHashCost)
+	if err != nil {
+		return "", fmt.Errorf("hashing password: %w", err)
+	}
+	return createAccount(applier, metadata, &bongov1.UserProfile{
+		Email:        store.NormaliseAddress(email),
+		DisplayName:  displayName,
+		PasswordHash: hash,
+		IsAdmin:      isAdmin,
+	})
+}
+
+// ResourceKind is UserProfile.Kind of a room or equipment account.
+const ResourceKind = "resource"
+
+// Resource types, UserProfile.ResourceType.
+const (
+	ResourceRoom      = "room"
+	ResourceEquipment = "equipment"
+)
+
+// CreateResource creates a bookable room or equipment account. Kind, type and
+// capacity are in the first and only profile write, so the account is never a
+// person for any window. The password is 32 random bytes that are discarded,
+// hashed with bcrypt at full cost: nobody can know it, and the hash has the
+// same shape and cost as a person's so that authentication of a resource takes
+// as long as a wrong password (an empty hash would fail instantly and reveal
+// the account kind).
+func CreateResource(applier RaftApplier, metadata *store.MetadataManager, email, displayName, resourceType string, capacity int64) (string, error) {
+	if resourceType != ResourceRoom && resourceType != ResourceEquipment {
+		return "", fmt.Errorf("resource type must be %q or %q", ResourceRoom, ResourceEquipment)
+	}
+	if capacity < 0 {
+		return "", fmt.Errorf("capacity must not be negative")
+	}
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", fmt.Errorf("generating resource secret: %w", err)
+	}
+	// bcrypt reads at most 72 bytes; hex keeps the input printable and long.
+	hash, err := bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(secret)), PasswordHashCost)
+	if err != nil {
+		return "", fmt.Errorf("hashing resource secret: %w", err)
+	}
+	return createAccount(applier, metadata, &bongov1.UserProfile{
+		Email:        store.NormaliseAddress(email),
+		DisplayName:  displayName,
+		PasswordHash: hash,
+		Kind:         ResourceKind,
+		ResourceType: resourceType,
+		Capacity:     capacity,
+	})
+}
+
+// createAccount writes profile (whose Email is already normalised and whose
+// password hash is set) and the account's indexes. See CreateUser for the
+// address rules.
+func createAccount(applier RaftApplier, metadata *store.MetadataManager, profile *bongov1.UserProfile) (string, error) {
+	email := profile.Email
+	displayName := profile.DisplayName
 	if email == "" {
 		return "", fmt.Errorf("email is required")
 	}
@@ -205,17 +266,6 @@ func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, dis
 
 	userID := uuid.New().String()
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), PasswordHashCost)
-	if err != nil {
-		return "", fmt.Errorf("hashing password: %w", err)
-	}
-
-	profile := &bongov1.UserProfile{
-		Email:        email,
-		DisplayName:  displayName,
-		PasswordHash: hash,
-		IsAdmin:      isAdmin,
-	}
 	profileBytes, err := proto.Marshal(profile)
 	if err != nil {
 		return "", fmt.Errorf("marshaling profile: %w", err)

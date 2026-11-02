@@ -209,6 +209,12 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 					</a>
 				</li>
 				<li class="nav-item">
+					<a href="/tasks">
+						<span class="nav-icon" aria-hidden="true">@Icon("check", "")</span>
+						<span>{ t(ctx, "nav.tasks") }</span>
+					</a>
+				</li>
+				<li class="nav-item">
 					<a href="/contacts">
 						<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
 						<span>{ t(ctx, "nav.contacts") }</span>

@@ -38,6 +38,9 @@ func SynthVEvent(e *bongov1.Event, loc *time.Location, now time.Time) *ical.Even
 		vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Unix(e.EndTime, 0).In(loc))
 	}
 	AddRecurrence(vevent, e, loc)
+	if e.Transparent {
+		vevent.Props.SetText(ical.PropTransparency, "TRANSPARENT")
+	}
 	vevent.Props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
 	SetParticipants(vevent.Props, e)
 	return vevent

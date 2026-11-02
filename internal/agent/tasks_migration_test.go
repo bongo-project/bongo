@@ -105,52 +105,22 @@ func TestMigrateTasksPass_Follower(t *testing.T) {
 	}
 }
 
-func TestMigrateTasksPass_AddsTasksCalendarOnce(t *testing.T) {
+// Existing users are not given a Tasks calendar; only the marker is written.
+func TestMigrateTasksPass_DoesNotAddTasksCalendar(t *testing.T) {
 	e := newTasksMigrationEnv(t)
-	for _, u := range []string{"has-cals", "has-tasks", "no-cals", "tasks-only", "tasks-guid"} {
-		e.profile(t, u)
-	}
+	e.profile(t, "has-cals")
 	e.calendar(t, "has-cals", &bongov1.Calendar{Guid: "default", Name: "Personal"})
-	e.calendar(t, "has-cals", &bongov1.Calendar{Guid: "abc123", Name: "Work"})
-	e.calendar(t, "has-tasks", &bongov1.Calendar{Guid: "default", Name: "Personal"})
-	e.calendar(t, "has-tasks", &bongov1.Calendar{Guid: "mine", Name: "My list", Components: []string{"VTODO"}})
-	e.calendar(t, "tasks-only", &bongov1.Calendar{Guid: "tasks", Name: "Tasks", Components: []string{"VTODO"}})
-	// A calendar that already sits at the fixed ID is never overwritten.
-	e.calendar(t, "tasks-guid", &bongov1.Calendar{Guid: "tasks", Name: "Mine already"})
-
 	if !e.a.migrateTasksPass(always(true)) {
 		t.Fatal("pass did not report done")
 	}
-	if !e.hasKey("/user/has-cals/calendar/tasks") {
-		t.Error("existing user did not get a Tasks calendar")
+	if e.hasKey("/user/has-cals/calendar/tasks") {
+		t.Error("an existing user was given a Tasks calendar")
 	}
-	cal, err := e.a.Calendars.Get("has-cals", "tasks")
-	if err != nil || len(cal.Components) != 1 || cal.Components[0] != "VTODO" {
-		t.Errorf("Tasks calendar = %+v, %v", cal, err)
+	if !e.hasKey(string(blankEventsMarkerKey)) {
+		t.Error("marker not written")
 	}
-	if cal, err := e.a.Calendars.Get("tasks-guid", "tasks"); err != nil || cal.Name != "Mine already" {
-		t.Errorf("a calendar at the Tasks ID was overwritten: %+v, %v", cal, err)
-	}
-	if e.hasKey("/user/has-tasks/calendar/tasks") {
-		t.Error("a user who already has a VTODO calendar got another")
-	}
-	if e.hasKey("/user/no-cals/calendar/tasks") {
-		t.Error("a user with no calendars got one from the migration; EnsureDefault creates both")
-	}
-	if !e.hasKey(string(tasksCalendarMarkerKey)) || !e.hasKey(string(blankEventsMarkerKey)) {
-		t.Error("markers not written")
-	}
-
-	// Second pass: marked, nothing written, even if the user deleted Tasks.
-	if err := e.ps.Delete([]byte("/user/has-cals/calendar/tasks")); err != nil {
-		t.Fatal(err)
-	}
-	before := e.app.calls.Load()
-	if !e.a.migrateTasksPass(always(true)) {
-		t.Error("second pass did not report done")
-	}
-	if e.app.calls.Load() != before || e.hasKey("/user/has-cals/calendar/tasks") {
-		t.Error("a marked migration wrote again")
+	if e.hasKey("/system/migrations/tasks-calendar-v1") {
+		t.Error("the retired tasks-calendar marker was written")
 	}
 }
 
@@ -162,15 +132,15 @@ func TestMigrateTasksPass_FailureLeavesMarkerUnset(t *testing.T) {
 	if e.a.migrateTasksPass(always(true)) {
 		t.Fatal("reported done after a failed write")
 	}
-	if e.hasKey(string(blankEventsMarkerKey)) || e.hasKey(string(tasksCalendarMarkerKey)) {
+	if e.hasKey(string(blankEventsMarkerKey)) {
 		t.Error("marker written despite a failed write")
 	}
 	e.app.failOn = 0
 	if !e.a.migrateTasksPass(always(true)) {
 		t.Error("retry did not complete")
 	}
-	if !e.hasKey("/user/u1/calendar/tasks") {
-		t.Error("retry did not add the Tasks calendar")
+	if !e.hasKey(string(blankEventsMarkerKey)) {
+		t.Error("retry did not write the marker")
 	}
 }
 
@@ -259,7 +229,7 @@ func TestRunTasksMigration_BecomesLeaderLater(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("loop did not exit after the job ran")
 	}
-	if !e.hasKey("/user/u1/calendar/tasks") {
+	if !e.hasKey(string(blankEventsMarkerKey)) {
 		t.Error("job did not run after gaining leadership")
 	}
 }
@@ -281,9 +251,6 @@ func TestTasksMigration_RunWiring(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if _, err := a.Store.Get([]byte("/user/wire/calendar/tasks")); err != nil {
-		t.Errorf("Run did not add the Tasks calendar: %v", err)
-	}
 	if _, err := a.Store.Get(blankEventsMarkerKey); err != nil {
 		t.Errorf("Run did not write the blank-events marker: %v", err)
 	}

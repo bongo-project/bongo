@@ -128,7 +128,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 ## Pebble Key Space
 
 ```
-/user/{user_id}/profile              → UserProfile protobuf
+/user/{user_id}/profile              → UserProfile protobuf (kind "resource" = bookable room or equipment: no login, answers REQUESTs itself)
 /user/{user_id}/mail/{guid}          → MailMeta protobuf + BlobRef
 /user/{user_id}/event/{guid}         → Event protobuf (ical_raw inline, NOT a blob)
 /user/{user_id}/contact/{guid}       → Contact protobuf (vcard_raw inline, NOT a blob)
@@ -141,6 +141,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /user/{user_id}/tag/{name}           → TagMeta protobuf (colour, sort_order)
 /user/{user_id}/addrverify/{address} → send-as verification challenge
 /user/{user_id}/sendlog/{send_id}/{step} → web compose send step done (40-byte record, not a protobuf)
+/user/{user_id}/schedinbox/{20-digit unix nanos}-{id} → CalDAV schedule inbox item (sanitised iTIP REQUEST/REPLY/CANCEL as iCalendar text, not a protobuf; oldest first, at most 500 per user, id derived from the delivery so a retry places it once)
 /user/{user_id}/bayes/{category}/{token} → Bayes token counts (uvarint)
 /user/{user_id}/bayes/trained        → Bayes trained-message count (uvarint)
 /user/{user_id}/bayes/msg/{guid}     → category a message was last trained as (spam|ham)
@@ -158,13 +159,13 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /system/migration/fwdtargets         → forwarding-target migration done marker
 /system/migrations/rules-first-match-v1 → rules first-match migration done marker (sets stop_processing on pre-v0.14 rules)
 /system/migrations/vtodo-blank-events-v1 → one-time log of events a VTODO PUT left behind is done (nothing deleted)
-/system/migrations/tasks-calendar-v1 → Tasks calendar added to existing users is done
 /system/migrations/calendar-grants-v1 → calendar-grants migration done marker (shared_with turned into grants; written last)
 /acl/{kind}/{owner_id}/{resource_id}/u:{grantee_id} → Grant protobuf (level, rights, state, granted_by); kind is `calendar`; every ID segment is url.PathEscape'd
 /aclrev/u:{grantee_id}/{kind}/{owner_id}/{resource_id} → empty reverse marker; only ever written and deleted together with its forward key
 /user/{user_id}/fwdtarget/{address}  → verified forwarding target
 /user/{user_id}/fwdverify/{address}  → pending forwarding verification
 /user/{user_id}/vacation/sent/{hex(sha256(lower(sender)))} → 8-byte BE unix seconds of the last vacation reply to that sender (not a protobuf); leader sweep after 30 days; deleted on disable
+/user/{user_id}/remindersent/{pathescape(event_guid)}/{occurrence_unix} → 8-byte BE unix seconds when sent (not a protobuf); written before the email reminder is enqueued (delivery is at-most-once); leader sweep after 2 days
 /queue/pending/{unix_ts}-{id}        → queued outbound message (zero-padded ts)
 /queue/bounced/{id}                  → bounced outbound message
 

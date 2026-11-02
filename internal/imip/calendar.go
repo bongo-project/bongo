@@ -122,6 +122,7 @@ func BuildCalendar(method string, e *bongov1.Event, recurrenceID string, now tim
 // that stays keeps its parameters.
 func prepareRaw(vevent *ical.Component, e *bongov1.Event) {
 	StripAlarms(vevent)
+	StripScheduleParams(vevent)
 
 	props := vevent.Props
 	want := make(map[string]*bongov1.Attendee, len(e.Attendees))
@@ -153,6 +154,24 @@ func prepareRaw(vevent *ical.Component, e *bongov1.Event) {
 		props.Del(ical.PropAttendee)
 	} else {
 		props[ical.PropAttendee] = out
+	}
+}
+
+// scheduleParams are the CalDAV scheduling parameters (RFC 6638). They tell a
+// server what to do with an ATTENDEE or ORGANIZER and are never part of an
+// outgoing iTIP message (RFC 6638 section 7.3).
+var scheduleParams = []string{"SCHEDULE-AGENT", "SCHEDULE-STATUS", "SCHEDULE-FORCE-SEND"}
+
+// StripScheduleParams removes the scheduling parameters from every ATTENDEE
+// and the ORGANIZER of a VEVENT.
+func StripScheduleParams(vevent *ical.Component) {
+	for _, name := range []string{ical.PropAttendee, ical.PropOrganizer} {
+		props := vevent.Props[name]
+		for i := range props {
+			for _, param := range scheduleParams {
+				props[i].Params.Del(param)
+			}
+		}
 	}
 }
 

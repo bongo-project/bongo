@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -133,7 +131,7 @@ func (b *Backend) putTodo(t target, calendar *ical.Calendar, raw []byte, opts *c
 		return nil, httpErr(http.StatusForbidden, "forbidden")
 	}
 
-	task := todoToTask(calendar, guid, calID)
+	task := icalevent.TodoToTask(calendar, guid, calID)
 	task.IcalRaw = raw
 
 	existing, err := b.tasks.Get(owner, guid)
@@ -255,72 +253,6 @@ func (b *Backend) listTasks(t target) ([]caldav.CalendarObject, error) {
 	return objects, nil
 }
 
-// todoMaster returns the VTODO that describes the object: the first without
-// RECURRENCE-ID, else the first VTODO.
-func todoMaster(cal *ical.Calendar) *ical.Component {
-	var first *ical.Component
-	for _, c := range cal.Children {
-		if c.Name != ical.CompToDo {
-			continue
-		}
-		if c.Props.Get(ical.PropRecurrenceID) == nil {
-			return c
-		}
-		if first == nil {
-			first = c
-		}
-	}
-	return first
-}
-
-// todoToTask copies the summary fields of the master VTODO into a Task. The
-// caller sets the raw data and timestamps.
-func todoToTask(cal *ical.Calendar, guid, calendarID string) *bongov1.Task {
-	task := &bongov1.Task{Guid: guid, CalendarId: calendarID}
-	m := todoMaster(cal)
-	if m == nil {
-		return task
-	}
-	if v, err := m.Props.Text(ical.PropSummary); err == nil {
-		task.Summary = v
-	}
-	if v, err := m.Props.Text(ical.PropDescription); err == nil {
-		task.Description = v
-	}
-	instant := func(name string) int64 {
-		p := m.Props.Get(name)
-		if p == nil {
-			return 0
-		}
-		if at, _, ok := icalevent.PropInstant(p, time.UTC); ok {
-			return at.Unix()
-		}
-		return 0
-	}
-	task.Due = instant(ical.PropDue)
-	task.Start = instant(ical.PropDateTimeStart)
-	task.Completed = instant(ical.PropCompleted)
-	if v, err := m.Props.Text(ical.PropStatus); err == nil {
-		task.Status = strings.ToUpper(strings.TrimSpace(v))
-	}
-	task.Priority = boundedInt(m.Props.Get(ical.PropPriority), 0, 9)
-	task.Percent = boundedInt(m.Props.Get(ical.PropPercentComplete), 0, 100)
-	return task
-}
-
-// boundedInt reads an integer property, 0 when absent or malformed, clamped
-// to [lo, hi].
-func boundedInt(p *ical.Prop, lo, hi int32) int32 {
-	if p == nil {
-		return 0
-	}
-	n, err := strconv.ParseInt(strings.TrimSpace(p.Value), 10, 32)
-	if err != nil {
-		return 0
-	}
-	return min(max(int32(n), lo), hi)
-}
-
 // taskToCalendarObject converts a Task to a CalDAV object. The client's own
 // bytes are served when stored; a record without them is synthesised.
 func taskToCalendarObject(userID, calID string, t *bongov1.Task) (*caldav.CalendarObject, error) {
@@ -331,7 +263,7 @@ func taskToCalendarObject(userID, calID string, t *bongov1.Task) (*caldav.Calend
 		}
 	}
 	if cal == nil {
-		cal = synthesiseTask(t)
+		cal = icalevent.SynthesiseTodo(t)
 	}
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
@@ -351,38 +283,6 @@ func taskToCalendarObject(userID, calID string, t *bongov1.Task) (*caldav.Calend
 		ETag:          store.ContentETag(t.IcalRaw, t.UpdatedAt),
 		Data:          cal,
 	}, nil
-}
-
-// synthesiseTask builds a VTODO from the record fields.
-func synthesiseTask(t *bongov1.Task) *ical.Calendar {
-	cal := ical.NewCalendar()
-	cal.Props.SetText(ical.PropVersion, "2.0")
-	cal.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
-	todo := ical.NewComponent(ical.CompToDo)
-	todo.Props.SetText(ical.PropUID, t.Guid)
-	todo.Props.SetDateTime(ical.PropDateTimeStamp, time.Unix(max(t.UpdatedAt, t.CreatedAt), 0).UTC())
-	if t.Summary != "" {
-		todo.Props.SetText(ical.PropSummary, t.Summary)
-	}
-	if t.Description != "" {
-		todo.Props.SetText(ical.PropDescription, t.Description)
-	}
-	for name, at := range map[string]int64{ical.PropDue: t.Due, ical.PropDateTimeStart: t.Start, ical.PropCompleted: t.Completed} {
-		if at != 0 {
-			todo.Props.SetDateTime(name, time.Unix(at, 0).UTC())
-		}
-	}
-	if t.Status != "" {
-		todo.Props.SetText(ical.PropStatus, t.Status)
-	}
-	if t.Priority != 0 {
-		todo.Props.SetText(ical.PropPriority, strconv.Itoa(int(t.Priority)))
-	}
-	if t.Percent != 0 {
-		todo.Props.SetText(ical.PropPercentComplete, strconv.Itoa(int(t.Percent)))
-	}
-	cal.Children = append(cal.Children, todo)
-	return cal
 }
 
 // relaxTodoTimeRanges returns f with the time range removed from every VTODO

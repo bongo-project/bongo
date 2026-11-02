@@ -169,3 +169,7 @@ func (s *TaskStore) ListAll(userID string) ([]*bongov1.Task, error) {
 	}
 	return tasks, nil
 }
+
+// NewTaskGUID returns a fresh task GUID. A caller that serialises the task
+// (UID = guid) before storing it needs the GUID first.
+func NewTaskGUID() string { return generateGUID() }

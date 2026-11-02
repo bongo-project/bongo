@@ -1,0 +1,117 @@
+package templates
+
+import "fmt"
+
+// ResourceBooking is one booking on the admin page of a resource.
+type ResourceBooking struct {
+	Guid      string
+	Title     string
+	Organizer string
+	// When is the start and end, already formatted.
+	When      string
+	Recurring bool
+	Cancelled bool
+}
+
+// AdminResourceForm is the create form for a room or equipment account. It has
+// no password: nobody signs in to a resource.
+templ AdminResourceForm(domains []DomainInfo, email string) {
+	@AdminLayout(t(ctx, "admin.createResource"), email, "users") {
+		<div class="admin-scroll">
+			<h1 class="admin-title">{ t(ctx, "admin.createResource") }</h1>
+			<div class="form-card">
+				<form method="post" action="/admin/users">
+					<input type="hidden" name="kind" value="resource"/>
+					if len(domains) > 0 {
+						<div class="admin-inline-form">
+							<div class="u-flex-1">
+								<label for="res_username" class="admin-inline-label">{ t(ctx, "admin.username") }</label>
+								<input type="text" name="username" id="res_username" required pattern="[^@]+" class="form-input u-m0"/>
+							</div>
+							<div class="u-flex-1">
+								<label for="res_domain" class="admin-inline-label">{ t(ctx, "admin.domain") }</label>
+								<select name="domain" id="res_domain" required class="form-select u-m0">
+									for _, domain := range domains {
+										<option value={ domain.Name }>{ domain.Name }</option>
+									}
+								</select>
+							</div>
+						</div>
+					} else {
+						<label for="res_email">{ t(ctx, "auth.email") }</label>
+						<input type="email" name="email" id="res_email" class="form-input" required/>
+					}
+					<label for="res_name" class="form-label">{ t(ctx, "common.name") }</label>
+					<input type="text" name="display_name" id="res_name" class="form-input" required maxlength="100"/>
+					<label for="res_type" class="form-label">{ t(ctx, "admin.resourceType") }</label>
+					<select name="resource_type" id="res_type" class="form-select">
+						<option value="room">{ t(ctx, "admin.resourceRoom") }</option>
+						<option value="equipment">{ t(ctx, "admin.resourceEquipment") }</option>
+					</select>
+					<label for="res_capacity" class="form-label">{ t(ctx, "admin.resourceCapacity") }</label>
+					<input type="number" name="capacity" id="res_capacity" class="form-input" value="0" min="0" max="100000"/>
+					<p class="u-text-muted u-font-082">{ t(ctx, "admin.resourceNoLogin") }</p>
+					<div class="u-flex u-gap-05 u-mt-1">
+						<button type="submit" class="btn-primary">{ t(ctx, "common.create") }</button>
+						<a href="/admin/users" class="btn-outline">{ t(ctx, "common.cancel") }</a>
+					</div>
+				</form>
+			</div>
+		</div>
+	}
+}
+
+// AdminResourceBookings lists the bookings of a resource, with a cancel button
+// for each.
+templ AdminResourceBookings(user *AdminUserInfo, bookings []ResourceBooking, email, flash string) {
+	@AdminLayout(t(ctx, "admin.resourceBookings"), email, "users") {
+		<div class="admin-scroll">
+			if flash != "" {
+				@FlashMessage(flash, "success")
+			}
+			<h1 class="admin-title">{ t(ctx, "admin.resourceBookings") }: { user.DisplayName } ({ user.Email })</h1>
+			<div class="card">
+				<div class="card-body flush">
+					<table class="admin-table data-table" aria-label={ t(ctx, "admin.resourceBookings") }>
+						<thead>
+							<tr>
+								<th scope="col">{ t(ctx, "admin.resourceBookingWhen") }</th>
+								<th scope="col">{ t(ctx, "admin.resourceBookingTitle") }</th>
+								<th scope="col">{ t(ctx, "admin.resourceBookingOrganiser") }</th>
+								<th scope="col" class="u-width-100px">{ t(ctx, "common.actions") }</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, b := range bookings {
+								<tr>
+									<td>
+										{ b.When }
+										if b.Recurring {
+											<span class="badge badge-user">{ t(ctx, "admin.resourceBookingRecurring") }</span>
+										}
+										if b.Cancelled {
+											<span class="badge badge-user">{ t(ctx, "admin.resourceBookingCancelled") }</span>
+										}
+									</td>
+									<td>{ b.Title }</td>
+									<td>{ b.Organizer }</td>
+									<td>
+										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/bookings/%s/cancel", user.UserID, b.Guid)) }>
+											<button type="submit" class="btn-danger">{ t(ctx, "admin.resourceCancelBooking") }</button>
+										</form>
+									</td>
+								</tr>
+							}
+							if len(bookings) == 0 {
+								<tr><td colspan="4" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.resourceNoBookings") }</td></tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</div>
+			<div class="u-flex u-gap-05 u-mt-1">
+				<a href={ templ.SafeURL("/admin/users/" + user.UserID) } class="btn-outline">{ t(ctx, "common.back") }</a>
+			</div>
+		</div>
+	}
+}

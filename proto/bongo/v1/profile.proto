@@ -16,4 +16,7 @@ message UserProfile {
   bool totp_enabled = 9;               // whether 2FA is active
   uint64 session_generation = 10;      // bumped on web logout; mixed into the session epoch when non-zero
   int64 totp_last_step = 11;           // last accepted TOTP time-step (unix/30); codes at or below it are replays
+  string kind = 12;                    // "" for a person, "resource" for a bookable room or equipment; fixed at creation
+  int64 capacity = 13;                 // seats of a resource; informational
+  string resource_type = 14;           // "room" or "equipment" when kind is "resource"
 }

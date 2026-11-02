@@ -208,6 +208,40 @@ func (inv *Invite) Stored(me, partstat string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Scheduled returns the iCalendar object to put in a CalDAV schedule inbox: a
+// re-encoded copy of the received VEVENTs and VTIMEZONEs with METHOD kept (a
+// client needs it to act on the item) and the sender's VALARMs and scheduling
+// parameters removed. Nothing of the received bytes survives but what the
+// parser understood. When onlyAttendee is not empty, every ATTENDEE but that
+// address is dropped, so a REPLY carries only the answer its sender vouched
+// for. It changes the components of inv.
+func (inv *Invite) Scheduled(onlyAttendee string) ([]byte, error) {
+	out := ical.NewCalendar()
+	out.Props.SetText(ical.PropVersion, "2.0")
+	out.Props.SetText(ical.PropProductID, prodID)
+	out.Props.SetText(ical.PropMethod, inv.Method)
+	out.Children = append(out.Children, inv.Zones...)
+	for _, ve := range inv.Events {
+		StripAlarms(ve)
+		StripScheduleParams(ve)
+		if onlyAttendee != "" {
+			kept := ve.Props[ical.PropAttendee][:0:0]
+			for _, p := range ve.Props[ical.PropAttendee] {
+				if addr, ok := icalevent.AddressFromCalAddress(p.Value); ok && strings.EqualFold(addr, onlyAttendee) {
+					kept = append(kept, p)
+				}
+			}
+			ve.Props[ical.PropAttendee] = kept
+		}
+		out.Children = append(out.Children, ve)
+	}
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(out); err != nil {
+		return nil, fmt.Errorf("imip: encoding schedule inbox item: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
 // StripAlarms removes the VALARMs of a VEVENT: an alarm in a received invitation
 // is the sender's, not the recipient's.
 func StripAlarms(vevent *ical.Component) {

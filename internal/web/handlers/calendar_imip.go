@@ -160,12 +160,7 @@ func (h *CalendarHandler) myAddresses(userID, email string) map[string]bool {
 // myPartstat returns the PARTSTAT of the first attendee of e that is one of
 // mine, or "" when none is.
 func myPartstat(e *bongov1.Event, mine map[string]bool) string {
-	for _, a := range e.GetAttendees() {
-		if mine[store.NormaliseAddress(a.Address)] {
-			return a.Partstat
-		}
-	}
-	return ""
+	return store.OwnerPartstat(e, mine)
 }
 
 // hasDeclined reports whether any attendee of e declined, which is the cheap
@@ -222,6 +217,35 @@ func (h *CalendarHandler) busyEvents(userID, email string, events []*bongov1.Eve
 		out = append(out, e)
 	}
 	return out
+}
+
+// busyIntervals is the one free/busy computation, shared by the web endpoint
+// and the CalDAV outbox so they cannot disagree: the [start, end] unix seconds
+// of the events that make the user busy. Transparent events (TRANSP) do not.
+// An all-day event is busy for its whole dates in the user's zone: it is
+// stored at UTC midnight, so its dates are read in UTC and placed at local
+// midnight.
+func (h *CalendarHandler) busyIntervals(userID, email string, events []*bongov1.Event) [][2]int64 {
+	loc := h.userLocation(userID)
+	var out [][2]int64
+	for _, e := range h.busyEvents(userID, email, events) {
+		if e.Transparent {
+			continue
+		}
+		if e.AllDay {
+			out = append(out, [2]int64{localMidnight(e.StartTime, loc), localMidnight(e.EndTime, loc)})
+			continue
+		}
+		out = append(out, [2]int64{e.StartTime, e.EndTime})
+	}
+	return out
+}
+
+// localMidnight is the start, in loc, of the date that unix seconds ts falls
+// on in UTC.
+func localMidnight(ts int64, loc *time.Location) int64 {
+	d := time.Unix(ts, 0).UTC()
+	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, loc).Unix()
 }
 
 // inviteState is what the user's calendar and addresses say about one received
@@ -882,40 +906,68 @@ func (h *CalendarHandler) sendReply(r *http.Request, msg inviteMessage, st *invi
 		return false
 	}
 	inv := st.inv
-	me := st.me.Address
-	if !icalevent.ValidAddress(inv.Organizer) || !h.maySendAs(msg.UserID, msg.Email, me) {
-		slog.Warn("calendar: not replying to an invitation, the address cannot be sent as", "user", msg.UserID)
-		return false
-	}
-	raw, err := inv.Stored(me, partstat)
+	reply, err := replyEvent(inv, st.me, partstat)
 	if err != nil {
 		return false
+	}
+	return h.deliverReply(msg.UserID, msg.Email, st.me.Address, middleware.LocaleFromContext(r.Context()), reply, inv.RecurrenceID)
+}
+
+// replyEvent returns the event a REPLY to inv is built from: the invitation
+// with me answering partstat, and me as its only attendee.
+func replyEvent(inv *imip.Invite, me *bongov1.Attendee, partstat string) (*bongov1.Event, error) {
+	raw, err := inv.Stored(me.Address, partstat)
+	if err != nil {
+		return nil, err
 	}
 	reply := proto.Clone(inv.Event).(*bongov1.Event)
 	reply.Guid = ""
 	reply.IcalRaw = raw
 	reply.Organizer = inv.Organizer
 	reply.Sequence = inv.Event.Sequence
-	reply.Attendees = []*bongov1.Attendee{{Address: me, Name: st.me.Name, Partstat: partstat}}
+	reply.Attendees = []*bongov1.Attendee{{Address: me.Address, Name: me.Name, Partstat: partstat}}
+	return reply, nil
+}
 
-	now := h.nowIn(msg.UserID)
-	locale := middleware.LocaleFromContext(r.Context())
-	cal, err := imip.BuildCalendar(imip.MethodReply, reply, inv.RecurrenceID, now)
-	if err != nil {
-		slog.Warn("calendar: building a reply failed", "user", msg.UserID, "error", err)
+// sendReplyIn delivers the REPLY described by reply, an event whose organiser
+// is the recipient and whose only attendee is the answering address, in the
+// given locale. CalDAV scheduling uses it.
+func (h *CalendarHandler) sendReplyIn(locale, userID, email string, reply *bongov1.Event, recurrenceID string) bool {
+	if len(reply.Attendees) != 1 {
 		return false
 	}
-	subject, body := imip.Describe(imip.MethodReply, false, reply, h.userLocation(msg.UserID), func(id string) string { return i18n.T(locale, id) })
+	return h.deliverReply(userID, email, reply.Attendees[0].Address, locale, reply, recurrenceID)
+}
+
+// deliverReply builds the REPLY for reply (see replyEvent) and sends it from
+// from, as userID, to the organiser. from must be an address userID may send
+// as; otherwise nothing is sent. It is best-effort: false means the organiser
+// was not told.
+func (h *CalendarHandler) deliverReply(userID, sessionEmail, from, locale string, reply *bongov1.Event, recurrenceID string) bool {
+	if h.invites == nil {
+		return false
+	}
+	if !icalevent.ValidAddress(reply.Organizer) || !h.maySendAs(userID, sessionEmail, from) {
+		slog.Warn("calendar: not replying to an invitation, the address cannot be sent as", "user", userID)
+		return false
+	}
+	now := h.nowIn(userID)
+	cal, err := imip.BuildCalendar(imip.MethodReply, reply, recurrenceID, now)
+	if err != nil {
+		slog.Warn("calendar: building a reply failed", "user", userID, "error", err)
+		return false
+	}
+	subject, body := imip.Describe(imip.MethodReply, false, reply, h.userLocation(userID), func(id string) string { return i18n.T(locale, id) })
 	mime, err := imip.BuildMessage(imip.Params{
-		Method: imip.MethodReply, From: me, To: []string{inv.Organizer}, Subject: subject, TextBody: body, Cal: cal, Date: now,
+		Method: imip.MethodReply, From: from, To: []string{reply.Organizer}, Subject: subject, TextBody: body, Cal: cal, Date: now,
 	})
 	if err != nil {
-		slog.Warn("calendar: building a reply message failed", "user", msg.UserID, "error", err)
+		slog.Warn("calendar: building a reply message failed", "user", userID, "error", err)
 		return false
 	}
-	missed, err := h.invites.DeliverGenerated(msg.UserID, msg.Email, me, []string{inv.Organizer}, mime)
+	missed, err := h.invites.DeliverGenerated(userID, sessionEmail, from, []string{reply.Organizer}, mime)
 	if err != nil || len(missed) > 0 {
-		slog.Warn("calendar: sending a reply failed", "user", msg.UserID, "not_reached", len(missed), "error", err)
+		slog.Warn("calendar: sending a reply failed", "user", userID, "not_reached", len(missed), "error", err)
 		return false
 	}
 	return true

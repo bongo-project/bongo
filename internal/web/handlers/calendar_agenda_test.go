@@ -48,7 +48,7 @@ func TestBuildAgendaOrderingAndGrouping(t *testing.T) {
 		timedEvent("early", utc(2026, 1, 5, 8, 0)),
 		allDayEvent("holiday", 2026, 1, 5),
 	}
-	days := buildAgenda(from, agendaRangeDays, events, nil, time.UTC)
+	days := buildAgenda(from, agendaRangeDays, events, nil, nil, time.UTC)
 	if len(days) != 2 {
 		t.Fatalf("groups = %d, want 2", len(days))
 	}
@@ -84,7 +84,7 @@ func TestBuildAgendaMidnightEdge(t *testing.T) {
 		t.Run(tc.zone+"/"+tc.title, func(t *testing.T) {
 			loc := mustZone(t, tc.zone)
 			f := time.Date(2026, 1, 1, 0, 0, 0, 0, loc)
-			days := buildAgenda(f, agendaRangeDays, []*bongov1.Event{tc.ev}, nil, loc)
+			days := buildAgenda(f, agendaRangeDays, []*bongov1.Event{tc.ev}, nil, nil, loc)
 			if len(days) != 1 {
 				t.Fatalf("groups = %d, want 1", len(days))
 			}
@@ -107,7 +107,7 @@ func TestBuildAgendaDropsOutOfRange(t *testing.T) {
 		allDayEvent("inside", 2026, 1, 1),
 		allDayEvent("after", 2026, 1, 31),
 	}
-	days := buildAgenda(f, agendaRangeDays, events, nil, loc)
+	days := buildAgenda(f, agendaRangeDays, events, nil, nil, loc)
 	if len(days) != 1 || days[0].Items[0].Event.Title != "inside" {
 		t.Fatalf("days = %+v, want only inside", days)
 	}
@@ -335,7 +335,7 @@ func TestBuildAgendaCarriesCalendarColour(t *testing.T) {
 	ev.CalendarId = "work"
 	other := timedEvent("b", utc(2026, 1, 5, 10, 0))
 	other.CalendarId = "unmapped"
-	days := buildAgenda(from, agendaRangeDays, []*bongov1.Event{ev, other}, map[string]string{"work": "#ef4444"}, time.UTC)
+	days := buildAgenda(from, agendaRangeDays, []*bongov1.Event{ev, other}, nil, map[string]string{"work": "#ef4444"}, time.UTC)
 	if len(days) != 1 || len(days[0].Items) != 2 {
 		t.Fatalf("days = %+v, want one group of two", days)
 	}
@@ -382,7 +382,7 @@ func TestBuildAgendaAllDayFirstEastOfUTC(t *testing.T) {
 		timedEvent("early", utc(2026, 1, 9, 15, 30)), // 00:30 on 10 Jan in Tokyo
 		allDayEvent("holiday", 2026, 1, 10),
 	}
-	days := buildAgenda(f, agendaRangeDays, events, nil, loc)
+	days := buildAgenda(f, agendaRangeDays, events, nil, nil, loc)
 	if len(days) != 1 || len(days[0].Items) != 2 {
 		t.Fatalf("days = %+v, want one group of two", days)
 	}

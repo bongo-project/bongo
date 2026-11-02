@@ -618,8 +618,9 @@ story:
 - SMS reminders (#70): dropped by the operator.
 - Natural-language event entry and mail-to-calendar commands (#71): dropped
   by the operator.
-- CalDAV scheduling (RFC 6638, schedule inbox and outbox); see open
-  question 2.
+- Explicit scheduling through the CalDAV outbox (POST of a REQUEST, REPLY
+  or CANCEL). Implicit scheduling (RFC 6638) is in scope as US-020
+  (8.1 decisions 3 and 6); the outbox answers free-busy requests only.
 - iTIP COUNTER, REFRESH and DECLINECOUNTER.
 - Publishing one event on its own, and a public search of published
   calendars (part of #66).
@@ -752,6 +753,16 @@ and 8).
   (web create, edit and occurrence edits); brought into v0.15 because such an
   event is now sent to attendees as an invitation.
 
+- 2026-11-02 (operator): all-day events make their owner busy in free/busy
+  (web and the CalDAV outbox), from local midnight to local midnight in the
+  owner's zone. Events marked TRANSP:TRANSPARENT do not (new `Event`
+  field 21, read from `ical_raw`). Events stored before v0.15 have the field
+  unset and count as busy until a client saves them again.
+- 2026-11-02 (operator): the web event form has "Show as: Busy / Free",
+  defaulting to Free for all-day events and Busy for timed events, as
+  Google Calendar and Outlook do; it is written as TRANSP so CalDAV clients
+  and invitations carry it.
+
 ### 8.2 Candidates for the next release
 
 Audit corrections found while writing this PRD (2026-10-26):
@@ -878,3 +889,30 @@ Found while building batch 4 (2026-11-02):
   before clients sync tasks. Existing bugs seen while building it:
   `DeleteCalendarObject` checks `ErrEventNotFound` where `EventStore.Get`
   returns a wrapped `ErrNotFound`, and the CalDAV ETag may be double-quoted.
+
+Found while building batch 5 (2026-11-02):
+
+- US-020 gaps: deleting an invited event as attendee sends no REPLY
+  DECLINED; Schedule-Tag is not implemented; an organiser editing only an
+  override sends no per-occurrence REQUEST or CANCEL; the server uses the
+  client's SEQUENCE without bumping it; creating or deleting past events
+  sends REQUEST or CANCEL. The SCHEDULE-STATUS write after a save is a
+  second, best-effort update outside the quota gate. Attendee mode can mail
+  a REPLY to any ORGANIZER the user writes into an event of their own, from
+  their own address, within the recipient budget.
+- US-012: the reminder mail shows the start in a fixed layout with a zone
+  abbreviation, not localised. The SSE path still scans every key under
+  `/user/` each minute and its in-memory dedupe is wiped hourly (v0.12
+  note); the email path uses the persisted record.
+- US-014: tasks in calendars shared with the user are reachable over CalDAV
+  but not from `/tasks` or the agenda. A web edit can leave DUE and DTSTART
+  with different value types, and does not check DUE against DTSTART. The
+  DTSTAMP and SEQUENCE bump in `ApplyTodoEdit` duplicates the one in
+  `applyEventEditToICal`.
+- US-015: the per-resource booking lock is per node, so two nodes can both
+  accept one slot. A REQUEST or CANCEL for one occurrence is ignored (the
+  series booking stands). The admin bookings list reads the first 500
+  events and shows UTC times. Every REQUEST stays in the resource's INBOX,
+  which nobody reads; once its quota fills, bookings stop being answered
+  (logged). Built beyond the criteria and kept: the organiser's CANCEL
+  releases a booking; admins can edit a resource's name, quota and capacity.
