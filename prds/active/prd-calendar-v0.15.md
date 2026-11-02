@@ -745,6 +745,13 @@ and 8).
   builtin antispam disabled, or mail arriving through a trusted relay, there
   is no DMARC verdict and external REPLYs are never applied (fails closed).
 
+- 2026-11-02 (operator): no one-time step gives existing users a Tasks
+  calendar; only new users get one (US-013 as written). There are no users
+  to migrate.
+- 2026-11-02 (operator): the event form refuses an end before the start
+  (web create, edit and occurrence edits); brought into v0.15 because such an
+  event is now sent to attendees as an invitation.
+
 ### 8.2 Candidates for the next release
 
 Audit corrections found while writing this PRD (2026-10-26):
