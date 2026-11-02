@@ -1129,17 +1129,13 @@ func (a *Agent) Run(ctx context.Context) error {
 	// CardDAV endpoint with basic auth.
 	if carddavBackend != nil {
 		r.Handle("/carddav/*", carddavHandler)
-		r.Get("/.well-known/carddav", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/carddav/", http.StatusMovedPermanently)
-		})
+		r.HandleFunc("/.well-known/carddav", davWellKnown("/carddav/"))
 	}
 
 	// CalDAV endpoint with basic auth.
 	if caldavBackend != nil {
 		r.Handle("/caldav/*", caldavHandler)
-		r.Get("/.well-known/caldav", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/caldav/", http.StatusMovedPermanently)
-		})
+		r.HandleFunc("/.well-known/caldav", davWellKnown("/caldav/"))
 	}
 
 	// Published calendar feeds. Public on purpose and read-only: the link's
@@ -5064,6 +5060,16 @@ func autoconfigPorts(cfg *config.Config) (imap, imaps, submission, submissions i
 		submissions = cfg.SMTP.SubmissionsListenPort(dev)
 	}
 	return imap, imaps, submission, submissions
+}
+
+// davWellKnown answers RFC 6764 service discovery for every method. Apple
+// Calendar and Contacts lead with an unauthenticated PROPFIND on
+// /.well-known/caldav or /.well-known/carddav, so a redirect for GET alone
+// answers them with 405 and account setup fails.
+func davWellKnown(target string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+	}
 }
 
 // newDAVHandlers builds both DAV handlers around one body budget, so the

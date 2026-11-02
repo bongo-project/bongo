@@ -79,6 +79,11 @@ Start DMARC at `p=none` so you can watch the `rua` reports before you enforce.
 Move to `p=quarantine` and then `p=reject` once SPF and DKIM are consistently
 passing.
 
+If a tenant domain's website is served by something other than Bongo, that
+web server should also redirect `/.well-known/caldav` and
+`/.well-known/carddav` to the mail host for every HTTP method; Apple tries
+the email domain first. See [`caldav-carddav.md`](caldav-carddav.md).
+
 ### Reading the DNS status checks
 
 The **DNS Configuration** section shows the live state of each record against
