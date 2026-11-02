@@ -935,3 +935,25 @@ Found while building batch 6 (2026-11-02):
   "recovery code used" warning after a recovery-code login is lost for users
   whose start page is the inbox (it was lost for everyone before v0.15). The
   summary page shows it, allow-listed and translated.
+
+Found by the v0.15 verification (2026-11-03), accepted or recorded here
+(defects and test gaps are in prds/verification.md):
+
+- A TZID that is not an IANA name (Outlook's "W. Europe Standard Time")
+  expands in UTC. The generated VTIMEZONE has observances up to 10 years
+  past DTSTART for an open-ended series.
+- Old `{guid}_{date}` links redirect for the event owner only.
+- A higher-SEQUENCE REQUEST for one occurrence offers only an answer, not
+  the keep-or-reset update. Attendees listed only in an override are not
+  scheduled over CalDAV.
+- An unverified REPLY or CANCEL is delivered as mail but not placed in the
+  schedule inbox (CalDAV clients act on inbox items automatically).
+- A recurring task appears at its first due date only; an open task due
+  before the agenda window is not shown.
+- A REQUEST for one occurrence of a resource booking gets no answer; an
+  external sender without a DMARC pass gets no answer rather than DECLINED.
+- On a follower, a REPLY can fail the address check when the organiser's
+  address rows exist only on the node that wrote them (as for US-019
+  `to_me`).
+- The CalDAV client fixtures in `internal/caldav/testdata` are hand-made
+  approximations of Apple Calendar and Thunderbird traffic, not captures.

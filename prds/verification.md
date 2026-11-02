@@ -1,71 +1,80 @@
-# Verification: Mail delivery and rules v0.14.0
+# Verification: Calendar v0.15.0
 
-**Date:** 2026-11-01
-**Commit verified:** `a13cbbe` (main after Phase 28)
-**PRD:** [done/prd-mail-delivery-v0.14.md](done/prd-mail-delivery-v0.14.md)
-**Rigor:** adversarial. Two verifiers per requirement: one checked the implementation and edge cases, the other checked whether the tests would go red if the guarantee broke. A completeness critic ran over the whole result. All verifiers were read-only, and the mutation evidence comes from the sweep that follows Phase 29.
-**Scale:** 33 agents, 686 tool calls, 11 minutes.
+**Date:** 2026-11-03
+**Commit verified:** `07666b3` (main after Phase 30)
+**PRD:** [active/prd-calendar-v0.15.md](active/prd-calendar-v0.15.md)
+**Rigor:** adversarial. Each story had two read-only verifiers: one traced the implementation and its edge cases, the other judged whether the tests would go red if the guarantee broke. A completeness critic then reviewed the whole result. Operator decisions in PRD 8.1 override the story text where they differ.
+**Scale:** 41 agents, 1,132 tool calls, 13 minutes.
 
-**Previous report:** the norman secure review of 2026-10-20 (v0.7.0). Every finding in it was fixed in Phase 18, and the report is still in git history.
+**Previous report:** the v0.14 verification of 2026-11-01. Its gaps were fixed in Phase 29, and the report is still in git history.
 
 ## Summary
 
+PASS 2, PARTIAL 17, FAIL 1. Most PARTIAL verdicts come from test gaps or from limits already recorded in 8.2. The defects below are the ones that change behaviour.
+
 | Requirement | Verdict | Main reason |
 |-------------|---------|-------------|
-| US-001 postmaster@ | PARTIAL | Delivery to the owner's INBOX is not tested end to end. The startup report wiring is untested. |
-| US-002 bounce copy | PARTIAL | The config-to-generator wiring is untested. An alias domain whose target is disabled drops the copy. |
-| US-003 port 465 | FAIL | The admin DNS guide has no `_submissions._tcp` row. docs/install.md omits 465. Autoconfig advertises 465 when SMTP is disabled. |
-| US-004 vacation | PARTIAL | The branch that answers a send-as identity found only in To/Cc is untested. Rule forward combined with vacation is untested. |
-| US-005 multi-action rules | PARTIAL | The first-match migration runs only on a node that is leader at startup, and is untested at agent level. |
-| US-006 match any | PASS | |
-| US-007 MIME and header conditions | PARTIAL | No delivery-pipeline test uses these conditions. Engine and tester tests cover them. |
-| US-008 queue tuning | PARTIAL | Agent wiring is untested, and so is the concurrency limit. No test shows that the attempt count no longer bounces. |
-| US-009 disk full | PARTIAL | The gate wiring into SMTP, IMAP and DAV is untested. Removing any `SetStorageGate` call leaves the suite green. |
-| US-010 DSN parameters | PARTIAL | The EnqueueLocal parameter copy and `delay_warning_after` wiring are untested. (The xtext finding was withdrawn, see item 8.) |
-| US-012 domain aliasing | PARTIAL | No SMTP or integration test covers an alias domain. The alias refusals are untranslated. |
-| US-014 Archive | PARTIAL | Swipe and `e` in a virtual view pick the verb from the URL mailbox, so an archived message gets 400 and the row stays dismissed. CSRF on the routes is untested. |
-| US-015 Reply to List | PARTIAL | Reply-all does not strip the user's own address from the reply's own To. The reply-list route is untested. |
-| US-017 bongo sendmail | PARTIAL | An authenticated RCPT to an unknown local part on a hosted domain is relayed (critic, below). docs/sendmail.md is wrong about the invocation name and the exit 67 example. |
-| US-018 CLI lists | PARTIAL | A trailing-dot `--domain` returns an empty list. Mixed-case legacy domain keys can show the wrong state. Table rendering is only partly tested. |
-| Functional and technical requirements (4, 6) | PARTIAL | i18n of the new admin refusals and the rule flashes is missing. CSRF on new routes is not tested through the production router. 6.4 cannot be checked from this repository. |
-
-Totals: 1 PASS, 14 PARTIAL, 1 FAIL. Most PARTIAL verdicts are about the tests, not the behaviour: the code is right, but deleting the agent line that wires it in would leave every test green.
+| US-001 recurrence | PASS | |
+| US-002 occurrence edits | PARTIAL | "This and following" on a shared calendar stores the new series under the calendar ID `shared:{owner}:{cal}`, a calendar that does not exist. |
+| US-003 grant key space | PARTIAL | The leader sweep of orphaned grants is untested where it is wired. The 50-grant cap is tested only at 50 to 51. |
+| US-004 shared calendars | PARTIAL | No scheduling assistant view exists and no busy block is titled "Busy". Nothing in the web UI reads `/calendar/freebusy`. CSRF on share and unshare is untested through the production router. |
+| US-005 share invitations | PARTIAL | Logging of a failed invitation is untested. |
+| US-006 attendees | PARTIAL | The attendee autocomplete is covered only by source greps. The contacts merge in `/api/gal` is untested. |
+| US-007 iMIP sending | PARTIAL | Test gaps only (ordering of save then send). |
+| US-008 receive invitations | PARTIAL | Accept with no calendar chosen can file the event in an arbitrary calendar. A read-only subscribed calendar can be chosen, and the next refresh deletes the event. A malformed or oversized inline calendar part with no filename shows neither a card nor an attachment. The card's time zone is untested. |
+| US-009 apply replies | PARTIAL | Test gaps (failure logging, COUNTER and REFRESH shown as mail). On a follower, missing address rows leave a valid REPLY unapplied. |
+| US-020 CalDAV scheduling | PARTIAL | An attendee invited through a plain alias cannot answer: the REPLY is dropped. Attendees listed only in an override are not scheduled. The 100-attendee limit counts the organiser's own ATTENDEE line. Every test replaces delivery with a recorder. |
+| US-010 published feeds | PARTIAL | In full mode, an override of a private series publishes that occurrence's details. In busy mode, a cancelled or transparent override re-appears as busy from the master's rule. The settings forms are not asserted in the rendered page. |
+| US-011 subscriptions | PARTIAL | A feed that is emptied legitimately is refused as "holds no events", so its old events are never deleted. The 30-second timeout and the 5 MiB value are not asserted. |
+| US-012 email reminders | PARTIAL | The sweep of sent records is untested where it is wired. No CalDAV test shows that a VALARM creates no server reminder. |
+| US-013 tasks over CalDAV | FAIL | The manual client check (Apple Reminders, Thunderbird, DAVx5 with tasks.org) is not recorded. `docs/caldav-carddav.md` says the Tasks calendar is created for new accounts; the code creates it only when a user has no calendars, and not when the first CalDAV action is MKCALENDAR. |
+| US-014 tasks in the web | PARTIAL | `/tasks` CSRF is checked by a source grep only. A recurring task shows only at its first due date. An overdue task due before the window is not in the agenda. |
+| US-015 resources | PARTIAL | A series whose override moves onto a booked slot is accepted (double booking); an excluded occurrence that would collide declines the whole series. CalDAV free-busy requests for a room are refused even from its own domain. The admin bookings wiring is untested. |
+| US-016 agenda | PASS | |
+| US-017 summary page | PARTIAL | Known: no invitations view, and the to-me link lists read mail too. The benchmark asserts no limit. |
+| US-018 DSN relay | PARTIAL | go-smtp sends `SMTPUTF8` only when asked, and the relay never asks, so a message to a non-ASCII address can be refused permanently. net/smtp added it automatically. |
+| US-019 header views | PARTIAL | IMAP APPEND and web import store no List-Id or Cc, so imported list mail (bongo-import uses APPEND) never appears in Mailing lists. A grouped vCard email (`item1.EMAIL`, as Apple Contacts writes) is not matched in From my contacts. |
+| Critic | | `SECURITY.md` does not mention the unauthenticated `/pub/calendar/...` route or the per-calendar feed lockout (PRD 8.2 asked for it). |
 
 ## Behaviour defects
 
-1. **Authenticated RCPT to an unknown local part on a hosted domain is relayed** (critic, US-017, US-012). `internal/smtp/server.go` falls through to `addExternal` on any resolver miss other than `ErrRecipientUnavailable` when the session is authenticated, and no hosted-domain check comes first. The message is queued to our own MX, refused there with `550 5.7.1`, and bounces later. It also spends one slot of the sender's outbound recipient budget, and `bongo sendmail` exits 0 for a typo instead of 67. This was recorded in 8.2 as a v0.15 candidate. It is now Phase 29.
-2. **The admin DNS guide has no `_submissions._tcp` 465 record** (US-003, the only FAIL). `internal/web/handlers/dns_guide.go` was not updated, although deploy/README.md calls it the guide operators copy from. docs/install.md does not list 465 among the ports to open.
-3. **Autoconfig advertises 465 when SMTP is disabled** (US-003). The gate in agent.go checks only the port and the certificate.
-4. **The rules first-match migration can be skipped** in a rolling upgrade (US-005). It runs only when the node is already leader at startup.
-5. **Archive and unarchive in virtual views** (US-014). Swipe and `e` choose the verb from the URL mailbox, so an archived message in Starred gets `400 Already archived` and the swiped row is not reset.
-6. **Reply-all keeps the user's own address** when it is in the reply's own To list, for example Reply-To or a reply to one's own sent message (US-015).
-7. **Bounce copy on an alias domain whose target is disabled** goes to postmaster@ the alias. Nothing resolves it and it is dropped, where a disabled plain domain falls back to `smtp.postmaster_account` (US-002).
-8. ~~**ENVID and ORCPT accept characters outside xtext**~~ (US-010). Withdrawn on 2026-11-01: go-smtp v0.24.0 refuses a raw `=` in these parameters and passes Bongo only decoded values, so `ENVID=a=b` already gets 501. The verifier reasoned from `decodeXtext` alone. Task 29.8 added tests that pin the behaviour.
-9. **Untranslated user-visible text:** the CreateDomain alias refusals, the SetCatchAll refusal on an alias domain, and the "Rule created" and "Rule updated" flashes (section 4).
-10. **CLI `--domain` with a trailing dot** silently lists nothing. Duplicate mixed-case legacy domain keys pick their state from an unstable sort (US-018).
-11. **docs/sendmail.md** says any name ending in `sendmail` works (only the exact name does). Its exit 67 example is a reply Bongo never sends to an authenticated session.
+1. **US-002 shared split.** `editFollowing` takes the calendar ID from the form, which on a shared calendar is `shared:{owner}:{cal}`, and stores the new series under the owner with that ID. Reproduced by a verifier with an overlay test. The existing tests use the bare calendar ID.
+2. **US-008 default calendar.** When no calendar is chosen, `ownCalendar` does not prefer the user's default calendar, so Accept can file the event in another calendar.
+3. **US-008 subscribed target.** `ownCalendar` and the card's calendar list check only the component, not `Subscription`. An invitation accepted into a subscribed calendar is deleted by the next refresh.
+4. **US-008 inline part.** `servableParts` lists only parts with a filename. Outlook and Google put `text/calendar` inline in `multipart/alternative` with no filename, so a malformed or oversized one disappears from the message view.
+5. **US-010 private override.** `publishTransform` judges CLASS per VEVENT, so an override without CLASS of a PRIVATE master is published in full.
+6. **US-010 cancelled override.** In busy mode a cancelled or transparent override is dropped, and the master's RRULE then produces that occurrence as busy.
+7. **US-011 empty feed.** `ParseFeed` refuses a VCALENDAR with no events, so a calendar emptied at the source keeps its old events and shows a refresh error.
+8. **US-015 booking conflicts.** The conflict check expands the series without its overrides and EXDATEs, so a moved occurrence can double-book and an excluded one can decline the series.
+9. **US-015 CalDAV free/busy.** `CalDAVScheduler.FreeBusy` checks self and grants but not `sharedResource`, so CalDAV clients cannot see a room's availability.
+10. **US-018 SMTPUTF8.** The relay never sets `MailOptions.UTF8`, so non-ASCII addresses go out without `SMTPUTF8` even when the remote advertises it.
+11. **US-019 imported mail.** IMAP APPEND and web import build `MailMeta` without List-Id and Cc, and the backfill does not revisit those rows.
+12. **US-019 grouped vCard email.** `ContactStore.Addresses` matches lines starting with `EMAIL` only.
+13. **US-020 alias attendee.** An attendee invited at a plain alias is put in attendee mode, and the REPLY is then refused because the user may not send as the alias. The answer is lost with a log line.
 
-## Test gaps (the code is right, the tests would not notice a break)
+## Missing feature
 
-- Agent wiring with no test: `configureBouncePostmasterCopy`, `reportPostmasterTargets` at boot, the queue options (`max_lifetime`, `max_retry_interval`, `concurrency`, `delay_warning_after`), the storage gate into SMTP, IMAP, CalDAV and CardDAV, and the autoconfig effective ports.
-- Production-router routes: CSRF on archive, unarchive, bulk archive, `/settings/vacation` and `alias_of` on `/admin/domains` is tested only by wrapping a handler in the middleware. The reply-list route is never requested through the router.
-- Queue: no test shows that `concurrency` limits deliveries, or that a message with 10 or more attempts and a recent `created_at` is rescheduled rather than bounced.
-- Vacation: the send-as identity in To/Cc branch, and a rule-requested forward combined with vacation.
-- End to end: postmaster@ to the domain owner's INBOX, mail to an alias-domain address through SMTP, and multi-recipient DSN parameters through EnqueueLocal.
-- CLI: table rendering of admin domains, disabled accounts, quotas, usage and DKIM.
+- **US-004 scheduling assistant.** The story says free/busy grants show busy blocks titled "Busy" in the free/busy lookup and the scheduling assistant view. The lookup exists as JSON; no view shows it, and the event form does not show attendees' availability.
 
-## Accepted as built (no task)
+## Test gaps worth closing
 
-- `queue.concurrency = 0` means the default of 5. It cannot be told apart from an unset key, and every config value in Bongo defaults this way.
-- `abuse@` resolves through the postmaster tier (8.1 decision 7).
-- IMAP `NO [UNAVAILABLE]` and DAV 507 bodies are English. The criterion requires translation only in the web UI.
-- `validDomainName` accepts a trailing dot. This predates v0.14 and applies to every domain.
-- A message/rfc822 attachment is one MIME leaf. This is documented in `rules/parse.go`.
-- Input to `bongo sendmail` with no header block is refused with 65.
-- `RuleStore.Save` does not enforce 1 to 10 actions. The form and the delivery-time cap do.
-- The bongo.js swipe and shortcut are checked by source matching only. The repository has no JS test runner.
-- 6.4 (publish 465 in the infra repository, check `min_free_mb` against production free space) is outside this repository and goes with the v0.14 infra handoff.
+- Production-router CSRF checks for `/calendar/{id}/share`, `/unshare`, the invitation POST and the `/tasks` routes.
+- Wiring tests for the orphaned-grant sweep, the sent-reminder sweep and `adminH.SetResourceBookings`.
+- The invitation card in a non-UTC user zone.
+- A CalDAV PUT with a VALARM sets no server reminder.
+- A COUNTER or REFRESH message shows no card.
+- The 50-grant cap at 49 to 50.
 
-## Gaps
+## Documentation
 
-All defects and test gaps above are Phase 29 in [TASKS.md](TASKS.md). The mutation sweep over Phase 28 and Phase 29 runs after Phase 29.
+- `SECURITY.md`: the unauthenticated feed route, its constant-time token check, and the per-calendar lockout that lets a link holder keep the feed answering 429.
+- `docs/caldav-carddav.md`: when the Tasks calendar is created.
+
+## Known or accepted (already in PRD 8.2, or recorded there now)
+
+Non-IANA TZIDs fall back to UTC. The generated VTIMEZONE covers 10 years for an open series. An override also listed in EXDATE is shown. Old `{guid}_{date}` links redirect for the owner only. A higher-SEQUENCE REQUEST for one occurrence offers only an answer. An event stored by a CalDAV client under another object name is not recognised by the invitation card. Override-only edits send no per-occurrence iTIP. The server does not bump SEQUENCE. The schedule-inbox cap is per node. Recurring tasks show at their first due date only. Resource bookings list the first 500 events in UTC. The client recordings in `internal/caldav/testdata` are hand-made approximations of Apple and Thunderbird traffic.
+
+## Not yet done
+
+- **Mutation sweep (step 6).** It runs after the defects are fixed, as it did for v0.14.
+- **Manual client checks (operator):** CalDAV scheduling with Apple Calendar and Thunderbird; tasks with Apple Reminders, Thunderbird and DAVx5 with tasks.org; Apple account setup after the discovery fix (PR #146).
