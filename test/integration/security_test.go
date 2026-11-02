@@ -367,8 +367,8 @@ func TestTOTPSetupAndLogin(t *testing.T) {
 			t.Errorf("2FA verify status = %d, want 303", resp2.StatusCode)
 		}
 		loc2 := resp2.Header.Get("Location")
-		if !strings.Contains(loc2, "/mail/INBOX") {
-			t.Errorf("after 2FA Location = %q, want /mail/INBOX", loc2)
+		if loc2 != "/summary" {
+			t.Errorf("after 2FA Location = %q, want /summary", loc2)
 		}
 	})
 
@@ -411,8 +411,10 @@ func TestTOTPSetupAndLogin(t *testing.T) {
 			t.Errorf("recovery code verify status = %d, want 303", resp2.StatusCode)
 		}
 		loc := resp2.Header.Get("Location")
-		if !strings.Contains(loc, "/mail/INBOX") {
-			t.Errorf("after recovery code Location = %q, want /mail/INBOX", loc)
+		// The default start page is the summary (v0.15), and the warning
+		// about the used recovery code travels with the redirect.
+		if !strings.HasPrefix(loc, "/summary?warning=") {
+			t.Errorf("after recovery code Location = %q, want /summary?warning=...", loc)
 		}
 	})
 }
@@ -499,8 +501,8 @@ func TestPasswordChange(t *testing.T) {
 	// Old password login should NOT redirect to /mail/INBOX (should stay on login page).
 	if oldResp.StatusCode == http.StatusSeeOther {
 		loc := oldResp.Header.Get("Location")
-		if strings.Contains(loc, "/mail/INBOX") {
-			t.Error("old password still works: login redirected to inbox")
+		if loc == "/summary" || strings.Contains(loc, "/mail/INBOX") {
+			t.Error("old password still works: login redirected to the start page")
 		}
 	}
 	if strings.Contains(string(oldBody), "Invalid email or password") == false &&
@@ -528,8 +530,8 @@ func TestPasswordChange(t *testing.T) {
 		t.Errorf("new password login status = %d, want 303", newResp.StatusCode)
 	}
 	loc := newResp.Header.Get("Location")
-	if !strings.Contains(loc, "/mail/INBOX") {
-		t.Errorf("new password login Location = %q, want /mail/INBOX", loc)
+	if loc != "/summary" {
+		t.Errorf("new password login Location = %q, want /summary", loc)
 	}
 }
 
@@ -800,7 +802,7 @@ func loginWithTOTP(t *testing.T, baseURL, email, password, key string) *http.Cli
 		t.Fatalf("POST /login/2fa: %v", err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther || !strings.Contains(resp.Header.Get("Location"), "/mail/") {
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/summary" {
 		t.Fatalf("2FA login = %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	return c

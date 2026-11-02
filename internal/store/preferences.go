@@ -69,6 +69,23 @@ func (s *PreferenceStore) Set(userID string, prefs *bongov1.UserPreferences) err
 	return s.applier.ApplyCommand(cmd, 5*time.Second)
 }
 
+// Start pages. A preference holds one of these names; anything else is read
+// as the default, so a value written by a newer node cannot break the redirect.
+const (
+	StartPageSummary = "summary"
+	StartPageInbox   = "inbox"
+)
+
+// StartPath is where "/" and a successful login send the user: the summary
+// page unless the start_page preference is "inbox". An absent or unknown value
+// is the summary page.
+func StartPath(p *bongov1.UserPreferences) string {
+	if p.GetStartPage() == StartPageInbox {
+		return "/mail/INBOX"
+	}
+	return "/summary"
+}
+
 // ResolveZone turns a stored time zone name into a location. An empty name,
 // "Local" (which LoadLocation would resolve to the server's zone) or a name
 // that does not load all resolve to UTC.

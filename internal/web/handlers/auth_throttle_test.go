@@ -88,7 +88,7 @@ func TestLoginThrottleOtherAccountSuccessDoesNotClear(t *testing.T) {
 		postForm(h, "/login", loginForm("victim@example.com", "guess"))
 	}
 	rr := postForm(h, "/login", loginForm("attacker@example.com", "right"))
-	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/mail/INBOX" {
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/summary" {
 		t.Fatalf("attacker login = %d %q, want redirect to inbox", rr.Code, rr.Header().Get("Location"))
 	}
 	postForm(h, "/login", loginForm("victim@example.com", "guess"))
@@ -144,7 +144,7 @@ func TestTwoFactorThrottleOtherAccountSuccessDoesNotClear(t *testing.T) {
 		postForm(h, "/login/2fa", url.Values{"code": {"000000"}}, victim)
 	}
 	rr := postForm(h, "/login/2fa", url.Values{"code": {code}}, attacker)
-	if rr.Header().Get("Location") != "/mail/INBOX" {
+	if rr.Header().Get("Location") != "/summary" {
 		t.Fatalf("attacker 2FA = %d %q, want redirect to inbox", rr.Code, rr.Header().Get("Location"))
 	}
 	postForm(h, "/login/2fa", url.Values{"code": {"000000"}}, victim)

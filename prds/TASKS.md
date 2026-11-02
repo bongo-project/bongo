@@ -211,8 +211,8 @@ Imported 2026-11-01; PRD [active/prd-calendar-v0.15.md](active/prd-calendar-v0.1
 | 30.16 | US-013: Tasks (VTODO) over CalDAV (Phase D: reminders, tasks and resources) | [prd-calendar-v0.15.md](active/prd-calendar-v0.15.md) | DONE | M. Fixes VTODO PUT stored as a 1970 event; Task protobuf; manual client check recorded in the PR. |
 | 30.17 | US-014: Tasks in the web UI (Phase D: reminders, tasks and resources) | [prd-calendar-v0.15.md](active/prd-calendar-v0.15.md) | DONE | M. Needs 30.16. |
 | 30.18 | US-015: Resource calendars (Phase D: reminders, tasks and resources) | [prd-calendar-v0.15.md](active/prd-calendar-v0.15.md) | DONE | M. Needs 30.8. Same-domain bookings only (8.1 decision 8). |
-| 30.19 | US-016: The upcoming (agenda) view (Phase E: views) | [prd-calendar-v0.15.md](active/prd-calendar-v0.15.md) | ACTIVE | S. Needs 30.4, 30.11, 30.17. Extends the v0.13 /calendar/agenda. |
-| 30.20 | US-017: Summary page (Phase E: views) | [prd-calendar-v0.15.md](active/prd-calendar-v0.15.md) | ACTIVE | M. Needs 30.8, 30.19, 30.14. Default start page with an inbox preference (8.1 decision 4). |
+| 30.19 | US-016: The upcoming (agenda) view (Phase E: views) | [prd-calendar-v0.15.md](active/prd-calendar-v0.15.md) | DONE | S. Needs 30.4, 30.11, 30.17. Extends the v0.13 /calendar/agenda. |
+| 30.20 | US-017: Summary page (Phase E: views) | [prd-calendar-v0.15.md](active/prd-calendar-v0.15.md) | DONE | M. Needs 30.8, 30.19, 30.14. Default start page with an inbox preference (8.1 decision 4). |
 
 ## Backlog (unscheduled)
 

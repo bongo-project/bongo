@@ -359,30 +359,21 @@ func (h *CalendarHandler) AgendaView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to init calendar", http.StatusInternalServerError)
 		return
 	}
-	calendars, _ := h.calendars.List(userID)
-	calColorMap := buildCalColorMap(calendars)
-
-	to := from.AddDate(0, 0, agendaRangeDays)
-	events, err := h.events.ListByDateRange(userID, from.Unix(), to.Unix(), "")
-	if err != nil {
+	r, days, calendars, err := h.agendaDays(r, userID, email, from, agendaRangeDays, loc)
+	switch {
+	case errors.Is(err, errAgendaEvents):
 		http.Error(w, "failed to load events", http.StatusInternalServerError)
 		return
+	case errors.Is(err, errAgendaTasks):
+		fail(w, r, http.StatusInternalServerError, "tasks.errLoadFailed")
+		return
 	}
-	events = h.hideDeclined(userID, email, events)
-	r, events = h.withShared(r, userID, events, calColorMap, from.Unix(), to.Unix())
-
-	var dueTasks []*bongov1.Task
-	if h.tasks != nil {
-		if dueTasks, err = h.tasks.ListAll(userID); err != nil {
-			fail(w, r, http.StatusInternalServerError, "tasks.errLoadFailed")
-			return
-		}
-	}
+	to := from.AddDate(0, 0, agendaRangeDays)
 
 	data := templates.AgendaData{
 		From:      from,
 		To:        to.AddDate(0, 0, -1),
-		Days:      buildAgenda(from, agendaRangeDays, events, dueTasks, calColorMap, loc),
+		Days:      days,
 		PrevPath:  agendaFromPath(from.AddDate(0, 0, -agendaRangeDays)),
 		NextPath:  agendaFromPath(to),
 		TodayPath: "/calendar/agenda",
@@ -393,6 +384,42 @@ func (h *CalendarHandler) AgendaView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	templ.Handler(templates.AgendaPage(data, calendars, email, r.URL.Query().Get("flash"))).ServeHTTP(w, r)
+}
+
+// errAgendaEvents and errAgendaTasks say which store failed in agendaDays, so
+// a caller can degrade one section instead of failing a whole page.
+var (
+	errAgendaEvents = errors.New("loading agenda events")
+	errAgendaTasks  = errors.New("loading agenda tasks")
+)
+
+// agendaDays gathers everything the upcoming view shows over [from, from+days)
+// in loc and groups it by day: the user's own events (subscribed calendars
+// included, since their events live in the user's key space), events of
+// calendars shared with the user at read or write level, and open tasks with a
+// due date, each coloured by its calendar. days is clamped to
+// [1, agendaRangeDays]; it must never come from a request. It writes nothing.
+// The returned request carries the shared-calendars context for the sidebar.
+func (h *CalendarHandler) agendaDays(r *http.Request, userID, email string, from time.Time, days int, loc *time.Location) (*http.Request, []templates.AgendaDay, []*bongov1.Calendar, error) {
+	days = min(max(days, 1), agendaRangeDays)
+	calendars, _ := h.calendars.List(userID)
+	calColorMap := buildCalColorMap(calendars)
+
+	to := from.AddDate(0, 0, days)
+	events, err := h.events.ListByDateRange(userID, from.Unix(), to.Unix(), "")
+	if err != nil {
+		return r, nil, calendars, fmt.Errorf("%w: %w", errAgendaEvents, err)
+	}
+	events = h.hideDeclined(userID, email, events)
+	r, events = h.withShared(r, userID, events, calColorMap, from.Unix(), to.Unix())
+
+	var dueTasks []*bongov1.Task
+	if h.tasks != nil {
+		if dueTasks, err = h.tasks.ListAll(userID); err != nil {
+			return r, nil, calendars, fmt.Errorf("%w: %w", errAgendaTasks, err)
+		}
+	}
+	return r, buildAgenda(from, days, events, dueTasks, calColorMap, loc), calendars, nil
 }
 
 func agendaFromPath(d time.Time) string {

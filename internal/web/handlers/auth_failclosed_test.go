@@ -44,7 +44,7 @@ func TestLoginFailsClosedOnProfileError(t *testing.T) {
 		{"profile missing", errProfiles{err: store.ErrNotFound}, "", "", "temporarily unavailable"},
 		// Positive controls.
 		{"totp profile still gets pending cookie", errProfiles{profile: &bongov1.UserProfile{Email: "a@example.com", TotpEnabled: true, TotpSecret: []byte("s")}}, "bongo_2fa_pending", "/login/2fa", ""},
-		{"plain profile still gets session cookie", errProfiles{profile: &bongov1.UserProfile{Email: "a@example.com"}}, "bongo_session", "/mail/INBOX", ""},
+		{"plain profile still gets session cookie", errProfiles{profile: &bongov1.UserProfile{Email: "a@example.com"}}, "bongo_session", "/summary", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -321,7 +321,7 @@ func TestTOTPReplay(t *testing.T) {
 			t.Fatalf("first login failed: %d %q", rr.Code, rr.Header().Get("Location"))
 		}
 		rr := login(env, code)
-		if hasSession(rr) || rr.Header().Get("Location") == "/mail/INBOX" {
+		if hasSession(rr) || rr.Header().Get("Location") == "/summary" {
 			t.Fatal("replayed TOTP code logged in a second time")
 		}
 	})

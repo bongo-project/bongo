@@ -45,7 +45,47 @@ type AuthHandler struct {
 	limiter       LoginLimiter
 	raft          TOTPRaftApplier
 	mailboxes     DefaultMailboxEnsurer
+	prefs         StartPagePreferences
 	tlsEnabled    bool
+}
+
+// StartPagePreferences is the part of the preference store the login redirect
+// reads.
+type StartPagePreferences interface {
+	Get(userID string) *bongov1.UserPreferences
+}
+
+// SetPreferences wires the preferences that decide where a login lands. Without
+// them every login goes to the summary page, the default.
+func (h *AuthHandler) SetPreferences(p StartPagePreferences) {
+	h.prefs = p
+}
+
+// redirectToStart sends the user to their start page: the start_page
+// preference, or the summary page when preferences are not wired. Each branch
+// redirects to a literal, so the target can never be taken from stored data.
+func (h *AuthHandler) redirectToStart(w http.ResponseWriter, r *http.Request, userID string) {
+	h.redirectToStartWithWarning(w, r, userID, "")
+}
+
+// redirectToStartWithWarning is redirectToStart carrying a warning in the
+// query string, which the start page shows. The path is still one of the
+// literals; only the escaped query varies.
+func (h *AuthHandler) redirectToStartWithWarning(w http.ResponseWriter, r *http.Request, userID, warning string) {
+	query := ""
+	if warning != "" {
+		query = "?warning=" + urlEncode(warning)
+	}
+	var prefs *bongov1.UserPreferences
+	if h.prefs != nil {
+		prefs = h.prefs.Get(userID)
+	}
+	switch store.StartPath(prefs) {
+	case "/mail/INBOX":
+		http.Redirect(w, r, "/mail/INBOX"+query, http.StatusSeeOther)
+	default:
+		http.Redirect(w, r, "/summary"+query, http.StatusSeeOther)
+	}
 }
 
 // NewAuthHandler creates an AuthHandler.
@@ -89,7 +129,7 @@ func (h *AuthHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	// Redirect to inbox if already logged in.
 	userID, _ := middleware.UserFromContext(r.Context())
 	if userID != "" {
-		http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
+		h.redirectToStart(w, r, userID)
 		return
 	}
 
@@ -185,7 +225,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, canonical, remember, isAdmin, h.tlsEnabled, epoch)
 	http.SetCookie(w, cookie)
-	http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
+	h.redirectToStart(w, r, userID)
 }
 
 // TwoFactorPage renders the 2FA verification form.
@@ -273,7 +313,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, epoch)
 	http.SetCookie(w, cookie)
-	http.Redirect(w, r, "/mail/INBOX?warning="+urlEncode(recoveryWarning), http.StatusSeeOther)
+	h.redirectToStartWithWarning(w, r, pending.UserID, recoveryWarning)
 }
 
 func (h *AuthHandler) recordFailure(ip, email string) {
@@ -303,7 +343,7 @@ func (h *AuthHandler) saveProfile(userID string, profile *bongov1.UserProfile) e
 	return nil
 }
 
-// completeLogin clears the pending cookie, sets the session cookie, and redirects to inbox.
+// completeLogin clears the pending cookie, sets the session cookie, and redirects to the start page.
 func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, pending *middleware.PendingData, epoch string) {
 	ip := middleware.ClientIP(r)
 	http.SetCookie(w, middleware.ClearPendingCookie())
@@ -319,7 +359,7 @@ func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, pend
 		_ = h.mailboxes.EnsureDefaultMailboxes(pending.UserID)
 	}
 
-	http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
+	h.redirectToStart(w, r, pending.UserID)
 }
 
 // urlEncode encodes a string for use in a URL query parameter.

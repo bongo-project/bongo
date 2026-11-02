@@ -36,7 +36,7 @@ type imipEnv struct {
 	n      int
 }
 
-func newImipEnv(t *testing.T) *imipEnv {
+func newImipEnv(t testing.TB) *imipEnv {
 	t.Helper()
 	q := newQuotaEnv(t)
 	for _, u := range []string{quotaUser, otherUser} {

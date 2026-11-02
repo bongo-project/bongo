@@ -4,11 +4,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/bongo-project/bongo/internal/i18n"
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -405,5 +407,194 @@ func TestAgendaViewFromParsedInUserZone(t *testing.T) {
 	_, titles := agendaGroups(e.body(t, e.get(t, "/calendar/agenda?from=2026-01-01", false)))
 	if len(titles["2026-01-01"]) != 1 || titles["2026-01-01"][0] != "FirstHour" {
 		t.Errorf("first-hour event missing from 2026-01-01: %v", titles)
+	}
+}
+
+// agendaSourcesEnv is a shared-calendar environment with a task store, a
+// subscribed calendar and a coloured own calendar for the actor rita (read
+// grant on the owner's calA).
+func agendaSourcesEnv(t *testing.T) *sharedEnv {
+	t.Helper()
+	e := newSharedEnv(t)
+	e.h.SetTaskStore(store.NewTaskStore(e.ps, e.app))
+	e.mustCal(actRead, &bongov1.Calendar{Guid: "default", Name: "Rita", Color: "#3B82F6"})
+	e.mustCal(actRead, &bongov1.Calendar{Guid: "sub", Name: "Feed", Color: "#F59E0B",
+		Subscription: &bongov1.CalendarSubscription{SourceUrl: "https://feed.example/x.ics"}})
+	e.mustCal(actRead, &bongov1.Calendar{Guid: "chores", Name: "Chores", Color: "#22C55E"})
+	return e
+}
+
+func (e *sharedEnv) mustEvent(owner string, ev *bongov1.Event) {
+	e.t.Helper()
+	if _, err := e.events.Create(owner, ev); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *sharedEnv) mustTask(owner string, tk *bongov1.Task) {
+	e.t.Helper()
+	if _, err := store.NewTaskStore(e.ps, e.app).Create(owner, tk); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// agendaItem returns the li.agenda-item whose content contains marker (a
+// title or data-task-guid attribute), so assertions cannot be satisfied by
+// the sidebar's identically classed colour dots.
+func agendaItem(t *testing.T, body, marker string) string {
+	t.Helper()
+	for _, chunk := range strings.Split(body, `<li class="agenda-item"`)[1:] {
+		if end := strings.Index(chunk, "</li>"); end >= 0 {
+			chunk = chunk[:end]
+		}
+		if strings.Contains(chunk, marker) {
+			return chunk
+		}
+	}
+	t.Fatalf("no agenda item contains %q", marker)
+	return ""
+}
+
+func TestAgendaSources(t *testing.T) {
+	const when = sharedEvAWhn
+	dueTask := func(guid, cal string) *bongov1.Task {
+		return &bongov1.Task{Guid: guid, Summary: "Pay " + guid, CalendarId: cal, Due: when}
+	}
+	tests := []struct {
+		name  string
+		actor string
+		setup func(e *sharedEnv)
+		check func(t *testing.T, body string)
+	}{
+		{"subscribed event once with its colour", actRead,
+			func(e *sharedEnv) {
+				e.mustEvent(actRead, &bongov1.Event{Guid: "s1", Title: "Feed gig", CalendarId: "sub", StartTime: when, EndTime: when + 3600})
+			},
+			func(t *testing.T, body string) {
+				if n := strings.Count(body, `data-cal-id="sub"`); n != 1 {
+					t.Errorf("subscribed event rows = %d, want 1", n)
+				}
+				if !strings.Contains(agendaItem(t, body, "Feed gig"), "agenda-bar cal-colour-orange") {
+					t.Error("subscribed event lacks its calendar colour")
+				}
+			}},
+		{"shared read event and due task together", actRead,
+			func(e *sharedEnv) { e.mustTask(actRead, dueTask("rent", "chores")) },
+			func(t *testing.T, body string) {
+				ev := agendaItem(t, body, "Team standup")
+				if !strings.Contains(ev, "agenda-bar cal-colour-red") {
+					t.Errorf("shared event lacks red bar: %s", ev)
+				}
+				task := agendaItem(t, body, `data-task-guid="rent"`)
+				if !strings.Contains(task, "Pay rent") || !strings.Contains(task, "agenda-bar cal-colour-green") {
+					t.Errorf("task item lacks title or green bar: %s", task)
+				}
+			}},
+		{"task row carries its calendar id", actRead,
+			func(e *sharedEnv) {
+				e.mustTask(actRead, dueTask("a", "chores"))
+				e.mustTask(actRead, dueTask("b", ""))
+			},
+			func(t *testing.T, body string) {
+				if !strings.Contains(body, `data-task-guid="a" data-cal-id="chores"`) {
+					t.Errorf("task a lacks data-cal-id: %s", body)
+				}
+				if !strings.Contains(body, `data-task-guid="b" data-cal-id="`+store.TasksCalendarGUID+`"`) {
+					t.Error("task without a calendar lacks the Tasks calendar id")
+				}
+			}},
+		{"freebusy grant shows no shared event", actFreeBusy, func(e *sharedEnv) {},
+			func(t *testing.T, body string) {
+				if strings.Contains(body, "Team standup") {
+					t.Error("freebusy grantee sees the shared event")
+				}
+			}},
+		{"declined own event hidden, cancelled kept struck", actRead,
+			func(e *sharedEnv) {
+				e.mustEvent(actRead, &bongov1.Event{Guid: "d1", Title: "Declined one", CalendarId: "default", StartTime: when, EndTime: when + 3600,
+					Attendees: []*bongov1.Attendee{{Address: "rita@d.test", Partstat: "DECLINED"}}})
+				e.mustEvent(actRead, &bongov1.Event{Guid: "c1", Title: "Cancelled one", CalendarId: "default", StartTime: when, EndTime: when + 3600, Status: "CANCELLED"})
+			},
+			func(t *testing.T, body string) {
+				if strings.Contains(body, "Declined one") {
+					t.Error("declined event shown")
+				}
+				if !strings.Contains(body, "Cancelled one") || !strings.Contains(body, "event-cancelled") {
+					t.Error("cancelled event not rendered struck through")
+				}
+			}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			e := agendaSourcesEnv(t)
+			tc.setup(e)
+			tc.check(t, viewBody(t, e, tc.actor, "agenda"))
+		})
+	}
+}
+
+func TestAgendaDaysRangeAndClamp(t *testing.T) {
+	e := agendaSourcesEnv(t)
+	from := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+	day := func(n int) int64 { return from.AddDate(0, 0, n).Add(10 * time.Hour).Unix() }
+	for _, n := range []int{0, 1, 6, 7, 29, 30, 31} {
+		e.mustEvent(actRead, &bongov1.Event{Guid: "d" + strconv.Itoa(n), Title: "E" + strconv.Itoa(n), CalendarId: "default", StartTime: day(n), EndTime: day(n) + 3600})
+	}
+	e.mustTask(actRead, &bongov1.Task{Guid: "t3", Summary: "T3", CalendarId: "chores", Due: day(3)})
+	e.mustTask(actRead, &bongov1.Task{Guid: "t8", Summary: "T8", CalendarId: "chores", Due: day(8)})
+	tests := []struct {
+		name string
+		days int
+		want []string
+		not  []string
+	}{
+		{"seven days", 7, []string{"E6", "T3"}, []string{"E7", "E29", "E30", "T8"}},
+		{"thirty days", 30, []string{"E29", "T8"}, []string{"E30", "E31"}},
+		{"over the cap is clamped", 365, []string{"E29"}, []string{"E30", "E31"}},
+		{"zero is one day", 0, []string{"E0"}, []string{"E1", "E6", "T3"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withRoute(httptest.NewRequest("GET", "/x", nil), actRead, nil)
+			_, ds, _, err := e.h.agendaDays(req, actRead, "rita@d.test", from, tc.days, time.UTC)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var titles []string
+			for _, d := range ds {
+				for _, it := range d.Items {
+					if it.Event != nil {
+						titles = append(titles, it.Event.Title)
+					}
+					if it.Task != nil {
+						titles = append(titles, it.Task.Summary)
+					}
+				}
+			}
+			all := strings.Join(titles, ",") + ","
+			for _, w := range tc.want {
+				if !strings.Contains(all, w+",") {
+					t.Errorf("missing %s in %v", w, titles)
+				}
+			}
+			for _, w := range tc.not {
+				if strings.Contains(all, w+",") {
+					t.Errorf("unexpected %s in %v", w, titles)
+				}
+			}
+		})
+	}
+}
+
+func TestAgendaDaysFreeBusyGrantee(t *testing.T) {
+	e := agendaSourcesEnv(t)
+	req := withRoute(httptest.NewRequest("GET", "/x", nil), actFreeBusy, nil)
+	from := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+	_, ds, _, err := e.h.agendaDays(req, actFreeBusy, "fred@d.test", from, 7, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ds) != 0 {
+		t.Errorf("freebusy grantee got %d agenda days, want 0", len(ds))
 	}
 }

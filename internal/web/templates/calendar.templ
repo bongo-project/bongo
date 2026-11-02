@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bongo-project/bongo/internal/icalevent"
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -1175,6 +1176,15 @@ func eventCalendarID(e *bongov1.Event) string {
 	return e.CalendarId
 }
 
+// taskCalendarID is the calendar a task row is filtered under; a task with no
+// calendar sits in the Tasks calendar, as in the sidebar.
+func taskCalendarID(t *bongov1.Task) string {
+	if t.CalendarId == "" {
+		return store.TasksCalendarGUID
+	}
+	return t.CalendarId
+}
+
 func eventBlockColourClass(e *bongov1.Event, calColors map[string]string) string {
 	c := CalendarColourClass(eventBlockColor(e, calColors))
 	if e.GetStatus() == "CANCELLED" {
@@ -1414,7 +1424,7 @@ templ AgendaContent(data AgendaData) {
 					<ul class="agenda-list">
 						for _, it := range day.Items {
 							if it.Task != nil {
-								<li class="agenda-item" data-task-guid={ it.Task.Guid }>
+								<li class="agenda-item" data-task-guid={ it.Task.Guid } data-cal-id={ taskCalendarID(it.Task) }>
 									<span class="agenda-time">
 										if it.TimeLabel == "" {
 											{ t(ctx, "calendar.allDay") }

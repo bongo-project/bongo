@@ -142,6 +142,12 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 		prefs.Locale = r.FormValue("locale")
 	}
 
+	// Start page. An unknown value leaves the stored one unchanged.
+	switch r.FormValue("start_page") {
+	case store.StartPageSummary, store.StartPageInbox:
+		prefs.StartPage = r.FormValue("start_page")
+	}
+
 	// Infinite scroll: checkbox sends "1" when checked, absent when unchecked.
 	prefs.InfiniteScroll = r.FormValue("infinite_scroll") == "1"
 

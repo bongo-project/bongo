@@ -58,7 +58,7 @@ type quotaEnv struct {
 	calendars *store.CalendarStore
 }
 
-func newQuotaEnv(t *testing.T) *quotaEnv {
+func newQuotaEnv(t testing.TB) *quotaEnv {
 	t.Helper()
 	dir := t.TempDir()
 	ps, err := store.NewPebbleStore(dir + "/pebble")

@@ -97,8 +97,8 @@ func TestLoginCanonicalisesSessionEmail(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newCanonicalHandler(tt.stored, &bongov1.UserProfile{Email: tt.profile})
 			rr := postForm(h, "/login", loginForm(tt.typed, "right"))
-			if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/mail/INBOX" {
-				t.Fatalf("login = %d %q, want 303 /mail/INBOX", rr.Code, rr.Header().Get("Location"))
+			if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/summary" {
+				t.Fatalf("login = %d %q, want 303 /summary", rr.Code, rr.Header().Get("Location"))
 			}
 			got := sessionEmail(t, rr)
 			if got != tt.want {
@@ -153,7 +153,7 @@ func TestTwoFactorCanonicalisesSessionEmail(t *testing.T) {
 			t.Fatalf("pending email = %q, want canonical", pd.Email)
 		}
 		rr2 := postForm(h, "/login/2fa", url.Values{"code": {totpCode(t)}}, pc)
-		if rr2.Header().Get("Location") != "/mail/INBOX" {
+		if rr2.Header().Get("Location") != "/summary" {
 			t.Fatalf("2FA = %d %q", rr2.Code, rr2.Header().Get("Location"))
 		}
 		if got := sessionEmail(t, rr2); got != "bob@example.com" {
@@ -165,7 +165,7 @@ func TestTwoFactorCanonicalisesSessionEmail(t *testing.T) {
 		h := newCanonicalHandler("bob@example.com", totpProfile())
 		pc := middleware.CreatePendingCookie(throttleSessionSecret, "u-bob", "BOB@Example.com", false, false, false, "")
 		rr := postForm(h, "/login/2fa", url.Values{"code": {totpCode(t)}}, pc)
-		if rr.Header().Get("Location") != "/mail/INBOX" {
+		if rr.Header().Get("Location") != "/summary" {
 			t.Fatalf("2FA = %d %q", rr.Code, rr.Header().Get("Location"))
 		}
 		if got := sessionEmail(t, rr); got != "bob@example.com" {
@@ -183,8 +183,8 @@ func TestTwoFactorCanonicalisesSessionEmail(t *testing.T) {
 		h := newCanonicalHandler("bob@example.com", p)
 		pc := middleware.CreatePendingCookie(throttleSessionSecret, "u-bob", "BOB@Example.com\r\n", false, false, false, "")
 		rr := postForm(h, "/login/2fa", url.Values{"code": {plain[0]}}, pc)
-		if loc := rr.Header().Get("Location"); !strings.HasPrefix(loc, "/mail/INBOX?warning=") {
-			t.Fatalf("2FA recovery = %d %q, want /mail/INBOX?warning=...", rr.Code, loc)
+		if loc := rr.Header().Get("Location"); !strings.HasPrefix(loc, "/summary?warning=") {
+			t.Fatalf("2FA recovery = %d %q, want /summary?warning=...", rr.Code, loc)
 		}
 		if got := sessionEmail(t, rr); got != "bob@example.com" {
 			t.Fatalf("session email = %q, want canonical", got)
@@ -197,7 +197,7 @@ func TestTwoFactorCanonicalisesSessionEmail(t *testing.T) {
 		h := newCanonicalHandler("bob@example.com", p)
 		pc := middleware.CreatePendingCookie(throttleSessionSecret, "u-bob", "bob@example.com", false, false, false, "")
 		rr := postForm(h, "/login/2fa", url.Values{"code": {totpCode(t)}}, pc)
-		if rr.Header().Get("Location") != "/mail/INBOX" {
+		if rr.Header().Get("Location") != "/summary" {
 			t.Fatalf("2FA = %d %q", rr.Code, rr.Header().Get("Location"))
 		}
 		if got := sessionEmail(t, rr); got != "bob@example.com" {
