@@ -105,6 +105,48 @@ func (s *ACLStore) ListCalendarGrantsHeld(grantee string) ([]HeldGrant, error) {
 	return out, nil
 }
 
+// ListPendingCalendarGrantsHeld returns the pending grants grantee holds on
+// calendars that still exist, sorted by owner then calendar. Nothing here
+// authorises access; it feeds the invitation page.
+func (s *ACLStore) ListPendingCalendarGrantsHeld(grantee string) ([]HeldGrant, error) {
+	if grantee == "" {
+		return nil, nil
+	}
+	prefix := append(aclGranteePrefix(grantee), []byte(ACLKindCalendar+"/")...)
+	keys, err := s.pebble.scanKeys(prefix)
+	if err != nil {
+		return nil, fmt.Errorf("scanning grants held: %w", err)
+	}
+	var out []HeldGrant
+	for _, k := range keys {
+		ref, ok := parseACLKey(string(k))
+		if !ok || ref.Grantee != grantee || ref.Kind != ACLKindCalendar {
+			continue
+		}
+		g, err := s.GetCalendarGrant(ref.Owner, ref.Resource, grantee)
+		if err != nil {
+			return nil, err
+		}
+		if g == nil || g.State != GrantStatePending || !ValidCalendarLevel(g.Level) {
+			continue
+		}
+		if _, err := s.pebble.Get(calendarKey(ref.Owner, ref.Resource)); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("reading calendar for grant: %w", err)
+		}
+		out = append(out, HeldGrant{Owner: ref.Owner, Calendar: ref.Resource, Level: g.Level})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Owner != out[j].Owner {
+			return out[i].Owner < out[j].Owner
+		}
+		return out[i].Calendar < out[j].Calendar
+	})
+	return out, nil
+}
+
 // ListCalendarGrants returns every grant on one calendar, in any state,
 // sorted by grantee, for the owner's sharing list.
 func (s *ACLStore) ListCalendarGrants(owner, calendar string) ([]CalendarGrantEntry, error) {

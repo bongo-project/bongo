@@ -1589,3 +1589,15 @@ PATTERN: [testing] A browser check after green tests still finds things: here an
 - Workflow wf_ec361ff4-5a8: all four advisor plans completed; all four workers stopped part-way when the account hit its weekly usage limit. Nothing reviewed, nothing merged.
 - Partial, untested work is left in .claude/worktrees/wf_ec361ff4-5a8-5 (30.5), -6 (30.14), -7 (30.9), -8 (30.16), each based on main 5ebebac. Do not merge it as is.
 - Resume: rerun the workflow with resumeFromRunId wf_ec361ff4-5a8 (the advisor plans replay from cache; workers restart), or start the four tasks fresh. Remove the four worktrees and worktree-wf_ec361ff4* branches afterwards.
+
+## 2026-11-02: Phase 30 batch 4 (30.5, 30.9, 30.14, 30.16)
+
+- Resumed wf_ec361ff4-5a8 after the usage limit: the four advisor plans replayed from cache, the workers ran fresh from main.
+- 30.5 US-005: grants start pending; FSM-side `accept` and `keep_state` so a revoke between read and write cannot be undone; /calendar/shares with Accept and Decline; invitation email from a worker off the request path in the recipient's locale; "Send the public link" for published calendars with visible status (htmx:responseError listener fills data-form-status).
+- 30.9 US-009: REPLYs applied in the deliver stage after the copy is stored; From must equal the attendee and be verified (DMARC pass or authenticated send-as); per-occurrence REPLY updates the override; at most 100 overrides created by REPLYs.
+- 30.14 US-019: maildocument to_me, sender_addr, list_name (guarded ALTER, backfilled by the rebuild); /mail/to-me, /mail/from-contacts, /mail/lists, /mail/lists/{id}; actions by real mailbox.
+- 30.16 US-013: Task protobuf at /user/{id}/task/{guid}; Calendar.components (14); 403 with supported-calendar-component on a wrong component; Tasks calendar for new users and, via a one-time step, existing users (operator to confirm); event pickers and writes refuse tasks-only calendars.
+- One conflict (agent struct fields). Full gate green; browser checked the mail views and the public-link status messages.
+PATTERN: [ui] htmx 2 does not swap 4xx/5xx bodies; a form that must show a server refusal needs a data-form-status target filled from htmx:responseError, and success answered with a fragment rather than HX-Refresh.
+PATTERN: [calendar] A new component kind means auditing every place that lists or files into calendars (pickers, move, import, iMIP), not only CalDAV.
+PATTERN: [ops] A usage-limit interruption mid-workflow loses only the running agents: resume with resumeFromRunId and the same args, and completed plan reviews replay from cache.

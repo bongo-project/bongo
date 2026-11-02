@@ -29,6 +29,7 @@ import (
 // Backend implements the caldav.Backend interface.
 type Backend struct {
 	events    *store.EventStore
+	tasks     *store.TaskStore // nil: VTODO is not served
 	calendars *store.CalendarStore
 	logger    *slog.Logger
 
@@ -172,7 +173,7 @@ func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 			Path:                  calPath(userID, c.Guid),
 			Name:                  c.Name,
 			Description:           c.Description,
-			SupportedComponentSet: []string{"VEVENT"},
+			SupportedComponentSet: b.components(c),
 		})
 	}
 
@@ -195,7 +196,7 @@ func (b *Backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) 
 				Path:                  calPath(userID, sharedSegment(g.Owner, g.Calendar)),
 				Name:                  b.sharedName(g.Owner, cal.Name),
 				Description:           cal.Description,
-				SupportedComponentSet: []string{"VEVENT"},
+				SupportedComponentSet: b.components(cal),
 			})
 		}
 	}
@@ -222,7 +223,7 @@ func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 		Path:                  calPath(t.user, t.calSeg),
 		Name:                  name,
 		Description:           cal.Description,
-		SupportedComponentSet: []string{"VEVENT"},
+		SupportedComponentSet: b.components(cal),
 	}, nil
 }
 
@@ -253,6 +254,16 @@ func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *calda
 		return nil, err
 	}
 
+	cal := b.calendarOf(t)
+	if b.allowsTodo(cal) {
+		if obj, found, err := b.getTask(t); err != nil || found {
+			return obj, err
+		}
+		if !store.CalendarAllows(cal, store.ComponentEvent) {
+			return nil, httpErr(http.StatusNotFound, "not found")
+		}
+	}
+
 	event, err := b.events.Get(t.keyOwner, t.guid)
 	if err != nil {
 		return nil, fmt.Errorf("event not found: %w", err)
@@ -281,12 +292,26 @@ func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *cal
 		return nil, err
 	}
 
+	// Only the components the calendar holds are listed: an event filed in a
+	// VTODO calendar by the web UI is not a member of its collection.
+	cal := b.calendarOf(t)
+	var objects []caldav.CalendarObject
+	if b.allowsTodo(cal) {
+		tasks, err := b.listTasks(t)
+		if err != nil {
+			return nil, err
+		}
+		objects = tasks
+	}
+	if !store.CalendarAllows(cal, store.ComponentEvent) {
+		return objects, nil
+	}
+
 	events, _, err := b.events.ListAll(t.keyOwner, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("listing events: %w", err)
 	}
 
-	var objects []caldav.CalendarObject
 	for _, e := range events {
 		// Filter by calendar. A shared collection matches the shared
 		// calendar exactly, an empty calendar ID meaning the default one.
@@ -312,7 +337,7 @@ func (b *Backend) QueryCalendarObjects(ctx context.Context, path string, query *
 	if err != nil {
 		return nil, err
 	}
-	return caldav.Filter(query, objects)
+	return filterTodoObjects(query, objects)
 }
 
 // PutCalendarObject creates or updates an event from iCal data.
@@ -331,11 +356,32 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	// calendar that is not the authenticated user.
 	userID, guid, calID := t.keyOwner, t.guid, t.calendar
 
-	// Ensure the calendar exists.
+	// Ensure the calendars exist, so a first PUT from a new user finds Tasks.
 	if !t.shared() {
 		if _, err := b.calendars.EnsureDefault(userID); err != nil {
 			return nil, fmt.Errorf("ensuring default calendar: %w", err)
 		}
+	}
+
+	// A PUT holds one kind of component, and the calendar it targets must
+	// take that kind (RFC 4791 5.3.2.1). Without this a VTODO PUT was stored
+	// as an event with no title at 1970-01-01.
+	kinds := putComponents(calendar)
+	if len(kinds) != 1 {
+		return nil, preconditionRefusal(caldav.PreconditionValidCalendarObjectResource)
+	}
+	dest := b.calendarOf(t)
+	switch kinds[0] {
+	case ical.CompEvent:
+		if !store.CalendarAllows(dest, store.ComponentEvent) {
+			return nil, preconditionRefusal(caldav.PreconditionSupportedCalendarComponent)
+		}
+	case ical.CompToDo:
+		if !b.allowsTodo(dest) {
+			return nil, preconditionRefusal(caldav.PreconditionSupportedCalendarComponent)
+		}
+	default:
+		return nil, preconditionRefusal(caldav.PreconditionSupportedCalendarComponent)
 	}
 
 	// Ensure required calendar properties for encoding.
@@ -347,6 +393,17 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	var rawBuf bytes.Buffer
 	if err := ical.NewEncoder(&rawBuf).Encode(calendar); err != nil {
 		return nil, fmt.Errorf("encoding ical: %w", err)
+	}
+
+	if kinds[0] == ical.CompToDo {
+		return b.putTodo(t, calendar, rawBuf.Bytes(), opts)
+	}
+
+	// One href must map to one object: a guid held by a task is refused.
+	if clash, err := b.guidIsTask(userID, guid); err != nil {
+		return nil, err
+	} else if clash {
+		return nil, httpErr(http.StatusForbidden, "forbidden")
 	}
 
 	// Extract VEVENT fields.
@@ -377,7 +434,7 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	// If-Match/If-None-Match into opts; ignoring them made every concurrent
 	// edit a silent last-write-wins, which is the failure mode these headers
 	// exist to prevent.
-	if err := checkPreconditions(opts, existing); err != nil {
+	if err := checkPreconditions(opts, existing != nil, existingRaw(existing), existingUpdated(existing)); err != nil {
 		return nil, err
 	}
 
@@ -420,6 +477,15 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 		return httpErr(http.StatusForbidden, "this calendar is shared read-only")
 	}
 	userID, guid := t.keyOwner, t.guid
+	cal := b.calendarOf(t)
+	if b.allowsTodo(cal) {
+		if handled, err := b.deleteTask(t); err != nil || handled {
+			return err
+		}
+		if !store.CalendarAllows(cal, store.ComponentEvent) {
+			return httpErr(http.StatusNotFound, "not found")
+		}
+	}
 	if t.shared() {
 		// Delete only what the grant covers: an owner event in another
 		// calendar answers as if it did not exist.
@@ -508,6 +574,21 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 // on message text.
 var ErrPreconditionFailed = errors.New("precondition failed")
 
+// existingRaw and existingUpdated read the ETag inputs of an event that may be nil.
+func existingRaw(e *bongov1.Event) []byte {
+	if e == nil {
+		return nil
+	}
+	return e.IcalRaw
+}
+
+func existingUpdated(e *bongov1.Event) int64 {
+	if e == nil {
+		return 0
+	}
+	return e.UpdatedAt
+}
+
 // checkPreconditions enforces If-Match and If-None-Match for a PUT.
 //
 // If-None-Match: * means "create only" -- fail if the resource exists.
@@ -518,7 +599,7 @@ var ErrPreconditionFailed = errors.New("precondition failed")
 // A malformed header value is treated as a failed precondition rather than
 // ignored: a client that sent a condition it meant must never have the write
 // applied unconditionally.
-func checkPreconditions(opts *caldav.PutCalendarObjectOptions, existing *bongov1.Event) error {
+func checkPreconditions(opts *caldav.PutCalendarObjectOptions, exists bool, raw []byte, updatedAt int64) error {
 	if opts == nil {
 		return nil
 	}
@@ -528,18 +609,18 @@ func checkPreconditions(opts *caldav.PutCalendarObjectOptions, existing *bongov1
 			return webdav.NewHTTPError(http.StatusPreconditionFailed,
 				fmt.Errorf("%w: If-None-Match supports only *", ErrPreconditionFailed))
 		}
-		if existing != nil {
+		if exists {
 			return webdav.NewHTTPError(http.StatusPreconditionFailed,
 				fmt.Errorf("%w: If-None-Match: * but the object already exists", ErrPreconditionFailed))
 		}
 	}
 
 	if opts.IfMatch.IsSet() {
-		if existing == nil {
+		if !exists {
 			return webdav.NewHTTPError(http.StatusPreconditionFailed,
 				fmt.Errorf("%w: If-Match on an object that does not exist", ErrPreconditionFailed))
 		}
-		want := store.ContentETagValue(existing.IcalRaw, existing.UpdatedAt)
+		want := store.ContentETagValue(raw, updatedAt)
 		ok, err := opts.IfMatch.MatchETag(want)
 		if err != nil {
 			return webdav.NewHTTPError(http.StatusPreconditionFailed,

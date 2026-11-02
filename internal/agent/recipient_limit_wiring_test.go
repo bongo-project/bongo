@@ -140,6 +140,14 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	if got := a.calendarHandler.InviteSender(); got == nil || got != any(a.composeHandler) {
 		t.Errorf("calendar invite sender = %v, want the compose handler", got)
 	}
+	// Replies delivered to an organiser are applied by the calendar handler;
+	// deleting the wiring line leaves every REPLY ordinary mail.
+	if a.deliverProc == nil {
+		t.Fatal("Run did not keep the delivery stage")
+	}
+	if got := a.deliverProc.CalendarReplies(); got == nil || got != any(a.calendarHandler) {
+		t.Errorf("deliver calendar replies = %v, want the calendar handler", got)
+	}
 	if a.AddressStore != nil && !a.calendarHandler.HasAddressStore() {
 		t.Error("calendar handler has no send-as address store after Run")
 	}
@@ -179,6 +187,38 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	}
 	if sl.Allow("u1") {
 		t.Error("share limiter allows a 21st request in the hour")
+	}
+
+	// Share invitation mail: the inviter is wired into the handler and its
+	// worker runs. Deleting either line in Run leaves invitations unsent.
+	if a.shareInviter == nil || a.calendarHandler.ShareInviter() != a.shareInviter {
+		t.Error("calendar handler has no share inviter after Run")
+	}
+	a.bgMu.Lock()
+	inviteWorkers := a.bgLive["share-invite-mail"]
+	a.bgMu.Unlock()
+	if inviteWorkers != 1 {
+		t.Errorf("share-invite-mail workers live = %d, want 1: invitations would never be sent", inviteWorkers)
+	}
+	// The invitation routes are mounted, and the static /calendar/shares
+	// segments are not swallowed by /calendar/{calendarID}/... routes. Without
+	// a session each is refused by the auth middleware, so only an unmounted
+	// route is a 404 or 405.
+	for _, rt := range []struct{ method, path string }{
+		{http.MethodGet, "/calendar/shares"},
+		{http.MethodPost, "/calendar/shares/accept"},
+		{http.MethodPost, "/calendar/shares/decline"},
+		{http.MethodPost, "/calendar/someid/publish/send"},
+	} {
+		req, _ := http.NewRequest(rt.method, fmt.Sprintf("http://127.0.0.1:%d%s", cfg.Web.Port, rt.path), strings.NewReader(""))
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", rt.method, rt.path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+			t.Errorf("%s %s = %d, the route is not mounted", rt.method, rt.path, resp.StatusCode)
+		}
 	}
 }
 

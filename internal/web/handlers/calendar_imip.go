@@ -499,9 +499,13 @@ func (h *CalendarHandler) InvitationCard(r *http.Request, msg inviteMessage) *te
 		if err != nil {
 			slog.Warn("calendar: listing calendars for an invitation failed", "user", msg.UserID, "error", err)
 		}
-		for i, cal := range cals {
+		for _, cal := range cals {
+			// A tasks-only calendar cannot hold the event.
+			if !store.CalendarAllows(cal, store.ComponentEvent) {
+				continue
+			}
 			c.Calendars = append(c.Calendars, templates.InvitationCalendar{
-				ID: cal.Guid, Name: cleanDisplay(cal.Name, maxCardName, false), Selected: i == 0,
+				ID: cal.Guid, Name: cleanDisplay(cal.Name, maxCardName, false), Selected: len(c.Calendars) == 0,
 			})
 		}
 	}
@@ -600,8 +604,12 @@ func (h *CalendarHandler) ownCalendar(userID, id string) (string, inviteResult) 
 		}
 		return guid, inviteResult{}
 	}
-	if _, err := h.calendars.Get(userID, id); err != nil {
+	cal, err := h.calendars.Get(userID, id)
+	if err != nil {
 		return "", inviteResult{Status: http.StatusNotFound, Message: "calendar not found"}
+	}
+	if !store.CalendarAllows(cal, store.ComponentEvent) {
+		return "", inviteResult{Status: http.StatusBadRequest, Message: "calendar holds tasks only"}
 	}
 	return id, inviteResult{}
 }

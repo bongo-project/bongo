@@ -1,0 +1,72 @@
+package templates
+
+import (
+	"context"
+
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
+)
+
+// PendingShare is one calendar invitation waiting for the user's answer.
+type PendingShare struct {
+	Owner        string // user ID, posted back
+	OwnerLabel   string // address shown
+	Calendar     string
+	CalendarName string
+	Level        string
+}
+
+templ CalendarSharesPage(rows []PendingShare, calendars []*bongov1.Calendar, email string) {
+	@LayoutWithContent(t(ctx, "calendar.sharesTitle"), email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@CalendarSidebar(calendars)
+		</aside>
+		<main class="content" id="main-content">
+			<div class="toolbar">
+				<a href="/calendar" class="tool-btn">&larr; { t(ctx, "calendar.backToCalendar") }</a>
+			</div>
+			<h3>{ t(ctx, "calendar.sharesTitle") }</h3>
+			if len(rows) == 0 {
+				<p class="meta">{ t(ctx, "calendar.sharesNone") }</p>
+			}
+			<ul class="share-list">
+				for _, row := range rows {
+					<li class="share-item">
+						<span class="share-target">{ row.OwnerLabel } &middot; { row.CalendarName } &middot; { shareLevelLabel(ctx, row.Level) }</span>
+						<form hx-post="/calendar/shares/accept" hx-swap="none" class="share-accept-form">
+							<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+							<input type="hidden" name="owner" value={ row.Owner }/>
+							<input type="hidden" name="calendar" value={ row.Calendar }/>
+							<button type="submit">{ t(ctx, "calendar.shareAccept") }</button>
+						</form>
+						<form hx-post="/calendar/shares/decline" hx-swap="none" class="share-decline-form">
+							<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+							<input type="hidden" name="owner" value={ row.Owner }/>
+							<input type="hidden" name="calendar" value={ row.Calendar }/>
+							<button type="submit" class="tool-btn">{ t(ctx, "calendar.shareDecline") }</button>
+						</form>
+					</li>
+				}
+			</ul>
+		</main>
+	}
+}
+
+// shareLevelLabel translates a grant level.
+func shareLevelLabel(ctx context.Context, level string) string {
+	switch level {
+	case "read":
+		return t(ctx, "calendar.levelRead")
+	case "write":
+		return t(ctx, "calendar.levelWrite")
+	default:
+		return t(ctx, "calendar.levelFreebusy")
+	}
+}
+
+// shareStateLabel translates a grant state.
+func shareStateLabel(ctx context.Context, state string) string {
+	if state == "pending" {
+		return t(ctx, "calendar.shareStatePending")
+	}
+	return t(ctx, "calendar.shareStateAccepted")
+}

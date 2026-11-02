@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
+
+// Task is an iCalendar VTODO, stored at /user/{user_id}/task/{guid}. Like an
+// event it lives inline in Pebble: ical_raw is the client's own bytes and no
+// blob is referenced. The scalar fields are a summary of ical_raw for listing
+// and for the web UI; ical_raw stays the source of truth for CalDAV.
+message Task {
+  string guid = 1;
+  // calendar_id is the calendar (a VTODO calendar) the task belongs to.
+  string calendar_id = 2;
+  string summary = 3;
+  string description = 4;
+  // due, start and completed are unix seconds; 0 means unset.
+  int64 due = 5;
+  int64 start = 6;
+  int64 completed = 7;
+  // status is the iCalendar STATUS: NEEDS-ACTION, IN-PROCESS, COMPLETED or
+  // CANCELLED. Empty means NEEDS-ACTION.
+  string status = 8;
+  // priority is the iCalendar PRIORITY, 0 (undefined) to 9.
+  int32 priority = 9;
+  // percent is PERCENT-COMPLETE, 0 to 100.
+  int32 percent = 10;
+  bytes ical_raw = 11;
+  int64 created_at = 12;
+  int64 updated_at = 13;
+}

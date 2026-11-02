@@ -26,6 +26,18 @@ func EventRecordSize(event *bongov1.Event) int64 {
 	return int64(proto.Size(c))
 }
 
+// TaskRecordSize is the task counterpart of EventRecordSize.
+func TaskRecordSize(task *bongov1.Task) int64 {
+	c := proto.Clone(task).(*bongov1.Task)
+	if c.Guid == "" {
+		c.Guid = placeholderGUID
+	}
+	now := time.Now().Unix()
+	c.CreatedAt = now
+	c.UpdatedAt = now
+	return int64(proto.Size(c))
+}
+
 // ContactRecordSize is the contact counterpart of EventRecordSize.
 func ContactRecordSize(contact *bongov1.Contact) int64 {
 	c := proto.Clone(contact).(*bongov1.Contact)

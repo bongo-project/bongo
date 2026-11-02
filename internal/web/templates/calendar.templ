@@ -125,6 +125,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 				<input type="file" name="ics" accept=".ics" class="calendar-sidebar-file"/>
 				<button type="submit" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.importIcs") }</button>
 			</form>
+			<a href="/calendar/shares" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.sharesTitle") }</a>
 			<form action="/calendar/search" method="get" class="calendar-sidebar-form">
 				<input type="search" name="q" placeholder={ t(ctx, "calendar.searchEvents") } class="calendar-sidebar-search"/>
 			</form>
@@ -771,6 +772,7 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 							for _, g := range card.Grants {
 								<li class="share-item">
 									<span class="share-target">{ g.Label }</span>
+									<span class="share-state meta">{ shareStateLabel(ctx, g.State) }</span>
 									if g.Label != g.Grantee {
 										<form hx-post={ "/calendar/" + card.Calendar + "/share" } hx-swap="none" class="share-level-form">
 											<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
@@ -807,6 +809,17 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 							</label>
 							<button type="submit">{ t(ctx, "calendar.shareAdd") }</button>
 						</form>
+						if card.Publish.Published {
+							<form hx-post={ "/calendar/" + card.Calendar + "/publish/send" } hx-target="find .share-link-status" hx-swap="innerHTML" class="share-link-form">
+								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+								<label>
+									{ t(ctx, "calendar.shareAddress") }
+									<input type="email" name="send_to" required autocomplete="off"/>
+								</label>
+								<button type="submit" class="tool-btn">{ t(ctx, "calendar.publicLinkSend") }</button>
+								<div class="share-link-status" data-form-status aria-live="polite"></div>
+							</form>
+						}
 					}
 					@CalendarPublishSection(card.Publish)
 				</section>

@@ -737,6 +737,14 @@ and 8).
 8. (operator, 2026-11-01) Open question 4: resources accept bookings only
    from accounts on their own domain (US-015, as written).
 
+- 2026-11-02 (US-009, accepted as built): a REPLY is applied only when the
+  From address equals the attendee address and that address is verified
+  (DMARC pass, or an authenticated local sender allowed to send as it). This
+  is stricter than "DMARC for the attendee's domain": a REPLY sent by a
+  delegate or a forwarding address is left as ordinary mail. With the
+  builtin antispam disabled, or mail arriving through a trusted relay, there
+  is no DMARC verdict and external REPLYs are never applied (fails closed).
+
 ### 8.2 Candidates for the next release
 
 Audit corrections found while writing this PRD (2026-10-26):
@@ -836,3 +844,30 @@ Found while building batch 3 (2026-11-01):
 - US-008: after answering, the card's attendee list still shows the user's
   own status as in the received invitation ("no answer"); the "You accepted"
   line is correct.
+
+Found while building batch 4 (2026-11-02):
+
+- US-005: pending grants never expire and count towards the 50-grant cap;
+  leaving an accepted share is not offered (Decline works on pending grants
+  only). Two concurrent first shares to one grantee, or a re-share after a
+  decline, each send an email (bounded by the 20-per-hour share limit). The
+  public-link email is translated in the owner's locale.
+- US-009: a REPLY carrying a master and overrides is applied to the master
+  or to the one RECURRENCE-ID it names; further VEVENTs are ignored.
+- US-019: `to_me` for alias and identity addresses reads the `addresses`
+  table, which is written on the node that handled the request only; on a
+  follower such mail can stay `to_me=0` until a snapshot rebuild. The FSM
+  indexer runs three system.db queries per mail PUT. The views scan every
+  included mailbox and the whole contact book per request; measure against
+  the US-017 300 ms budget before 30.20 builds on them. The tag, starred and
+  unread views keep the UID ambiguity in row links fixed for the new views;
+  a real folder named `lists`, `to-me` or `from-contacts` is shadowed in the
+  web UI.
+- US-013: go-webdav v0.7.0 does not pass the requested component set to
+  MKCALENDAR, so a list created by Apple Reminders or a new task calendar in
+  Thunderbird is VEVENT-only and refuses VTODO PUTs; only the built-in Tasks
+  calendar takes tasks. In a mixed-version cluster an old node advertises
+  Tasks as VEVENT and stores a VTODO PUT as a blank event; upgrade every node
+  before clients sync tasks. Existing bugs seen while building it:
+  `DeleteCalendarObject` checks `ErrEventNotFound` where `EventStore.Get`
+  returns a wrapped `ErrNotFound`, and the CalDAV ETag may be double-quoted.

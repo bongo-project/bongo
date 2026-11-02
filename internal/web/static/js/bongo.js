@@ -667,31 +667,32 @@ document.addEventListener('alpine:init', () => {
     },
 
     toggle(uid, event) {
+      const row = event && event.target && event.target.closest ? event.target.closest('.msg-row') : null;
+      const key = row ? selectionKey(row) : String(uid);
       if (event && event.shiftKey && this.lastClicked !== null) {
-        const rows = messageRowsWithUIDs();
-        const uids = rows.map(r => parseInt(r.dataset.uid, 10));
-        const start = uids.indexOf(this.lastClicked);
-        const end = uids.indexOf(uid);
+        const keys = messageRowsWithUIDs().map(selectionKey);
+        const start = keys.indexOf(this.lastClicked);
+        const end = keys.indexOf(key);
         if (start !== -1 && end !== -1) {
           const [lo, hi] = start < end ? [start, end] : [end, start];
           for (let i = lo; i <= hi; i++) {
-            this.selected[uids[i]] = true;
+            this.selected[keys[i]] = true;
           }
         }
       } else {
-        if (this.selected[uid]) {
-          delete this.selected[uid];
+        if (this.selected[key]) {
+          delete this.selected[key];
         } else {
-          this.selected[uid] = true;
+          this.selected[key] = true;
         }
       }
-      this.lastClicked = uid;
+      this.lastClicked = key;
       this._updateCount();
     },
 
     selectAll() {
       const rows = messageRowsWithUIDs();
-      rows.forEach(r => { this.selected[parseInt(r.dataset.uid, 10)] = true; });
+      rows.forEach(r => { this.selected[selectionKey(r)] = true; });
       this._updateCount();
       setToolbarSelectAllChecked(rows.length > 0);
     },
@@ -702,16 +703,17 @@ document.addEventListener('alpine:init', () => {
       setToolbarSelectAllChecked(false);
     },
 
-    isSelected(uid) {
-      return !!this.selected[uid];
+    isSelected(uid, el) {
+      const row = el && el.closest ? el.closest('.msg-row') : null;
+      return !!this.selected[row ? selectionKey(row) : String(uid)];
     },
 
     async bulkAction(mailbox, action) {
       if (this.count === 0) return;
       const params = new URLSearchParams();
       params.set('action', action);
-      for (const uid of Object.keys(this.selected)) {
-        params.append('uids', uid);
+      for (const key of Object.keys(this.selected)) {
+        addSelectionToParams(params, key);
       }
       try {
         const resp = await fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
@@ -752,7 +754,7 @@ document.addEventListener('alpine:init', () => {
     async bulkTagAction(mailbox, action, tagName) {
       tagName = (tagName || '').trim();
       if (!tagName || this.count === 0) return;
-      const messageIds = Object.keys(this.selected).map(uid => ({ mailbox: mailbox, uid: parseInt(uid) }));
+      const messageIds = Object.keys(this.selected).map(key => selectionMessageId(key, mailbox));
       try {
         const resp = await fetch('/mail/bulk/tags', {
           method: 'POST',
@@ -830,11 +832,12 @@ document.addEventListener('alpine:init', () => {
           resetSwipeState(row);
         });
       } else if (deltaX > 60) {
-        finalizeSwipeState(this.swipeTarget, 'right');
+        var row2 = this.swipeTarget;
+        finalizeSwipeState(row2, 'right');
         var params2 = new URLSearchParams();
         params2.set('action', 'delete');
         params2.append('uids', uid.toString());
-        fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
+        fetch('/mail/' + encodeURIComponent(actionMailbox(row2, mailbox)) + '/bulk', {
           method: 'POST', body: params2
         }).then(function() {
           htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
@@ -855,7 +858,8 @@ document.addEventListener('alpine:init', () => {
 
     openContextMenu(event, uid, mailbox) {
       event.preventDefault();
-      this.$dispatch('ctx-menu', { x: event.clientX, y: event.clientY, uid: uid, mailbox: mailbox });
+      const row = event.target && event.target.closest ? event.target.closest('.msg-row') : null;
+      this.$dispatch('ctx-menu', { x: event.clientX, y: event.clientY, uid: uid, mailbox: mailbox, real: actionMailbox(row, mailbox) });
     }
   }));
 
@@ -1069,6 +1073,7 @@ document.addEventListener('alpine:init', () => {
     y: 0,
     uid: null,
     mailbox: null,
+    real: null,
     focusedItem: -1,
     tagOpen: false,
     tagInput: '',
@@ -1090,9 +1095,12 @@ document.addEventListener('alpine:init', () => {
       this.action('tag-' + op + ':' + name);
     },
 
-    openAt(x, y, uid, mailbox) {
+    openAt(x, y, uid, mailbox, real) {
       this.uid = uid;
       this.mailbox = mailbox;
+      // The mailbox the message really lives in. It differs from the list
+      // mailbox only in the To me, From my contacts and Mailing lists views.
+      this.real = real || mailbox;
       // Viewport clamping: keep menu within the visible window.
       const menuW = 200, menuH = 320;
       if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 8;
@@ -1150,7 +1158,8 @@ document.addEventListener('alpine:init', () => {
 
     action(act) {
       const uid = this.uid;
-      const mailbox = this.mailbox;
+      const view = this.mailbox;
+      const mailbox = this.real || view;
       this.close();
       if (!uid || !mailbox) return;
 
@@ -1175,7 +1184,7 @@ document.addEventListener('alpine:init', () => {
             method: 'POST'
           }).then(resp => {
             if (resp.ok) {
-              htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+              htmx.ajax('GET', '/mail/' + encodeURIComponent(view), '#main-content');
             }
           }).catch(() => {});
           break;
@@ -1184,7 +1193,7 @@ document.addEventListener('alpine:init', () => {
             method: 'POST'
           }).then(resp => {
             if (resp.ok) {
-              htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+              htmx.ajax('GET', '/mail/' + encodeURIComponent(view), '#main-content');
             }
           }).catch(() => {});
           break;
@@ -1201,7 +1210,7 @@ document.addEventListener('alpine:init', () => {
             body: params
           }).then(resp => {
             if (resp.ok) {
-              htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+              htmx.ajax('GET', '/mail/' + encodeURIComponent(view), '#main-content');
             }
           }).catch(() => {});
           break;
@@ -1218,7 +1227,7 @@ document.addEventListener('alpine:init', () => {
                 body: JSON.stringify({ action: tagAction, tags: [tagName], message_ids: [{ mailbox: mailbox, uid: uid }] })
               }).then(resp => {
                 if (resp.ok) {
-                  htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+                  htmx.ajax('GET', '/mail/' + encodeURIComponent(view), '#main-content');
                 }
               }).catch(() => {});
             }
@@ -2148,6 +2157,34 @@ function currentMailbox() {
   return view ? view.dataset.mailbox : null;
 }
 
+// actionMailbox is the mailbox an action on a row must target. In the To me,
+// From my contacts and Mailing lists views a row carries data-sel-key and the
+// list mailbox is only a view name, so the message's real mailbox is used.
+// Everywhere else the list mailbox is returned unchanged.
+function actionMailbox(row, mailbox) {
+  return (row && row.dataset.selKey && row.dataset.realMailbox) || mailbox;
+}
+
+// selectionKey identifies a row in the bulk selection. UIDs are only unique
+// within one mailbox, so the header views key a row by "uid:mailbox".
+function selectionKey(row) {
+  return row.dataset.selKey || String(row.dataset.uid);
+}
+
+// addSelectionToParams adds a selection key to a bulk request: a plain UID
+// under "uids", a "uid:mailbox" pair under "targets".
+function addSelectionToParams(params, key) {
+  params.append(key.indexOf(':') > 0 ? 'targets' : 'uids', key);
+}
+
+// selectionMessageId turns a selection key into a {mailbox, uid} pair for the
+// bulk tag endpoint.
+function selectionMessageId(key, mailbox) {
+  const i = key.indexOf(':');
+  if (i > 0) return { mailbox: key.slice(i + 1), uid: parseInt(key.slice(0, i), 10) };
+  return { mailbox: mailbox, uid: parseInt(key, 10) };
+}
+
 // deleteRow moves a message to Trash, reloads the list and highlights the
 // message that took its place. Trash is skipped: deleting there is permanent,
 // which is too much for a single key.
@@ -2159,7 +2196,7 @@ function deleteRow(row, idx) {
   params.set('action', 'delete');
   params.append('uids', uid);
   const url = '/mail/' + encodeURIComponent(mailbox);
-  fetch(url + '/bulk', { method: 'POST', body: params })
+  fetch('/mail/' + encodeURIComponent(actionMailbox(row, mailbox)) + '/bulk', { method: 'POST', body: params })
     .then(resp => {
       if (!resp.ok) return;
       return htmx.ajax('GET', url, '#main-content').then(() => {
@@ -2383,7 +2420,7 @@ document.addEventListener('keydown', (e) => {
       if (current) {
         e.preventDefault();
         const uid = current.dataset.uid;
-        const mailbox = currentMailbox();
+        const mailbox = actionMailbox(current, currentMailbox());
         if (uid && mailbox) {
           window.location.href = '/compose/reply/' + encodeURIComponent(mailbox) + '/' + uid;
         }
@@ -2448,7 +2485,7 @@ function initDragDrop() {
       // Store source mailbox and uid on the dragged element.
       const row = evt.item;
       const mailbox = currentMailbox();
-      if (mailbox) row.dataset.srcMailbox = mailbox;
+      if (mailbox) row.dataset.srcMailbox = actionMailbox(row, mailbox);
     }
   });
 
@@ -2870,4 +2907,17 @@ document.addEventListener('htmx:afterSettle', function() {
   initAdminLogViewer();
   initContactsPage();
   initSettingsTabs();
+});
+
+// htmx does not swap a 4xx/5xx response, so a form that names a status area
+// (data-form-status as its hx-target) would show a failure as nothing at all.
+// Put the response text, which the server translates, into that area.
+document.addEventListener('htmx:responseError', function (evt) {
+  var area = evt.detail && evt.detail.target;
+  if (!area || !area.hasAttribute || !area.hasAttribute('data-form-status')) return;
+  var msg = document.createElement('div');
+  msg.className = 'flash flash-error';
+  msg.setAttribute('role', 'alert');
+  msg.textContent = (evt.detail.xhr && evt.detail.xhr.responseText || '').trim();
+  area.replaceChildren(msg);
 });

@@ -105,6 +105,10 @@ type DeliverProcessor struct {
 	// DKIM-signed. Nil means every forward stays unsigned (fail closed).
 	authorizer SenderAuthorizer
 
+	// calReplies applies iTIP REPLYs to the organiser's events after the
+	// message is stored. Nil leaves them as ordinary mail.
+	calReplies CalendarReplyApplier
+
 	// srs and userDomains rewrite the envelope sender of forwards and reverse
 	// bounces addressed to an SRS address. Nil srs leaves forwards untouched
 	// (fail safe: the original behaviour) and drops mail to SRS addresses on
@@ -544,6 +548,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	reversed := make(map[string]struct{})
 	var vacationBatch *vacationBatch
 	var vacationReplies []*vacationCandidate
+	var replyUsers []string
 	for _, rcpt := range env.Recipients {
 		// An SRS address on a hosted domain is never resolved: no user owns it,
 		// and resolving would hand a bounce to a catch-all owner. It arrives
@@ -709,6 +714,10 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		if env.DiscardNormal {
 			continue
 		}
+		// A copy in Junk never edits a calendar, even when DMARC passed.
+		if !strings.EqualFold(targetMailbox, "Junk") && !slices.Contains(replyUsers, userID) {
+			replyUsers = append(replyUsers, userID)
+		}
 		p.reportDelivered(env, rcpt, messageID, spamScore, spamTag)
 		p.logger.Info("deliver: mail stored",
 			// The envelope recipient, not just the resolved user ID: an alias and
@@ -726,6 +735,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	p.enqueueForwards(env, raw, gate.approved)
 	p.sendVacationReplies(env, vacationReplies)
+	p.applyCalendarReplies(env, parsed, raw, dmarcResult, replyUsers)
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
 	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)

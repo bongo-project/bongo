@@ -99,8 +99,8 @@ func TestShareCalendarThroughRouter(t *testing.T) {
 		}
 		return n
 	}
-	if g, err := a.ACL.GetCalendarGrant(adminID, calID, bobID); err != nil || g == nil || g.Level != "freebusy" || g.State != "accepted" {
-		t.Errorf("grant for bob = %+v, %v; want freebusy/accepted", g, err)
+	if g, err := a.ACL.GetCalendarGrant(adminID, calID, bobID); err != nil || g == nil || g.Level != "freebusy" || g.State != "pending" {
+		t.Errorf("grant for bob = %+v, %v; want freebusy/pending", g, err)
 	}
 
 	// Unshare goes through the same router: mutating route, 200 with the

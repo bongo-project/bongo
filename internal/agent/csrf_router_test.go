@@ -88,6 +88,15 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 			return url.Values{"url": {"https://feeds.example.com/" + n + ".ics"}}
 		}},
 		{"calendar unsubscribe", "/calendar/missing/unsubscribe", func(string) url.Values { return url.Values{} }},
+		{"share accept", "/calendar/shares/accept", func(string) url.Values {
+			return url.Values{"owner": {"nobody"}, "calendar": {"none"}}
+		}},
+		{"share decline", "/calendar/shares/decline", func(string) url.Values {
+			return url.Values{"owner": {"nobody"}, "calendar": {"none"}}
+		}},
+		{"public link send", "/calendar/missing/publish/send", func(string) url.Values {
+			return url.Values{"send_to": {"friend@example.com"}}
+		}},
 		{"domain alias", "/admin/domains", func(n string) url.Values {
 			return url.Values{"domain": {n + ".example"}, "alias_of": {"localhost"}}
 		}},
@@ -147,6 +156,17 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 			})
 		}
 	}
+
+	t.Run("share invitations page", func(t *testing.T) {
+		resp, err := client.Get(base + "/calendar/shares")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET /calendar/shares = %d, want 200", resp.StatusCode)
+		}
+	})
 
 	t.Run("reply-list answers", func(t *testing.T) {
 		resp, err := client.Get(base + "/compose/reply-list/INBOX/1")

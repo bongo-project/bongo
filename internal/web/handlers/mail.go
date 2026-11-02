@@ -181,11 +181,19 @@ func (h *MailHandler) SetTagStore(tags *store.TagStore) {
 
 // ListMessages renders the message list for a mailbox.
 func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
-	userID, email := middleware.UserFromContext(r.Context())
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	if mailbox == "" {
 		mailbox = "INBOX"
 	}
+	h.serveList(w, r, mailbox)
+}
+
+// serveList renders the message list of a real mailbox, a virtual view or a
+// header view. The dedicated header-view routes and ListMessages both come
+// here, so the first page, later pages and post-action reloads of one view
+// (which reach ListMessages by its encoded name) render the same thing.
+func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox string) {
+	userID, email := middleware.UserFromContext(r.Context())
 
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
@@ -319,6 +327,9 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 // index, the real mailbox each one lives in (nil for a real mailbox, where it
 // is the list mailbox itself).
 func (h *MailHandler) listDisplayCandidates(userID, mailbox string) ([]*bongov1.MailboxMessage, []string, error) {
+	if view, ok := store.ParseHeaderView(mailbox); ok {
+		return h.headerViewMessages(userID, view)
+	}
 	if store.VirtualMailboxes[mailbox] {
 		msgs, names, _, err := h.mailboxes.ListVirtualMessages(userID, mailbox, 0, maxMessagePageLimit)
 		return msgs, names, err
@@ -746,9 +757,19 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 
 	action := r.FormValue("action")
 	uidStrs := r.Form["uids"]
+	// In a header view (To me, From my contacts, Mailing lists) a UID alone
+	// is ambiguous, so the client names each message by its real mailbox.
+	var pairStrs []string
+	requested := len(uidStrs)
+	if store.IsHeaderView(mailbox) {
+		pairStrs = r.Form["targets"]
+		requested += len(pairStrs)
+		uidStrs = nil
+	}
 
-	targets := h.bulkActionTargets(userID, mailbox, uidStrs, action)
-	if len(targets) == 0 && len(uidStrs) > 0 {
+	sources := h.bulkSources(userID, mailbox, uidStrs, pairStrs)
+	targets := h.bulkActionTargets(userID, sources, action)
+	if len(targets) == 0 && requested > 0 {
 		http.Error(w, "Bulk update failed", http.StatusBadRequest)
 		return
 	}
@@ -864,7 +885,7 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.logger.Info("web: bulk action", "action", action, "mailbox", mailbox, "user", userID, "count", len(uidStrs))
+	h.logger.Info("web: bulk action", "action", action, "mailbox", mailbox, "user", userID, "count", len(targets))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -873,8 +894,45 @@ type bulkMessageTarget struct {
 	uid     uint32
 }
 
-func (h *MailHandler) bulkActionTargets(userID, mailbox string, uidStrs []string, action string) []bulkMessageTarget {
-	targets := make([]bulkMessageTarget, 0, len(uidStrs))
+// bulkSources names the messages a bulk request selected, each with the
+// mailbox it was selected in. Plain UIDs belong to the request's mailbox. A
+// "uid:mailbox" pair carries its own mailbox, which must be one of the user's
+// own: the user always comes from the session, so a pair can never reach
+// another account, and a name that is not one of their mailboxes is dropped.
+func (h *MailHandler) bulkSources(userID, mailbox string, uidStrs, pairStrs []string) []bulkMessageTarget {
+	sources := make([]bulkMessageTarget, 0, len(uidStrs)+len(pairStrs))
+	for _, uidStr := range uidStrs {
+		uid64, err := strconv.ParseUint(uidStr, 10, 32)
+		if err != nil {
+			continue
+		}
+		sources = append(sources, bulkMessageTarget{mailbox: mailbox, uid: uint32(uid64)})
+	}
+	if len(pairStrs) == 0 {
+		return sources
+	}
+	own := make(map[string]bool)
+	if boxes, err := h.mailboxes.ListMailboxes(userID); err == nil {
+		for _, mb := range boxes {
+			own[mb.Name] = true
+		}
+	}
+	for _, pair := range pairStrs {
+		uidStr, name, ok := strings.Cut(pair, ":")
+		if !ok || !own[name] {
+			continue
+		}
+		uid64, err := strconv.ParseUint(uidStr, 10, 32)
+		if err != nil {
+			continue
+		}
+		sources = append(sources, bulkMessageTarget{mailbox: name, uid: uint32(uid64)})
+	}
+	return sources
+}
+
+func (h *MailHandler) bulkActionTargets(userID string, sources []bulkMessageTarget, action string) []bulkMessageTarget {
+	targets := make([]bulkMessageTarget, 0, len(sources))
 	seen := make(map[string]bool)
 	addTarget := func(mailbox string, uid uint32) {
 		key := fmt.Sprintf("%s:%d", mailbox, uid)
@@ -885,12 +943,8 @@ func (h *MailHandler) bulkActionTargets(userID, mailbox string, uidStrs []string
 		targets = append(targets, bulkMessageTarget{mailbox: mailbox, uid: uid})
 	}
 
-	for _, uidStr := range uidStrs {
-		uid64, err := strconv.ParseUint(uidStr, 10, 32)
-		if err != nil {
-			continue
-		}
-		uid := uint32(uid64)
+	for _, src := range sources {
+		mailbox, uid := src.mailbox, src.uid
 
 		if action == "archive" || action == "unarchive" {
 			// A virtual view (starred, unread, all-mail) is not a source

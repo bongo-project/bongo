@@ -186,3 +186,42 @@ func (s *ContactStore) FindByEmail(userID, email string) (*bongov1.Contact, erro
 
 	return nil, nil
 }
+
+// Addresses returns the normalised email addresses of the user's contacts: the
+// Email field and any EMAIL lines in the stored vCard. It scans the contacts
+// on every call, so a contact added a moment ago is included without any
+// re-index.
+func (s *ContactStore) Addresses(userID string) (map[string]bool, error) {
+	iter, err := s.pebble.PrefixScan(contactPrefix(userID))
+	if err != nil {
+		return nil, fmt.Errorf("scanning contacts: %w", err)
+	}
+	defer iter.Close()
+
+	out := make(map[string]bool)
+	for iter.Next() {
+		val, err := iter.Value()
+		if err != nil {
+			continue
+		}
+		var contact bongov1.Contact
+		if err := proto.Unmarshal(val, &contact); err != nil {
+			continue
+		}
+		if a := BareAddress(contact.Email); a != "" {
+			out[a] = true
+		}
+		for _, line := range strings.Split(string(contact.VcardRaw), "\n") {
+			line = strings.TrimRight(line, "\r")
+			if len(line) < 6 || !strings.EqualFold(line[:5], "EMAIL") || (line[5] != ':' && line[5] != ';') {
+				continue
+			}
+			if _, v, ok := strings.Cut(line, ":"); ok {
+				if a := BareAddress(v); a != "" {
+					out[a] = true
+				}
+			}
+		}
+	}
+	return out, nil
+}

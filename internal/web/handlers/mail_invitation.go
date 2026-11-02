@@ -2,16 +2,15 @@ package handlers
 
 import (
 	"fmt"
-	"mime"
 	"net/http"
 	"net/mail"
 	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jhillyerd/enmime"
 
+	"github.com/bongo-project/bongo/internal/imip"
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -26,60 +25,10 @@ func (h *MailHandler) SetInvitations(s invitationService) { h.invitations = s }
 // HasInvitations reports whether invitations are wired.
 func (h *MailHandler) HasInvitations() bool { return h.invitations != nil }
 
-// maxInviteParts bounds how many parts of a message are looked at.
-const maxInviteParts = 200
-
-// findInvitePart returns the calendar part of a message and the method
-// parameter of its Content-Type. The part inside multipart/alternative has no
-// file name, so the part tree is walked rather than the attachment list. An
-// inline text/calendar with a method parameter wins; an .ics attachment, or a
-// text/calendar without one, is the fallback.
-func findInvitePart(env *enmime.Envelope) (content []byte, ctMethod string, ok bool) {
-	if env == nil || env.Root == nil {
-		return nil, "", false
-	}
-	var fallback *enmime.Part
-	stack := []*enmime.Part{env.Root}
-	for seen := 0; len(stack) > 0 && seen < maxInviteParts; seen++ {
-		p := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if p.NextSibling != nil {
-			stack = append(stack, p.NextSibling)
-		}
-		if p.FirstChild != nil {
-			stack = append(stack, p.FirstChild)
-			continue
-		}
-		ct := strings.ToLower(p.ContentType)
-		method := contentTypeMethod(p)
-		switch {
-		case ct == "text/calendar" && method != "":
-			return p.Content, method, true
-		case fallback == nil && (ct == "text/calendar" || ct == "application/ics" ||
-			strings.HasSuffix(strings.ToLower(p.FileName), ".ics")):
-			fallback = p
-		}
-	}
-	if fallback != nil {
-		return fallback.Content, "", true
-	}
-	return nil, "", false
-}
-
-// contentTypeMethod reads the method parameter of the part's own Content-Type
-// header: enmime keeps only the parameters it uses, and method is not one.
-func contentTypeMethod(p *enmime.Part) string {
-	_, params, err := mime.ParseMediaType(p.Header.Get("Content-Type"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(params["method"])
-}
-
 // inviteFor assembles the calendar side's view of a message, or false when it
 // carries no calendar part.
 func (h *MailHandler) inviteFor(userID, email, mailbox string, uid uint32, env *enmime.Envelope, meta *bongov1.MailMeta) (inviteMessage, bool) {
-	part, ctMethod, ok := findInvitePart(env)
+	part, ctMethod, ok := imip.FindPart(env)
 	if !ok {
 		return inviteMessage{}, false
 	}

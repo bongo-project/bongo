@@ -143,6 +143,9 @@ func rebuildMail(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.
 	defer iter.Close()
 
 	count := 0
+	// The user's addresses, looked up once per user rather than per message.
+	addrs := make(map[string]map[string]bool)
+	pebbleAddrs := pebbleUserAddresses(ps, logger)
 	for iter.Next() {
 		key := string(iter.Key())
 		parts := strings.SplitN(key, "/", 5) // ["", "user", "{id}", "mail", "{guid}"]
@@ -168,6 +171,27 @@ func rebuildMail(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.
 		if metadata != nil {
 			if err := metadata.IndexMail(userID, guid, meta.Subject, meta.From, meta.ReceivedAt, meta.GetRawMessage().GetSize()); err != nil {
 				logger.Warn("fsm rebuild: failed to index mail in sqlite", "user", userID, "guid", guid, "error", err)
+			} else {
+				mine, ok := addrs[userID]
+				if !ok {
+					// The addresses table is not part of this rebuild, so it
+					// may lag the Pebble records the scan above already read.
+					extra, aerr := metadata.UserAddresses(userID)
+					if aerr != nil {
+						logger.Warn("fsm rebuild: failed to read user addresses", "user", userID, "error", aerr)
+					}
+					mine = pebbleAddrs[userID]
+					if mine == nil {
+						mine = make(map[string]bool)
+					}
+					for a := range extra {
+						mine[a] = true
+					}
+					addrs[userID] = mine
+				}
+				if err := indexMailHeaders(metadata, userID, guid, &meta, mine); err != nil {
+					logger.Warn("fsm rebuild: failed to index mail headers", "user", userID, "guid", guid, "error", err)
+				}
 			}
 		}
 
@@ -201,6 +225,34 @@ func rebuildMail(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.
 	}
 
 	return count, nil
+}
+
+// pebbleUserAddresses groups the /system/address/ records by owning user. It
+// is the source of truth that the derived addresses table mirrors.
+func pebbleUserAddresses(ps *store.PebbleStore, logger *slog.Logger) map[string]map[string]bool {
+	out := make(map[string]map[string]bool)
+	const prefix = "/system/address/"
+	iter, err := ps.PrefixScan([]byte(prefix))
+	if err != nil {
+		logger.Warn("fsm rebuild: scanning addresses failed", "error", err)
+		return out
+	}
+	defer iter.Close()
+	for iter.Next() {
+		val, err := iter.Value()
+		if err != nil {
+			continue
+		}
+		var rec bongov1.AddressRecord
+		if err := proto.Unmarshal(val, &rec); err != nil || rec.UserId == "" {
+			continue
+		}
+		if out[rec.UserId] == nil {
+			out[rec.UserId] = make(map[string]bool)
+		}
+		out[rec.UserId][store.NormaliseAddress(strings.TrimPrefix(string(iter.Key()), prefix))] = true
+	}
+	return out
 }
 
 // ReconcileOrphanUsers deletes users rows (and their aliases rows and GAL

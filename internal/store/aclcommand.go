@@ -39,6 +39,7 @@ const (
 // Grant command operations.
 const (
 	ACLOpSet            = "set"
+	ACLOpAccept         = "accept"
 	ACLOpRevoke         = "revoke"
 	ACLOpRevokeResource = "revoke_resource"
 	ACLOpRevokeOwner    = "revoke_owner"
@@ -111,6 +112,9 @@ type aclPayload struct {
 	State     string `json:"state,omitempty"`
 	GrantedBy string `json:"granted_by,omitempty"`
 	At        int64  `json:"at,omitempty"`
+	// KeepState makes a set keep the stored state of an existing grant and use
+	// State only for a new one. A node that predates the field ignores it.
+	KeepState bool `json:"keep_state,omitempty"`
 }
 
 // ACLRequest is the caller's description of one grant command.
@@ -123,8 +127,11 @@ type ACLRequest struct {
 	Level     string
 	State     string
 	GrantedBy string
-	// At is the unix time recorded as created_at and updated_at by a set.
+	// At is the unix time recorded as created_at and updated_at by a set, and
+	// as updated_at by an accept.
 	At int64
+	// KeepState: see aclPayload.
+	KeepState bool
 }
 
 func validateACLPayload(p *aclPayload) error {
@@ -147,7 +154,7 @@ func validateACLPayload(p *aclPayload) error {
 		if p.State != GrantStatePending && p.State != GrantStateAccepted {
 			return fmt.Errorf("acl set command has invalid state %q", p.State)
 		}
-	case ACLOpRevoke:
+	case ACLOpAccept, ACLOpRevoke:
 		fields = []error{need("owner", p.Owner), need("resource", p.Resource), need("grantee", p.Grantee)}
 	case ACLOpRevokeResource:
 		fields = []error{need("owner", p.Owner), need("resource", p.Resource)}
@@ -168,7 +175,7 @@ func BuildACLCommand(req ACLRequest) (*bongov1.RaftCommand, error) {
 	p := aclPayload{
 		Op: req.Op, Kind: req.Kind, Owner: req.Owner, Resource: req.Resource,
 		Grantee: req.Grantee, Level: req.Level, State: req.State,
-		GrantedBy: req.GrantedBy, At: req.At,
+		GrantedBy: req.GrantedBy, At: req.At, KeepState: req.KeepState,
 	}
 	if err := validateACLPayload(&p); err != nil {
 		return nil, err
@@ -224,18 +231,26 @@ func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][
 	case ACLOpSet:
 		fwd := ACLKey(p.Kind, p.Owner, p.Resource, p.Grantee)
 		createdAt := p.At
+		state := p.State
 		prev, gErr := get(fwd)
 		if gErr != nil && !errors.Is(gErr, ErrNotFound) {
 			return nil, nil, fmt.Errorf("reading existing grant: %w", gErr)
 		}
 		if len(prev) > 0 {
 			var old bongov1.Grant
-			if proto.Unmarshal(prev, &old) == nil && old.CreatedAt != 0 {
-				createdAt = old.CreatedAt
+			if proto.Unmarshal(prev, &old) == nil {
+				if old.CreatedAt != 0 {
+					createdAt = old.CreatedAt
+				}
+				// Decided here, not in the handler: a handler that reads and
+				// then writes could bring back a state the grantee just changed.
+				if p.KeepState && (old.State == GrantStatePending || old.State == GrantStateAccepted) {
+					state = old.State
+				}
 			}
 		}
 		val, mErr := proto.Marshal(&bongov1.Grant{
-			Level: p.Level, Rights: p.Rights, State: p.State, GrantedBy: p.GrantedBy,
+			Level: p.Level, Rights: p.Rights, State: state, GrantedBy: p.GrantedBy,
 			CreatedAt: createdAt, UpdatedAt: p.At,
 		})
 		if mErr != nil {
@@ -245,6 +260,33 @@ func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][
 			{Key: fwd, Value: val},
 			{Key: ACLRevKey(p.Kind, p.Owner, p.Resource, p.Grantee), Value: []byte{}},
 		}, nil, nil
+
+	case ACLOpAccept:
+		// Conditional on the stored grant, so an accept can never bring back a
+		// grant the owner revoked in the meantime. Accepting an accepted grant
+		// plans nothing, which keeps replay idempotent.
+		fwd := ACLKey(p.Kind, p.Owner, p.Resource, p.Grantee)
+		prev, gErr := get(fwd)
+		if gErr != nil && !errors.Is(gErr, ErrNotFound) {
+			return nil, nil, fmt.Errorf("reading existing grant: %w", gErr)
+		}
+		if len(prev) == 0 {
+			return nil, nil, nil
+		}
+		var g bongov1.Grant
+		if err := proto.Unmarshal(prev, &g); err != nil {
+			return nil, nil, fmt.Errorf("unmarshaling grant: %w", err)
+		}
+		if g.State != GrantStatePending {
+			return nil, nil, nil
+		}
+		g.State = GrantStateAccepted
+		g.UpdatedAt = p.At
+		val, mErr := proto.Marshal(&g)
+		if mErr != nil {
+			return nil, nil, fmt.Errorf("marshaling grant: %w", mErr)
+		}
+		return []ACLWrite{{Key: fwd, Value: val}}, nil, nil
 
 	case ACLOpRevoke:
 		return nil, [][]byte{
@@ -415,6 +457,25 @@ func (s *ACLStore) SetCalendarGrant(owner, calendar, grantee, level, state, gran
 	return s.apply(ACLRequest{
 		Op: ACLOpSet, Kind: ACLKindCalendar, Owner: owner, Resource: calendar,
 		Grantee: grantee, Level: level, State: state, GrantedBy: grantedBy, At: now.Unix(),
+	})
+}
+
+// SetCalendarGrantKeepState writes a grant like SetCalendarGrant, but an
+// existing grant keeps its stored state; state applies only to a new grant.
+func (s *ACLStore) SetCalendarGrantKeepState(owner, calendar, grantee, level, state, grantedBy string, now time.Time) error {
+	return s.apply(ACLRequest{
+		Op: ACLOpSet, Kind: ACLKindCalendar, Owner: owner, Resource: calendar,
+		Grantee: grantee, Level: level, State: state, GrantedBy: grantedBy, At: now.Unix(),
+		KeepState: true,
+	})
+}
+
+// AcceptCalendarGrant turns a pending grant into an accepted one. It is
+// decided inside the FSM: an absent or already accepted grant is left alone.
+func (s *ACLStore) AcceptCalendarGrant(owner, calendar, grantee string, now time.Time) error {
+	return s.apply(ACLRequest{
+		Op: ACLOpAccept, Kind: ACLKindCalendar, Owner: owner, Resource: calendar,
+		Grantee: grantee, At: now.Unix(),
 	})
 }
 

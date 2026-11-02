@@ -190,11 +190,18 @@ func TestShareCalendarValidatesTargets(t *testing.T) {
 	if err != nil || g == nil {
 		t.Fatalf("grant = %v, %v", g, err)
 	}
-	if g.Level != store.GrantLevelFreeBusy || g.State != store.GrantStateAccepted || g.GrantedBy != "alice" {
-		t.Errorf("default grant = %+v, want freebusy/accepted/granted_by alice", g)
+	if g.Level != store.GrantLevelFreeBusy || g.State != store.GrantStatePending || g.GrantedBy != "alice" {
+		t.Errorf("default grant = %+v, want freebusy/pending/granted_by alice", g)
 	}
 
-	// FreeBusy: bob allowed, an unshared user forbidden.
+	// FreeBusy: a pending grant authorises nothing; once bob accepts he is
+	// allowed, and an unshared user stays forbidden.
+	if c := e.freeBusy("bob", "alice"); c != http.StatusForbidden {
+		t.Errorf("freebusy as bob while pending = %d, want 403", c)
+	}
+	if err := e.acl.AcceptCalendarGrant("alice", e.calID, "bob", e.now); err != nil {
+		t.Fatal(err)
+	}
 	if c := e.freeBusy("bob", "alice"); c != http.StatusOK {
 		t.Errorf("freebusy as bob = %d, want 200", c)
 	}

@@ -342,3 +342,25 @@ func TestTransientBlobFieldsExplainWhatPinsTheBlob(t *testing.T) {
 		}
 	}
 }
+
+// TestInlineRecordsNameNoBlob pins the classification of the records that live
+// whole in Pebble. Event.ical_raw, Contact.vcard_raw and Task.ical_raw are
+// inline bytes, so none of these messages may carry a blob-bearing field: if
+// one gains a BlobRef or a *blob_hash field, the walk finds it and this fails,
+// and the field must be added to knownBlobBearingFields and scanned by the GC.
+// (knownBlobBearingFields cannot hold the message itself: an entry the walk
+// does not find is stale and fails TestEveryBlobBearingProtoFieldIsAccountedFor.)
+func TestInlineRecordsNameNoBlob(t *testing.T) {
+	found := discoverBlobBearingFields()
+	for _, msg := range []string{"Task", "Event", "Contact", "Calendar"} {
+		for name := range found {
+			if strings.HasPrefix(name, msg+".") {
+				t.Errorf("%s carries blob-bearing field %s; it is an inline record and the GC does not scan it", msg, name)
+			}
+		}
+	}
+	// The check above is only meaningful if Task is a message the walk sees.
+	if _, err := protoregistry.GlobalFiles.FindDescriptorByName("bongo.v1.Task"); err != nil {
+		t.Fatalf("bongo.v1.Task is not linked into this test binary: %v", err)
+	}
+}

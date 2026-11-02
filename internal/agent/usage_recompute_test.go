@@ -306,3 +306,35 @@ func TestComputeAndWriteDomainUsage_CopyDoesNotCount(t *testing.T) {
 		t.Errorf("usage with copied references = %d, want 1234", got)
 	}
 }
+
+// Tasks live inline in Pebble like events and count towards the owner's
+// domain, at their stored size; the pre-check estimate must agree.
+func TestComputeAndWriteDomainUsage_CountsTasks(t *testing.T) {
+	ps, dqs, applier := newRecomputeTestEnv(t)
+	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
+	writeRecomputeProfile(t, ps, "u2", "bob@other.com")
+
+	tasks := store.NewTaskStore(ps, applier)
+	t1 := &bongov1.Task{CalendarId: "tasks", Summary: "one", IcalRaw: make([]byte, 400)}
+	t2 := &bongov1.Task{CalendarId: "tasks", Summary: "two", IcalRaw: make([]byte, 90)}
+	t3 := &bongov1.Task{Summary: "other", IcalRaw: make([]byte, 33)}
+	want1 := store.TaskRecordSize(t1) + store.TaskRecordSize(t2)
+	want2 := store.TaskRecordSize(t3)
+	for user, task := range map[string]*bongov1.Task{"u1": t1, "u2": t3} {
+		if _, err := tasks.Create(user, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := tasks.Create("u1", t2); err != nil {
+		t.Fatal(err)
+	}
+
+	computeAndWriteDomainUsage(ps, dqs, testLogger())
+
+	if got, _ := dqs.GetUsage("example.com"); got != want1 || got < 490 {
+		t.Errorf("example.com usage = %d, want %d (tasks must count)", got, want1)
+	}
+	if got, _ := dqs.GetUsage("other.com"); got != want2 {
+		t.Errorf("other.com usage = %d, want %d", got, want2)
+	}
+}
