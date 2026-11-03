@@ -110,8 +110,7 @@ func (b *Backend) guidIsTask(owner, guid string) (bool, error) {
 // guidIsEvent is the event counterpart of guidIsTask.
 func (b *Backend) guidIsEvent(owner, guid string) (bool, error) {
 	if _, err := b.events.Get(owner, guid); err != nil {
-		// EventStore.Get wraps the key-level not-found, not ErrEventNotFound.
-		if errors.Is(err, store.ErrEventNotFound) || errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, store.ErrEventNotFound) {
 			return false, nil
 		}
 		return false, fmt.Errorf("reading event: %w", err)
@@ -280,7 +279,7 @@ func taskToCalendarObject(userID, calID string, t *bongov1.Task) (*caldav.Calend
 		Path:          objectPath(userID, calID, t.Guid),
 		ModTime:       modTime,
 		ContentLength: int64(buf.Len()),
-		ETag:          store.ContentETag(t.IcalRaw, t.UpdatedAt),
+		ETag:          store.ContentETagValue(t.IcalRaw, t.UpdatedAt),
 		Data:          cal,
 	}, nil
 }

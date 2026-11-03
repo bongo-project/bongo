@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"sync"
@@ -137,6 +138,42 @@ func (s *CalendarStore) Create(userID string, cal *bongov1.Calendar) (string, er
 	return cal.Guid, nil
 }
 
+// ErrExists is returned by CreateNew when the calendar is already there.
+var ErrExists = errors.New("calendar already exists")
+
+// CreateNew creates cal under cal.Guid only if no calendar holds that GUID,
+// returning ErrExists otherwise. Create is a blind PUT and would overwrite an
+// existing calendar with its publish token and subscription.
+//
+// It holds the same per-calendar lock as Mutate, so on this node two
+// creations, or a creation racing a Mutate, cannot interleave between the
+// existence check and the write. The lock is per node; cluster-wide
+// serialisation is not provided (production runs one node).
+func (s *CalendarStore) CreateNew(userID string, cal *bongov1.Calendar) error {
+	if cal.Guid == "" {
+		return fmt.Errorf("creating calendar: no GUID")
+	}
+	mu := s.lockFor(userID, cal.Guid)
+	mu.Lock()
+	defer mu.Unlock()
+
+	data, err := s.pebble.Get(calendarKey(userID, cal.Guid))
+	switch {
+	case err == nil && len(data) > 0:
+		return ErrExists
+	case err != nil && !errors.Is(err, ErrNotFound):
+		return fmt.Errorf("reading calendar: %w", err)
+	}
+	_, err = s.Create(userID, cal)
+	return err
+}
+
+func (s *CalendarStore) lockFor(userID, guid string) *sync.Mutex {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(userID + "\x00" + guid))
+	return &s.locks[h.Sum32()%calendarLockStripes]
+}
+
 // Get returns a single calendar by GUID.
 func (s *CalendarStore) Get(userID, guid string) (*bongov1.Calendar, error) {
 	data, err := s.pebble.Get(calendarKey(userID, guid))
@@ -185,9 +222,7 @@ func (s *CalendarStore) Update(userID, guid string, cal *bongov1.Calendar) error
 // through the leader) is not serialised against this one: cluster-wide
 // serialisation is not provided. If fn returns an error nothing is written.
 func (s *CalendarStore) Mutate(userID, guid string, fn func(*bongov1.Calendar) error) error {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(userID + "\x00" + guid))
-	mu := &s.locks[h.Sum32()%calendarLockStripes]
+	mu := s.lockFor(userID, guid)
 	mu.Lock()
 	defer mu.Unlock()
 

@@ -649,8 +649,10 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 	}
 	// The cap is read before resolving so a full calendar cannot be used to
 	// tell a valid address from an invalid one: at the cap every outcome but a
-	// change to an existing grantee is the same refusal.
-	count, err := h.acl.CountCalendarGrants(userID, calID)
+	// change to an existing grantee is the same refusal. Pending grants past
+	// their 30 days do not count. One clock reading serves the whole request.
+	now := h.clock()
+	count, err := h.acl.CountActiveCalendarGrants(userID, calID, now)
 	if err != nil {
 		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
 		return
@@ -684,21 +686,20 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
 		return
 	}
-	// Only a new grantee counts against the cap: someone already granted
-	// access may have the level changed on a full calendar.
-	if existing == nil && full {
+	// An expired pending grant is a new grantee: it does not count against the
+	// cap, so a re-share must pass the cap again, and it refreshes and
+	// re-invites below. Someone with a live grant may have the level changed
+	// on a full calendar.
+	expired := existing != nil && store.PendingGrantExpired(existing, now.Unix())
+	if (existing == nil || expired) && full {
 		http.Error(w, refused, http.StatusBadRequest)
 		return
 	}
-	if existing != nil && existing.Level == level {
+	if existing != nil && !expired && existing.Level == level {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	now := time.Now()
-	if h.now != nil {
-		now = h.now()
-	}
 	// A new grantee starts pending. A level change keeps the stored state,
 	// decided in the FSM so it cannot undo a Decline or an Accept that lands
 	// between the read above and this write.
@@ -707,9 +708,10 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
 		return
 	}
-	// Only a newly created grant sends the invitation, so the form cannot be
-	// used to send repeated emails. Best-effort: the grant stands either way.
-	if existing == nil {
+	// Only a new or expired grant sends the invitation, so the form cannot be
+	// used to send repeated emails (one per grantee per 30 days at most).
+	// Best-effort: the grant stands either way.
+	if existing == nil || expired {
 		_, ownerEmail := middleware.UserFromContext(r.Context())
 		h.queueShareInvite(r, userID, ownerEmail, targetID, parsed.Address, cal.Name)
 	}
@@ -1730,17 +1732,7 @@ func applyEventEditToICal(raw []byte, existing, updated *bongov1.Event, now time
 	applyTransparency(props, updated.Transparent)
 	applyAttendeeEdit(props, existing, updated)
 
-	seq := 0
-	if p := props.Get(ical.PropSequence); p != nil {
-		seq, _ = strconv.Atoi(p.Value)
-	}
-	seq = max(seq, 0) + 1
-	sp := ical.NewProp(ical.PropSequence)
-	sp.Value = strconv.Itoa(seq)
-	props.Set(sp)
-	updated.Sequence = int32(min(seq, 1<<30))
-	props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
-	props.SetDateTime(ical.PropLastModified, now.UTC())
+	updated.Sequence = clampSequence(icalevent.BumpRevision(props, now))
 
 	if cal.Props.Get(ical.PropVersion) == nil {
 		cal.Props.SetText(ical.PropVersion, "2.0")
@@ -1876,13 +1868,17 @@ func eventTimesChanged(props ical.Props, existing, updated *bongov1.Event) bool 
 	if !updated.AllDay {
 		return existing.StartTime != updated.StartTime || existing.EndTime != updated.EndTime
 	}
-	start, err := props.DateTime(ical.PropDateTimeStart, time.UTC)
-	if err != nil {
+	sp := props.Get(ical.PropDateTimeStart)
+	if sp == nil {
+		return true
+	}
+	start, _, ok := icalevent.PropInstant(sp, time.UTC)
+	if !ok {
 		return true
 	}
 	end := start.AddDate(0, 0, 1)
 	if p := props.Get(ical.PropDateTimeEnd); p != nil {
-		if t, err := p.DateTime(time.UTC); err == nil {
+		if t, _, ok := icalevent.PropInstant(p, time.UTC); ok {
 			end = t
 		}
 	}
@@ -1895,11 +1891,11 @@ func eventTimesChanged(props ical.Props, existing, updated *bongov1.Event) bool 
 // DTSTART when the zone is known, otherwise it is written in UTC. DURATION is
 // removed because it is mutually exclusive with DTEND.
 func setEventTimes(props ical.Props, updated *bongov1.Event) {
-	loc := time.UTC
+	loc, tzid := time.UTC, ""
 	if p := props.Get(ical.PropDateTimeStart); p != nil {
-		if tzid := p.Params.Get(ical.PropTimezoneID); tzid != "" {
-			if l, err := time.LoadLocation(tzid); err == nil {
-				loc = l
+		if id := p.Params.Get(ical.PropTimezoneID); id != "" {
+			if l, ok := icalevent.Zone(id); ok {
+				loc, tzid = l, id
 			}
 		}
 	}
@@ -1911,7 +1907,11 @@ func setEventTimes(props ical.Props, updated *bongov1.Event) {
 	}
 	for name, ts := range map[string]int64{ical.PropDateTimeStart: updated.StartTime, ical.PropDateTimeEnd: updated.EndTime} {
 		p := ical.NewProp(name)
-		p.SetDateTime(time.Unix(ts, 0).In(loc))
+		if tzid != "" {
+			icalevent.SetZonedDateTime(p, time.Unix(ts, 0), loc, tzid)
+		} else {
+			p.SetDateTime(time.Unix(ts, 0).UTC())
+		}
 		p.Params.Del(ical.ParamValue)
 		props.Set(p)
 	}

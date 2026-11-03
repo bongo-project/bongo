@@ -36,6 +36,30 @@ const (
 	GrantStateAccepted = "accepted"
 )
 
+// PendingGrantTTL is how long a pending grant can be accepted, in seconds, the
+// unit of Grant.UpdatedAt and of a command's At. A set (a re-share) restarts it.
+const PendingGrantTTL = 30 * 24 * 60 * 60
+
+// PendingGrantExpired reports whether g is a pending grant older than
+// PendingGrantTTL at the unix time at. The age runs from UpdatedAt, falling
+// back to CreatedAt; a grant with neither has an unknown age and counts as
+// expired (the owner can re-share). An accepted grant never expires. This is
+// the one definition of the boundary: a grant exactly PendingGrantTTL old is
+// still live.
+//
+// PlanACL passes the command's own timestamp, so every replica decides alike;
+// read paths pass the request's clock.
+func PendingGrantExpired(g *bongov1.Grant, at int64) bool {
+	if g == nil || g.State != GrantStatePending {
+		return false
+	}
+	base := g.UpdatedAt
+	if base == 0 {
+		base = g.CreatedAt
+	}
+	return at-base > PendingGrantTTL
+}
+
 // Grant command operations.
 const (
 	ACLOpSet            = "set"
@@ -212,9 +236,16 @@ type ACLWrite struct {
 // Every operation is idempotent under log replay: revoking what is absent
 // plans nothing, and a repeated set keeps created_at.
 //
+// An accept of a pending grant older than PendingGrantTTL, measured from the
+// stored updated_at to the command's own at, plans nothing. Both values come
+// from the log, never the clock, so replicas and replays agree. A set
+// refreshes updated_at and so revives an expired grant.
+//
 // The scans run inside Apply, on Raft's single goroutine. They are bounded by
-// the grant count: the handler caps a calendar at 50 grants, so revoke_owner
-// and revoke_grantee touch at most 50 keys per calendar.
+// the grant count: the handler caps a calendar at 50 live grants, so
+// revoke_owner and revoke_grantee touch about 50 keys per calendar. Expired
+// pending grants are outside the cap and are never deleted, so the bound is
+// soft.
 func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][]byte, error), cmd *bongov1.RaftCommand) (sets []ACLWrite, deletes [][]byte, err error) {
 	if !IsACLSyntheticCommand(cmd.Key) {
 		return nil, nil, fmt.Errorf("not a synthetic acl command")
@@ -277,7 +308,7 @@ func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][
 		if err := proto.Unmarshal(prev, &g); err != nil {
 			return nil, nil, fmt.Errorf("unmarshaling grant: %w", err)
 		}
-		if g.State != GrantStatePending {
+		if g.State != GrantStatePending || PendingGrantExpired(&g, p.At) {
 			return nil, nil, nil
 		}
 		g.State = GrantStateAccepted
@@ -471,7 +502,8 @@ func (s *ACLStore) SetCalendarGrantKeepState(owner, calendar, grantee, level, st
 }
 
 // AcceptCalendarGrant turns a pending grant into an accepted one. It is
-// decided inside the FSM: an absent or already accepted grant is left alone.
+// decided inside the FSM: an absent, already accepted or expired grant is left
+// alone.
 func (s *ACLStore) AcceptCalendarGrant(owner, calendar, grantee string, now time.Time) error {
 	return s.apply(ACLRequest{
 		Op: ACLOpAccept, Kind: ACLKindCalendar, Owner: owner, Resource: calendar,
@@ -545,6 +577,33 @@ func (s *ACLStore) CountCalendarGrants(owner, calendar string) (int, error) {
 		return 0, fmt.Errorf("counting grants: %w", err)
 	}
 	return len(keys), nil
+}
+
+// CountActiveCalendarGrants counts the grants on one calendar that count
+// towards the share cap: every grant except a pending one expired at now.
+func (s *ACLStore) CountActiveCalendarGrants(owner, calendar string, now time.Time) (int, error) {
+	if owner == "" || calendar == "" {
+		return 0, nil
+	}
+	keys, err := s.pebble.scanKeys(aclResourcePrefix(ACLKindCalendar, owner, calendar))
+	if err != nil {
+		return 0, fmt.Errorf("counting grants: %w", err)
+	}
+	n := 0
+	for _, k := range keys {
+		ref, ok := parseACLKey(string(k))
+		if !ok {
+			continue
+		}
+		g, err := s.GetCalendarGrant(ref.Owner, ref.Resource, ref.Grantee)
+		if err != nil {
+			return 0, err
+		}
+		if g != nil && !PendingGrantExpired(g, now.Unix()) {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // HasCalendarAccess reports whether grantee holds an accepted grant of at

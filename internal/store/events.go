@@ -89,6 +89,10 @@ var ErrEventNotFound = errors.New("event not found")
 func (s *EventStore) Get(userID, guid string) (*bongov1.Event, error) {
 	data, err := s.pebble.Get(eventKey(userID, guid))
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			// Matches both, so callers that test the key-level ErrNotFound still work.
+			return nil, fmt.Errorf("%w: %w", ErrEventNotFound, err)
+		}
 		return nil, fmt.Errorf("reading event: %w", err)
 	}
 	if len(data) == 0 {

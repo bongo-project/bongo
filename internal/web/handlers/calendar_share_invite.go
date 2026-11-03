@@ -286,26 +286,20 @@ func (h *CalendarHandler) queueShareInvite(r *http.Request, ownerID, ownerEmail,
 // GET /calendar/shares
 func (h *CalendarHandler) ShareInvitations(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
-	var rows []templates.PendingShare
+	var rows, joined []templates.PendingShare
 	if h.acl != nil {
-		held, err := h.acl.ListPendingCalendarGrantsHeld(userID)
+		held, err := h.acl.ListPendingCalendarGrantsHeld(userID, h.clock())
 		if err != nil {
 			http.Error(w, "failed to load invitations", http.StatusInternalServerError)
 			return
 		}
-		for _, g := range held {
-			cal, err := h.calendars.Get(g.Owner, g.Calendar)
-			if err != nil {
-				continue
-			}
-			label := h.acl.UserEmail(g.Owner)
-			if label == "" {
-				label = g.Owner
-			}
-			rows = append(rows, templates.PendingShare{
-				Owner: g.Owner, OwnerLabel: label, Calendar: g.Calendar, CalendarName: cal.Name, Level: g.Level,
-			})
+		rows = h.shareRows(held)
+		accepted, err := h.acl.ListCalendarGrantsHeld(userID)
+		if err != nil {
+			http.Error(w, "failed to load shared calendars", http.StatusInternalServerError)
+			return
 		}
+		joined = h.shareRows(accepted)
 	}
 	calendars, err := h.calendars.List(userID)
 	if err != nil {
@@ -314,7 +308,35 @@ func (h *CalendarHandler) ShareInvitations(w http.ResponseWriter, r *http.Reques
 	}
 	r = clockRequest(r, h.nowIn(userID))
 	r = h.sharedSidebar(r, userID)
-	templ.Handler(templates.CalendarSharesPage(rows, calendars, email)).ServeHTTP(w, r)
+	templ.Handler(templates.CalendarSharesPage(rows, joined, calendars, email)).ServeHTTP(w, r)
+}
+
+// clock returns the handler's time source reading, the wall clock by default.
+func (h *CalendarHandler) clock() time.Time {
+	if h.now != nil {
+		return h.now()
+	}
+	return time.Now()
+}
+
+// shareRows turns held grants into page rows, leaving out calendars that can
+// no longer be read.
+func (h *CalendarHandler) shareRows(held []store.HeldGrant) []templates.PendingShare {
+	var rows []templates.PendingShare
+	for _, g := range held {
+		cal, err := h.calendars.Get(g.Owner, g.Calendar)
+		if err != nil {
+			continue
+		}
+		label := h.acl.UserEmail(g.Owner)
+		if label == "" {
+			label = g.Owner
+		}
+		rows = append(rows, templates.PendingShare{
+			Owner: g.Owner, OwnerLabel: label, Calendar: g.Calendar, CalendarName: cal.Name, Level: g.Level,
+		})
+	}
+	return rows
 }
 
 // AcceptShare turns a pending grant held by the session user into an accepted
@@ -325,13 +347,12 @@ func (h *CalendarHandler) ShareInvitations(w http.ResponseWriter, r *http.Reques
 // POST /calendar/shares/accept
 func (h *CalendarHandler) AcceptShare(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	owner, cal, ok := h.pendingShare(w, r, userID)
+	// One reading serves the pre-check and the command, so the handler and the
+	// FSM judge expiry by the same instant.
+	now := h.clock()
+	owner, cal, ok := h.heldShare(w, r, userID, store.GrantStatePending, now)
 	if !ok {
 		return
-	}
-	now := time.Now()
-	if h.now != nil {
-		now = h.now()
 	}
 	if err := h.acl.AcceptCalendarGrant(owner, cal, userID, now); err != nil {
 		slog.Error("calendar-share: accept failed", "user", userID, "owner", owner, "calendar", cal, "error", err)
@@ -355,7 +376,7 @@ func (h *CalendarHandler) AcceptShare(w http.ResponseWriter, r *http.Request) {
 // POST /calendar/shares/decline
 func (h *CalendarHandler) DeclineShare(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	owner, cal, ok := h.pendingShare(w, r, userID)
+	owner, cal, ok := h.heldShare(w, r, userID, store.GrantStatePending, h.clock())
 	if !ok {
 		return
 	}
@@ -367,11 +388,31 @@ func (h *CalendarHandler) DeclineShare(w http.ResponseWriter, r *http.Request) {
 	shareAnswered(w, r)
 }
 
-// pendingShare reads the owner and calendar from the form and checks that the
-// session user holds a pending grant on them. It writes the response and
-// reports false when not. Absent, malformed and already-accepted all answer
-// the same 404.
-func (h *CalendarHandler) pendingShare(w http.ResponseWriter, r *http.Request, userID string) (owner, cal string, ok bool) {
+// LeaveShare removes an accepted grant held by the session user. Like accept
+// and decline it names only the calendar: the grantee is always the session
+// user, so no form field can point it at someone else's grant. It reuses the
+// revoke command. Absent, pending and malformed all answer the same 404.
+//
+// POST /calendar/shares/leave
+func (h *CalendarHandler) LeaveShare(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	owner, cal, ok := h.heldShare(w, r, userID, store.GrantStateAccepted, h.clock())
+	if !ok {
+		return
+	}
+	if err := h.acl.RevokeCalendarGrant(owner, cal, userID); err != nil {
+		slog.Error("calendar-share: leave failed", "user", userID, "owner", owner, "calendar", cal, "error", err)
+		http.Error(w, "failed to leave shared calendar", http.StatusInternalServerError)
+		return
+	}
+	shareAnswered(w, r)
+}
+
+// heldShare reads the owner and calendar from the form and checks that the
+// session user holds a grant on them in the given state. A pending grant
+// expired at now counts as absent. It writes the response and reports false
+// when not. Absent, malformed, expired and wrong-state all answer the same 404.
+func (h *CalendarHandler) heldShare(w http.ResponseWriter, r *http.Request, userID, state string, now time.Time) (owner, cal string, ok bool) {
 	owner, cal = r.FormValue("owner"), r.FormValue("calendar")
 	if h.acl == nil {
 		http.Error(w, "sharing is unavailable", http.StatusServiceUnavailable)
@@ -386,7 +427,7 @@ func (h *CalendarHandler) pendingShare(w http.ResponseWriter, r *http.Request, u
 		http.Error(w, "failed to read invitation", http.StatusInternalServerError)
 		return "", "", false
 	}
-	if g == nil || g.State != store.GrantStatePending {
+	if g == nil || g.State != state || store.PendingGrantExpired(g, now.Unix()) {
 		http.Error(w, "invitation not found", http.StatusNotFound)
 		return "", "", false
 	}

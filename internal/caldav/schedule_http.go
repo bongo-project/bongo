@@ -817,9 +817,10 @@ func (s *scheduleServer) postOutbox(w http.ResponseWriter, r *http.Request, user
 		writePrecondition(w, http.StatusForbidden, nameValidOrganzr)
 		return
 	}
-	start, errS := fb.Props.DateTime(ical.PropDateTimeStart, time.UTC)
-	end, errE := fb.Props.DateTime(ical.PropDateTimeEnd, time.UTC)
-	if errS != nil || errE != nil || !end.After(start) || end.Sub(start) > maxFreeBusyRange {
+	// An absent or unreadable DTSTART or DTEND is refused.
+	start, okS := freeBusyInstant(fb.Props.Get(ical.PropDateTimeStart))
+	end, okE := freeBusyInstant(fb.Props.Get(ical.PropDateTimeEnd))
+	if !okS || !okE || !end.After(start) || end.Sub(start) > maxFreeBusyRange {
 		writePrecondition(w, http.StatusForbidden, nameValidMessage)
 		return
 	}
@@ -950,4 +951,14 @@ func mergeBusy(busy [][2]int64, from, to int64) [][2]int64 {
 		out = append(out, p)
 	}
 	return out
+}
+
+// freeBusyInstant reads a free-busy request's DTSTART or DTEND through the
+// zone resolver. A nil property is not ok.
+func freeBusyInstant(p *ical.Prop) (time.Time, bool) {
+	if p == nil {
+		return time.Time{}, false
+	}
+	t, _, ok := icalevent.PropInstant(p, time.UTC)
+	return t, ok
 }

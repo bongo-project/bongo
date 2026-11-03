@@ -3,6 +3,7 @@
 package icalevent
 
 import (
+	"errors"
 	"time"
 
 	"github.com/emersion/go-ical"
@@ -27,10 +28,9 @@ func Master(cal *ical.Calendar) (master *ical.Component, fallback bool) {
 		if prop == nil {
 			return c, false
 		}
-		at, err := prop.DateTime(time.UTC)
-		known := err == nil
+		at, _, known := PropInstant(prop, time.UTC)
 		if !known {
-			if start, serr := (&ical.Event{Component: c}).DateTimeStart(time.UTC); serr == nil {
+			if start, serr := EventStart(c); serr == nil {
 				at, known = start, true
 			}
 		}
@@ -42,6 +42,56 @@ func Master(cal *ical.Calendar) (master *ical.Component, fallback bool) {
 		}
 	}
 	return best, best != nil
+}
+
+var errUnreadableTime = errors.New("icalevent: unreadable date or date-time")
+
+// EventStart returns the start of the VEVENT c. It is DTSTART read the way the
+// expansion reads it (PropInstant), so a Windows TZID resolves through Zone
+// where go-ical would fail in time.LoadLocation. A missing DTSTART gives the
+// zero time and no error, as go-ical does; an unreadable one gives an error.
+func EventStart(c *ical.Component) (time.Time, error) {
+	p := c.Props.Get(ical.PropDateTimeStart)
+	if p == nil {
+		return time.Time{}, nil
+	}
+	t, _, ok := PropInstant(p, time.UTC)
+	if !ok {
+		return time.Time{}, errUnreadableTime
+	}
+	return t, nil
+}
+
+// EventEnd returns the non-inclusive end of the VEVENT c: DTEND, else DTSTART
+// plus DURATION, plus a day for a DATE start with neither. A missing DTSTART
+// gives the zero time and no error.
+func EventEnd(c *ical.Component) (time.Time, error) {
+	if p := c.Props.Get(ical.PropDateTimeEnd); p != nil {
+		t, _, ok := PropInstant(p, time.UTC)
+		if !ok {
+			return time.Time{}, errUnreadableTime
+		}
+		return t, nil
+	}
+	startProp := c.Props.Get(ical.PropDateTimeStart)
+	if startProp == nil {
+		return time.Time{}, nil
+	}
+	start, dateOnly, ok := PropInstant(startProp, time.UTC)
+	if !ok {
+		return time.Time{}, errUnreadableTime
+	}
+	var dur time.Duration
+	if durProp := c.Props.Get(ical.PropDuration); durProp != nil {
+		d, err := durProp.Duration()
+		if err != nil {
+			return time.Time{}, err
+		}
+		dur = d
+	} else if dateOnly {
+		dur = 24 * time.Hour
+	}
+	return start.Add(dur), nil
 }
 
 // ToEvent copies the summary fields of the master VEVENT into an Event. The
@@ -65,7 +115,7 @@ func ToEvent(cal *ical.Calendar) (event *bongov1.Event, fallback bool) {
 		event.Location = loc
 	}
 
-	if dtstart, err := vevent.DateTimeStart(time.UTC); err == nil {
+	if dtstart, err := EventStart(m); err == nil {
 		event.StartTime = dtstart.Unix()
 
 		// All-day when DTSTART carries VALUE=DATE.
@@ -78,7 +128,7 @@ func ToEvent(cal *ical.Calendar) (event *bongov1.Event, fallback bool) {
 		}
 	}
 
-	if dtend, err := vevent.DateTimeEnd(time.UTC); err == nil {
+	if dtend, err := EventEnd(m); err == nil {
 		event.EndTime = dtend.Unix()
 	}
 

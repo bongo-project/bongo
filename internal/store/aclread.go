@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -106,9 +107,9 @@ func (s *ACLStore) ListCalendarGrantsHeld(grantee string) ([]HeldGrant, error) {
 }
 
 // ListPendingCalendarGrantsHeld returns the pending grants grantee holds on
-// calendars that still exist, sorted by owner then calendar. Nothing here
-// authorises access; it feeds the invitation page.
-func (s *ACLStore) ListPendingCalendarGrantsHeld(grantee string) ([]HeldGrant, error) {
+// calendars that still exist and have not expired at now, sorted by owner then
+// calendar. Nothing here authorises access; it feeds the invitation page.
+func (s *ACLStore) ListPendingCalendarGrantsHeld(grantee string, now time.Time) ([]HeldGrant, error) {
 	if grantee == "" {
 		return nil, nil
 	}
@@ -127,7 +128,7 @@ func (s *ACLStore) ListPendingCalendarGrantsHeld(grantee string) ([]HeldGrant, e
 		if err != nil {
 			return nil, err
 		}
-		if g == nil || g.State != GrantStatePending || !ValidCalendarLevel(g.Level) {
+		if g == nil || g.State != GrantStatePending || PendingGrantExpired(g, now.Unix()) || !ValidCalendarLevel(g.Level) {
 			continue
 		}
 		if _, err := s.pebble.Get(calendarKey(ref.Owner, ref.Resource)); err != nil {

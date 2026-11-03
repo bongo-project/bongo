@@ -802,6 +802,130 @@ func TestInstanceDeleteFollowing(t *testing.T) {
 	}
 }
 
+// seedExcludingFirst stores a weekly COUNT=5 series (14 and 21 Oct, 28 Oct,
+// 4 and 11 Nov) whose first instance is excluded.
+func (e *instEnv) seedExcludingFirst(t *testing.T, k kind) string {
+	t.Helper()
+	const rule = "FREQ=WEEKLY;COUNT=5"
+	if k.web {
+		guid := e.seed(t, k, rule, nil, nil)
+		ev := e.get(t, guid)
+		ev.Exdates = []string{"20301014T090000"}
+		if k.allDay {
+			ev.Exdates = []string{"20301014"}
+		}
+		if err := e.events.Update(quotaUser, guid, ev); err != nil {
+			t.Fatal(err)
+		}
+		e.ap.calls = 0
+		return guid
+	}
+	ex := "EXDATE;TZID=Europe/Amsterdam:20301014T090000"
+	if k.allDay {
+		ex = "EXDATE;VALUE=DATE:20301014"
+	}
+	return e.seed(t, k, rule, []string{ex}, nil)
+}
+
+func TestInstanceFollowingAfterExcludedLeadingInstances(t *testing.T) {
+	farTo := time.Date(2031, 1, 31, 0, 0, 0, 0, time.UTC)
+	for _, k := range kinds {
+		t.Run(k.name+" delete", func(t *testing.T) {
+			e := newInstEnv(t)
+			guid := e.seedExcludingFirst(t, k)
+			w := e.remove(guid, url.Values{"occurrence": {ridFor(k, "20301021")}, "scope": {"following"}}, false)
+			if w.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+			}
+			if _, err := e.events.Get(quotaUser, guid); !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("Get = %v, want store.ErrNotFound: an invisible series was left", err)
+			}
+			if e.count(t) != 0 {
+				t.Errorf("events = %d, want none", e.count(t))
+			}
+		})
+		t.Run(k.name+" edit", func(t *testing.T) {
+			e := newInstEnv(t)
+			guid := e.seedExcludingFirst(t, k)
+			over := map[string]string{"occurrence": ridFor(k, "20301021"), "scope": "following"}
+			w := e.update(guid, occurrenceForm(k, "FREQ=WEEKLY;COUNT=5", "Following", "2030-10-21", over))
+			if w.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+			}
+			if _, err := e.events.Get(quotaUser, guid); !errors.Is(err, store.ErrNotFound) {
+				t.Errorf("original Get = %v, want store.ErrNotFound", err)
+			}
+			if e.count(t) != 1 {
+				t.Fatalf("events = %d, want exactly the new series", e.count(t))
+			}
+			all, _, err := e.events.ListAll(quotaUser, 0, 0)
+			if err != nil || len(all) != 1 {
+				t.Fatalf("ListAll = %d, %v", len(all), err)
+			}
+			ns := all[0]
+			if ns.Guid == guid || icalevent.RuleCount(ns.Rrule) != 4 {
+				t.Errorf("new series guid %q rule %q, want a new guid and COUNT=4", ns.Guid, ns.Rrule)
+			}
+			var want []string
+			for _, d := range []string{"10-21", "10-28", "11-04", "11-11"} {
+				if k.allDay {
+					want = append(want, d+" day Following")
+				} else {
+					want = append(want, d+" 09:00 Following")
+				}
+			}
+			assertDays(t, e.days(t, ns.Guid, farTo), want)
+		})
+	}
+}
+
+// What must keep truncating: the leading instance is still visible, or the
+// split is at the true first instance.
+func TestInstanceFollowingTruncationRegressions(t *testing.T) {
+	farTo := time.Date(2031, 1, 31, 0, 0, 0, 0, time.UTC)
+	movedFirst := []string{
+		"BEGIN:VEVENT", "UID:client-uid-caldav timed", "DTSTAMP:20300101T000000Z",
+		"RECURRENCE-ID;TZID=Europe/Amsterdam:20301014T090000",
+		"DTSTART;TZID=Europe/Amsterdam:20301014T120000", "DTEND;TZID=Europe/Amsterdam:20301014T130000",
+		"SUMMARY:Moved", "END:VEVENT",
+	}
+	t.Run("a moved first instance still counts as visible", func(t *testing.T) {
+		e := newInstEnv(t)
+		guid := e.seed(t, kinds[0], "FREQ=WEEKLY;COUNT=5", nil, movedFirst)
+		w := e.remove(guid, url.Values{"occurrence": {ridOct21Timed}, "scope": {"following"}}, false)
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+		}
+		ev := e.get(t, guid)
+		if !strings.Contains(ev.Rrule, "UNTIL=") {
+			t.Errorf("Rrule = %q, want the series truncated", ev.Rrule)
+		}
+		assertDays(t, e.days(t, guid, farTo), []string{"10-14 12:00 Moved"})
+	})
+	t.Run("an exclusion later than the first instance still truncates", func(t *testing.T) {
+		e := newInstEnv(t)
+		guid := e.seed(t, kinds[0], "FREQ=WEEKLY;COUNT=5", []string{"EXDATE;TZID=Europe/Amsterdam:20301021T090000"}, nil)
+		w := e.remove(guid, url.Values{"occurrence": {"20301028T080000Z"}, "scope": {"following"}}, false)
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+		}
+		assertDays(t, e.days(t, guid, farTo), []string{"10-14 09:00 Weekly"})
+	})
+	t.Run("an edit with a visible instance before keeps the original", func(t *testing.T) {
+		e := newInstEnv(t)
+		guid := e.seed(t, kinds[0], "FREQ=WEEKLY;COUNT=5", []string{"EXDATE;TZID=Europe/Amsterdam:20301021T090000"}, nil)
+		over := map[string]string{"occurrence": "20301028T080000Z", "scope": "following"}
+		w := e.update(guid, occurrenceForm(kinds[0], "FREQ=WEEKLY;COUNT=5", "Following", "2030-10-28", over))
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+		}
+		if e.count(t) != 2 {
+			t.Errorf("events = %d, want the truncated original and the new series", e.count(t))
+		}
+		assertDays(t, e.days(t, guid, farTo), []string{"10-14 09:00 Weekly"})
+	})
+}
+
 // --- compensation ---------------------------------------------------------
 
 func TestInstanceEditFollowingRollsBack(t *testing.T) {
@@ -828,6 +952,43 @@ func TestInstanceEditFollowingRollsBack(t *testing.T) {
 			}
 			if strings.Contains(after.Rrule, "UNTIL") {
 				t.Errorf("structured Rrule = %q still has the UNTIL", after.Rrule)
+			}
+		})
+	}
+}
+
+// The replace path (no visible instance before the chosen one) creates the new
+// series and then deletes the original. When the delete fails, the new series
+// is deleted again and the request fails: the original is all that remains.
+func TestInstanceReplaceFollowingRollsBack(t *testing.T) {
+	for _, k := range kinds {
+		t.Run(k.name, func(t *testing.T) {
+			e := newInstEnv(t)
+			guid := e.seedExcludingFirst(t, k)
+			before := e.get(t, guid)
+			e.ap.calls = 0
+			e.ap.failAt = 2 // the Delete of the original
+			over := map[string]string{"occurrence": ridFor(k, "20301021"), "scope": "following"}
+			w := e.update(guid, occurrenceForm(k, "FREQ=WEEKLY;COUNT=5", "Following", "2030-10-21", over))
+			if w.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want 500: %s", w.Code, w.Body.String())
+			}
+			if e.ap.calls != 3 {
+				t.Errorf("commands = %d, want the create, the failed delete and the compensating delete", e.ap.calls)
+			}
+			all, _, err := e.events.ListAll(quotaUser, 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(all) != 1 || all[0].Guid != guid {
+				var guids []string
+				for _, ev := range all {
+					guids = append(guids, ev.Guid)
+				}
+				t.Fatalf("events = %v, want the original %q only: the new series remains", guids, guid)
+			}
+			if after := e.get(t, guid); !eventsEqualIgnoringStamps(before, after) {
+				t.Errorf("original changed:\n before %v\n after  %v", before, after)
 			}
 		})
 	}
@@ -1068,18 +1229,18 @@ func TestRebindToSeries(t *testing.T) {
 
 // --- interop ----------------------------------------------------------------
 
-// A TZID that is not an IANA name reads as UTC in the store. The override is
+// A TZID that is neither an IANA nor a Windows name reads as UTC in the store. The override is
 // written in UTC then, and must key to the same slot.
-func TestInstanceEditThisOnANonIANAZone(t *testing.T) {
+func TestInstanceEditThisOnAnUnknownZone(t *testing.T) {
 	e := newInstEnv(t)
 	ics := strings.Join([]string{
 		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Outlook//EN",
 		"BEGIN:VEVENT", "UID:outlook-1", "DTSTAMP:20300101T000000Z",
-		"DTSTART;TZID=W. Europe Standard Time:20301014T090000", "DTEND;TZID=W. Europe Standard Time:20301014T100000",
+		"DTSTART;TZID=Mars Standard Time:20301014T090000", "DTEND;TZID=Mars Standard Time:20301014T100000",
 		"SUMMARY:Weekly", "RRULE:FREQ=WEEKLY", "END:VEVENT", "END:VCALENDAR", "",
 	}, "\r\n")
 	guid, err := e.events.Create(quotaUser, &bongov1.Event{
-		Title: itemWeekly, CalendarId: "default", Rrule: "FREQ=WEEKLY", Timezone: "W. Europe Standard Time",
+		Title: itemWeekly, CalendarId: "default", Rrule: "FREQ=WEEKLY", Timezone: "Mars Standard Time",
 		StartTime: utcUnix(2030, 10, 14, 9, 0), EndTime: utcUnix(2030, 10, 14, 10, 0), IcalRaw: []byte(ics),
 	})
 	if err != nil {
@@ -1113,6 +1274,60 @@ func TestInstanceEditThisOnANonIANAZone(t *testing.T) {
 	want := []string{"10-14 09:00 Weekly", "10-21 09:00 Weekly", "10-28 09:00 Weekly", "11-04 14:00 Moved", "11-11 09:00 Weekly", "11-18 09:00 Weekly"}
 	if !slices.Equal(starts, want) {
 		t.Errorf("occurrences = %v, want %v (the 09:00 UTC slot of 4 November empty)", starts, want)
+	}
+}
+
+// A Windows zone name reads as its IANA zone (CLDR), and the edit keeps the
+// series' own TZID text rather than the IANA name.
+func TestInstanceEditThisOnAWindowsZone(t *testing.T) {
+	e := newInstEnv(t)
+	ics := strings.Join([]string{
+		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Outlook//EN",
+		"BEGIN:VEVENT", "UID:outlook-2", "DTSTAMP:20300101T000000Z",
+		"DTSTART;TZID=W. Europe Standard Time:20301014T090000", "DTEND;TZID=W. Europe Standard Time:20301014T100000",
+		"SUMMARY:Weekly", "RRULE:FREQ=WEEKLY", "END:VEVENT", "END:VCALENDAR", "",
+	}, "\r\n")
+	guid, err := e.events.Create(quotaUser, &bongov1.Event{
+		Title: itemWeekly, CalendarId: "default", Rrule: "FREQ=WEEKLY", Timezone: "W. Europe Standard Time",
+		StartTime: utcUnix(2030, 10, 14, 7, 0), EndTime: utcUnix(2030, 10, 14, 8, 0), IcalRaw: []byte(ics),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.ap.calls = 0
+	rid := "20301104T080000Z" // 09:00 in Berlin after the clocks changed
+	form := occurrenceForm(kinds[0], "FREQ=WEEKLY", "Moved", "2030-11-04", map[string]string{"occurrence": rid, "scope": "this"})
+	form.Set("start_time", "15:00")
+	form.Set("end_time", "16:00")
+	if w := e.update(guid, form); w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+	_, ovs := rawParts(t, e.get(t, guid).IcalRaw)
+	if len(ovs) != 1 {
+		t.Fatalf("overrides = %d", len(ovs))
+	}
+	rp := ovs[0].Props.Get(ical.PropRecurrenceID)
+	if rp.Value != "20301104T090000" || rp.Params.Get("TZID") != "W. Europe Standard Time" {
+		t.Errorf("RECURRENCE-ID = %q (%v), want the Berlin wall clock under the Windows TZID", rp.Value, rp.Params)
+	}
+	if ds := ovs[0].Props.Get(ical.PropDateTimeStart); ds == nil || ds.Params.Get("TZID") != "W. Europe Standard Time" {
+		t.Errorf("DTSTART = %+v, want the series' own TZID text", ds)
+	}
+	occs, err := store.ExpandRecurrence(e.get(t, guid), windowFrom.Unix(), windowTo.Unix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var starts []string
+	for _, o := range occs {
+		starts = append(starts, time.Unix(o.StartTime, 0).UTC().Format("01-02 15:04 ")+o.Title)
+	}
+	for _, w := range []string{"10-21 07:00 Weekly", "10-28 08:00 Weekly", "11-11 08:00 Weekly"} {
+		if !slices.Contains(starts, w) {
+			t.Errorf("occurrences = %v, missing %q", starts, w)
+		}
+	}
+	if slices.Contains(starts, "11-04 08:00 Weekly") {
+		t.Errorf("occurrences = %v, the 11-04 slot should be replaced", starts)
 	}
 }
 

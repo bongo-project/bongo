@@ -484,6 +484,53 @@ func TestAppleMobileconfigStableIdentifiers(t *testing.T) {
 	}
 }
 
+func TestAppleMobileconfigPerUserIdentifiers(t *testing.T) {
+	h := newTestAutoconfig()
+	idents := func(email string) []string {
+		outer, payloads := parseMobileconfig(t, fetchMobileconfig(t, h, email, ""))
+		var ids []string
+		for _, p := range append([]plistPayload{outer}, payloads...) {
+			ids = append(ids, p["PayloadIdentifier"])
+		}
+		return ids
+	}
+	alice := idents("alice@example.com")
+	bob := idents("bob@example.com")
+	if len(alice) != 4 || len(bob) != 4 {
+		t.Fatalf("payload count alice=%d bob=%d, want 4", len(alice), len(bob))
+	}
+	seen := map[string]bool{}
+	for _, id := range alice {
+		seen[id] = true
+	}
+	if len(seen) != 4 {
+		t.Errorf("alice identifiers not distinct: %v", alice)
+	}
+	for i, id := range bob {
+		if seen[id] {
+			t.Errorf("payload %d identifier %q shared between users", i, id)
+		}
+	}
+	tag := addressTag("alice@example.com")
+	for i, id := range alice {
+		if strings.Contains(id, "alice") {
+			t.Errorf("identifier %q carries the address", id)
+		}
+		if !strings.Contains(id, tag) {
+			t.Errorf("identifier %q lacks the address hash %q", id, tag)
+		}
+		if i == 0 && !strings.HasPrefix(id, "com.example.") {
+			t.Errorf("identifier %q lost reverse-DNS form", id)
+		}
+	}
+	mixed := idents("Alice@Example.com")
+	for i := range alice {
+		if mixed[i] != alice[i] {
+			t.Errorf("payload %d identifier differs by case: %q vs %q", i, mixed[i], alice[i])
+		}
+	}
+}
+
 func TestAppleMobileconfigInjection(t *testing.T) {
 	evilUser := "a</string><key>CalDAVPassword</key><string>x@example.com"
 	evilHost := "x</string><key>CardDAVPassword</key><string>y"

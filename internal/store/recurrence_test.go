@@ -76,7 +76,7 @@ func TestExpandRecurrenceZoneFallbacks(t *testing.T) {
 		name, tz string
 		allDay   bool
 	}{
-		{"outlook name", "W. Europe Standard Time", false},
+		{"unknown name", "Mars Standard Time", false},
 		{"mozilla prefix", "/mozilla.org/20050126_1/Europe/Amsterdam", false},
 		{"injection", "Europe/Amsterdam\r\nX-EVIL:1", false},
 		{"all-day ignores zone", "Pacific/Auckland", true},
@@ -100,6 +100,34 @@ func TestExpandRecurrenceZoneFallbacks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// An Outlook series keeps its Berlin wall clock across the DST change: 09:00
+// is 07:00Z in October and 08:00Z in November.
+func TestExpandRecurrenceWindowsZone(t *testing.T) {
+	if _, err := time.LoadLocation("Europe/Berlin"); err != nil {
+		t.Skip("no zone database")
+	}
+	start := utcAt(2030, 10, 14, 7, 0)
+	ev := &bongov1.Event{Guid: "w", StartTime: start, EndTime: start + 3600, Rrule: "FREQ=WEEKLY", Timezone: "W. Europe Standard Time"}
+	got, err := ExpandRecurrence(ev, utcAt(2030, 10, 1, 0, 0), utcAt(2030, 11, 12, 0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int64{"2030-10-21": utcAt(2030, 10, 21, 7, 0), "2030-11-04": utcAt(2030, 11, 4, 8, 0)}
+	seen := 0
+	for _, e := range got {
+		day := time.Unix(e.StartTime, 0).UTC().Format("2006-01-02")
+		if w, ok := want[day]; ok {
+			seen++
+			if e.StartTime != w {
+				t.Errorf("%s starts %s, want %s", day, time.Unix(e.StartTime, 0).UTC(), time.Unix(w, 0).UTC())
+			}
+		}
+	}
+	if seen != len(want) {
+		t.Errorf("saw %d of %d checked days", seen, len(want))
 	}
 }
 

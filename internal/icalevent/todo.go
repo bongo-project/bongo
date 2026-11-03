@@ -151,6 +151,76 @@ func setInt(props ical.Props, name string, n int) {
 	props.Set(p)
 }
 
+// StartDate returns the calendar date of a DTSTART as written, in its own
+// frame: the wall date for a TZID or floating value, the UTC date for a Z
+// value. It is returned as midnight UTC of that date.
+func StartDate(p *ical.Prop) (time.Time, bool) {
+	t, _, ok := PropInstant(p, time.UTC)
+	if !ok {
+		return time.Time{}, false
+	}
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC), true
+}
+
+// DueBeforeStart reports whether a new due (a DATE when dueDate, else an
+// instant) falls before the task's DTSTART, read from raw; fallbackStart (the
+// structured Task.Start) is used when raw has no readable DTSTART. A DATE due is
+// compared by date in DTSTART's own frame, and the same date is allowed. A
+// DATE-TIME due is compared by instant, a DATE DTSTART counting as midnight UTC.
+// A task with no start, or no due, is never before.
+func DueBeforeStart(raw []byte, fallbackStart, due int64, dueDate bool) bool {
+	if due == 0 {
+		return false
+	}
+	var start *ical.Prop
+	if len(raw) > 0 {
+		if cal, err := ical.NewDecoder(bytes.NewReader(raw)).Decode(); err == nil {
+			if m := TodoMaster(cal); m != nil {
+				start = m.Props.Get(ical.PropDateTimeStart)
+			}
+		}
+	}
+	if start == nil {
+		if fallbackStart == 0 {
+			return false
+		}
+		start = ical.NewProp(ical.PropDateTimeStart)
+		start.SetDateTime(time.Unix(fallbackStart, 0).UTC())
+	}
+	if dueDate {
+		day, ok := StartDate(start)
+		return ok && time.Unix(due, 0).UTC().Before(day)
+	}
+	at, _, ok := PropInstant(start, time.UTC)
+	return ok && due < at.Unix()
+}
+
+// alignStart makes DTSTART share DUE's value type (RFC 5545 requires it) after
+// DUE was written. It rewrites DTSTART only when the types differ. DATE-TIME to
+// DATE keeps the date as DTSTART wrote it (TZID dropped); DATE to DATE-TIME
+// becomes midnight UTC of that date, the way a DATE is stored in Task.Start.
+// updated.Start follows, as TaskStore.Update does not re-derive it. RRULE UNTIL,
+// EXDATE and RECURRENCE-ID are left in their old type.
+func alignStart(props ical.Props, updated *bongov1.Task) {
+	start, due := props.Get(ical.PropDateTimeStart), props.Get(ical.PropDue)
+	if start == nil || due == nil || IsDateProp(start) == IsDateProp(due) {
+		return
+	}
+	day, ok := StartDate(start)
+	if !ok {
+		return
+	}
+	p := ical.NewProp(ical.PropDateTimeStart)
+	if IsDateProp(due) {
+		p.SetDate(day)
+	} else {
+		p.SetDateTime(day)
+	}
+	props.Set(p)
+	updated.Start = day.Unix()
+}
+
 func setDue(props ical.Props, at int64, dueDate bool) {
 	switch {
 	case at == 0:
@@ -213,6 +283,7 @@ func ApplyTodoEdit(raw []byte, existing, updated *bongov1.Task, updatedDueDate b
 	}
 	if updated.Due != existing.Due || (updated.Due != 0 && updatedDueDate != oldDate) {
 		setDue(props, updated.Due, updatedDueDate)
+		alignStart(props, updated)
 	}
 	if updated.Completed != existing.Completed {
 		if updated.Completed == 0 {
@@ -232,13 +303,7 @@ func ApplyTodoEdit(raw []byte, existing, updated *bongov1.Task, updatedDueDate b
 		setInt(props, ical.PropPercentComplete, int(updated.Percent))
 	}
 
-	seq := 0
-	if p := props.Get(ical.PropSequence); p != nil {
-		seq, _ = strconv.Atoi(p.Value)
-	}
-	setInt(props, ical.PropSequence, max(seq, 0)+1)
-	props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
-	props.SetDateTime(ical.PropLastModified, now.UTC())
+	BumpRevision(props, now)
 
 	if cal.Props.Get(ical.PropVersion) == nil {
 		cal.Props.SetText(ical.PropVersion, "2.0")

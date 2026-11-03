@@ -499,6 +499,10 @@ func (h *TasksHandler) Update(w http.ResponseWriter, r *http.Request) {
 		updated.Due, dueDate = existing.Due, oldDateOnly
 	} else {
 		updated.Due = f.due
+		if icalevent.DueBeforeStart(existing.IcalRaw, existing.Start, updated.Due, dueDate) {
+			fail(w, r, http.StatusBadRequest, "tasks.errDueBeforeStart")
+			return
+		}
 	}
 	if !h.saveChange(w, r, userID, existing, updated, dueDate) {
 		return

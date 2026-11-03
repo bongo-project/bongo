@@ -42,6 +42,19 @@ func PropInstant(p *ical.Prop, loc *time.Location) (t time.Time, dateOnly, ok bo
 	return d, false, err == nil
 }
 
+// SetZonedDateTime sets p to t as a wall clock in loc with TZID=tzid. tzid is
+// the text the series arrived with and must have passed Zone: SetDateTime would
+// write loc's IANA name, so a series sent as "W. Europe Standard Time" would
+// otherwise change its TZID on an edit while its VTIMEZONE kept the old one.
+func SetZonedDateTime(p *ical.Prop, t time.Time, loc *time.Location, tzid string) {
+	p.SetDateTime(t.In(loc))
+	if loc == time.UTC {
+		// A Z value never carries a TZID (RFC 5545), so TZID=UTC is dropped.
+		return
+	}
+	p.Params.Set(ical.PropTimezoneID, tzid)
+}
+
 // InSeriesForm returns a property called name that holds t in the value form of
 // dtstart, the DTSTART of the series: VALUE=DATE for a date, the TZID zone for a
 // zoned series, UTC for a UTC series and for a TZID that is not an IANA name
@@ -64,7 +77,7 @@ func InSeriesForm(name string, dtstart *ical.Prop, t time.Time) *ical.Prop {
 			return p
 		}
 		if loc, ok := Zone(tzid); ok {
-			p.SetDateTime(t.In(loc))
+			SetZonedDateTime(p, t, loc, tzid)
 		} else {
 			p.SetDateTime(t.UTC())
 		}

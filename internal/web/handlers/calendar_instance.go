@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -293,23 +292,7 @@ func clampSequence(n int) int32 {
 	return int32(n)
 }
 
-func sequenceOf(c *ical.Component) int {
-	if p := c.Props.Get(ical.PropSequence); p != nil {
-		if n, err := strconv.Atoi(strings.TrimSpace(p.Value)); err == nil {
-			return max(n, 0)
-		}
-	}
-	return 0
-}
-
-// stamp sets SEQUENCE, DTSTAMP and LAST-MODIFIED on c.
-func stamp(c *ical.Component, seq int, now time.Time) {
-	sp := ical.NewProp(ical.PropSequence)
-	sp.Value = strconv.Itoa(seq)
-	c.Props.Set(sp)
-	c.Props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
-	c.Props.SetDateTime(ical.PropLastModified, now.UTC())
-}
+func sequenceOf(c *ical.Component) int { return icalevent.Sequence(c.Props) }
 
 func cloneComponent(c *ical.Component) *ical.Component {
 	out := ical.NewComponent(c.Name)
@@ -414,7 +397,7 @@ func newOverride(s *seriesCal, base *ical.Component, form *bongov1.Event, slot t
 		ov.Props.Set(icalevent.InSeriesForm(ical.PropDateTimeEnd, like, time.Unix(form.EndTime, 0)))
 	}
 	applyTransparency(ov.Props, form.Transparent)
-	stamp(ov, seq, now)
+	icalevent.SetRevision(ov.Props, seq, now)
 	return ov
 }
 
@@ -436,7 +419,11 @@ func (h *CalendarHandler) editOccurrence(in instanceEdit) (*InstanceChange, erro
 	if base != nil {
 		seq = max(seq, sequenceOf(base))
 	}
-	ov := newOverride(s, base, in.form, in.slot, seq+1, in.now)
+	// The override must outrank the series and any override it replaces, or
+	// attendees take its REQUEST for a stale one: carry the larger SEQUENCE,
+	// then bump it.
+	ov := newOverride(s, base, in.form, in.slot, seq, in.now)
+	newSeq := icalevent.BumpRevision(ov.Props, in.now)
 	if idx >= 0 {
 		s.cal.Children[idx] = ov
 	} else {
@@ -464,7 +451,7 @@ func (h *CalendarHandler) editOccurrence(in instanceEdit) (*InstanceChange, erro
 	change.Instance, _ = store.FindOccurrence(updated, in.rid)
 	if change.Instance != nil {
 		// The override's own SEQUENCE, which the iTIP message carries.
-		change.Instance.Sequence = clampSequence(seq + 1)
+		change.Instance.Sequence = clampSequence(newSeq)
 	}
 	return change, nil
 }
@@ -490,8 +477,7 @@ func (h *CalendarHandler) deleteOccurrence(userID string, existing *bongov1.Even
 	if s != nil {
 		s.dropOverrides(func(t time.Time, _ bool) bool { return s.key(t) == s.key(slot) })
 		s.master.Props.Add(icalevent.InSeriesForm(ical.PropExceptionDates, s.dtstart, slot))
-		seq := sequenceOf(s.master) + 1
-		stamp(s.master, seq, now)
+		seq := icalevent.BumpRevision(s.master.Props, now)
 		raw, err := s.encode()
 		if err != nil {
 			slog.Error("calendar: encoding the exclusion failed", "user", userID, "guid", existing.Guid, "error", err)
@@ -561,8 +547,7 @@ func truncateSeries(existing *bongov1.Event, slot, now time.Time) (*bongov1.Even
 		after := func(t time.Time, dateOnly bool) bool { return s.atOrAfter(t, dateOnly, slot) }
 		s.dropOverrides(after)
 		s.dropExdates(func(ex exdate) bool { return after(ex.t, ex.dateOnly) })
-		seq := sequenceOf(s.master) + 1
-		stamp(s.master, seq, now)
+		seq := icalevent.BumpRevision(s.master.Props, now)
 		raw, err := s.encode()
 		if err != nil {
 			return nil, fmt.Errorf("encoding ical: %w", err)
@@ -576,15 +561,16 @@ func truncateSeries(existing *bongov1.Event, slot, now time.Time) (*bongov1.Even
 }
 
 // deleteFollowing ends the series before the chosen instance: one PUT. When
-// the chosen instance is the first, there is nothing to keep and the whole
-// series is deleted.
+// no visible instance precedes the chosen one (it is the first, or every
+// earlier one is excluded or cancelled), there is nothing to keep and the
+// whole series is deleted.
 func (h *CalendarHandler) deleteFollowing(userID string, existing *bongov1.Event, rid string, slot, now time.Time) (*InstanceChange, error) {
-	before, err := store.InstancesBefore(existing, slot)
+	visible, err := store.VisibleInstancesBefore(existing, slot)
 	if err != nil {
 		return nil, newInstanceError(http.StatusInternalServerError, "failed to update event")
 	}
 	change := &InstanceChange{Scope: scopeFollowing, Guid: existing.Guid, RecurrenceID: rid, Deleted: true, Before: existing}
-	if before == 0 {
+	if visible == 0 {
 		if err := h.events.Delete(userID, existing.Guid); err != nil {
 			slog.Error("calendar: deleting the series failed", "user", userID, "guid", existing.Guid, "error", err)
 			return nil, newInstanceError(http.StatusInternalServerError, "failed to delete event")
@@ -765,6 +751,50 @@ func (h *CalendarHandler) editFollowing(in instanceEdit, before int) (*InstanceC
 	}, nil
 }
 
+// replaceFollowing serves "this and following" when instances come before the
+// chosen one on the bare rule but none of them is visible (all excluded or
+// cancelled). Truncating would leave an invisible series, so the new series
+// takes the original's place: it is created first, then the original is
+// deleted. COUNT is carried over on the bare rule (before), as RFC 5545
+// counts excluded instances.
+//
+// The two writes are not atomic. If the delete fails, the new series is
+// deleted again (best effort) and the request fails; if that also fails, both
+// series exist and both GUIDs are logged at Error. A crash between the writes
+// leaves both series, so the chosen and later instances show twice, but
+// nothing is lost; create-first is chosen over delete-first because the
+// latter loses the series on a crash. A CalDAV PUT on the original between
+// the read and the delete is lost, as it is for deleteFollowing.
+//
+// The growth of the new record over the original is checked against quota
+// before the first write; a negative growth is never refused.
+func (h *CalendarHandler) replaceFollowing(in instanceEdit, before int) (*InstanceChange, error) {
+	ns, err := newSeriesFrom(in, before)
+	if err != nil {
+		slog.Error("calendar: building the new series failed", "user", in.userID, "guid", in.existing.Guid, "error", err)
+		return nil, newInstanceError(http.StatusInternalServerError, "failed to update event")
+	}
+	growth := store.EventRecordSize(ns) - int64(proto.Size(in.existing))
+	if growth > 0 && quotaExceeded(h.quota, nil, in.userID, growth) {
+		return nil, newInstanceError(http.StatusInsufficientStorage, "quota exceeded")
+	}
+	if _, err := h.events.Create(in.userID, ns); err != nil {
+		slog.Error("calendar: creating the new series failed", "user", in.userID, "guid", in.existing.Guid, "new_guid", ns.Guid, "error", err)
+		return nil, newInstanceError(http.StatusInternalServerError, "failed to update event")
+	}
+	if err := h.events.Delete(in.userID, in.existing.Guid); err != nil {
+		slog.Error("calendar: deleting the replaced series failed, removing the new one", "user", in.userID, "guid", in.existing.Guid, "new_guid", ns.Guid, "error", err)
+		if derr := h.events.Delete(in.userID, ns.Guid); derr != nil {
+			slog.Error("calendar: removing the new series failed, both series exist", "user", in.userID, "guid", in.existing.Guid, "new_guid", ns.Guid, "error", derr)
+		}
+		return nil, newInstanceError(http.StatusInternalServerError, "failed to update event")
+	}
+	return &InstanceChange{
+		Scope: scopeFollowing, Guid: in.existing.Guid, RecurrenceID: in.rid, NewGuid: ns.Guid,
+		Before: in.existing, After: nil, NewSeries: ns,
+	}, nil
+}
+
 // restoreSeries puts original back over written, the record the first write
 // stored, unless the stored record has changed since (or is gone): then it
 // leaves the record alone and says why.
@@ -847,7 +877,19 @@ func (h *CalendarHandler) updateInstance(w http.ResponseWriter, r *http.Request,
 			// From the first instance on is the whole series.
 			return false
 		}
-		change, err = h.editFollowing(in, before)
+		visible, verr := store.VisibleInstancesBefore(existing, slot)
+		if verr != nil {
+			slog.Error("calendar: counting visible instances failed", "user", userID, "guid", existing.Guid, "error", verr)
+			http.Error(w, "failed to update event", http.StatusInternalServerError)
+			return true
+		}
+		if visible == 0 {
+			// Every earlier instance is excluded or cancelled: truncating
+			// would leave an invisible series, so the new one replaces it.
+			change, err = h.replaceFollowing(in, before)
+		} else {
+			change, err = h.editFollowing(in, before)
+		}
 	}
 	if err != nil {
 		writeInstanceError(w, r, err)

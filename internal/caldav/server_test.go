@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -238,7 +239,7 @@ func TestCalDAVIfMatchRejectsStaleWrite(t *testing.T) {
 
 	// Client B still holds the original ETag.
 	_, err = backend.PutCalendarObject(ctx, path, testCalendar("e1", "From B"),
-		&caldav.PutCalendarObjectOptions{IfMatch: webdav.ConditionalMatch(staleETag)})
+		&caldav.PutCalendarObjectOptions{IfMatch: webdav.ConditionalMatch(strconv.Quote(staleETag))})
 	if err == nil {
 		t.Fatal("a stale If-Match was accepted: client B silently overwrote client A's edit")
 	}
@@ -269,7 +270,7 @@ func TestCalDAVIfMatchAcceptsCurrentETag(t *testing.T) {
 	}
 
 	if _, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "Updated"),
-		&caldav.PutCalendarObjectOptions{IfMatch: webdav.ConditionalMatch(original.ETag)}); err != nil {
+		&caldav.PutCalendarObjectOptions{IfMatch: webdav.ConditionalMatch(strconv.Quote(original.ETag))}); err != nil {
 		t.Fatalf("a current If-Match was refused: %v", err)
 	}
 }

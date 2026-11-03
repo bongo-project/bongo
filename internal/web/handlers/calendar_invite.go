@@ -180,6 +180,10 @@ func (h *CalendarHandler) notifyInstance(r *http.Request, userID, email string, 
 		gone := proto.Clone(c.Before).(*bongov1.Event)
 		gone.Sequence = c.Before.Sequence + 1
 		plan = append(plan, invitation{method: imip.MethodCancel, event: gone, to: to(gone)})
+		if c.NewSeries != nil {
+			// The original was replaced by a new series, not just removed.
+			plan = append(plan, invitation{method: imip.MethodRequest, event: c.NewSeries, to: to(c.NewSeries)})
+		}
 	default:
 		plan = append(plan, invitation{method: imip.MethodRequest, updated: true, event: c.After, to: to(c.After)})
 		if c.NewSeries != nil {

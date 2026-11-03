@@ -1,5 +1,7 @@
 package icalevent
 
+//go:generate go run ../../scripts/gen-windowszones -in testdata/windowsZones.xml -out windowszones_gen.go -tag release-48
+
 import (
 	"fmt"
 	"log/slog"
@@ -24,16 +26,35 @@ var (
 // "Local" (the process zone is never an event's zone), for names that are not
 // shaped like an IANA name (this keeps control characters and parameter
 // delimiters out of anything later written as a TZID) and for names the
-// system cannot load, such as Outlook's "W. Europe Standard Time". A caller
-// that needs a zone anyway uses UTC.
+// system cannot load. A Windows name such as Outlook's "W. Europe Standard
+// Time" is read as the IANA zone CLDR gives it (windowszones_gen.go). The match
+// is exact, and an IANA name always wins over the table: CLDR maps "UTC" to
+// Etc/UTC, which must not replace time.UTC. A caller that needs a zone anyway
+// uses UTC.
 func Zone(name string) (loc *time.Location, ok bool) {
-	if name == "" || name == "Local" || len(name) > 64 || !zoneNameShape(name) {
+	if name == "" || name == "Local" || len(name) > 64 {
 		return nil, false
 	}
 	if v, hit := zoneCache.Load(name); hit {
 		return v.(*time.Location), true
 	}
-	l, err := time.LoadLocation(name)
+	var l *time.Location
+	var err error
+	shaped := zoneNameShape(name)
+	if shaped {
+		l, err = time.LoadLocation(name)
+	}
+	if !shaped || err != nil {
+		// Not an IANA name that loads: try the Windows table. Its keys are
+		// fixed, so a name outside the IANA shape gets in only by exact match.
+		if iana, found := windowsZones[name]; found {
+			l, err = time.LoadLocation(iana)
+			shaped = true
+		}
+	}
+	if !shaped {
+		return nil, false
+	}
 	if err != nil {
 		warnZoneOnce(name)
 		return nil, false

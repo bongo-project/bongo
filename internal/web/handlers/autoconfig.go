@@ -191,10 +191,11 @@ const davHTTPSPort = 443
 
 // writeDAVPayload appends one com.apple.<kind>.account payload dict. kind is the
 // key prefix ("CalDAV" or "CardDAV"), slug the lower-case form used in the
-// payload type and identifier. No password key is written, so the device asks
+// payload type and identifier. idPrefix is the reversed domain plus the
+// per-user address tag. No password key is written, so the device asks
 // for it. The UUID is derived from uuidSeed plus the address, so it is stable
 // across downloads and a reinstall replaces the account.
-func writeDAVPayload(b *bytes.Buffer, kind, slug, principal, description, host, email, rev, uuidSeed string) {
+func writeDAVPayload(b *bytes.Buffer, kind, slug, principal, description, host, email, idPrefix, uuidSeed string) {
 	b.WriteString("    <dict>\n")
 	plistStr(b, kind+"AccountDescription", description)
 	plistStr(b, kind+"HostName", host)
@@ -204,7 +205,7 @@ func writeDAVPayload(b *bytes.Buffer, kind, slug, principal, description, host, 
 	plistStr(b, kind+"Username", email)
 	plistStr(b, "PayloadDescription", "Configures "+kind+" account for "+email)
 	plistStr(b, "PayloadDisplayName", description)
-	plistStr(b, "PayloadIdentifier", rev+"."+slug+".account")
+	plistStr(b, "PayloadIdentifier", idPrefix+"."+slug+".account")
 	plistStr(b, "PayloadType", "com.apple."+slug+".account")
 	plistStr(b, "PayloadUUID", stableUUID(uuidSeed+email))
 	plistInt(b, "PayloadVersion", 1)
@@ -215,6 +216,9 @@ func writeDAVPayload(b *bytes.Buffer, kind, slug, principal, description, host, 
 // macOS Mail, Calendar and Contacts (mail, CalDAV and CardDAV account
 // payloads). The address is required via the email query parameter (the
 // download link in the web UI supplies the signed-in user's address). The
+// PayloadIdentifiers are per user: they carry the reversed domain and a hash of
+// the address (addressTag), never the address, so a second user's profile on
+// the same device is not treated as a replacement of the first. The
 // profile is unsigned,
 // so the OS shows it as "Unverified" on install; it contains no password and
 // the device asks for it.
@@ -228,6 +232,7 @@ func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Req
 
 	host := h.host(r)
 	rev := reverseDomain(domain)
+	tag := addressTag(email)
 	profileUUID := stableUUID("bongo-mail-profile:" + email)
 	accountUUID := stableUUID("bongo-mail-account:" + email)
 
@@ -258,16 +263,16 @@ func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Req
 	plistBool(&b, "OutgoingPasswordSameAsIncoming", true)
 	plistStr(&b, "PayloadDescription", "Configures mail account for "+domain)
 	plistStr(&b, "PayloadDisplayName", email)
-	plistStr(&b, "PayloadIdentifier", rev+".mail.account")
+	plistStr(&b, "PayloadIdentifier", rev+".mail."+tag+".account")
 	plistStr(&b, "PayloadType", "com.apple.mail.managed")
 	plistStr(&b, "PayloadUUID", accountUUID)
 	plistInt(&b, "PayloadVersion", 1)
 	b.WriteString("    </dict>\n")
-	writeDAVPayload(&b, "CalDAV", "caldav", "/caldav/", domain+" calendar", host, email, rev, "bongo-caldav-account:")
-	writeDAVPayload(&b, "CardDAV", "carddav", "/carddav/", domain+" contacts", host, email, rev, "bongo-carddav-account:")
+	writeDAVPayload(&b, "CalDAV", "caldav", "/caldav/", domain+" calendar", host, email, rev+"."+tag, "bongo-caldav-account:")
+	writeDAVPayload(&b, "CardDAV", "carddav", "/carddav/", domain+" contacts", host, email, rev+"."+tag, "bongo-carddav-account:")
 	b.WriteString("  </array>\n")
 	plistStr(&b, "PayloadDisplayName", domain+" mail, calendar and contacts")
-	plistStr(&b, "PayloadIdentifier", rev+".mail")
+	plistStr(&b, "PayloadIdentifier", rev+".mail."+tag)
 	plistBool(&b, "PayloadRemovalDisallowed", false)
 	plistStr(&b, "PayloadType", "Configuration")
 	plistStr(&b, "PayloadUUID", profileUUID)
@@ -422,6 +427,15 @@ func stableUUID(seed string) string {
 	b[6] = (b[6] & 0x0f) | 0x50 // version 5 (name-based), cosmetic
 	b[8] = (b[8] & 0x3f) | 0x80 // RFC 4122 variant
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// addressTag returns 16 hex characters of a SHA-256 over the trimmed,
+// lower-cased address, for use in PayloadIdentifiers. It keeps the address out
+// of the identifier and keeps the identifier in reverse-DNS form. It is a
+// per-user discriminator, not a secret: the profile body carries the address.
+func addressTag(email string) string {
+	sum := sha256.Sum256([]byte("bongo-profile-id:" + strings.ToLower(strings.TrimSpace(email))))
+	return fmt.Sprintf("%x", sum[:8])
 }
 
 func plistStr(b *bytes.Buffer, key, val string) {
