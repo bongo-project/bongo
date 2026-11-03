@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-03
 **Commit verified:** `07666b3` (main after Phase 30)
-**PRD:** [active/prd-calendar-v0.15.md](active/prd-calendar-v0.15.md)
+**PRD:** [done/prd-calendar-v0.15.md](done/prd-calendar-v0.15.md)
 **Rigor:** adversarial. Each story had two read-only verifiers: one traced the implementation and its edge cases, the other judged whether the tests would go red if the guarantee broke. A completeness critic then reviewed the whole result. Operator decisions in PRD 8.1 override the story text where they differ.
 **Scale:** 41 agents, 1,132 tool calls, 13 minutes.
 
