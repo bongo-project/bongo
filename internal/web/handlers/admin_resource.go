@@ -88,7 +88,7 @@ func (h *AdminHandler) createResource(w http.ResponseWriter, r *http.Request, ne
 	}
 
 	h.logger.Info("admin: resource created", "email", newEmail, "type", typ, "capacity", capacity)
-	http.Redirect(w, r, "/admin/users?flash=Resource+created", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin/users", flashResourceCreated), http.StatusSeeOther)
 }
 
 // NewResourceForm shows the create form for a room or equipment account, with
@@ -156,7 +156,7 @@ func (h *AdminHandler) ResourceBookings(w http.ResponseWriter, r *http.Request) 
 	}
 	_, email := middleware.UserFromContext(r.Context())
 	info := &templates.AdminUserInfo{UserID: userID, Email: profile.Email, DisplayName: profile.DisplayName, Kind: profile.Kind}
-	templ.Handler(templates.AdminResourceBookings(info, bookings, email, r.URL.Query().Get("flash"))).ServeHTTP(w, r)
+	templ.Handler(templates.AdminResourceBookings(info, bookings, email, flashText(r))).ServeHTTP(w, r)
 }
 
 // CancelResourceBooking deletes a booking of a resource and tells its
@@ -183,5 +183,5 @@ func (h *AdminHandler) CancelResourceBooking(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	h.logger.Info("admin: booking cancelled", "resource", userID, "guid", guid)
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s/bookings?flash=%s", url.PathEscape(userID), "Booking+cancelled"), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s/bookings", url.PathEscape(userID)), flashBookingCancelled), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }

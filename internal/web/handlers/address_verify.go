@@ -198,7 +198,7 @@ func (h *AddressVerifyHandler) idle() bool { return h.pending.Load() == 0 }
 // GET /settings/addresses
 func (h *AddressVerifyHandler) ShowAddresses(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 	errMsg := r.URL.Query().Get("error")
 
 	var addrs []templates.UserAddressInfo
@@ -380,7 +380,7 @@ func (h *AddressVerifyHandler) ownRecord(userID, address string) (*bongov1.Addre
 // must not depend on who owns the address, or the form becomes an oracle for
 // which addresses exist on any tenant.
 func (h *AddressVerifyHandler) sendAsAddRedirect(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/settings/addresses?flash="+url.QueryEscape(fwdText(r, "settings.sendAsRequested")), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/addresses", flashSendAsRequested), http.StatusSeeOther)
 }
 
 // RequestVerification issues a one-time verification code for a claimed address.
@@ -437,7 +437,7 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		return
 	}
 	if own != nil && own.CanSend && own.Verified {
-		http.Redirect(w, r, "/settings/addresses?flash=Address+is+already+verified", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/addresses", flashAddressAlreadyVerified), http.StatusSeeOther)
 		return
 	}
 
@@ -495,7 +495,7 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 		h.resetClaim(userID, address, "sender queue full")
 	}
 
-	http.Redirect(w, r, "/settings/addresses?flash=Verification+code+sent", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/addresses", flashVerificationCodeSent), http.StatusSeeOther)
 }
 
 // SubmitCode verifies a submitted code against the stored challenge.
@@ -640,7 +640,7 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 	}
 
 	h.logger.Info("address-verify: address verified", "user_id", userID, "address", address)
-	http.Redirect(w, r, "/settings/addresses?flash=Address+verified", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/addresses", flashAddressVerified), http.StatusSeeOther)
 }
 
 // sendAsAddrLocks serialises SubmitCode per normalised address across the

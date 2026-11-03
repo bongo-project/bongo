@@ -63,7 +63,7 @@ func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		totalPages = 1
 	}
 
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	templ.Handler(templates.ContactsPage(contacts, page, totalPages, email, flash)).ServeHTTP(w, r)
 }
@@ -88,7 +88,7 @@ func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	http.Redirect(w, r, "/contacts?flash=Contact+created", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/contacts", flashContactCreated), http.StatusSeeOther)
 }
 
 // ShowContact renders a single contact detail/edit view.
@@ -148,7 +148,7 @@ func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	http.Redirect(w, r, "/contacts/"+url.PathEscape(guid)+"?flash=Contact+updated", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/contacts/"+url.PathEscape(guid), flashContactUpdated), http.StatusSeeOther)
 }
 
 // DeleteContact handles DELETE to remove a contact.
@@ -163,12 +163,12 @@ func (h *ContactsHandler) DeleteContact(w http.ResponseWriter, r *http.Request) 
 
 	// HTMX request: redirect to reload the contacts list.
 	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", "/contacts?flash=Contact+deleted")
+		w.Header().Set("HX-Redirect", withFlash("/contacts", flashContactDeleted))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	http.Redirect(w, r, "/contacts?flash=Contact+deleted", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/contacts", flashContactDeleted), http.StatusSeeOther)
 }
 
 // QuickAddContact handles POST /contacts/quick-add from the message view.
@@ -187,10 +187,10 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 	existing, _ := h.contacts.FindByEmail(userID, fromEmail)
 	if existing != nil {
 		if returnTo != "" {
-			http.Redirect(w, r, returnTo+"?flash=Already+in+contacts", http.StatusSeeOther) // #nosec G710 -- returnTo is constrained by safeContactReturnPath
+			http.Redirect(w, r, withFlash(returnTo, flashAlreadyInContacts), http.StatusSeeOther) // #nosec G710 -- returnTo is constrained by safeContactReturnPath
 			return
 		}
-		http.Redirect(w, r, "/contacts?flash=Already+in+contacts", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/contacts", flashAlreadyInContacts), http.StatusSeeOther)
 		return
 	}
 
@@ -209,10 +209,10 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 	}
 
 	if returnTo != "" {
-		http.Redirect(w, r, returnTo+"?flash=Contact+added", http.StatusSeeOther) // #nosec G710 -- returnTo is constrained by safeContactReturnPath
+		http.Redirect(w, r, withFlash(returnTo, flashContactAdded), http.StatusSeeOther) // #nosec G710 -- returnTo is constrained by safeContactReturnPath
 		return
 	}
-	http.Redirect(w, r, "/contacts?flash=Contact+added", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/contacts", flashContactAdded), http.StatusSeeOther)
 }
 
 func safeContactReturnPath(raw string) string {
@@ -283,14 +283,14 @@ func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request)
 	defer removeUploadTemp(r)
 	file, _, err := r.FormFile("vcf")
 	if err != nil {
-		http.Redirect(w, r, "/contacts?flash=No+file+uploaded", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/contacts", flashNoFileUploaded), http.StatusSeeOther)
 		return
 	}
 	defer file.Close()
 
 	raw, err := io.ReadAll(file)
 	if err != nil {
-		http.Redirect(w, r, "/contacts?flash=Failed+to+read+file", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/contacts", flashFileReadFailed), http.StatusSeeOther)
 		return
 	}
 
@@ -337,12 +337,12 @@ func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	flash := fmt.Sprintf("Imported %d contacts (%d with email, %d with phone)", imported, withEmail, withPhone)
+	flash := flashContactsImported
 	if skipped > 0 {
-		flash = fmt.Sprintf("%s, %d skipped", flash, skipped)
+		flash = flashContactsImportedSomeSkipped
 	}
 
-	http.Redirect(w, r, "/contacts?flash="+strings.ReplaceAll(flash, " ", "+"), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/contacts", flash), http.StatusSeeOther)
 }
 
 // splitVCardBlocks splits raw VCF data into individual BEGIN:VCARD...END:VCARD blocks.

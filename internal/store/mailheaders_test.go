@@ -108,26 +108,25 @@ func TestParseListIDNameIsCleaned(t *testing.T) {
 	}
 }
 
-func TestParseHeaderView(t *testing.T) {
+func TestHeaderViewURL(t *testing.T) {
 	tests := []struct {
-		name string
-		want HeaderView
-		ok   bool
+		view HeaderView
+		url  string
+		bulk string
 	}{
-		{"to-me", HeaderView{Kind: ViewToMe}, true},
-		{"from-contacts", HeaderView{Kind: ViewFromContacts}, true},
-		{"lists", HeaderView{Kind: ViewLists}, true},
-		{"lists/go-users.example.org", HeaderView{Kind: ViewLists, ListID: "go-users.example.org"}, true},
-		{"lists/Upper", HeaderView{}, false},
-		{"lists/a/b", HeaderView{}, false},
-		{"lists/", HeaderView{}, false},
-		{"INBOX", HeaderView{}, false},
-		{"starred", HeaderView{}, false},
+		{HeaderView{Kind: ViewToMe}, "/mail/view/to-me", "/mail/view/to-me/bulk"},
+		{HeaderView{Kind: ViewFromContacts}, "/mail/view/from-contacts", "/mail/view/from-contacts/bulk"},
+		{HeaderView{Kind: ViewLists}, "/mail/view/lists", "/mail/view/lists/bulk"},
+		{HeaderView{Kind: ViewLists, ListID: "go-users.example.org"}, "/mail/view/lists/go-users.example.org", "/mail/view/lists/go-users.example.org/bulk"},
+		{HeaderView{Kind: ViewLists, ListID: "a+b"}, "/mail/view/lists/a+b", "/mail/view/lists/a+b/bulk"},
+		{HeaderView{Kind: ViewLists, ListID: "x/../y"}, "/mail/view/lists/x%2F..%2Fy", "/mail/view/lists/x%2F..%2Fy/bulk"},
 	}
 	for _, tt := range tests {
-		got, ok := ParseHeaderView(tt.name)
-		if got != tt.want || ok != tt.ok {
-			t.Errorf("ParseHeaderView(%q) = %+v, %v; want %+v, %v", tt.name, got, ok, tt.want, tt.ok)
+		if got := tt.view.URL(); got != tt.url {
+			t.Errorf("%+v URL() = %q, want %q", tt.view, got, tt.url)
+		}
+		if got := tt.view.BulkURL(); got != tt.bulk {
+			t.Errorf("%+v BulkURL() = %q, want %q", tt.view, got, tt.bulk)
 		}
 	}
 }

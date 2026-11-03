@@ -31,7 +31,6 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/cluster"
-	"github.com/bongo-project/bongo/internal/i18n"
 	internalmail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/queue"
 	"github.com/bongo-project/bongo/internal/store"
@@ -237,7 +236,7 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 	templ.Handler(templates.AdminDashboard(health, email, require2FA, flash)).ServeHTTP(w, r)
 }
 
@@ -249,7 +248,7 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
 	scope := middleware.AdminScopeFromContext(r.Context())
 	query := r.URL.Query().Get("q")
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	users := h.loadUsers(query)
 	if !scope.Global {
@@ -375,7 +374,7 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: user created", "email", newEmail, "is_admin", isAdmin)
 
-	http.Redirect(w, r, "/admin/users?flash=User+created", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin/users", flashUserCreated), http.StatusSeeOther)
 }
 
 // ShowUser shows the edit user form.
@@ -383,7 +382,7 @@ func (h *AdminHandler) ShowUser(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
 	scope := middleware.AdminScopeFromContext(r.Context())
 	userID := chi.URLParam(r, "userID")
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	profile, ok := h.requireUserAccess(w, scope, userID)
 	if !ok {
@@ -480,7 +479,7 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: user updated", "user_id", userID, "display_name", displayName, "is_admin", profile.IsAdmin)
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+updated", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashUserUpdated), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // ToggleDisabled toggles the disabled flag on a user.
@@ -514,14 +513,14 @@ func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	action := "enabled"
+	action, toggled := "enabled", flashUserEnabled
 	if profile.Disabled {
-		action = "disabled"
+		action, toggled = "disabled", flashUserDisabled
 	}
 
 	h.logger.Info("admin: user toggled", "user_id", userID, "state", action)
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+%s", userID, action), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), toggled), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // ResetPassword generates a temporary password for a user.
@@ -622,7 +621,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	scope := middleware.AdminScopeFromContext(r.Context())
 
 	if userID == actingUserID {
-		h.hxRedirect(w, fmt.Sprintf("/admin/users/%s?flash=You+cannot+delete+your+own+account", userID))
+		h.hxRedirect(w, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotDeleteSelf))
 		return
 	}
 
@@ -632,7 +631,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if profile.IsAdmin && h.countAdmins() <= 1 {
-		h.hxRedirect(w, fmt.Sprintf("/admin/users/%s?flash=Cannot+delete+the+last+administrator", userID))
+		h.hxRedirect(w, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotDeleteLastAdmin))
 		return
 	}
 
@@ -782,10 +781,10 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("admin: user deleted", "user_id", userID, "email", profile.Email, "keys_deleted", deleted, "keys_failed", failed)
 
 	if failed > 0 {
-		h.hxRedirect(w, "/admin/users?flash=User+deleted+with+some+errors+(see+logs)")
+		h.hxRedirect(w, withFlash("/admin/users", flashUserDeletedWithErrors))
 		return
 	}
-	h.hxRedirect(w, "/admin/users?flash=User+deleted")
+	h.hxRedirect(w, withFlash("/admin/users", flashUserDeleted))
 }
 
 // hxRedirect issues an HTMX client-side redirect (for hx-post triggers) while
@@ -803,7 +802,7 @@ func (h *AdminHandler) hxRedirect(w http.ResponseWriter, url string) {
 func (h *AdminHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
 	scope := middleware.AdminScopeFromContext(r.Context())
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	domains := h.loadDomains()
 	var aliasMap map[string]string
@@ -844,7 +843,7 @@ func (h *AdminHandler) ShowDomain(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
 	scope := middleware.AdminScopeFromContext(r.Context())
 	_, email := middleware.UserFromContext(r.Context())
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	if !requireDomainAccess(w, scope, domain) {
 		return
@@ -1278,9 +1277,6 @@ func validDomainName(name string) bool {
 	return true
 }
 
-// maxAliasListInFlash bounds the alias names a refusal flash lists.
-const maxAliasListInFlash = 10
-
 // CreateDomain adds a new domain.
 // This is a global-only operation: minting a new tenant is restricted to global admins.
 //
@@ -1427,13 +1423,11 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: domain created", "domain", domain, "has_mx", hasMX, "alias_of", aliasOf)
 
-	flash := fmt.Sprintf("Domain+%s+added", domain)
+	added := flashDomainAddedNoMX
 	if hasMX {
-		flash += ".+MX+records+found"
-	} else {
-		flash += ".+No+MX+records+found"
+		added = flashDomainAddedMX
 	}
-	http.Redirect(w, r, "/admin/domains?flash="+flash, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash("/admin/domains", added), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // ToggleDomain toggles the enabled state of a domain.
@@ -1477,7 +1471,7 @@ func (h *AdminHandler) ToggleDomain(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.Redirect(w, r, "/admin/domains?flash=Domain+toggled", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin/domains", flashDomainToggled), http.StatusSeeOther)
 }
 
 // DeleteDomain removes a domain and the configuration it owns.
@@ -1515,15 +1509,7 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(aliases) > 0 {
 		h.logger.Warn("admin: domain delete refused: has aliases", "domain", domain, "aliases", len(aliases))
-		locale := middleware.LocaleFromContext(r.Context())
-		listed := aliases
-		names := strings.Join(listed, ", ")
-		if len(listed) > maxAliasListInFlash {
-			names = strings.Join(listed[:maxAliasListInFlash], ", ") + " " +
-				fmt.Sprintf(i18n.T(locale, "admin.domainAliasesMore"), len(listed)-maxAliasListInFlash)
-		}
-		msg := fmt.Sprintf(i18n.T(locale, "admin.domainHasAliases"), lower, names)
-		h.hxRedirect(w, "/admin/domains?flash="+url.QueryEscape(msg))
+		h.hxRedirect(w, withFlash("/admin/domains", flashDomainHasAliases))
 		return
 	}
 
@@ -1536,9 +1522,7 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 	if deps.Any() {
 		h.logger.Warn("admin: domain delete refused", "domain", domain,
 			"users", deps.Users, "aliases", deps.Aliases, "addresses", deps.Addresses)
-		msg := fmt.Sprintf("Domain %s has %d users, %d aliases and %d addresses; remove them first",
-			lower, deps.Users, deps.Aliases, deps.Addresses)
-		h.hxRedirect(w, "/admin/domains?flash="+url.QueryEscape(msg))
+		h.hxRedirect(w, withFlash("/admin/domains", flashDomainHasDependents))
 		return
 	}
 
@@ -1592,7 +1576,7 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 
 	// hxRedirect so the hx-post + hx-confirm delete control navigates correctly
 	// (matches DeleteUser); it also sets Location/303 for non-HTMX callers.
-	h.hxRedirect(w, "/admin/domains?flash=Domain+deleted")
+	h.hxRedirect(w, withFlash("/admin/domains", flashDomainDeleted))
 }
 
 // GenerateDKIMKey generates (or rotates) a per-domain RSA-2048 DKIM signing key.
@@ -1681,7 +1665,7 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 	// be anything but a relative path under /admin/domains/ regardless of what
 	// the URL parameter contained. Same treatment as the other user-derived
 	// paths in this package (cf. contacts.go, mail.go).
-	http.Redirect(w, r, fmt.Sprintf("/admin/domains/%s?flash=DKIM+key+generated", url.PathEscape(strings.TrimSpace(rawDomain))), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/domains/%s", url.PathEscape(strings.TrimSpace(rawDomain))), flashDKIMGenerated), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // removeStaleDKIMKeys deletes case-variant duplicates of canonicalKey (for
@@ -1786,7 +1770,7 @@ func (h *AdminHandler) SetCatchAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("admin: catch-all set", "domain", domain, "owner_user_id", ownerUserID)
-	http.Redirect(w, r, "/admin/domains?flash=Catch-all+set+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash("/admin/domains", flashCatchAllSet), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // ClearCatchAll removes the catch-all configuration for a domain.
@@ -1819,7 +1803,7 @@ func (h *AdminHandler) ClearCatchAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("admin: catch-all cleared", "domain", domain)
-	http.Redirect(w, r, "/admin/domains?flash=Catch-all+cleared+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash("/admin/domains", flashCatchAllCleared), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // SetDomainOwner sets the owner_user_id for a domain.
@@ -1861,7 +1845,7 @@ func (h *AdminHandler) SetDomainOwner(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("admin: domain owner set", "domain", domain, "owner_user_id", ownerUserID)
-	http.Redirect(w, r, "/admin/domains?flash=Owner+set+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash("/admin/domains", flashDomainOwnerSet), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // GrantDomainAdmin grants a user as a domain-admin for the given domain.
@@ -1907,7 +1891,7 @@ func (h *AdminHandler) GrantDomainAdmin(w http.ResponseWriter, r *http.Request) 
 	}
 
 	h.logger.Info("admin: domain admin granted", "domain", domain, "user_id", userID)
-	http.Redirect(w, r, "/admin/domains?flash=Admin+granted+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash("/admin/domains", flashDomainAdminGranted), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // RevokeDomainAdmin revokes a user's domain-admin grant for the given domain.
@@ -1947,7 +1931,7 @@ func (h *AdminHandler) RevokeDomainAdmin(w http.ResponseWriter, r *http.Request)
 	}
 
 	h.logger.Info("admin: domain admin revoked", "domain", domain, "user_id", userID)
-	http.Redirect(w, r, "/admin/domains?flash=Admin+revoked+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash("/admin/domains", flashDomainAdminRevoked), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // SetDomainQuota sets the per-domain quota limits (max_users and max_storage_bytes).
@@ -2002,7 +1986,7 @@ func (h *AdminHandler) SetDomainQuota(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("admin: domain quota set", "domain", domain, "max_users", maxUsers, "max_storage_bytes", maxStorage)
-	http.Redirect(w, r, "/admin/domains?flash=Quota+set+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash("/admin/domains", flashDomainQuotaSet), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // dkimTXTRecord derives the DKIM DNS TXT record value from a PEM-encoded private
@@ -2050,7 +2034,7 @@ func dkimTXTRecord(domain, selector, pemKey string) string {
 func (h *AdminHandler) ListAliases(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
 	scope := middleware.AdminScopeFromContext(r.Context())
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	aliases := h.loadAliases()
 	if !scope.Global {
@@ -2183,7 +2167,7 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: alias created", "alias", address, "target", targetUser)
 
-	http.Redirect(w, r, "/admin/aliases?flash=Alias+created", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin/aliases", flashAliasCreated), http.StatusSeeOther)
 }
 
 // DeleteAlias removes an alias.
@@ -2273,7 +2257,7 @@ func (h *AdminHandler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: alias deleted", "alias", address)
 
-	http.Redirect(w, r, "/admin/aliases?flash=Alias+deleted", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin/aliases", flashAliasDeleted), http.StatusSeeOther)
 }
 
 // --- Queue Management ---
@@ -2348,7 +2332,7 @@ func (h *AdminHandler) FlushQueue(w http.ResponseWriter, r *http.Request) {
 			h.logger.Warn("admin: failed to flush queue", "error", err)
 		}
 	}
-	http.Redirect(w, r, "/admin/queue?flash=Queue+flushed", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin/queue", flashQueueFlushed), http.StatusSeeOther)
 }
 
 // --- Cluster Overview ---
@@ -2499,8 +2483,7 @@ func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) 
 
 	h.logger.Info("admin: 2FA policy updated", "enabled", enabled)
 
-	flash := "2FA+policy+updated"
-	http.Redirect(w, r, "/admin?flash="+flash, http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin", flashPolicy2FAUpdated), http.StatusSeeOther)
 }
 
 // --- Address Management ---
@@ -2562,7 +2545,7 @@ func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 	if ok && existing.Kind == "primary" {
 		// Already this account's own primary address: nothing to add, and
 		// never downgrade it.
-		http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Address+added", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+		http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashAddressAdded), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 		return
 	}
 
@@ -2597,7 +2580,7 @@ func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("admin: address added", "user_id", userID, "address", address)
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Address+added", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashAddressAdded), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // RemoveAddress removes a non-primary address from a user's account.
@@ -2641,8 +2624,7 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 
 	// Guard: prevent deletion of the primary address so the account stays reachable.
 	if address == primaryEmail {
-		flash := "Cannot+remove+primary+address"
-		http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+		http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotRemovePrimary), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 		return
 	}
 
@@ -2654,8 +2636,7 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ok && existing.Kind == "primary" {
-		flash := "Cannot+remove+primary+address"
-		http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+		http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotRemovePrimary), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 		return
 	}
 
@@ -2686,7 +2667,7 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("admin: address removed", "user_id", userID, "address", address)
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Address+removed", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashAddressRemoved), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // GrantSend grants send-as capability to an owned address.
@@ -2751,7 +2732,7 @@ func (h *AdminHandler) GrantSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("admin: send capability granted", "user_id", userID, "address", address)
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Send+capability+granted", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashSendGranted), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // --- Welcome Email ---

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/icalevent"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -831,6 +832,17 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 					if card.Subscription != nil {
 						@calendarSubscriptionInfo(card)
 					}
+					if card.CanDelete {
+						<button
+							type="button"
+							class="tool-btn calendar-delete-btn"
+							hx-delete={ "/calendar/" + card.Calendar }
+							hx-swap="none"
+							hx-confirm={ t(ctx, "calendar.deleteConfirm") }
+						>
+							{ t(ctx, "calendar.delete") }
+						</button>
+					}
 					if card.CanShare {
 						<h4>{ t(ctx, "calendar.sharing") }</h4>
 						if len(card.Grants) == 0 {
@@ -1429,6 +1441,8 @@ type AgendaItem struct {
 	// ReadOnly is set for a task of a calendar shared with the viewer. It is
 	// not in the viewer's own key space, so the row links nowhere.
 	ReadOnly bool
+	// Overdue labels a task that is past due, listed on today's row.
+	Overdue bool
 }
 
 // AgendaDay groups the agenda rows that fall on one calendar day.
@@ -1466,14 +1480,14 @@ templ AgendaPage(data AgendaData, calendars []*bongov1.Calendar, email string, f
 templ AgendaContent(data AgendaData) {
 	@CalendarHeader("agenda", data.From)
 	<div class="cal-wrap">
-		@CalendarToolbar(data.PrevPath, data.NextPath, data.TodayPath, agendaTitle(data.From, data.To))
+		@CalendarToolbar(data.PrevPath, data.NextPath, data.TodayPath, agendaTitle(ctx, data.From, data.To))
 		<div class="agenda card" id="agenda">
 			if len(data.Days) == 0 {
 				<p class="agenda-empty">{ t(ctx, "calendar.agendaEmpty") }</p>
 			}
 			for _, day := range data.Days {
 				<section class="agenda-day" data-agenda-date={ day.Date.Format("2006-01-02") }>
-					<h3 class="agenda-day-head">{ day.Date.Format("Monday, January 2") }</h3>
+					<h3 class="agenda-day-head">{ i18n.FormatDate(localeFromCtx(ctx), day.Date, false) }</h3>
 					<ul class="agenda-list">
 						for _, it := range day.Items {
 							if it.Task != nil {
@@ -1492,7 +1506,13 @@ templ AgendaContent(data AgendaData) {
 										} else {
 											<a href={ templ.SafeURL(taskPath(it.Task.Guid)) } class="agenda-title">{ it.Task.Summary }</a>
 										}
-										<span class="agenda-location">{ t(ctx, "tasks.task") }</span>
+										<span class="agenda-location">
+											if it.Overdue {
+												{ t(ctx, "tasks.overdue") }
+											} else {
+												{ t(ctx, "tasks.task") }
+											}
+										</span>
 									</span>
 								</li>
 							} else {
@@ -1521,8 +1541,9 @@ templ AgendaContent(data AgendaData) {
 	</div>
 }
 
-func agendaTitle(from, to time.Time) string {
-	return from.Format("Jan 2, 2006") + " - " + to.Format("Jan 2, 2006")
+func agendaTitle(ctx context.Context, from, to time.Time) string {
+	loc := localeFromCtx(ctx)
+	return i18n.FormatDate(loc, from, true) + " - " + i18n.FormatDate(loc, to, true)
 }
 
 // agendaPath links to the agenda starting at date.

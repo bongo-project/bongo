@@ -109,7 +109,7 @@ func TestCardDAVIfMatchRejectsStaleWrite(t *testing.T) {
 	}
 
 	_, err = backend.PutAddressObject(ctx, path, testCard("From B", "a@example.com"),
-		&carddav.PutAddressObjectOptions{IfMatch: webdav.ConditionalMatch(staleETag)})
+		&carddav.PutAddressObjectOptions{IfMatch: webdav.ConditionalMatch(`"` + staleETag + `"`)})
 	assertPreconditionFailed(t, err, "stale If-Match")
 
 	// Client A's version must survive.
@@ -135,7 +135,7 @@ func TestCardDAVIfMatchAcceptsCurrentETag(t *testing.T) {
 		t.Fatalf("seed put: %v", err)
 	}
 	if _, err := backend.PutAddressObject(ctx, path, testCard("Updated", "a@example.com"),
-		&carddav.PutAddressObjectOptions{IfMatch: webdav.ConditionalMatch(original.ETag)}); err != nil {
+		&carddav.PutAddressObjectOptions{IfMatch: webdav.ConditionalMatch(`"` + original.ETag + `"`)}); err != nil {
 		t.Fatalf("a current If-Match was refused: %v", err)
 	}
 }

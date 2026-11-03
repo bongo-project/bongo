@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // tagColourPalette maps a ColourIndex (0-15) to a CSS hex colour.
@@ -83,28 +85,28 @@ type ThreadChild struct {
 	Mailbox string
 }
 
-templ MailboxPage(mailbox string, mailboxes []MailboxInfo, tags []SidebarTagInfo, counts ListCounts, messages []MessageSummary, page, totalPages int, email string, flash string, infiniteScroll bool, listURL, warning string) {
+templ MailboxPage(mailbox string, view *store.HeaderView, mailboxes []MailboxInfo, tags []SidebarTagInfo, counts ListCounts, messages []MessageSummary, page, totalPages int, email string, flash string, infiniteScroll bool, listURL, warning string) {
 	@LayoutWithContent(mailbox, email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, mailbox)
 		</aside>
 		<main class="content" id="main-content" data-selected-mailbox={ mailbox }>
-			@MailboxContent(mailbox, counts, messages, page, totalPages, flash, infiniteScroll, listURL, warning)
+			@MailboxContent(mailbox, view, counts, messages, page, totalPages, flash, infiniteScroll, listURL, warning)
 		</main>
 	}
 }
 
-templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummary, page, totalPages int, flash string, infiniteScroll bool, listURL, warning string) {
+templ MailboxContent(mailbox string, view *store.HeaderView, counts ListCounts, messages []MessageSummary, page, totalPages int, flash string, infiniteScroll bool, listURL, warning string) {
 	if flash != "" {
 		@FlashMessage(flash, "success")
 	}
 	if warning != "" {
 		@FlashMessage(warning, "warning")
 	}
-	<div class="mail-view" data-mailbox={ mailbox } data-list-url={ listBase(mailbox, listURL) } x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
+	<div class="mail-view" data-mailbox={ mailbox } data-list-url={ listBase(mailbox, listURL) } data-bulk-url={ viewBulkURL(view) } x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
 		<div class="mail-head">
 			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
-			<h1 class="mail-head-title">{ mailboxHeading(ctx, mailbox) }</h1>
+			<h1 class="mail-head-title">{ mailboxHeading(ctx, mailbox, view) }</h1>
 			<span class="mail-head-meta">{ listCountsText(ctx, counts) }</span>
 			<div class="tool-spacer"></div>
 			<div class="mail-head-tools" role="toolbar" aria-label={ t(ctx, "mail.messageActions") }>
@@ -119,32 +121,36 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 				<button type="button" class="layout-opt" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title={ t(ctx, "mail.threePaneView") } aria-label={ t(ctx, "mail.threePaneView") }>@layoutIcon("three-pane")</button>
 			</span>
 			<button class="tool-btn" hx-get={ listBase(mailbox, listURL) } hx-target="#main-content">@Icon("refresh", "")<span>{ t(ctx, "mail.refresh") }</span></button>
-			<div
-				x-data={ fmt.Sprintf("spamScan('%s')", mailbox) }
-				class="u-inline-flex u-items-center u-gap-05"
-			>
-				<button
-					type="button"
-					class="tool-btn"
-					x-on:click="startScan()"
-					x-bind:disabled="scanning"
-					title={ t(ctx, "mailbox.scanTitle") }
+			// A header view spans folders and its key is a URL, not a mailbox, so
+			// there is nothing to scan.
+			if view == nil {
+				<div
+					x-data={ fmt.Sprintf("spamScan('%s')", mailbox) }
+					class="u-inline-flex u-items-center u-gap-05"
 				>
-					@Icon("shield", "")
-					<span x-bind:hidden="scanning">{ t(ctx, "mailbox.scanForSpam") }</span>
-					<span x-bind:hidden="!scanning" x-cloak>{ t(ctx, "mailbox.scanning") }</span>
-				</button>
-				<span x-bind:hidden="!scanning" x-cloak class="u-font-082 u-text-muted">
-					<span x-text="progress.total > 0 ? progress.scanned + '/' + progress.total : ''"></span>
-					<span x-bind:hidden="progress.spam <= 0" x-text="' (' + progress.spam + ' spam)'"></span>
-				</span>
-				<span
-					x-bind:hidden="!(result !== null && !scanning)"
-					x-cloak
-					x-text="result"
-					class="u-font-082 u-text-muted"
-				></span>
-			</div>
+					<button
+						type="button"
+						class="tool-btn"
+						x-on:click="startScan()"
+						x-bind:disabled="scanning"
+						title={ t(ctx, "mailbox.scanTitle") }
+					>
+						@Icon("shield", "")
+						<span x-bind:hidden="scanning">{ t(ctx, "mailbox.scanForSpam") }</span>
+						<span x-bind:hidden="!scanning" x-cloak>{ t(ctx, "mailbox.scanning") }</span>
+					</button>
+					<span x-bind:hidden="!scanning" x-cloak class="u-font-082 u-text-muted">
+						<span x-text="progress.total > 0 ? progress.scanned + '/' + progress.total : ''"></span>
+						<span x-bind:hidden="progress.spam <= 0" x-text="' (' + progress.spam + ' spam)'"></span>
+					</span>
+					<span
+						x-bind:hidden="!(result !== null && !scanning)"
+						x-cloak
+						x-text="result"
+						class="u-font-082 u-text-muted"
+					></span>
+				</div>
+			}
 			if mailbox == "Trash" {
 				<button
 					type="button"
@@ -216,10 +222,10 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 			<button type="button" class="tool-btn danger" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>{ t(ctx, "mail.delete") }</button>
 			</div>
 			if len(messages) == 0 {
-				@emptyListState(mailbox)
+				@emptyListState(view)
 			} else {
 				<div class="msg-list" role="list" aria-label={ t(ctx, "mail.messages") }>
-					@MessageRows(messages, mailbox)
+					@MessageRows(messages, mailbox, view)
 					if infiniteScroll && page < totalPages {
 						@InfiniteScrollSentinel(mailbox, page+1, listURL)
 					}
@@ -243,8 +249,8 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 }
 
 // emptyListState renders the empty state of a list view.
-templ emptyListState(mailbox string) {
-	{{ title, hint := emptyListText(ctx, mailbox) }}
+templ emptyListState(view *store.HeaderView) {
+	{{ title, hint := emptyListText(ctx, view) }}
 	@EmptyState(title, hint)
 }
 
@@ -258,7 +264,7 @@ func rowRealMailbox(msg MessageSummary, listMailbox string) string {
 }
 
 // MessageRows renders the flex-based rows for a list of messages (used by both full page and partial responses).
-templ MessageRows(messages []MessageSummary, mailbox string) {
+templ MessageRows(messages []MessageSummary, mailbox string, view *store.HeaderView) {
 	for _, msg := range messages {
 		<div
 			class={ "msg-row", "msg-row-grid", templ.KV("unread", !msg.Seen) }
@@ -266,8 +272,8 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			tabindex="0"
 			data-uid={ fmt.Sprint(msg.UID) }
 			data-real-mailbox={ rowRealMailbox(msg, mailbox) }
-			if rowSelKey(msg, mailbox) != "" {
-				data-sel-key={ rowSelKey(msg, mailbox) }
+			if rowSelKey(msg, mailbox, view) != "" {
+				data-sel-key={ rowSelKey(msg, mailbox, view) }
 			}
 			x-on:contextmenu={ fmt.Sprintf("openContextMenu($event, %d, '%s')", msg.UID, mailbox) }
 			x-on:touchstart={ fmt.Sprintf("start($event, %d)", msg.UID) }
@@ -284,7 +290,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			<button
 				type="button"
 				class={ "msg-star", templ.KV("flagged", msg.Flagged) }
-				hx-post={ fmt.Sprintf("/mail/%s/%d/flags", encMailbox(rowActionMailbox(msg, mailbox)), msg.UID) }
+				hx-post={ fmt.Sprintf("/mail/%s/%d/flags", encMailbox(rowActionMailbox(msg, mailbox, view)), msg.UID) }
 				hx-vals={ flagToggleVals(msg.Flagged) }
 				hx-swap="outerHTML"
 				if msg.Flagged {
@@ -302,7 +308,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			<div class="msg-main">
 				<div class="msg-line">
 					<span class="msg-from">
-						@msgRowLink(rowActionMailbox(msg, mailbox), msg.UID) {
+						@msgRowLink(rowActionMailbox(msg, mailbox, view), msg.UID) {
 							{ msg.From }
 						}
 					</span>
@@ -310,7 +316,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 				</div>
 				<div class="msg-line">
 					<span class="msg-subject">
-						@msgRowLink(rowActionMailbox(msg, mailbox), msg.UID) {
+						@msgRowLink(rowActionMailbox(msg, mailbox, view), msg.UID) {
 							{ msg.Subject }
 						}
 					</span>
@@ -320,7 +326,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 					if msg.ThreadCount > 1 {
 						<span
 							class="msg-thread-count"
-							hx-get={ fmt.Sprintf("/mail/%s/thread/%s", encMailbox(rowActionMailbox(msg, mailbox)), msg.ThreadRoot) }
+							hx-get={ fmt.Sprintf("/mail/%s/thread/%s", encMailbox(rowActionMailbox(msg, mailbox, view)), msg.ThreadRoot) }
 							hx-target={ fmt.Sprintf("#thread-%s", msg.ThreadRoot) }
 							hx-swap="innerHTML"
 						>
@@ -369,8 +375,8 @@ templ InfiniteScrollSentinel(mailbox string, nextPage int, listURL string) {
 
 // MessageRowsPartial renders just the rows for use in infinite scroll partial responses.
 // If there are more pages, it appends a new sentinel row.
-templ MessageRowsPartial(messages []MessageSummary, mailbox string, page int, totalPages int, listURL string) {
-	@MessageRows(messages, mailbox)
+templ MessageRowsPartial(messages []MessageSummary, mailbox string, view *store.HeaderView, page int, totalPages int, listURL string) {
+	@MessageRows(messages, mailbox, view)
 	if page < totalPages {
 		@InfiniteScrollSentinel(mailbox, page+1, listURL)
 	}

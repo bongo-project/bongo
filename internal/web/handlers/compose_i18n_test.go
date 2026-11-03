@@ -22,7 +22,9 @@ func composeLocaleReq(path, userID, email, locale string, form url.Values) *http
 	return req.WithContext(middleware.WithLocale(req.Context(), locale))
 }
 
-func flashOf(t *testing.T, w *httptest.ResponseRecorder) string {
+// flashOf returns the banner text the redirect's target page would render for
+// locale.
+func flashOf(t *testing.T, w *httptest.ResponseRecorder, locale string) string {
 	t.Helper()
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status=%d want 303: %s", w.Code, w.Body.String())
@@ -31,7 +33,8 @@ func flashOf(t *testing.T, w *httptest.ResponseRecorder) string {
 	if err != nil {
 		t.Fatalf("parse Location: %v", err)
 	}
-	return loc.Query().Get("flash")
+	req := httptest.NewRequest(http.MethodGet, loc.String(), nil)
+	return flashText(req.WithContext(middleware.WithLocale(req.Context(), locale)))
 }
 
 func TestComposeMessagesAreTranslated(t *testing.T) {
@@ -77,7 +80,7 @@ func TestComposeMessagesAreTranslated(t *testing.T) {
 				form := url.Values{"to": {tc.to}, "subject": {"s"}, "body": {"b"}, "send_id": {sendID()}}
 				w := httptest.NewRecorder()
 				env.handler.Send(w, composeLocaleReq("/compose/send", uid, email, tc.locale, form))
-				got := flashOf(t, w)
+				got := flashOf(t, w, tc.locale)
 				if want := i18n.T(tc.locale, tc.id); got != want {
 					t.Errorf("flash = %q, want %q", got, want)
 				}
@@ -98,7 +101,7 @@ func TestComposeMessagesAreTranslated(t *testing.T) {
 			form := url.Values{"to": {"x@example.com"}, "subject": {"s"}, "body": {"b"}, "body_mode": {"plain"}}
 			w := httptest.NewRecorder()
 			env.handler.SaveDraft(w, composeLocaleReq("/compose/draft", "u-"+locale, "d@example.com", locale, form))
-			got := flashOf(t, w)
+			got := flashOf(t, w, locale)
 			if want := i18n.T(locale, "compose.flashDraftSaved"); got != want {
 				t.Errorf("%s: flash = %q, want %q", locale, got, want)
 			}

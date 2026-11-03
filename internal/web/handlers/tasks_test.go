@@ -709,7 +709,7 @@ func TestAgendaDateOnlyTaskKeepsItsDateWestOfUTC(t *testing.T) {
 		Guid: "d", Summary: "dated", Due: day.Unix(),
 		IcalRaw: []byte("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:d\r\nDUE;VALUE=DATE:20260621\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"),
 	}
-	days := buildAgenda(time.Date(2026, 6, 15, 0, 0, 0, 0, la), 30, nil, []*bongov1.Task{task}, nil, la)
+	days := buildAgenda(time.Date(2026, 6, 15, 0, 0, 0, 0, la), 30, nil, []*bongov1.Task{task}, nil, la, time.Time{})
 	if len(days) != 1 || days[0].Date.Format("2006-01-02") != "2026-06-21" || days[0].Items[0].TimeLabel != "" {
 		t.Fatalf("days = %+v", days)
 	}

@@ -126,7 +126,7 @@ func TestDeleteUserRoutingPurgeFailureFlagsPartialDelete(t *testing.T) {
 	h.applier = aliasFailApplier{applier}
 
 	w := deleteUserRequest(t, h, aID, bossID)
-	if loc := w.Header().Get("Location"); !strings.Contains(loc, "some+errors") {
+	if loc := w.Header().Get("Location"); !strings.Contains(loc, "flash=user-deleted-with-errors") {
 		t.Fatalf("flash = %q, want a partial-failure flash", loc)
 	}
 }

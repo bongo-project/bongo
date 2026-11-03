@@ -155,17 +155,64 @@ func (b *Backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 	return nil
 }
 
+// DeleteCalendar deletes the calendar at userID's collection segment seg, with
+// its events, tasks, grants and feed, through the helper the web uses
+// (store.PurgeCalendar documents the partial-failure semantics). It returns
+// store.ErrNotFound (wrapped) for a missing calendar, and
+// store.ErrCalendarProtected, store.ErrCalendarSubscribed or
+// store.ErrLastEventCalendar for a refusal, in which case nothing changed.
+func (b *Backend) DeleteCalendar(userID, seg string) error {
+	if _, err := b.calendars.Get(userID, seg); err != nil {
+		return fmt.Errorf("reading calendar: %w", err)
+	}
+	cals, err := b.calendars.List(userID)
+	if err != nil {
+		return fmt.Errorf("listing calendars: %w", err)
+	}
+	if err := store.CheckCalendarDeletable(cals, seg); err != nil {
+		return err
+	}
+	if err := store.PurgeCalendar(b.calendars, b.events, b.tasks, userID, seg); err != nil {
+		return err
+	}
+	b.logger.Info("caldav: calendar deleted", "user", userID, "calendar", seg)
+	return nil
+}
+
+func serveDeleteCalendar(w http.ResponseWriter, b *Backend, logger *slog.Logger, user, seg string) {
+	switch err := b.DeleteCalendar(user, seg); {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, store.ErrNotFound):
+		http.Error(w, "not found", http.StatusNotFound)
+	case errors.Is(err, store.ErrCalendarProtected):
+		http.Error(w, "this calendar cannot be deleted", http.StatusForbidden)
+	case errors.Is(err, store.ErrCalendarSubscribed):
+		http.Error(w, "unsubscribe from this calendar in the web interface", http.StatusConflict)
+	case errors.Is(err, store.ErrLastEventCalendar):
+		http.Error(w, "the last calendar for events cannot be deleted", http.StatusConflict)
+	default:
+		logger.Error("caldav: delete calendar failed", "user", user, "calendar", seg, "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
+
 // MkcalendarHandler serves MKCALENDAR, and MKCOL on a calendar collection path,
-// in front of go-webdav. Everything else goes to next.
+// in front of go-webdav, and DELETE on a calendar collection path (go-webdav
+// has no collection delete and would answer 404). Everything else goes to next.
 func MkcalendarHandler(next http.Handler, b *Backend, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := getUserID(r.Context())
-		if user == "" || (r.Method != "MKCALENDAR" && r.Method != "MKCOL") {
+		if user == "" || (r.Method != "MKCALENDAR" && r.Method != "MKCOL" && r.Method != http.MethodDelete) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		owner, seg, ok := collectionPath(r.URL.Path)
 		if !ok {
+			if r.Method == http.MethodDelete {
+				next.ServeHTTP(w, r)
+				return
+			}
 			if r.Method == "MKCOL" {
 				next.ServeHTTP(w, r)
 				return
@@ -176,6 +223,10 @@ func MkcalendarHandler(next http.Handler, b *Backend, logger *slog.Logger) http.
 		// Refused before any store read, so existence cannot be probed.
 		if owner != user || strings.HasPrefix(seg, sharedPrefix) || !validCalendarSegment(seg) {
 			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if r.Method == http.MethodDelete {
+			serveDeleteCalendar(w, b, logger, user, seg)
 			return
 		}
 		cal, status := parseMkcalendarBody(r)

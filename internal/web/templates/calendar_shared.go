@@ -189,6 +189,8 @@ type CalendarSettings struct {
 	Publish  PublishSettings
 	// Subscription is set for a calendar that mirrors an external feed.
 	Subscription *SubscriptionInfo
+	// CanDelete shows the Delete button; the server enforces the rules again.
+	CanDelete bool
 }
 
 // SubscriptionInfo is the refresh state of a subscribed calendar as the

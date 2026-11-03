@@ -29,9 +29,9 @@ func headerViewTestAgent(t *testing.T, prepare func(a *Agent)) (*Agent, *config.
 }
 
 // The To me, From my contacts and Mailing lists routes on the real router.
-// Without a route, /mail/to-me is read as a folder name and lists nothing, and
-// /mail/lists/{id} is read as message {id} of a folder called "lists", so
-// deleting any of the four agent.go lines turns this red while the handler
+// Without a route, /mail/view/to-me is read as message "to-me" of a folder
+// called "view" and answers 404, so
+// deleting any of the view route lines in agent.go turns this red while the handler
 // tests (which build their own router) stay green.
 func TestHeaderViewRoutesWiredIntoAgent(t *testing.T) {
 	a, cfg := headerViewTestAgent(t, nil)
@@ -84,7 +84,7 @@ func TestHeaderViewRoutesWiredIntoAgent(t *testing.T) {
 		b, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, string(b)
 	}
-	for _, path := range []string{"/mail/to-me", "/mail/from-contacts", "/mail/lists/wired.example.org", "/mail/lists%2Fwired.example.org"} {
+	for _, path := range []string{"/mail/view/to-me", "/mail/view/from-contacts", "/mail/view/lists/wired.example.org"} {
 		code, body := get(path)
 		if code != http.StatusOK || !strings.Contains(body, "WiredSubject") {
 			t.Errorf("GET %s = %d, message listed: %v", path, code, strings.Contains(body, "WiredSubject"))
@@ -93,16 +93,16 @@ func TestHeaderViewRoutesWiredIntoAgent(t *testing.T) {
 			t.Errorf("GET %s: row does not carry its real mailbox", path)
 		}
 	}
-	code, body := get("/mail/lists")
-	if code != http.StatusOK || !strings.Contains(body, "Wired List") || !strings.Contains(body, `href="/mail/lists/wired.example.org"`) {
-		t.Errorf("GET /mail/lists = %d, overview missing the list", code)
+	code, body := get("/mail/view/lists")
+	if code != http.StatusOK || !strings.Contains(body, "Wired List") || !strings.Contains(body, `href="/mail/view/lists/wired.example.org"`) {
+		t.Errorf("GET /mail/view/lists = %d, overview missing the list", code)
 	}
-	if code, _ := get("/mail/lists/Not%20Valid"); code != http.StatusNotFound {
+	if code, _ := get("/mail/view/lists/Not%20Valid"); code != http.StatusNotFound {
 		t.Errorf("invalid list id = %d, want 404", code)
 	}
 	// The sidebar links all three views.
 	_, inbox := get("/mail/INBOX")
-	for _, want := range []string{`href="/mail/to-me"`, `href="/mail/from-contacts"`, `href="/mail/lists"`} {
+	for _, want := range []string{`href="/mail/view/to-me"`, `href="/mail/view/from-contacts"`, `href="/mail/view/lists"`} {
 		if !strings.Contains(inbox, want) {
 			t.Errorf("sidebar lacks %s", want)
 		}

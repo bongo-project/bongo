@@ -5,7 +5,6 @@ import (
 	"errors"
 	"html"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 
@@ -51,7 +50,7 @@ func NewPreferencesHandler(prefs *store.PreferenceStore) *PreferencesHandler {
 func (h *PreferencesHandler) ShowSettings(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 	prefs := h.prefs.Get(userID)
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 	var fwd templates.ForwardView
 	if h.forwarder != nil {
 		fwd.Targets = h.forwarder.View(userID)
@@ -168,12 +167,12 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 	}
 	// A new or changed target is only recorded as pending here and the
 	// challenge mailed; the deliver stage forwards nothing until it is verified.
-	flash := url.QueryEscape("Settings saved")
+	flash := []flashKey{flashSettingsSaved}
 	if fwdAddr != "" && h.forwarder != nil {
 		_, email := middleware.UserFromContext(r.Context())
 		if err := h.forwarder.Ensure(userID, email, fwdAddr); err != nil {
-			if msg, soft := forwardOutcomeMessage(r, err); soft {
-				flash = url.QueryEscape(fwdText(r, "settings.fwdSavedPrefix") + " " + msg)
+			if note, soft := forwardOutcomeFlash(err); soft {
+				flash = []flashKey{flashSettingsSavedNote, note}
 			} else if errors.Is(err, ErrForwardInvalidAddress) {
 				fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
 				return
@@ -182,7 +181,7 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 				return
 			}
 		} else if h.forwarder.Pending(userID, fwdAddr) {
-			flash = url.QueryEscape(fwdText(r, "settings.fwdSavedPending"))
+			flash = []flashKey{flashFwdSavedPending}
 		}
 	}
 	prefs.ForwardAddress = fwdAddr
@@ -197,7 +196,7 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	http.Redirect(w, r, "/settings?flash="+flash, http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings", flash...), http.StatusSeeOther)
 }
 
 // UserPrefsJSON returns preferences as JSON for Alpine.js hydration.

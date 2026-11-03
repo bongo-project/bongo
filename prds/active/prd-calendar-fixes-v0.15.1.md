@@ -31,7 +31,7 @@ change under review introduced it.
 | B | Recurrence and tasks | US-006 to US-009 |
 | C | Invitations | US-010 to US-016 |
 | D | Sharing, reminders, mail and setup | US-017 to US-023 |
-| E | Added by the operator | US-024, US-025 |
+| E | Added by the operator | US-024 to US-026 |
 
 Dependencies: US-012 needs US-010. US-009 lands before US-010 (shared
 revision helper). US-005 needs US-003. Others are independent.
@@ -385,9 +385,34 @@ translated text (`fwdText`).
 - [ ] A test enumerates every `flash=` written by a handler and checks each
   key is in the allow-list.
 
+### US-026: Create a calendar in the web (S-M)
+**Description:** As a web user, I want to create another calendar of my own
+(for example "Work") with a name and colour, without a CalDAV client.
+
+**Acceptance Criteria:**
+- [ ] The calendar settings page has a "New calendar" form (name, colour,
+  "holds tasks" checkbox), CSRF-protected, strings in en, de, fr and es.
+- [ ] `POST /calendar` with name "Work" and a colour creates a VEVENT
+  calendar under a new GUID (through `CalendarStore.CreateNew`); it appears
+  in the sidebar with its show/hide checkbox, in the event form's calendar
+  list and as a CalDAV collection.
+- [ ] With "holds tasks" ticked the calendar holds VEVENT and VTODO and is
+  offered on `/tasks`.
+- [ ] An empty or over-long name (over 255 characters) or an invalid colour
+  returns 400 and creates nothing.
+- [ ] A user owns at most 5 calendars, counting every calendar record they
+  own: Personal, Tasks, created and subscribed calendars. Calendars shared
+  with them do not count. The cap is one store-level check
+  (`store.MaxCalendarsPerUser = 5`) used by every create path: the web form
+  (a 6th returns 409 with a translated message; the form is hidden at the
+  cap), CalDAV MKCALENDAR and extended MKCOL (507 Insufficient Storage
+  with a `DAV:error` body, as RFC 4918 allows for a server limit) and
+  subscribing to a feed (409, translated). The automatic
+  Personal and Tasks calendars of `EnsureDefault` are exempt.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-25 are the acceptance criteria of US-001 to US-025.
+FR-1 to FR-26 are the acceptance criteria of US-001 to US-026.
 
 ## 5. Non-Goals (Out of Scope)
 
@@ -447,6 +472,9 @@ FR-1 to FR-25 are the acceptance criteria of US-001 to US-025.
   `default` and the last event calendar cannot be deleted.
 - 2026-11-03, operator: the CardDAV ETag fix and the `?flash=` fix, both
   found in batch reviews, are added as US-024 and US-025.
+- 2026-11-03, operator: creating a calendar in the web is added as US-026
+  (the web had no create; only CalDAV, subscriptions and shares added one).
+  Operator: at most 5 calendars per user, on every create path.
 
 ### 8.2 Candidates for the next release
 
@@ -497,4 +525,33 @@ Found while building batch 2 (2026-11-03):
 - US-018: the browser-reminder dedupe is in memory, so a restart inside a
   reminder window announces it again; an all-day event can fire twice if the
   owner changes zone during the window.
+
+Found while building batch 3 (2026-11-03):
+
+- US-025: `?error=` and `?warning=` are echoed on several pages (auth.go,
+  security.go ~121, address_verify.go ~202, preferences.go ~58,
+  forward_verify.go) - the same content-spoofing class as flash. Banners no
+  longer show counts or names (blocking aliases on a domain delete, import
+  counts, quarantine bulk results); a key with safe numeric parameters
+  would restore them.
+- US-012: removing an override that had its own attendees sends the master's
+  attendees a REQUEST for the plain occurrence and no CANCEL to an attendee
+  listed only in that override. A create whose override moves an occurrence
+  for the master's attendees relies on the series REQUEST (built from the
+  master). `planSchedule` still gates on the master's ORGANIZER. A
+  foreign-organiser PUT whose only SERVER attendees are in an override is
+  now refused (403).
+- US-008: `ExpandTodo` has no slot cap (a FREQ=SECONDLY VTODO with an old
+  DTSTART is costly on every agenda load; events behave the same). A
+  recurring task whose RRULE does not parse falls back to itself. An
+  override keyed on DUE while the master has DTSTART is ignored. /summary
+  Upcoming now shows overdue tasks without the overdue label.
+- US-016: a redelivered single-occurrence CANCEL no longer finds the
+  occurrence and is stored in the resource INBOX.
+- US-019: other English-only dates remain: the day-view title, the
+  month-cell aria-label, `monthName()` (month toolbar, mini-calendar).
+- US-024: contact ETags change form on deploy, so CardDAV clients re-fetch
+  every contact once (release note). An empty vCard keeps a `t<unix>` ETag.
+- US-005: the empty-to-"default" mapping exists in three places (store,
+  web `eventCalendarID`, caldav `eventCalendar`).
 

@@ -110,8 +110,8 @@ func TestImportCountsEncodeFailures(t *testing.T) {
 	if len(evs) != 1 || evs[0].Title != "Good" {
 		t.Fatalf("want only the good event stored, got %d", len(evs))
 	}
-	if !strings.Contains(loc, "Imported+1+events,+1+failed") {
-		t.Errorf("Location = %q, want Imported+1+events,+1+failed", loc)
+	if !strings.Contains(loc, "flash=events-imported-some-failed") {
+		t.Errorf("Location = %q, want the some-failed import flash", loc)
 	}
 }
 
@@ -139,8 +139,8 @@ func TestImportCountsCreateFailures(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", w.Code)
 	}
-	if loc := w.Header().Get("Location"); !strings.Contains(loc, "Imported+1+events,+1+failed") {
-		t.Errorf("Location = %q, want Imported+1+events,+1+failed", loc)
+	if loc := w.Header().Get("Location"); !strings.Contains(loc, "flash=events-imported-some-failed") {
+		t.Errorf("Location = %q, want the some-failed import flash", loc)
 	}
 	evs, _, err := events.ListAll(quotaUser, 0, 0)
 	if err != nil {

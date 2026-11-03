@@ -36,7 +36,7 @@ func TestClickOutsideNotOnTogglePanel(t *testing.T) {
 	msg := viewFixture()
 	views := map[string]string{
 		"MessagePage":    renderToString(t, MessagePage(msg, nil)),
-		"MailboxContent": renderToString(t, MailboxContent("INBOX", ListCounts{}, []MessageSummary{{UID: 1, Subject: "s", From: "a@b"}}, 1, 1, "", false, "", "")),
+		"MailboxContent": renderToString(t, MailboxContent("INBOX", nil, ListCounts{}, []MessageSummary{{UID: 1, Subject: "s", From: "a@b"}}, 1, 1, "", false, "", "")),
 	}
 	for name, out := range views {
 		doc, err := html.Parse(strings.NewReader(out))
@@ -65,7 +65,7 @@ func TestTagDropdownsDismissFromWrapper(t *testing.T) {
 		name, out, wrapper, toggle string
 	}{
 		{"messageTags", renderToString(t, messageTags(viewFixture())), "tag-add-wrapper", "tag-add-btn"},
-		{"MailboxContent", renderToString(t, MailboxContent("INBOX", ListCounts{}, []MessageSummary{{UID: 1, Subject: "s", From: "a@b"}}, 1, 1, "", false, "", "")), "bulk-tag-dropdown", "tool-btn"},
+		{"MailboxContent", renderToString(t, MailboxContent("INBOX", nil, ListCounts{}, []MessageSummary{{UID: 1, Subject: "s", From: "a@b"}}, 1, 1, "", false, "", "")), "bulk-tag-dropdown", "tool-btn"},
 	}
 	for _, c := range cases {
 		doc, err := html.Parse(strings.NewReader(c.out))
@@ -103,7 +103,7 @@ func TestTagDropdownsDismissFromWrapper(t *testing.T) {
 func TestMailViewHandlersHaveNoStatementLists(t *testing.T) {
 	msgs := []MessageSummary{{UID: 1, Subject: "s", From: "a@b"}}
 	views := map[string]string{
-		"MailboxContent": renderToString(t, MailboxContent("INBOX", ListCounts{}, msgs, 1, 1, "", false, "", "")),
+		"MailboxContent": renderToString(t, MailboxContent("INBOX", nil, ListCounts{}, msgs, 1, 1, "", false, "", "")),
 		"ContextMenu":    renderToString(t, ContextMenu()),
 		"MessagePage":    renderToString(t, MessagePage(viewFixture(), nil)),
 	}

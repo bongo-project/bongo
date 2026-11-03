@@ -364,7 +364,7 @@ func contactToAddressObject(userID string, c *bongov1.Contact) (*carddav.Address
 		Path:    objectPath(userID, c.Guid),
 		Card:    card,
 		ModTime: modTime,
-		ETag:    store.ContentETag(c.VcardRaw, c.UpdatedAt),
+		ETag:    store.ContentETagValue(c.VcardRaw, c.UpdatedAt),
 	}, nil
 }
 

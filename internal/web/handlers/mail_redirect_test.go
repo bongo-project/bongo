@@ -16,14 +16,15 @@ import (
 
 func TestMailboxRedirect(t *testing.T) {
 	for _, tc := range []struct {
-		mailbox, flash, want string
+		mailbox, want string
+		flash         flashKey
 	}{
-		{"INBOX", "Done", "/mail/INBOX?flash=Done"},
-		{"INBOX/Important", "Message moved to Trash", "/mail/INBOX%2FImportant?flash=Message+moved+to+Trash"},
-		{"Work Stuff", "Moved to A&B", "/mail/Work%20Stuff?flash=Moved+to+A%26B"},
+		{"INBOX", "/mail/INBOX?flash=archived", flashArchived},
+		{"INBOX/Important", "/mail/INBOX%2FImportant?flash=message-trashed", flashMessageTrashed},
+		{"Work Stuff", "/mail/Work%20Stuff?flash=message-moved", flashMessageMoved},
 	} {
 		if got := mailboxRedirect(tc.mailbox, tc.flash); got != tc.want {
-			t.Errorf("mailboxRedirect(%q, %q) = %q, want %q", tc.mailbox, tc.flash, got, tc.want)
+			t.Errorf("mailboxRedirect(%q, %q) = %q, want %q", tc.mailbox, tc.flash.id, got, tc.want)
 		}
 	}
 }
@@ -58,7 +59,7 @@ func TestDeleteAndMoveFromSubfolderRedirectToSubfolder(t *testing.T) {
 	uid = env.seedMessage(t, userID, mailbox, "guid-sub-move", nil)
 	w = httptest.NewRecorder()
 	env.handler.MoveMessage(w, request("/mail/x/1/move", url.Values{"destination": {"Archive"}}, uid))
-	if loc := w.Header().Get("HX-Redirect"); loc != "/mail/INBOX%2FImportant?flash=Moved+to+Archive" {
+	if loc := w.Header().Get("HX-Redirect"); loc != "/mail/INBOX%2FImportant?flash=message-moved" {
 		t.Errorf("move redirect = %q, want the encoded subfolder", loc)
 	}
 }

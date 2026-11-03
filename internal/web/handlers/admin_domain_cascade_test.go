@@ -185,7 +185,7 @@ func TestDeleteDomain_RefusedWhileDependentsExist(t *testing.T) {
 				t.Fatalf("status = %d", w.Code)
 			}
 			loc := w.Header().Get("HX-Redirect")
-			if u, _ := url.Parse(loc); u == nil || u.Query().Get("flash") == "" || u.Query().Get("flash") == "Domain deleted" {
+			if u, _ := url.Parse(loc); u == nil || u.Query().Get("flash") == "" || u.Query().Get("flash") == flashDomainDeleted.id {
 				t.Errorf("expected refusal flash, got %q", loc)
 			}
 			for _, k := range []string{
@@ -371,8 +371,8 @@ func TestDeleteDomain_RefusedForProfileWithoutAddressRecord(t *testing.T) {
 
 	w := cascadeDeleteDomain(t, env, cascadeDomain)
 	loc := w.Header().Get("HX-Redirect")
-	if u, _ := url.Parse(loc); u == nil || !strings.Contains(u.Query().Get("flash"), "1 users") {
-		t.Errorf("expected refusal flash naming 1 users, got %q", loc)
+	if u, _ := url.Parse(loc); u == nil || u.Query().Get("flash") != flashDomainHasDependents.id {
+		t.Errorf("expected the domain-has-dependents refusal flash, got %q", loc)
 	}
 	if !cascadeHas(env, "/system/domain/"+cascadeDomain) {
 		t.Error("domain deleted despite profile on it")

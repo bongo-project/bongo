@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 
 	"github.com/a-h/templ"
 
@@ -79,5 +78,5 @@ func refuseQuotaText(w http.ResponseWriter, r *http.Request, msg string) {
 // refuseQuotaFlash answers a quota refusal on a flash-redirect route. to is a
 // fixed path or one already constrained by safeContactReturnPath.
 func refuseQuotaFlash(w http.ResponseWriter, r *http.Request, to string) {
-	http.Redirect(w, r, to+"?flash="+url.QueryEscape(quotaText(r)), http.StatusSeeOther) // #nosec G710 -- to is a fixed same-origin path
+	http.Redirect(w, r, withFlash(to, flashQuotaExceeded), http.StatusSeeOther) // #nosec G710 -- to is a fixed same-origin path
 }

@@ -46,8 +46,10 @@ const (
 // still touch only the actor's own tasks, so web editing of a shared task
 // is not possible; CalDAV allows it for a write grant.
 //
-// Limitation: completing a recurring task completes the whole series. DUE is
-// not advanced to the next occurrence the way CalDAV clients do.
+// A recurring open task is listed with the due date of its next occurrence
+// (on or after today). Limitation: completing a recurring task completes the
+// whole series. DUE is not advanced to the next occurrence the way CalDAV
+// clients do, and the edit page shows the stored DUE.
 type TasksHandler struct {
 	tasks     *store.TaskStore
 	calendars *store.CalendarStore
@@ -116,6 +118,16 @@ func taskOverdue(t *bongov1.Task, dateOnly bool, now time.Time) bool {
 		return taskDueDay(t.Due, true, now.Location()) < now.Format("2006-01-02")
 	}
 	return t.Due < now.Unix()
+}
+
+// dueFloor is the earliest due instant that still counts as today or later:
+// the UTC midnight of today's date for a DATE due, else the start of the day
+// in now's zone.
+func dueFloor(now time.Time, dateOnly bool) time.Time {
+	if dateOnly {
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	}
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 }
 
 // taskDueInstant is the instant a task is ordered by: a date-only DUE is the
@@ -260,9 +272,18 @@ func (h *TasksHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	var picked []sortableTask
 	for _, s := range readTasks(all) {
-		if isOpenTask(s.task) != showCompleted {
-			picked = append(picked, s)
+		if isOpenTask(s.task) == showCompleted {
+			continue
 		}
+		if s.recurs && !showCompleted && s.task.Due != 0 {
+			// Display only: the row shows the next occurrence, and the
+			// stored task is never written back. A series that has ended
+			// shows its last occurrence, overdue.
+			if occ, _ := store.NextTodoOccurrence(s.task, dueFloor(now, s.dateOnly)); occ != nil {
+				s.task = occ
+			}
+		}
+		picked = append(picked, s)
 	}
 	if showCompleted {
 		sortDoneTasks(picked)

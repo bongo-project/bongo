@@ -107,7 +107,7 @@ func TestGenerateDKIMKey_ResponseNoKeyMaterial(t *testing.T) {
 	markers := keyMarkers(t, rec.DkimPrivateKey)
 
 	loc := w.Header().Get("Location")
-	if loc != "/admin/domains/example.com?flash=DKIM+key+generated" {
+	if loc != "/admin/domains/example.com?flash=dkim-generated" {
 		t.Fatalf("Location = %q, want the domain page with flash", loc)
 	}
 	assertNoKeyMaterial(t, "redirect Location", loc, markers)
@@ -266,7 +266,7 @@ func TestGenerateDKIMKey_LegacyMixedCaseDomainStillRenders(t *testing.T) {
 	}
 
 	w := generateDKIMRequest(t, h, "Example.COM")
-	if loc := w.Header().Get("Location"); loc != "/admin/domains/Example.COM?flash=DKIM+key+generated" {
+	if loc := w.Header().Get("Location"); loc != "/admin/domains/Example.COM?flash=dkim-generated" {
 		t.Errorf("Location = %q, want the as-typed domain page", loc)
 	}
 	if _, err := ps.Get([]byte("/system/domain/Example.COM/dkim")); err == nil {

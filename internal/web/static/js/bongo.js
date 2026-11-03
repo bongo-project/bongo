@@ -627,7 +627,7 @@ document.addEventListener('alpine:init', () => {
         params.append('uids', uid);
       }
       try {
-        const resp = await fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
+        const resp = await fetch(bulkURL(mailbox), {
           method: 'POST',
           body: params
         });
@@ -719,7 +719,7 @@ document.addEventListener('alpine:init', () => {
         addSelectionToParams(params, key);
       }
       try {
-        const resp = await fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
+        const resp = await fetch(bulkURL(mailbox), {
           method: 'POST',
           body: params
         });
@@ -2183,6 +2183,18 @@ function listReloadURL(mailbox) {
     return view.dataset.listUrl;
   }
   return '/mail/' + encodeURIComponent(mailbox);
+}
+
+// bulkURL is where a bulk action on the list on screen is posted. A header
+// view (To me, From my contacts, Mailing lists) names its own in data-bulk-url,
+// because its mailbox is only a navigation key and a folder may be called
+// "to-me"; a folder posts to its own URL.
+function bulkURL(mailbox) {
+  const view = document.querySelector('.mail-view[data-mailbox]');
+  if (view && view.dataset.mailbox === mailbox && view.dataset.bulkUrl) {
+    return view.dataset.bulkUrl;
+  }
+  return '/mail/' + encodeURIComponent(mailbox) + '/bulk';
 }
 
 // actionMailbox is the mailbox an action on a row must target. In the To me,

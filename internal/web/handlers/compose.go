@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	netmail "net/mail"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -949,14 +948,14 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("web: message sent", "from", fromAddr, "to_count", len(allRecipients), "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
 
 	// Build flash message based on delivery type.
-	flashID := "compose.flashSent"
+	flash := flashSent
 	if len(localRecipients) > 0 && len(externalRecipients) > 0 {
-		flashID = "compose.flashSentLocalQueued"
+		flash = flashSentLocalQueued
 	} else if len(externalRecipients) > 0 {
-		flashID = "compose.flashQueued"
+		flash = flashQueued
 	}
 
-	http.Redirect(w, r, "/mail/Sent?flash="+url.QueryEscape(composeText(r, flashID)), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/mail/Sent", flash), http.StatusSeeOther)
 }
 
 // SaveDraft saves a message as a draft.
@@ -1092,7 +1091,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("web: draft saved", "user", userID)
 
-	http.Redirect(w, r, "/mail/Drafts?flash="+url.QueryEscape(composeText(r, "compose.flashDraftSaved")), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/mail/Drafts", flashDraftSaved), http.StatusSeeOther)
 }
 
 // EditDraft reopens a saved draft in the compose form. A rich draft

@@ -437,6 +437,7 @@ func (h *CalendarHandler) CalendarSettings(w http.ResponseWriter, r *http.Reques
 			CanShare:     h.acl != nil && h.shares != nil,
 			Publish:      publishSettings(r.Host, userID, c),
 			Subscription: h.subscriptionInfo(userID, c.Subscription),
+			CanDelete:    store.CheckCalendarDeletable(calendars, c.Guid) == nil,
 		}
 		if h.acl != nil {
 			grants, err := h.acl.ListCalendarGrants(userID, c.Guid)

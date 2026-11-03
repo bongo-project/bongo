@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -49,7 +48,7 @@ func (h *VacationHandler) Show(w http.ResponseWriter, r *http.Request) {
 		Start:    vacationDate(prefs.GetVacationStart(), loc),
 		End:      vacationDate(prefs.GetVacationEnd(), loc),
 		Interval: store.VacationIntervalDays(prefs),
-		Flash:    r.URL.Query().Get("flash"),
+		Flash:    flashText(r),
 	}
 	templ.Handler(templates.VacationPage(view, email)).ServeHTTP(w, r)
 }
@@ -129,7 +128,7 @@ func (h *VacationHandler) Save(w http.ResponseWriter, r *http.Request) {
 		h.clearTracking(userID)
 	}
 
-	http.Redirect(w, r, "/settings/vacation?flash="+url.QueryEscape(fwdText(r, "settings.vacationSaved")), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/vacation", flashVacationSaved), http.StatusSeeOther)
 }
 
 // clearTracking deletes the user's reply tracking records after vacation is

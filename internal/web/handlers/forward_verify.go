@@ -221,15 +221,25 @@ func forwardRedirect(w http.ResponseWriter, r *http.Request, key, id string) {
 // outcomeMessage maps an Ensure error to a user-facing message. ok is true for
 // the soft outcomes where the target was recorded but no code went out.
 func forwardOutcomeMessage(r *http.Request, err error) (msg string, soft bool) {
+	key, soft := forwardOutcomeFlash(err)
+	if !soft {
+		return "", false
+	}
+	return fwdText(r, flashMessages[key.id]), true
+}
+
+// forwardOutcomeFlash is forwardOutcomeMessage for a flash banner: the key of
+// the soft outcome, if err is one.
+func forwardOutcomeFlash(err error) (key flashKey, soft bool) {
 	switch {
 	case errors.Is(err, ErrForwardVerifyRateLimited):
-		return fwdText(r, "settings.fwdRateLimited"), true
+		return flashFwdRateLimited, true
 	case errors.Is(err, ErrForwardVerifyUnavailable):
-		return fwdText(r, "settings.fwdUnavailable"), true
+		return flashFwdUnavailable, true
 	case errors.Is(err, ErrForwardTooManyPending):
-		return fwdText(r, "settings.fwdTooManyPending"), true
+		return flashFwdTooManyPending, true
 	}
-	return "", false
+	return key, false
 }
 
 // Request sends a new verification code for a pending target.
@@ -265,7 +275,7 @@ func (v *ForwardVerifier) Request(w http.ResponseWriter, r *http.Request) {
 		fwdError(w, r, "settings.fwdErrSend", http.StatusInternalServerError)
 		return
 	}
-	forwardRedirect(w, r, "flash", "settings.fwdCodeSent")
+	http.Redirect(w, r, withFlash("/settings", flashFwdCodeSent), http.StatusSeeOther)
 }
 
 // Submit checks a code and, when correct, marks the target verified.
@@ -342,7 +352,7 @@ func (v *ForwardVerifier) Submit(w http.ResponseWriter, r *http.Request) {
 		v.logger.Warn("forward-verify: failed to delete consumed challenge (non-fatal)", "user_id", userID, "error", dErr)
 	}
 	v.logger.Info("forward-verify: forwarding target verified", "user_id", userID, "address", addr)
-	forwardRedirect(w, r, "flash", "settings.fwdVerified")
+	http.Redirect(w, r, withFlash("/settings", flashFwdVerified), http.StatusSeeOther)
 }
 
 // buildForwardVerificationEmail builds the challenge mail. It names the account

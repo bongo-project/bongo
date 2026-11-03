@@ -89,16 +89,8 @@ func (h *CalendarHandler) SubscribeCalendar(w http.ResponseWriter, r *http.Reque
 
 // UnsubscribeCalendar deletes a subscription calendar and its events. Without
 // it a mistyped or dead feed would refresh for ever and hold one of the
-// user's 20 slots. It acts on subscriptions only: an ordinary calendar has no
-// delete route.
-//
-// The writes are separate Raft commands and are not atomic. The calendar goes
-// first (CalendarStore.Delete revokes its grants, then deletes it), the events
-// after. The worker's state write finds the calendar gone and purges what a
-// refresh in flight created, so the order cannot leave a running refresh's
-// events behind. A failure while deleting events leaves some of them without a
-// calendar; they are then ordinary events the user can delete one by one, and
-// the request answers 500 so it is known.
+// user's 20 slots. It acts on subscriptions only; DeleteCalendar handles the
+// ordinary ones. store.PurgeCalendar documents the partial-failure semantics.
 func (h *CalendarHandler) UnsubscribeCalendar(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	calID := chi.URLParam(r, "calendarID")
@@ -108,26 +100,10 @@ func (h *CalendarHandler) UnsubscribeCalendar(w http.ResponseWriter, r *http.Req
 		http.Error(w, "calendar not found", http.StatusNotFound)
 		return
 	}
-	if err := h.calendars.Delete(userID, calID); err != nil {
+	if err := store.PurgeCalendar(h.calendars, h.events, h.tasks, userID, calID); err != nil {
 		slog.Error("calendar: unsubscribe failed", "user", userID, "calendar", calID, "error", err)
 		http.Error(w, "failed to unsubscribe", http.StatusInternalServerError)
 		return
-	}
-	events, _, err := h.events.ListAll(userID, 0, 0)
-	if err != nil {
-		slog.Error("calendar: listing events to remove failed", "user", userID, "calendar", calID, "error", err)
-		http.Error(w, "failed to remove events", http.StatusInternalServerError)
-		return
-	}
-	for _, e := range events {
-		if e.CalendarId != calID {
-			continue
-		}
-		if err := h.events.Delete(userID, e.Guid); err != nil {
-			slog.Error("calendar: removing subscription events failed", "user", userID, "calendar", calID, "error", err)
-			http.Error(w, "failed to remove events", http.StatusInternalServerError)
-			return
-		}
 	}
 	slog.Info("calendar: unsubscribed", "user", userID, "calendar", calID, "host", netx.HostOf(cal.Subscription.SourceUrl))
 

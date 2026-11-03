@@ -28,19 +28,26 @@ type organiseCall struct {
 	skip          map[string]bool
 }
 
+type occurrenceCall struct {
+	user, rid          string
+	original, instance *bongov1.Event
+	skip               map[string]bool
+}
+
 type replyCall struct {
 	user, attendee, partstat, recurrenceID string
 }
 
 // fakeSched records what the backend asks of the scheduler.
 type fakeSched struct {
-	mu       sync.Mutex
-	addrs    []string        // calendar-user-address-set of schUser
-	aliases  map[string]bool // owned but not in the set
-	status   string          // SCHEDULE-STATUS given to every attempted address
-	busy     map[string][][2]int64
-	organise []organiseCall
-	replies  []replyCall
+	mu          sync.Mutex
+	addrs       []string        // calendar-user-address-set of schUser
+	aliases     map[string]bool // owned but not in the set
+	status      string          // SCHEDULE-STATUS given to every attempted address
+	busy        map[string][][2]int64
+	organise    []organiseCall
+	replies     []replyCall
+	occurrences []occurrenceCall
 }
 
 func newFakeSched() *fakeSched {
@@ -68,6 +75,27 @@ func (f *fakeSched) Organise(user string, before, after *bongov1.Event, skip map
 		ev = before
 	}
 	out := map[string]string{}
+	for _, a := range ev.Attendees {
+		k := strings.ToLower(a.Address)
+		if !skip[k] && k != schEmail {
+			out[k] = f.status
+		}
+	}
+	return out
+}
+
+func (f *fakeSched) OrganiseOccurrence(user string, before, after *bongov1.Event, rid string, original, instance *bongov1.Event, skip map[string]bool) map[string]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.occurrences = append(f.occurrences, occurrenceCall{user, rid, original, instance, skip})
+	ev := instance
+	if ev == nil {
+		ev = original
+	}
+	out := map[string]string{}
+	if ev == nil {
+		return out
+	}
 	for _, a := range ev.Attendees {
 		k := strings.ToLower(a.Address)
 		if !skip[k] && k != schEmail {

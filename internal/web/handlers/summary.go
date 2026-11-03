@@ -107,7 +107,7 @@ func (h *SummaryHandler) Summary(w http.ResponseWriter, r *http.Request) {
 
 	var data templates.SummaryData
 	data.Warning = recoveryWarning(r)
-	data.ToMe = h.section(userID, "to-me", "/mail/to-me?unread=1", func() ([]templates.SummaryRow, error) {
+	data.ToMe = h.section(userID, "to-me", "/mail/view/to-me?unread=1", func() ([]templates.SummaryRow, error) {
 		if h.mail == nil {
 			return nil, nil
 		}

@@ -49,9 +49,10 @@ func (m *ReminderMailer) SendReminder(userID, to string, ev *bongov1.Event, star
 		loc = time.UTC
 	}
 	title := inviteName(ev.GetTitle())
-	when := start.In(loc).Format("2006-01-02 15:04 MST")
-	if ev.GetAllDay() {
-		when = start.In(loc).Format("2006-01-02")
+	local := start.In(loc)
+	when := i18n.FormatDate(locale, local, true)
+	if !ev.GetAllDay() {
+		when += " " + local.Format("15:04") + " (" + loc.String() + ")"
 	}
 	var body strings.Builder
 	fmt.Fprintf(&body, i18n.T(locale, "calendar.reminderMailBody"), title, when)

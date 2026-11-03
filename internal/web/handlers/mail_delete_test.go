@@ -201,7 +201,7 @@ func TestEmptyTrashPermanentlyDeletesAllTrashMessages(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body: %s)", w.Code, w.Body.String())
 	}
-	if loc := w.Header().Get("HX-Redirect"); loc != "/mail/Trash?flash=Trash+emptied" {
+	if loc := w.Header().Get("HX-Redirect"); loc != "/mail/Trash?flash=trash-emptied" {
 		t.Fatalf("HX-Redirect = %q, want Trash emptied redirect", loc)
 	}
 	trash, err := env.mailboxes.ListMessages(userID, trashMailbox)

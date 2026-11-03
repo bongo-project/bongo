@@ -367,7 +367,7 @@ func TestBulkRescanNotFound(t *testing.T) {
 		t.Errorf("status = %d, want %d (redirect even on per-id failure)", rec.Code, http.StatusSeeOther)
 	}
 	loc := rec.Header().Get("Location")
-	if !strings.Contains(loc, "1+failed") {
+	if !strings.Contains(loc, "flash=quarantine-some-failed") {
 		t.Errorf("Location = %q, want flash reporting the failure, not silent success", loc)
 	}
 	if got := spoolCount(t, spool, "incoming"); got != 0 {
@@ -809,12 +809,9 @@ func TestBulkReleasePartialFailure(t *testing.T) {
 	}
 
 	loc := rec.Header().Get("Location")
-	// Should report 2 successes and 1 failure.
-	if !strings.Contains(loc, "2+message(s)+released") {
-		t.Errorf("Location = %q, want '2+message(s)+released'", loc)
-	}
-	if !strings.Contains(loc, "1+failed") {
-		t.Errorf("Location = %q, want '1+failed'", loc)
+	// Should report the release and that some messages failed.
+	if want := "/admin/quarantine?flash=quarantine-released&flash=quarantine-some-failed"; loc != want {
+		t.Errorf("Location = %q, want %q", loc, want)
 	}
 }
 

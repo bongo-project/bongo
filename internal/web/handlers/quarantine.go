@@ -43,7 +43,7 @@ func NewQuarantineHandler(spool *pipeline.SpoolStore, blobs *store.BlobStore, lo
 // ListQuarantine renders the quarantine management page.
 func (h *QuarantineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	msgs := h.loadQuarantine()
 	templ.Handler(templates.AdminQuarantine(msgs, email, flash)).ServeHTTP(w, r)
@@ -76,7 +76,7 @@ func (h *QuarantineHandler) ReleaseMessage(w http.ResponseWriter, r *http.Reques
 	}
 
 	h.logger.Info("quarantine: message released", "id", id)
-	http.Redirect(w, r, "/admin/quarantine?flash=Message+released", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin/quarantine", flashQuarantineReleased), http.StatusSeeOther)
 }
 
 // DeleteMessage removes the envelope from quarantine/ and optionally the blob.
@@ -122,7 +122,7 @@ func (h *QuarantineHandler) DeleteMessage(w http.ResponseWriter, r *http.Request
 	// to delete a shared blob from here.
 
 	h.logger.Info("quarantine: message deleted", "id", id)
-	http.Redirect(w, r, "/admin/quarantine?flash=Message+deleted", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/admin/quarantine", flashQuarantineDeleted), http.StatusSeeOther)
 }
 
 // BulkAction processes a bulk release or delete of selected message IDs.
@@ -141,7 +141,7 @@ func (h *QuarantineHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(ids) == 0 {
-		http.Redirect(w, r, "/admin/quarantine?flash=No+messages+selected", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/admin/quarantine", flashQuarantineNoneSelected), http.StatusSeeOther)
 		return
 	}
 
@@ -197,30 +197,30 @@ func (h *QuarantineHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"failed", failed,
 	)
 
-	flash := fmt.Sprintf("%d+message(s)+%s", succeeded, bulkActionPastTense(action))
+	flash := []flashKey{bulkActionFlash(action)}
 	if failed > 0 {
-		flash += fmt.Sprintf("+(%d+failed)", failed)
+		flash = append(flash, flashQuarantineSomeFailed)
 	}
-	http.Redirect(w, r, "/admin/quarantine?flash="+flash, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	http.Redirect(w, r, withFlash("/admin/quarantine", flash...), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
-// bulkActionPastTense maps a bulk action name to its past-tense flash text.
+// bulkActionFlash maps a bulk action name to its flash key.
 // action has already passed the BulkAction switch by the time this is
 // called, so the set of inputs is closed to "release", "delete", "rescan".
-func bulkActionPastTense(action string) string {
+func bulkActionFlash(action string) flashKey {
 	switch action {
 	case "release":
-		return "released"
+		return flashQuarantineBulkReleased
 	case "delete":
-		return "deleted"
+		return flashQuarantineBulkDeleted
 	case "rescan":
-		return "rescanned"
+		return flashQuarantineBulkRescanned
 	default:
 		// Fixed fallback rather than echoing the input: this string is
 		// interpolated into the redirect Location header, so a future fourth
 		// case added to the BulkAction switch without updating this mapper
 		// must not put unvalidated form input there.
-		return "processed"
+		return flashQuarantineBulkProcessed
 	}
 }
 

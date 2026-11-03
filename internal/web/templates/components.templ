@@ -106,11 +106,11 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				</li>
 				<li class="nav-item">
 					<a
-						href="/mail/to-me"
-						if selected == "to-me" {
+						href="/mail/view/to-me"
+						if selected == "/mail/view/to-me" {
 							class="active"
 						}
-						hx-get="/mail/to-me"
+						hx-get="/mail/view/to-me"
 						hx-target="#main-content"
 						hx-push-url="true"
 					>
@@ -120,11 +120,11 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				</li>
 				<li class="nav-item">
 					<a
-						href="/mail/from-contacts"
-						if selected == "from-contacts" {
+						href="/mail/view/from-contacts"
+						if selected == "/mail/view/from-contacts" {
 							class="active"
 						}
-						hx-get="/mail/from-contacts"
+						hx-get="/mail/view/from-contacts"
 						hx-target="#main-content"
 						hx-push-url="true"
 					>
@@ -134,11 +134,11 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				</li>
 				<li class="nav-item">
 					<a
-						href="/mail/lists"
+						href="/mail/view/lists"
 						if isListsSelected(selected) {
 							class="active"
 						}
-						hx-get="/mail/lists"
+						hx-get="/mail/view/lists"
 						hx-target="#main-content"
 						hx-push-url="true"
 					>

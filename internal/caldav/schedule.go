@@ -45,6 +45,13 @@ type Scheduler interface {
 	// in skip are sent nothing. It returns SCHEDULE-STATUS by lower-cased
 	// address for every address it attempted.
 	Organise(userID string, before, after *bongov1.Event, skip map[string]bool) map[string]string
+	// OrganiseOccurrence sends the message about one occurrence of a series
+	// after a saved change to its exceptions: a REQUEST with RECURRENCE-ID rid
+	// for instance, or a CANCEL when instance is nil. original is the
+	// occurrence as attendees last saw it (nil when there was none), before
+	// the series as stored earlier (nil for a create) and after as saved. It
+	// returns SCHEDULE-STATUS by lower-cased address, as Organise does.
+	OrganiseOccurrence(userID string, before, after *bongov1.Event, rid string, original, instance *bongov1.Event, skip map[string]bool) map[string]string
 	// Reply sends the REPLY for attendee's answer; recurrenceID, when not
 	// empty, makes it an answer for one instance. It returns the
 	// SCHEDULE-STATUS of the answer: 1.1 when the organiser was told, 3.8
@@ -133,6 +140,20 @@ func scheduleAttendees(ve *ical.Component) []scheduleAttendee {
 	return out
 }
 
+// eventsOf returns every VEVENT of cal: the master and the overrides.
+func eventsOf(cal *ical.Calendar) []*ical.Component {
+	if cal == nil {
+		return nil
+	}
+	var out []*ical.Component
+	for _, c := range cal.Children {
+		if c.Name == ical.CompEvent {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // masterOf returns the master VEVENT of cal, or nil.
 func masterOf(cal *ical.Calendar) *ical.Component {
 	if cal == nil {
@@ -158,9 +179,11 @@ func decodeRaw(raw []byte) *ical.Calendar {
 func skipAddresses(cals ...*ical.Calendar) map[string]bool {
 	skip := map[string]bool{}
 	for _, cal := range cals {
-		for _, a := range scheduleAttendees(masterOf(cal)) {
-			if a.address != "" && a.agent != scheduleAgentServer {
-				skip[a.address] = true
+		for _, ve := range eventsOf(cal) {
+			for _, a := range scheduleAttendees(ve) {
+				if a.address != "" && a.agent != scheduleAgentServer {
+					skip[a.address] = true
+				}
 			}
 		}
 	}
@@ -182,14 +205,25 @@ type schedulePlan struct {
 // nothing is sent.
 func (b *Backend) planSchedule(userID string, calendar *ical.Calendar, event, existing *bongov1.Event) (schedulePlan, error) {
 	master := masterOf(calendar)
-	atts := scheduleAttendees(master)
+	// An override lists its own attendees, so the series takes part in
+	// scheduling when any VEVENT has one.
+	var atts []scheduleAttendee
+	perEvent := make([][]scheduleAttendee, 0, 1)
+	for _, ve := range eventsOf(calendar) {
+		list := scheduleAttendees(ve)
+		perEvent = append(perEvent, list)
+		atts = append(atts, list...)
+	}
 	if b.scheduler == nil || master == nil || event.Organizer == "" || len(atts) == 0 {
 		return schedulePlan{}, nil
 	}
 	org := store.NormaliseAddress(event.Organizer)
 	if slices.Contains(b.scheduler.Addresses(userID), org) {
-		if b.scheduledCount(userID, org, atts) > icalevent.MaxAttendees {
-			return schedulePlan{}, preconditionRefusal(preconditionMaxAttendees)
+		// The limit is per VEVENT (RFC 6638 max-attendees-per-instance).
+		for _, list := range perEvent {
+			if b.scheduledCount(userID, org, list) > icalevent.MaxAttendees {
+				return schedulePlan{}, preconditionRefusal(preconditionMaxAttendees)
+			}
 		}
 		return schedulePlan{mode: scheduleModeOrganiser}, nil
 	}
@@ -268,10 +302,22 @@ func (b *Backend) organise(userID string, calendar *ical.Calendar, saved, existi
 		skip = mergeSets(skip, skipAddresses(decodeRaw(existing.IcalRaw)))
 	}
 	statuses := b.scheduler.Organise(userID, existing, saved, skip)
+	occurrences := b.organiseOccurrences(userID, saved, existing, skip)
 
 	cal := decodeRaw(saved.IcalRaw)
 	master := masterOf(cal)
-	if master == nil || !recordScheduleStatus(master, statuses) {
+	if master == nil {
+		return saved
+	}
+	// One rewrite carries the status of the series message and of each
+	// occurrence message.
+	changed := recordScheduleStatus(master, statuses)
+	for _, ve := range eventsOf(cal) {
+		if st, ok := occurrences[recurrenceKey(ve)]; ok && ve != master {
+			changed = recordScheduleStatus(ve, st) || changed
+		}
+	}
+	if !changed {
 		return saved
 	}
 	return b.rewrite(userID, saved, cal)
@@ -509,8 +555,10 @@ func (b *Backend) cancelAfterDelete(userID string, existing *bongov1.Event) {
 // event all carry one value. A client that edits a meeting without raising
 // SEQUENCE would otherwise send attendees a REQUEST they may ignore as not
 // newer. An invite-relevant change needs a value above the stored one; any
-// other update never lowers it. A higher value from the client is kept. Only
-// the master's SEQUENCE is handled; the object is re-encoded into event.
+// other update never lowers it. A higher value from the client is kept. The
+// master's SEQUENCE is handled here, and reviseOverrides raises the SEQUENCE
+// of each RECURRENCE-ID override the PUT changes; when either moves, the
+// object is re-encoded into event.
 func organiserRevision(calendar *ical.Calendar, event, existing *bongov1.Event) error {
 	master := masterOf(calendar)
 	if master == nil || existing == nil {
@@ -521,16 +569,24 @@ func organiserRevision(calendar *ical.Calendar, event, existing *bongov1.Event) 
 	if icalevent.InviteRelevantChange(existing, event) {
 		want = min(want+1, 1<<30)
 	}
-	if client >= want {
+	masterRaised := client < want
+	if masterRaised {
+		icalevent.SetSequence(master.Props, want)
+	}
+	// An override the PUT changes outranks the series and the override it
+	// replaces; the master's SEQUENCE is left alone for an override-only change.
+	overridesRaised := reviseOverrides(calendar, event, existing)
+	if !masterRaised && !overridesRaised {
 		return nil
 	}
-	icalevent.SetSequence(master.Props, want)
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(calendar); err != nil {
 		return fmt.Errorf("encoding the revised sequence: %w", err)
 	}
 	event.IcalRaw = buf.Bytes()
-	event.Sequence = icalevent.ClampSequence(want)
+	if masterRaised {
+		event.Sequence = icalevent.ClampSequence(want)
+	}
 	return nil
 }
 

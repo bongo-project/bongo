@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"io"
+	"mime/quotedprintable"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -131,14 +133,74 @@ func TestReminderDeliverySurvivesEditAndSplit(t *testing.T) {
 	}
 }
 
+// The reminder names the zone by its IANA name and the date in the user's
+// language, never Go's "MST" abbreviation or English month names.
+func TestReminderMailerLocaleDate(t *testing.T) {
+	denver := mustZone(t, "America/Denver")
+	berlin := mustZone(t, "Europe/Berlin")
+	cases := []struct {
+		name, locale, start string
+		allDay              bool
+		zone                *time.Location
+		want                string
+	}{
+		// 2030-01-07 16:00Z is 09:00 on Monday 7 January in Denver (MST).
+		{"timed winter", "de", "2030-01-07T16:00:00Z", false, denver, "Mo 7 Jan 2030 09:00 (America/Denver)"},
+		// 2030-03-11 is Monday; MDT is in force, so 15:00Z is 09:00.
+		{"timed march", "de", "2030-03-11T15:00:00Z", false, denver, "Mo 11 Mär 2030 09:00 (America/Denver)"},
+		{"timed may", "de", "2030-05-06T15:00:00Z", false, denver, "Mo 6 Mai 2030 09:00 (America/Denver)"},
+		// An all-day start is local midnight in the owner's zone, as
+		// reminderStart (internal/agent/reminders.go) passes it. In Berlin that
+		// is 22:00Z the day before, so the date must be read in the zone.
+		{"all day", "de", "2030-05-06", true, denver, "Mo 6 Mai 2030"},
+		{"all day east of UTC", "de", "2030-05-06", true, berlin, "Mo 6 Mai 2030"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeSender{}
+			m := NewReminderMailer(f, fakePrefs{"u1": tc.locale}, nil)
+			ev := &bongov1.Event{Title: "Standup", AllDay: tc.allDay}
+			var start time.Time
+			if tc.allDay {
+				d, err := time.ParseInLocation(time.DateOnly, tc.start, tc.zone)
+				if err != nil {
+					t.Fatal(err)
+				}
+				start = d
+			} else {
+				start = mustTime(t, tc.start)
+			}
+			if err := m.SendReminder("u1", "me@example.com", ev, start, tc.zone); err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := io.ReadAll(quotedprintable.NewReader(strings.NewReader(string(f.sent[0].raw))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw := string(decoded)
+			if !strings.Contains(raw, tc.want) {
+				t.Errorf("want %q in:\n%s", tc.want, raw)
+			}
+			for _, bad := range []string{"MST", "MDT", "January", "March", "May ", "Monday"} {
+				if strings.Contains(raw, bad) {
+					t.Errorf("%q in:\n%s", bad, raw)
+				}
+			}
+			if tc.allDay && (strings.Contains(raw, "Denver") || strings.Contains(raw, "Berlin")) {
+				t.Errorf("all-day reminder names a zone:\n%s", raw)
+			}
+		})
+	}
+}
+
 func TestReminderMailerMessage(t *testing.T) {
 	cases := []struct {
 		name, locale, title, location string
-		wantSubject                   string
+		wantSubject, wantWhen         string
 	}{
-		{"english", "en", "Standup", "Room 1", "Reminder: Standup"},
-		{"german", "de", "Standup", "", "Erinnerung: Standup"},
-		{"header injection", "en", "Hi\r\nBcc: evil@example.net", "L\r\nX-Evil: 1", "Reminder: Hi  Bcc: evil@example.net"},
+		{"english", "en", "Standup", "Room 1", "Reminder: Standup", "Mon 6 May 2030 09:00 (UTC)"},
+		{"german", "de", "Standup", "", "Erinnerung: Standup", "Mo 6 Mai 2030 09:00 (UTC)"},
+		{"header injection", "en", "Hi\r\nBcc: evil@example.net", "L\r\nX-Evil: 1", "Reminder: Hi  Bcc: evil@example.net", "Mon 6 May 2030 09:00 (UTC)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -169,8 +231,8 @@ func TestReminderMailerMessage(t *testing.T) {
 			if strings.Contains(raw, "secret description") {
 				t.Error("the description was mailed")
 			}
-			if !strings.Contains(raw, "2030-05-06 09:00 UTC") {
-				t.Errorf("start time missing:\n%s", raw)
+			if !strings.Contains(raw, tc.wantWhen) {
+				t.Errorf("start %q missing:\n%s", tc.wantWhen, raw)
 			}
 		})
 	}

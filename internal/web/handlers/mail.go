@@ -187,14 +187,16 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	if mailbox == "" {
 		mailbox = "INBOX"
 	}
-	h.serveList(w, r, mailbox)
+	// A mailbox name from the URL is always a folder or a virtual view, never
+	// a header view: those have their own routes.
+	h.serveList(w, r, mailbox, nil)
 }
 
 // serveList renders the message list of a real mailbox, a virtual view or a
-// header view. The dedicated header-view routes and ListMessages both come
-// here, so the first page, later pages and post-action reloads of one view
-// (which reach ListMessages by its encoded name) render the same thing.
-func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox string) {
+// header view. ListMessages and the header-view routes come here, so every
+// page of a list renders the same thing. view is non-nil only for a header
+// view, and then mailbox is the view's navigation key (its URL), not a folder.
+func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox string, view *store.HeaderView) {
 	userID, email := middleware.UserFromContext(r.Context())
 
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
@@ -211,13 +213,18 @@ func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox 
 
 	// ?unread=1 narrows the To me view to unread mail. Only that exact value
 	// counts, and the list URL is built from constants, never from the query.
-	unreadOnly := mailbox == store.ViewToMe && r.URL.Query().Get("unread") == "1"
+	unreadOnly := view != nil && view.Kind == store.ViewToMe && r.URL.Query().Get("unread") == "1"
 	listURL := ""
-	if unreadOnly {
-		listURL = "/mail/" + store.ViewToMe + "?unread=1"
+	if view != nil {
+		// Every page, refresh and reload of a view comes back to the view's
+		// own URL, never to a folder of the same name.
+		listURL = view.URL()
+		if unreadOnly {
+			listURL += "?unread=1"
+		}
 	}
 
-	msgs, realMailboxes, err := h.listDisplayCandidates(userID, mailbox, unreadOnly)
+	msgs, realMailboxes, err := h.listDisplayCandidates(userID, mailbox, view, unreadOnly)
 	if err != nil {
 		http.Error(w, "Error loading messages", http.StatusInternalServerError)
 		return
@@ -236,7 +243,7 @@ func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox 
 
 	// Infinite scroll partial: return only message rows (no layout, no sidebar, no pagination wrapper).
 	if r.URL.Query().Get("partial") == "1" {
-		templ.Handler(templates.MessageRowsPartial(summaries, mailbox, page, totalPages, listURL)).ServeHTTP(w, r)
+		templ.Handler(templates.MessageRowsPartial(summaries, mailbox, view, page, totalPages, listURL)).ServeHTTP(w, r)
 		return
 	}
 
@@ -244,7 +251,7 @@ func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox 
 	mailboxInfos := h.loadMailboxInfos(userID, mailbox)
 	sidebarTags := h.loadSidebarTags(userID, mailbox)
 
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 	// The sign-in with a recovery code lands here; recoveryWarning passes
 	// only that message, in the user's language.
 	warning := ""
@@ -254,11 +261,11 @@ func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox 
 
 	// HTMX partial vs full page.
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.MailboxContent(mailbox, counts, summaries, page, totalPages, flash, infiniteScroll, listURL, warning)).ServeHTTP(w, r)
+		templ.Handler(templates.MailboxContent(mailbox, view, counts, summaries, page, totalPages, flash, infiniteScroll, listURL, warning)).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll, listURL, warning)).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(mailbox, view, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll, listURL, warning)).ServeHTTP(w, r)
 }
 
 // ListTagMessages renders the message list for a tag virtual view.
@@ -323,28 +330,29 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Query().Get("partial") == "1" {
-		templ.Handler(templates.MessageRowsPartial(summaries, virtualMailbox, page, totalPages, "")).ServeHTTP(w, r)
+		templ.Handler(templates.MessageRowsPartial(summaries, virtualMailbox, nil, page, totalPages, "")).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID, virtualMailbox)
 	sidebarTags := h.loadSidebarTags(userID, virtualMailbox)
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.MailboxContent(virtualMailbox, counts, summaries, page, totalPages, flash, infiniteScroll, "", "")).ServeHTTP(w, r)
+		templ.Handler(templates.MailboxContent(virtualMailbox, nil, counts, summaries, page, totalPages, flash, infiniteScroll, "", "")).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll, "", "")).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(virtualMailbox, nil, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll, "", "")).ServeHTTP(w, r)
 }
 
 // listDisplayCandidates returns the messages for a list view and, index for
 // index, the real mailbox each one lives in (nil for a real mailbox, where it
-// is the list mailbox itself).
-func (h *MailHandler) listDisplayCandidates(userID, mailbox string, unreadOnly bool) ([]*bongov1.MailboxMessage, []string, error) {
-	if view, ok := store.ParseHeaderView(mailbox); ok {
-		return h.headerViewMessages(userID, view, unreadOnly)
+// is the list mailbox itself). A header view is told by view, never by the
+// mailbox name: a folder may be called "to-me" or "lists".
+func (h *MailHandler) listDisplayCandidates(userID, mailbox string, view *store.HeaderView, unreadOnly bool) ([]*bongov1.MailboxMessage, []string, error) {
+	if view != nil {
+		return h.headerViewMessages(userID, *view, unreadOnly)
 	}
 	if store.VirtualMailboxes[mailbox] {
 		msgs, names, _, err := h.mailboxes.ListVirtualMessages(userID, mailbox, 0, maxMessagePageLimit)
@@ -809,9 +817,16 @@ func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1
 }
 
 // BulkAction handles bulk operations on selected messages.
+// POST /mail/{mailbox}/bulk takes plain UIDs of that folder.
 func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
+	h.bulkAction(w, r, decodeMailbox(chi.URLParam(r, "mailbox")), nil)
+}
+
+// bulkAction applies a bulk operation. In a header view (view non-nil) a UID
+// alone is ambiguous, so the client names each message by its real mailbox in
+// "targets" and bare "uids" are not read.
+func (h *MailHandler) bulkAction(w http.ResponseWriter, r *http.Request, mailbox string, view *store.HeaderView) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid form", http.StatusBadRequest)
@@ -820,11 +835,9 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 
 	action := r.FormValue("action")
 	uidStrs := r.Form["uids"]
-	// In a header view (To me, From my contacts, Mailing lists) a UID alone
-	// is ambiguous, so the client names each message by its real mailbox.
 	var pairStrs []string
 	requested := len(uidStrs)
-	if store.IsHeaderView(mailbox) {
+	if view != nil {
 		pairStrs = r.Form["targets"]
 		requested += len(pairStrs)
 		uidStrs = nil
@@ -1079,7 +1092,7 @@ func (h *MailHandler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("web: emptied trash", "user", userID, "count", len(msgs))
-	w.Header().Set("HX-Redirect", "/mail/Trash?flash=Trash+emptied")
+	w.Header().Set("HX-Redirect", withFlash("/mail/Trash", flashTrashEmptied))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -1687,7 +1700,7 @@ func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("web: message moved", "src", mailbox, "dest", dest, "uid", uid, "user", userID)
 
 	// Redirect back to mailbox with flash.
-	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, "Moved to "+dest))
+	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, flashMessageMoved))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -1724,7 +1737,7 @@ func (h *MailHandler) archiveOrUnarchive(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	dest, flashID := archiveMailbox, "mail.archived"
+	dest, flash := archiveMailbox, flashArchived
 	if archive {
 		if realMailbox == archiveMailbox {
 			http.Error(w, "Already archived", http.StatusBadRequest)
@@ -1740,7 +1753,7 @@ func (h *MailHandler) archiveOrUnarchive(w http.ResponseWriter, r *http.Request,
 			http.Error(w, "Not in Archive", http.StatusBadRequest)
 			return
 		}
-		dest, flashID = "INBOX", "mail.unarchived"
+		dest, flash = "INBOX", flashUnarchived
 	}
 
 	if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), dest); err != nil {
@@ -1750,7 +1763,7 @@ func (h *MailHandler) archiveOrUnarchive(w http.ResponseWriter, r *http.Request,
 	}
 
 	h.logger.Info("web: message moved", "src", realMailbox, "dest", dest, "uid", uid, "user", userID)
-	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, composeText(r, flashID)))
+	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, flash))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -2123,7 +2136,7 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		realMailbox = rm
 	}
 
-	flash := "Message moved to Trash"
+	flash := flashMessageTrashed
 	if realMailbox == trashMailbox {
 		// Already in Trash: remove permanently.
 		if err := h.mailboxes.AddFlags(userID, realMailbox, uint32(uid), store.FlagDeleted); err != nil {
@@ -2134,7 +2147,7 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to delete message", http.StatusInternalServerError)
 			return
 		}
-		flash = "Message permanently deleted"
+		flash = flashMessageDeleted
 		h.logger.Info("web: message permanently deleted", "mailbox", realMailbox, "uid", uid, "user", userID)
 	} else {
 		// Move to Trash instead of permanently deleting.
@@ -2318,8 +2331,8 @@ func matchesSelector(n *html.Node, selector string) bool {
 // mailboxRedirect returns the URL of a mailbox with a flash message. The name
 // is path-escaped so a folder such as "INBOX/Important" stays one segment;
 // unescaped, the router reads "Important" as a message UID.
-func mailboxRedirect(mailbox, flash string) string {
-	return "/mail/" + url.PathEscape(mailbox) + "?flash=" + url.QueryEscape(flash)
+func mailboxRedirect(mailbox string, flash ...flashKey) string {
+	return withFlash("/mail/"+url.PathEscape(mailbox), flash...)
 }
 
 func decodeMailbox(encoded string) string {
@@ -2531,9 +2544,9 @@ func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSp
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
-	target, score, action, flash := "INBOX", float32(0.0), "marked as not spam", "Marked as not spam"
+	target, score, action, flash := "INBOX", float32(0.0), "marked as not spam", []flashKey{flashMarkedNotSpam}
 	if isSpam {
-		target, score, action, flash = "Junk", 1.0, "marked as spam", "Marked as spam"
+		target, score, action, flash = "Junk", 1.0, "marked as spam", []flashKey{flashMarkedSpam}
 	}
 
 	// Get the mail GUID from the mailbox message.
@@ -2564,7 +2577,7 @@ func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSp
 	if h.bayes != nil {
 		if h.trainLimiter != nil && !h.trainLimiter.Allow(userID) {
 			h.logger.Warn("web: bayes training rate limit reached, skipping training", "user", userID, "mailbox", mailbox, "uid", uid)
-			flash += " - training skipped (too many requests)"
+			flash = append(flash, flashTrainingSkipped)
 		} else if err := h.trainBayes(userID, msg.MailGuid, isSpam); err != nil {
 			h.logger.Error("web: bayes training failed", "user", userID, "guid", msg.MailGuid, "spam", isSpam, "error", err)
 			http.Error(w, "Training failed", http.StatusInternalServerError)
@@ -2574,7 +2587,7 @@ func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSp
 
 	h.logger.Info("web: "+action, "mailbox", mailbox, "uid", uid, "user", userID)
 
-	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, flash))
+	w.Header().Set("HX-Redirect", mailboxRedirect(mailbox, flash...))
 	w.WriteHeader(http.StatusOK)
 }
 

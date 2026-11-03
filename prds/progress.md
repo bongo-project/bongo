@@ -1675,3 +1675,12 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 - Operator scoped in US-024 (CardDAV ETags) and US-025 (flash allow-list) as 32.24 and 32.25.
 - Gate green: make test-all, make lint, gosec.
 - PATTERN: testing - run the integration suite before trusting a resolver change; handler tests built on seeded calendars missed the new-user path.
+
+## 2026-11-03: Phase 32 batch 3 (32.5, 32.8, 32.12, 32.15, 32.16, 32.19, 32.23, 32.24, 32.25)
+- Nine tasks via the norman workflow; one conflict in calendar_templ.go (regenerated); 32.5 re-applied after it.
+- Follow-up agent fixed review findings: spam-scan widget rendered in header views with a URL as the mailbox (removed there); bulk test in folder "view" checks the flag; resource REPLY RECURRENCE-ID test needed a non-UTC TZID to catch the mutant; calendar-delete refusals all check the grant survives; reminder all-day dates use local midnight; dead i18n keys removed; send-as lookup-error test.
+- Gate: gofmt (carddav test) and a staticcheck QF1001 in a test, fixed; then make test-all, make lint, gosec green.
+- CLAUDE.md header-views learning updated for /mail/view/... .
+- Operator added US-026 (create a calendar in the web, at most 5 owned calendars on every create path) as 32.26.
+- PATTERN: testing - a RECURRENCE-ID mutant can survive a UTC-only test because the value is copied verbatim; use a TZID case.
+- PATTERN: merge - after resolving a *_templ.go conflict with "ours", run make generate and stage the result before anything else.
