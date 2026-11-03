@@ -12,10 +12,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-webdav/caldav"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/handlers"
@@ -96,6 +98,13 @@ func (fixedEmail) UserEmail(string) string { return schEmail }
 // the web handlers, with only delivery replaced by a recorder.
 func realSchedEnv(t *testing.T) (*schedEnv, *recordingSender) {
 	t.Helper()
+	return realSchedEnvWith(t, nil)
+}
+
+// realSchedEnvWith is realSchedEnv with a hook that wires more of the handler
+// before the CalDAV endpoint is built.
+func realSchedEnvWith(t *testing.T, wire func(h *handlers.CalendarHandler, ps *store.PebbleStore, app *grantApplier)) (*schedEnv, *recordingSender) {
+	t.Helper()
 	ps, err := store.NewPebbleStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -107,9 +116,23 @@ func realSchedEnv(t *testing.T) (*schedEnv, *recordingSender) {
 	if _, err := cals.EnsureDefault(schUser); err != nil {
 		t.Fatal(err)
 	}
+	mm, err := store.NewMetadataManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { mm.Close() })
+	addrs := store.NewAddressStore(ps, app, mm.System)
+	// sales@d.test is a plain alias of the user: owned, not sendable.
+	if err := addrs.Put("sales@d.test", &bongov1.AddressRecord{UserId: schUser, Domain: "d.test", Kind: "alias"}); err != nil {
+		t.Fatal(err)
+	}
 	rec := &recordingSender{}
 	h := handlers.NewCalendarHandler(events, cals, nil)
 	h.SetInviteSender(rec)
+	h.SetAddressStore(addrs)
+	if wire != nil {
+		wire(h, ps, app)
+	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	b := NewBackend(events, cals, logger)
@@ -117,7 +140,7 @@ func realSchedEnv(t *testing.T) (*schedEnv, *recordingSender) {
 	inbox := store.NewScheduleInboxStore(ps, app)
 	b.SetScheduleInbox(inbox)
 	handler := ScheduleHandler(PrivilegeFilter(&caldav.Handler{Backend: b, Prefix: "/caldav"}, b.ReadOnlyShare, logger), b, logger)
-	e := &schedEnv{t: t, b: b, events: events, inbox: inbox, ps: ps}
+	e := &schedEnv{t: t, b: b, events: events, inbox: inbox, ps: ps, app: app}
 	e.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r.WithContext(WithUserID(r.Context(), r.Header.Get("X-Test-User"))))
 	}))
@@ -242,4 +265,47 @@ func firstEvent(t *testing.T, e *schedEnv) *bongov1.Event {
 		t.Fatal(err)
 	}
 	return ev
+}
+
+// A room's free/busy is answered over the outbox to users of its own domain,
+// and refused like an unknown address to everyone else.
+func TestOutboxFreeBusyOfAResource(t *testing.T) {
+	const room = "room@d.test"
+	put := func(t *testing.T, app *grantApplier, id string, p *bongov1.UserProfile) {
+		t.Helper()
+		data, err := proto.Marshal(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := app.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: []byte("/user/" + id + "/profile"), Value: data}, time.Second); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e, _ := realSchedEnvWith(t, func(h *handlers.CalendarHandler, ps *store.PebbleStore, app *grantApplier) {
+		as := store.NewAddressStore(ps, app, nil)
+		if err := as.Put(room, &bongov1.AddressRecord{UserId: "room-id", Domain: "d.test", Kind: "primary", Verified: true}); err != nil {
+			t.Fatal(err)
+		}
+		put(t, app, "room-id", &bongov1.UserProfile{Email: room, Kind: "resource", ResourceType: "room"})
+		put(t, app, schUser, &bongov1.UserProfile{Email: schEmail})
+		put(t, app, "carl-id", &bongov1.UserProfile{Email: "carl@other.test"})
+		h.SetAddressStore(as)
+		h.SetProfiles(ps)
+	})
+	if _, err := e.events.Create("room-id", &bongov1.Event{Guid: "b1", Title: "Booked", StartTime: 1904288400, EndTime: 1904292000}); err != nil {
+		t.Fatal(err)
+	}
+	post := func(user string) string {
+		code, body, _ := e.do(user, "POST", "/caldav/"+user+"/outbox/", freeBusyPost("REQUEST", "VFREEBUSY", schEmail, room), map[string]string{"Content-Type": "text/calendar"})
+		if code != http.StatusOK {
+			t.Fatalf("POST = %d: %s", code, body)
+		}
+		return body
+	}
+	if body := post(schUser); !strings.Contains(body, "FBTYPE=BUSY:20300506T090000Z/20300506T100000Z") || !strings.Contains(body, "2.0;Success") {
+		t.Errorf("a user of the room's domain got no busy block:\n%s", body)
+	}
+	if body := post("carl-id"); !strings.Contains(body, "3.7;Invalid calendar user") || strings.Contains(body, "FREEBUSY;") {
+		t.Errorf("a user of another domain was answered:\n%s", body)
+	}
 }

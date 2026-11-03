@@ -181,7 +181,14 @@ func (h *CalendarHandler) AnswerBooking(userID, verifiedSender string, part []by
 		if own {
 			exclude = known.Guid
 		}
-		conflict, err := h.bookingConflicts(userID, res.Email, inv.Event, exclude)
+		// inv.Event carries neither EXDATEs nor overrides: the request's own
+		// calendar does, and the series is checked as it will happen.
+		cand := proto.Clone(inv.Event).(*bongov1.Event)
+		if cand.IcalRaw, err = inv.Stored("", ""); err != nil {
+			slog.Warn("calendar: encoding a booking request failed", "resource", userID, "error", err)
+			return
+		}
+		conflict, err := h.bookingConflicts(userID, res.Email, cand, exclude)
 		if err != nil {
 			slog.Warn("calendar: checking a booking failed", "resource", userID, "error", err)
 			return
@@ -274,30 +281,35 @@ func (h *CalendarHandler) writeBooking(userID string, known *bongov1.Event, inv 
 // horizon, counts as a conflict.
 func (h *CalendarHandler) bookingConflicts(resID, resEmail string, ev *bongov1.Event, exclude string) (bool, error) {
 	occ := []*bongov1.Event{ev}
-	last := ev.EndTime
+	first, last := ev.StartTime, ev.EndTime
 	if ev.Rrule != "" {
 		up := strings.ToUpper(ev.Rrule)
 		if !strings.Contains(up, "COUNT=") && !strings.Contains(up, "UNTIL=") {
 			return true, nil
 		}
+		// An override can move an occurrence before the first slot of the
+		// rule, so the expansion starts at the epoch.
 		from := ev.StartTime
 		to := from + int64(resourceHorizon/time.Second)
 		far := from + int64(resourceFarHorizon/time.Second)
 		var err error
-		if occ, err = store.ExpandRecurrence(ev, from, to); err != nil {
+		if occ, err = store.ExpandRecurrence(ev, 0, to); err != nil {
 			return true, nil //nolint:nilerr // a rule that does not parse cannot be checked
 		}
 		if beyond, err := store.ExpandRecurrence(ev, to, far); err != nil || len(beyond) > 0 {
 			return true, nil //nolint:nilerr // see above
 		}
+		if len(occ) > 0 {
+			first, last = occ[0].StartTime, occ[0].EndTime
+		}
 		for _, o := range occ {
-			last = max(last, o.EndTime)
+			first, last = min(first, o.StartTime), max(last, o.EndTime)
 		}
 	}
 	if len(occ) == 0 {
 		return false, nil
 	}
-	existing, err := h.events.ListByDateRange(resID, ev.StartTime, max(last, ev.StartTime+1), "")
+	existing, err := h.events.ListByDateRange(resID, first, max(last, first+1), "")
 	if err != nil {
 		return false, fmt.Errorf("listing bookings: %w", err)
 	}

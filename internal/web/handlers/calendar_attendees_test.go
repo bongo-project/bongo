@@ -78,8 +78,9 @@ func TestParseAttendees(t *testing.T) {
 		{"trailing comma", "a@example.com,", []string{"a@example.com"}, nil},
 		{"duplicates fold case", "a@example.com, A@Example.com", []string{"a@example.com"}, nil},
 		{"100 accepted", addrList(100), nil, nil},
-		{"101 refused", addrList(101), nil, errAttendeesTooMany},
-		{"101 with a duplicate is 100", addrList(100) + ", P3@example.com", nil, nil},
+		{"200 accepted", addrList(200), nil, nil},
+		{"201 refused", addrList(201), nil, errAttendeesTooMany},
+		{"100 with a duplicate is 100", addrList(100) + ", P3@example.com", nil, nil},
 		{"not an address", "nobody", nil, errAttendeeInvalid},
 		{"one bad of two", "a@example.com, nobody", nil, errAttendeeInvalid},
 		{"CRLF in address", "a@example.com\r\nBcc: x@example.com", nil, errAttendeeInvalid},
@@ -94,9 +95,9 @@ func TestParseAttendees(t *testing.T) {
 			if tc.wantErr != nil {
 				return
 			}
-			if strings.HasPrefix(tc.name, "100") || strings.HasPrefix(tc.name, "101 with") {
-				if len(got) != 100 {
-					t.Fatalf("len = %d, want 100", len(got))
+			if n, ok := map[string]int{"100 accepted": 100, "200 accepted": 200, "100 with a duplicate is 100": 100}[tc.name]; ok {
+				if len(got) != n {
+					t.Fatalf("len = %d, want %d", len(got), n)
 				}
 				return
 			}
@@ -550,5 +551,70 @@ func TestUpdateEventRenamesKeptAttendee(t *testing.T) {
 	}
 	if got.Attendees[0].Name != "Robert" {
 		t.Errorf("proto name = %q", got.Attendees[0].Name)
+	}
+}
+
+// bigInviteICS is what a CalDAV client stores for a large meeting: the
+// organiser's own ATTENDEE line, n invitees the server schedules and clients
+// of its own for the CLIENT-scheduled ones.
+func bigInviteICS(organiser string, n, client int) []byte {
+	var b strings.Builder
+	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Client//Cal//EN\r\n" +
+		"BEGIN:VEVENT\r\nUID:big-1@example.org\r\nDTSTAMP:20300101T000000Z\r\n" +
+		"DTSTART:20300506T090000Z\r\nDTEND:20300506T100000Z\r\nSUMMARY:Big\r\n" +
+		"ORGANIZER:mailto:" + organiser + "\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:" + organiser + "\r\n")
+	for i := range n {
+		fmt.Fprintf(&b, "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:p%d@example.org\r\n", i)
+	}
+	for i := range client {
+		fmt.Fprintf(&b, "ATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:c%d@example.org\r\n", i)
+	}
+	b.WriteString("END:VEVENT\r\nEND:VCALENDAR\r\n")
+	return []byte(b.String())
+}
+
+// The attendee cap counts who the server would invite, in the web form as in
+// CalDAV scheduling: the organiser's own line and CLIENT-scheduled attendees
+// do not take up the limit, so an event a client stored can be saved again.
+func TestUpdateEventAttendeeCapMatchesCalDAVRule(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		organiser  string
+		invitees   int
+		client     int
+		extra      int // invitees the form adds
+		wantStatus int
+	}{
+		{"organiser line and 100 invitees, title only", quotaEmail, 100, 0, 0, http.StatusSeeOther},
+		{"foreign organiser and 100 invitees, title only", "olive@example.org", 100, 0, 0, http.StatusSeeOther},
+		{"100 invitees and 50 CLIENT attendees, title only", quotaEmail, 100, 50, 0, http.StatusSeeOther},
+		{"adding a 101st invitee is refused", quotaEmail, 100, 0, 1, http.StatusBadRequest},
+		{"adding a 101st invitee beside CLIENT attendees is refused", quotaEmail, 100, 50, 1, http.StatusBadRequest},
+		{"99 invitees plus one new is accepted", quotaEmail, 99, 0, 1, http.StatusSeeOther},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newQuotaEnv(t)
+			h := NewCalendarHandler(env.events, env.calendars, nil)
+			guid, ev := seedClientEvent(t, env, bigInviteICS(tc.organiser, tc.invitees, tc.client), utcUnix(2030, 5, 6, 9, 0), utcUnix(2030, 5, 6, 10, 0), "")
+			over := map[string]string{"title": "Renamed"}
+			if tc.extra > 0 {
+				over["attendees"] = attendeesFieldValue(ev) + ", new@example.org"
+			}
+			w := putEdit(t, h, guid, browserForm(ev, over))
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d: %s", w.Code, tc.wantStatus, w.Body)
+			}
+			got, _ := decodeStored(t, env, guid)
+			wantTitle := "Renamed"
+			if tc.wantStatus != http.StatusSeeOther {
+				wantTitle = "Team sync"
+			}
+			if got.Title != wantTitle {
+				t.Errorf("title = %q, want %q", got.Title, wantTitle)
+			}
+			if tc.wantStatus == http.StatusSeeOther && len(got.Attendees) != len(ev.Attendees)+tc.extra {
+				t.Errorf("stored %d attendees, want %d", len(got.Attendees), len(ev.Attendees)+tc.extra)
+			}
+		})
 	}
 }

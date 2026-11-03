@@ -84,7 +84,8 @@ address and the password. If verification fails, open Advanced Settings and
 set the account URL to `https://mail.example.com/caldav/` (or `/carddav/`).
 
 The configuration profile at `https://mail.example.com/.well-known/mobileconfig`
-sets up mail only. Calendar and contacts accounts are added separately.
+sets up the mail, CalDAV and CardDAV accounts. It contains no password, so the
+device asks for it.
 
 ### Thunderbird
 
@@ -109,8 +110,8 @@ OpenTasks when one of them is installed.
 
 | Collection | Path | Notes |
 |------------|------|-------|
-| Calendars | `/caldav/{user}/calendars/{calendar}/` | Events (VEVENT). The default calendar is `default`. |
-| Tasks | `/caldav/{user}/calendars/tasks/` | Tasks (VTODO) only. Created for new accounts from v0.15.0. |
+| Calendars | `/caldav/{user}/calendars/{calendar}/` | Events (VEVENT). A new account's first calendar, Personal, is usually named `default`. |
+| Tasks | `/caldav/{user}/calendars/tasks/` | Tasks (VTODO) only. See below for when it exists. |
 | Calendars shared with the user | `/caldav/{user}/calendars/shared-{owner}-{calendar}/` | From v0.15.0. Read or read-write, as the owner granted. Writes are stored under the owner and count against the owner's quota. |
 | Subscribed calendars | as calendars | Read-only. A `PUT` or `DELETE` answers `403`. |
 | Address book | `/carddav/{user}/addressbooks/default/` | Contacts (vCard). |
@@ -123,15 +124,35 @@ invitation mail themselves, so each attendee receives one message.
 
 A calendar accepts only the component it is set up for. A `PUT` of a task
 into an events calendar, or of an event into the Tasks calendar, answers
-`403` with the `supported-calendar-component` precondition.
+`403` with the `supported-calendar-component` precondition. A calendar made
+by `MKCALENDAR` holds events only: Bongo ignores the
+`supported-calendar-component-set` the client sends, so a client that creates
+a task list this way gets an events calendar. Use the Tasks calendar for
+tasks.
+
+The Tasks calendar (`tasks`) is not created with the account. Bongo creates
+it, together with the Personal calendar, the first time an account that has
+no calendar at all uses calendars: any calendar page or action in the web
+interface, a CalDAV listing of calendars, or a CalDAV `PUT`. An account that
+already has a calendar never gets one. That covers an account that used
+calendars before upgrading to v0.15.0, an account whose very first request is
+a CalDAV `MKCALENDAR`, and an account that deleted Tasks while keeping another
+calendar.
 
 ## Limits
 
-- One request body is at most 10 MiB.
+- One request body is at most 10 MiB; a larger one is refused with `413`.
 - Events, tasks and contacts count towards the domain's quota, checked at
   every `PUT`.
-- An event has at most 100 attendees in Bongo's structured copy; the stored
-  iCalendar keeps the full list.
+- An event can invite at most 100 attendees. Only attendees the server would
+  invite count: the organiser's own `ATTENDEE` line, attendees with
+  `SCHEDULE-AGENT=CLIENT` or `NONE`, and any other address you send as do not,
+  and an address listed twice counts once. Bongo's structured copy of an event
+  holds up to 200 attendees in all, those exempt ones included; the stored
+  iCalendar keeps the full list. When you are the organiser and scheduling
+  applies (the event has attendees to message), a `PUT` that invites more than
+  100 is refused with `403` and the `max-attendees-per-instance` precondition.
+  The web edit form refuses the same case.
 
 ## Checking a connection
 

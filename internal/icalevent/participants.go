@@ -16,6 +16,11 @@ import (
 // sent, so a 150-person meeting is neither refused nor damaged.
 const MaxAttendees = 100
 
+// MaxStoredAttendees bounds the structured list including the lines the server
+// does not invite through: the organiser's own ATTENDEE line and attendees a
+// client schedules for itself.
+const MaxStoredAttendees = 2 * MaxAttendees
+
 // maxNameRunes bounds a stored attendee display name.
 const maxNameRunes = 200
 
@@ -111,10 +116,51 @@ func attendeeFromProp(p *ical.Prop) (*bongov1.Attendee, bool) {
 
 var validStatus = map[string]bool{"TENTATIVE": true, "CONFIRMED": true, "CANCELLED": true}
 
+// serverSchedules reports whether the server is the one to invite p
+// (SCHEDULE-AGENT absent or SERVER).
+func serverSchedules(p *ical.Prop) bool {
+	a := strings.TrimSpace(p.Params.Get("SCHEDULE-AGENT"))
+	return a == "" || strings.EqualFold(a, "SERVER")
+}
+
+// ClientScheduled returns the lower-cased addresses of the ATTENDEE lines in
+// props that the server does not invite through (SCHEDULE-AGENT CLIENT or
+// NONE).
+func ClientScheduled(props ical.Props) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range props.Values(ical.PropAttendee) {
+		if serverSchedules(&p) {
+			continue
+		}
+		if addr, ok := AddressFromCalAddress(p.Value); ok {
+			out[strings.ToLower(addr)] = true
+		}
+	}
+	return out
+}
+
+// CountInvited is the number of distinct attendees the server would invite:
+// not the organiser, not an address in skip (lower-case; see ClientScheduled)
+// and not one for which own reports true (an address of the organiser). It is
+// the rule fillParticipants applies against MaxAttendees, for callers that
+// have a structured list rather than the iCalendar lines. own may be nil.
+func CountInvited(attendees []*bongov1.Attendee, organiser string, skip map[string]bool, own func(string) bool) int {
+	seen := map[string]bool{}
+	for _, a := range attendees {
+		key := strings.ToLower(a.Address)
+		if key == "" || strings.EqualFold(a.Address, organiser) || skip[key] || (own != nil && own(a.Address)) {
+			continue
+		}
+		seen[key] = true
+	}
+	return len(seen)
+}
+
 // fillParticipants copies ORGANIZER, ATTENDEE, SEQUENCE, STATUS and TRANSP of a VEVENT
 // into event. Attendees that are not mailto addresses or fail validation are
 // skipped, duplicates (case-insensitive) keep the first, and the structured
-// list stops at MaxAttendees.
+// list holds MaxAttendees invited by the server, plus the organiser's own line
+// and client-scheduled attendees, to MaxStoredAttendees in all.
 func fillParticipants(event *bongov1.Event, props ical.Props) {
 	if p := props.Get(ical.PropOrganizer); p != nil {
 		if addr, ok := AddressFromCalAddress(p.Value); ok {
@@ -122,8 +168,9 @@ func fillParticipants(event *bongov1.Event, props ical.Props) {
 		}
 	}
 	seen := map[string]bool{}
+	invitedCount := 0
 	for _, p := range props.Values(ical.PropAttendee) {
-		if len(event.Attendees) >= MaxAttendees {
+		if len(event.Attendees) >= MaxStoredAttendees {
 			break
 		}
 		a, ok := attendeeFromProp(&p)
@@ -134,7 +181,16 @@ func fillParticipants(event *bongov1.Event, props ical.Props) {
 		if seen[key] {
 			continue
 		}
+		// The organiser's own line and a SCHEDULE-AGENT other than SERVER do
+		// not take up the limit: nobody is invited through them.
+		invited := !strings.EqualFold(a.Address, event.Organizer) && serverSchedules(&p)
+		if invited && invitedCount >= MaxAttendees {
+			continue
+		}
 		seen[key] = true
+		if invited {
+			invitedCount++
+		}
 		event.Attendees = append(event.Attendees, a)
 	}
 	if p := props.Get(ical.PropSequence); p != nil {

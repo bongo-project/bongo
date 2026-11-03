@@ -127,7 +127,7 @@ func prepareRaw(vevent *ical.Component, e *bongov1.Event) {
 	props := vevent.Props
 	want := make(map[string]*bongov1.Attendee, len(e.Attendees))
 	for i, a := range e.Attendees {
-		if i >= icalevent.MaxAttendees || !icalevent.ValidAddress(a.Address) {
+		if i >= icalevent.MaxStoredAttendees || !icalevent.ValidAddress(a.Address) {
 			continue
 		}
 		want[strings.ToLower(a.Address)] = a

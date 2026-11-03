@@ -536,7 +536,7 @@ Nothing else changes.
 |--------|------------------------------|-------|
 | Thunderbird | `/.well-known/autoconfig/mail/config-v1.1.xml` | Also `autoconfig.<domain>/mail/config-v1.1.xml` |
 | Outlook | `/autodiscover/autodiscover.xml` (POST) | Also `autodiscover.<domain>/...` |
-| Apple Mail | `/.well-known/mobileconfig?email=<addr>` | Unsigned profile; OS shows "Unverified" on install |
+| Apple Mail, Calendar and Contacts | `/.well-known/mobileconfig?email=<addr>` | Unsigned profile with mail, CalDAV and CardDAV accounts; OS shows "Unverified" on install |
 
 **To enable it:**
 

@@ -264,6 +264,9 @@ type inviteState struct {
 	organiserMatches bool
 	// instanceOnly: known is itself a single override stored without a master.
 	instanceOnly bool
+	// readOnly: known lives in a subscribed calendar, which a refresh
+	// overwrites, so nothing may be written to it from the card.
+	readOnly bool
 
 	canAnswer, canUpdate, canCancel, canRemove bool
 	status                                     string
@@ -291,6 +294,11 @@ func (h *CalendarHandler) assess(msg inviteMessage) (*inviteState, error) {
 	if st.known != nil {
 		st.organiserMatches = strings.EqualFold(st.known.Organizer, inv.Organizer)
 		st.instanceOnly = isInstanceOnly(st.known)
+		// Fail closed: a read error refuses the card rather than treating the
+		// calendar as writable.
+		if st.readOnly, err = h.calendars.CalendarIsSubscribed(msg.UserID, st.known.CalendarId); err != nil {
+			return nil, fmt.Errorf("checking the calendar of the known event: %w", err)
+		}
 	}
 	st.decide()
 	return st, nil
@@ -320,6 +328,11 @@ func (st *inviteState) decide() {
 	if known != nil && !st.organiserMatches {
 		st.status = ""
 		st.notes = append(st.notes, "invite.noteOrganiserMismatch")
+		return
+	}
+	if known != nil && st.readOnly {
+		// Covers answer, update, cancel and remove: all write to known.
+		st.notes = append(st.notes, "invite.noteReadOnlyCalendar")
 		return
 	}
 	if known != nil && st.instanceOnly && inv.RecurrenceID != "" && !sameInstance(known, inv.RecurrenceID) {
@@ -719,6 +732,18 @@ func (h *CalendarHandler) cancelInvitation(msg inviteMessage, st *inviteState) i
 // storeInvited writes ev: a create when old is nil, else an update. The domain
 // quota is charged for new events and for growth, as event create is.
 func (h *CalendarHandler) storeInvited(userID string, old, ev *bongov1.Event) inviteResult {
+	if old != nil {
+		// Backstop: a subscribed calendar is overwritten by its next refresh.
+		subscribed, err := h.calendars.CalendarIsSubscribed(userID, old.CalendarId)
+		if err != nil {
+			slog.Warn("calendar: checking the calendar of an invited event failed", "user", userID, "error", err)
+			return inviteResult{Status: http.StatusInternalServerError, Message: "failed to save the event"}
+		}
+		if subscribed {
+			slog.Warn("calendar: refused to write an invited event into a subscribed calendar", "user", userID, "guid", old.Guid)
+			return inviteResult{Status: http.StatusConflict, Message: "calendar is read-only"}
+		}
+	}
 	grow := store.EventRecordSize(ev)
 	if old != nil {
 		grow -= store.EventRecordSize(old)

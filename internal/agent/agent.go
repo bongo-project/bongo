@@ -810,6 +810,17 @@ func (a *Agent) wireCalendarShareLimiter(h *handlers.CalendarHandler) {
 	h.SetShareLimiter(mail.NewRateLimiter(calendarSharesPerHour))
 }
 
+// freeBusyLookupsPerHour is the per-user, rolling-hour cap on availability
+// requests from the event form. One request is made per edit of the form, so
+// it is far above the share cap; it exists so the lookup by address cannot be
+// run as a bulk account probe.
+const freeBusyLookupsPerHour = 600
+
+// wireCalendarFreeBusyLimiter caps availability lookups per user per hour.
+func (a *Agent) wireCalendarFreeBusyLimiter(h *handlers.CalendarHandler) {
+	h.SetFreeBusyLimiter(mail.NewRateLimiter(freeBusyLookupsPerHour))
+}
+
 // wireAddressVerifyLimiter caps send-as verification mails per user per hour.
 func (a *Agent) wireAddressVerifyLimiter(h *handlers.AddressVerifyHandler) {
 	h.SetLimiter(mail.NewRateLimiter(a.Config.SMTP.Limits.SendAsVerifyMaxPerHour))
@@ -1559,6 +1570,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				mailH.SetInvitations(calendarH)
 			}
 			a.wireCalendarShareLimiter(calendarH)
+			a.wireCalendarFreeBusyLimiter(calendarH)
 			a.calendarHandler = calendarH
 			// CalDAV implicit scheduling sends through the calendar handler's
 			// invitation path, so it needs a sender: without one the server

@@ -417,6 +417,9 @@ document.addEventListener('alpine:init', () => {
       }
       this.show = false;
       this.results = [];
+      // Setting the query fires no change event; tell the event form's
+      // availability view once Alpine has written the input.
+      this.$nextTick(() => this.$dispatch('availability-refresh'));
     },
 
     onKeydown(event) {

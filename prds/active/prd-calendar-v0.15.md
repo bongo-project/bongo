@@ -990,3 +990,29 @@ Fixed after verification (Phase 31 batch A, 2026-11-03), with notes:
   its opaque overrides are still published (in busy mode as single busy
   occurrences). A cancelled RANGE=THISANDFUTURE override excludes one
   occurrence only. A proto-only cancelled event is published as busy.
+
+Phase 31 batch B (2026-11-03), notes:
+
+- US-020 (31.8): an attendee who answers over CalDAV as an address they
+  cannot send as gets SCHEDULE-STATUS 3.8 on the ORGANIZER property of the
+  answered VEVENT in their stored copy (RFC 6638 3.2.9); 1.1 is written on
+  success and 5.1 on a build or delivery failure. SENT-BY was not used: the
+  organiser matches a REPLY by its ATTENDEE address. The web invitation card
+  still drops such an answer with a log line. A PUT changing more than 20
+  overrides' answers records no status for the rest.
+- US-004 (31.9): the availability view takes at most 20 attendees per
+  request and is limited per user. A refused local address and an unknown
+  address render identically, but the refused one does more work (a
+  measurable timing difference, bounded by the limits). A target's all-day
+  event is placed at the target's local midnight, so it can show as a
+  partial block on the caller's day when their zones differ.
+- US-015 (31.7): an override moved past the far booking horizon is not
+  checked. The resource auto-answer deletes a cancelled booking directly,
+  without the subscribed-calendar backstop.
+- US-008 (31.13): an invitation whose UID matches an event in a subscribed
+  calendar is shown read-only; answer, update, cancel and remove are refused
+  with 409.
+- Apple profile (31.12): the outer profile identifier is per domain, so two
+  users of one domain on one device replace each other's profile; the DAV
+  accounts use port 443, so they do not verify on a dev server or behind
+  another public port.

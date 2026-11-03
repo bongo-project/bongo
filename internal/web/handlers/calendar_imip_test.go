@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/emersion/go-ical"
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/imip"
 	"github.com/bongo-project/bongo/internal/store"
@@ -1131,5 +1133,120 @@ func TestAnswerKnownEventIgnoresCalendarID(t *testing.T) {
 	}
 	if got := partstatOf(e.stored(t, imipUID)); got != "DECLINED" {
 		t.Errorf("partstat = %q, want DECLINED", got)
+	}
+}
+
+// seedSubscribedKnown stores the event of o directly in a subscribed calendar
+// under guid. No public path can create this state (web create, import, move
+// and CalDAV PUT all refuse a subscription, and feed refresh uses its own
+// "sub-" keys), so it is seeded through the store; routing it through the web
+// handlers would make the tests vacuous.
+func (e *imipEnv) seedSubscribedKnown(t *testing.T, o icsOpts, guid string) *bongov1.Event {
+	t.Helper()
+	feed := e.seedFeedCalendar(t)
+	inv, err := imip.Parse([]byte(o.build("REQUEST")), "REQUEST")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := inv.Stored(quotaEmail, "ACCEPTED")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := proto.Clone(inv.Event).(*bongov1.Event)
+	ev.Guid, ev.CalendarId, ev.IcalRaw = guid, feed, raw
+	ev.Status = o.status
+	ev.Sequence = int32(o.seq)
+	if _, err := e.q.events.Create(quotaUser, ev); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.q.events.Get(quotaUser, guid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func TestInvitationOnSubscribedEventIsReadOnly(t *testing.T) {
+	const safeUID = "plain-uid-2"
+	tests := []struct {
+		name   string
+		guid   func(uid string) string
+		uid    string
+		seed   icsOpts
+		method string
+		msg    icsOpts
+		action string
+	}{
+		{"answer", uidGuid, imipUID, icsOpts{}, "REQUEST", icsOpts{}, "answer"},
+		{"update", uidGuid, imipUID, icsOpts{}, "REQUEST", icsOpts{seq: 1}, "update"},
+		{"cancel", uidGuid, imipUID, icsOpts{}, "CANCEL", icsOpts{seq: 1, status: "CANCELLED"}, "cancel"},
+		{"remove", uidGuid, imipUID, icsOpts{status: "CANCELLED"}, "REQUEST", icsOpts{}, "remove"},
+		{"answer by raw uid", func(u string) string { return u }, safeUID, icsOpts{uid: safeUID}, "REQUEST", icsOpts{uid: safeUID}, "answer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newImipEnv(t)
+			before := e.seedSubscribedKnown(t, tt.seed, tt.guid(tt.uid))
+			ics := tt.msg.build(tt.method)
+			var uid uint32
+			if tt.method == "CANCEL" {
+				uid = e.cancelMsg(t, tt.msg)
+			} else {
+				uid = e.invite(t, tt.msg)
+			}
+
+			card := e.cal.InvitationCard(nil, inviteMessage{
+				UserID: quotaUser, Email: quotaEmail, Mailbox: "INBOX", UID: uid,
+				Part: []byte(ics), CTMethod: tt.method,
+			})
+			if card == nil {
+				t.Fatal("no card")
+			}
+			if card.CanAnswer || card.CanUpdate || card.CanMarkCancelled || card.CanRemove {
+				t.Errorf("card offers an action: %+v", card)
+			}
+			if !slices.Contains(card.Notes, "invite.noteReadOnlyCalendar") {
+				t.Errorf("notes %v lack the read-only note", card.Notes)
+			}
+			if len(card.Calendars) != 0 {
+				t.Errorf("card lists calendars: %v", card.Calendars)
+			}
+
+			form := url.Values{"action": {tt.action}, "partstat": {"ACCEPTED"}}
+			if w := e.post(quotaUser, quotaEmail, uid, form, true); w.Code != http.StatusConflict {
+				t.Fatalf("%s status %d, want 409: %s", tt.action, w.Code, w.Body)
+			}
+			after, err := e.q.events.Get(quotaUser, tt.guid(tt.uid))
+			if err != nil {
+				t.Fatalf("event gone: %v", err)
+			}
+			if !bytes.Equal(after.IcalRaw, before.IcalRaw) || after.Status != before.Status ||
+				after.Sequence != before.Sequence || after.CalendarId != before.CalendarId {
+				t.Errorf("subscribed event changed:\nbefore %+v\nafter  %+v", before, after)
+			}
+			if n := len(e.fs.messages()); n != 0 {
+				t.Errorf("%d messages sent", n)
+			}
+		})
+	}
+}
+
+// storeInvited is the last line of defence, and is shared with the organiser
+// applying a REPLY.
+func TestStoreInvitedRefusesSubscribedCalendar(t *testing.T) {
+	e := newImipEnv(t)
+	old := e.seedSubscribedKnown(t, icsOpts{}, uidGuid(imipUID))
+	upd := proto.Clone(old).(*bongov1.Event)
+	upd.Title = "Changed"
+	res := e.cal.storeInvited(quotaUser, old, upd)
+	if res.Status != http.StatusConflict {
+		t.Fatalf("status %d, want 409", res.Status)
+	}
+	after, err := e.q.events.Get(quotaUser, old.Guid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Title != old.Title {
+		t.Errorf("title %q, want %q", after.Title, old.Title)
 	}
 }

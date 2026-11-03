@@ -16,6 +16,9 @@ import (
 const (
 	scheduleSent       = "1.1"
 	scheduleNotReached = "5.1"
+	// scheduleNoAuthority (RFC 5546 3.8) reports an answer given at an address
+	// the user may not send as.
+	scheduleNoAuthority = "3.8"
 )
 
 // CalDAVScheduler lets the CalDAV backend send invitations and replies for a
@@ -98,10 +101,7 @@ func (s *CalDAVScheduler) Owns(userID, addr string) bool {
 // nothing and returns an empty map.
 func (s *CalDAVScheduler) Organise(userID string, before, after *bongov1.Event, skip map[string]bool) map[string]string {
 	email := s.email(userID)
-	plan := s.h.planAttendees(userID, email, before, after)
-	for i := range plan {
-		plan[i].to = slices.DeleteFunc(plan[i].to, func(a string) bool { return skip[store.NormaliseAddress(a)] })
-	}
+	plan := s.h.planAttendees(userID, email, before, after, skip)
 	sent, missed := s.h.deliverPlanIn(s.locale(userID), userID, email, plan)
 	out := make(map[string]string, len(sent)+len(missed))
 	for _, a := range sent {
@@ -115,10 +115,22 @@ func (s *CalDAVScheduler) Organise(userID string, before, after *bongov1.Event, 
 
 // Reply sends the iTIP REPLY for attendee's answer to an event the user was
 // invited to. recurrenceID, when set, makes it an answer for one instance. It
-// reports whether the organiser was told; a failure is logged by the sender.
-func (s *CalDAVScheduler) Reply(userID string, ev *bongov1.Event, attendee, partstat, recurrenceID string) bool {
+// returns the SCHEDULE-STATUS of the answer: 1.1 when the organiser was told,
+// 3.8 when the user may not send as attendee (a plain alias; no REPLY is sent
+// in another name), 5.1 when that could not be looked up or the REPLY could not
+// be built or delivered. A
+// failure is logged by the sender.
+func (s *CalDAVScheduler) Reply(userID string, ev *bongov1.Event, attendee, partstat, recurrenceID string) string {
 	if ev == nil || !icalevent.ValidAddress(ev.Organizer) {
-		return false
+		return scheduleNotReached
+	}
+	// A failed lookup is not a refusal: 3.8 would be stored as the answer.
+	may, err := s.h.sendAsCheck(userID, s.email(userID), attendee)
+	if err != nil {
+		return scheduleNotReached
+	}
+	if !may {
+		return scheduleNoAuthority
 	}
 	reply := proto.Clone(ev).(*bongov1.Event)
 	reply.Guid = ""
@@ -132,26 +144,29 @@ func (s *CalDAVScheduler) Reply(userID string, ev *bongov1.Event, attendee, part
 	if len(ev.IcalRaw) > 0 {
 		cal, err := storedCalendar(ev)
 		if err != nil {
-			return false
+			return scheduleNotReached
 		}
 		master, _ := icalevent.Master(cal)
 		if master == nil {
-			return false
+			return scheduleNotReached
 		}
 		imip.SetPartstat(master, attendee, partstat)
 		if reply.IcalRaw, err = encodeCalendar(cal); err != nil {
-			return false
+			return scheduleNotReached
 		}
 	}
-	return s.h.sendReplyIn(s.locale(userID), userID, s.email(userID), reply, recurrenceID)
+	if !s.h.sendReplyIn(s.locale(userID), userID, s.email(userID), reply, recurrenceID) {
+		return scheduleNotReached
+	}
+	return scheduleSent
 }
 
 // FreeBusy answers the busy periods of the local user who owns address, as
 // [start, end] unix seconds in [from, to], for requester. ok is false when the
 // address is not a local user's or requester may not see that user's
 // free/busy: the caller must answer both the same way. A user may see their
-// own, and another's when that user shared a calendar with them at free/busy
-// level or above, as on the web.
+// own, another's when that user shared a calendar with them at free/busy
+// level or above, and a resource's on their own domain, as on the web.
 func (s *CalDAVScheduler) FreeBusy(requester, address string, from, to int64) (busy [][2]int64, ok bool) {
 	h := s.h
 	if h.addresses == nil || h.events == nil {
@@ -162,7 +177,7 @@ func (s *CalDAVScheduler) FreeBusy(requester, address string, from, to int64) (b
 		return nil, false
 	}
 	target := rec.UserId
-	if target != requester && !h.targetSharesWith(target, requester) {
+	if !h.mayReadFreeBusy(target, requester) {
 		return nil, false
 	}
 	events, err := h.events.ListByDateRange(target, from, to, "")

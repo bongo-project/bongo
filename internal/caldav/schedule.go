@@ -45,9 +45,11 @@ type Scheduler interface {
 	// address for every address it attempted.
 	Organise(userID string, before, after *bongov1.Event, skip map[string]bool) map[string]string
 	// Reply sends the REPLY for attendee's answer; recurrenceID, when not
-	// empty, makes it an answer for one instance. It reports whether the
-	// organiser was told.
-	Reply(userID string, event *bongov1.Event, attendee, partstat, recurrenceID string) bool
+	// empty, makes it an answer for one instance. It returns the
+	// SCHEDULE-STATUS of the answer: 1.1 when the organiser was told, 3.8
+	// when attendee is an address the user cannot send as, 5.1 when the REPLY
+	// could not be built or delivered.
+	Reply(userID string, event *bongov1.Event, attendee, partstat, recurrenceID string) string
 	// FreeBusy returns the busy periods ([start, end], unix seconds) of the
 	// local user who owns address, for requester. ok is false for a
 	// non-local address and for one requester may not see, alike.
@@ -87,6 +89,7 @@ const (
 	scheduleAgentServer          = "SERVER"
 	scheduleStatusSent           = "1.1"
 	scheduleStatusInvalidAddress = "3.7"
+	scheduleStatusNoAuthority    = "3.8"
 	paramScheduleAgent           = "SCHEDULE-AGENT"
 	paramScheduleStatus          = "SCHEDULE-STATUS"
 	partstatNeedsAction          = "NEEDS-ACTION"
@@ -184,15 +187,28 @@ func (b *Backend) planSchedule(userID string, calendar *ical.Calendar, event, ex
 	}
 	org := store.NormaliseAddress(event.Organizer)
 	if slices.Contains(b.scheduler.Addresses(userID), org) {
-		if len(atts) > icalevent.MaxAttendees {
+		if b.scheduledCount(userID, org, atts) > icalevent.MaxAttendees {
 			return schedulePlan{}, preconditionRefusal(preconditionMaxAttendees)
 		}
 		return schedulePlan{mode: scheduleModeOrganiser}, nil
 	}
+	// The user may be invited at several of their addresses. Answer as one
+	// they may send as, which the organiser can be sent a REPLY from; a plain
+	// alias is the fallback and its answer is reported as 3.8.
+	me := ""
 	for _, a := range atts {
-		if a.address != "" && b.scheduler.Owns(userID, a.address) {
+		if a.address == "" || !b.scheduler.Owns(userID, a.address) {
+			continue
+		}
+		if slices.Contains(b.scheduler.Addresses(userID), a.address) {
 			return schedulePlan{mode: scheduleModeAttendee, me: a.address}, nil
 		}
+		if me == "" {
+			me = a.address
+		}
+	}
+	if me != "" {
+		return schedulePlan{mode: scheduleModeAttendee, me: me}, nil
 	}
 	// A foreign organiser and the user is not invited: the event is only
 	// stored. The one thing refused is a PUT that would make the server
@@ -209,6 +225,24 @@ func (b *Backend) planSchedule(userID string, calendar *ical.Calendar, event, ex
 	return schedulePlan{}, nil
 }
 
+// scheduledCount is the number of distinct addresses the server would send an
+// invitation to: usable, with SCHEDULE-AGENT SERVER, and neither the organiser
+// nor an address the user sends as (the sender skips those). Apple Calendar and
+// Thunderbird list the organiser among the attendees, and clients that
+// schedule for themselves mark their attendees CLIENT; neither takes up the
+// limit.
+func (b *Backend) scheduledCount(userID, organiser string, atts []scheduleAttendee) int {
+	own := b.scheduler.Addresses(userID)
+	seen := map[string]bool{}
+	for _, a := range atts {
+		if a.address == "" || a.agent != scheduleAgentServer || a.address == organiser || slices.Contains(own, a.address) {
+			continue
+		}
+		seen[a.address] = true
+	}
+	return len(seen)
+}
+
 // scheduleAfterSave runs the scheduling that follows a saved PUT and returns
 // the event as it is stored in the end (SCHEDULE-STATUS may have been added).
 func (b *Backend) scheduleAfterSave(userID string, plan schedulePlan, calendar *ical.Calendar, saved, existing *bongov1.Event) *bongov1.Event {
@@ -216,7 +250,7 @@ func (b *Backend) scheduleAfterSave(userID string, plan schedulePlan, calendar *
 	case scheduleModeOrganiser:
 		return b.organise(userID, calendar, saved, existing)
 	case scheduleModeAttendee:
-		b.answer(userID, plan.me, calendar, saved, existing)
+		return b.answer(userID, plan.me, calendar, saved, existing)
 	}
 	return saved
 }
@@ -234,6 +268,15 @@ func (b *Backend) organise(userID string, calendar *ical.Calendar, saved, existi
 	if master == nil || !recordScheduleStatus(master, statuses) {
 		return saved
 	}
+	return b.rewrite(userID, saved, cal)
+}
+
+// rewrite stores cal, an edited copy of saved's object, as the event and
+// returns the event as stored. It is the second, non-atomic write of a
+// scheduling PUT and best-effort: when it fails the invitations or replies are
+// sent and the event is saved, only the status the client would show is
+// missing, and saved is returned.
+func (b *Backend) rewrite(userID string, saved *bongov1.Event, cal *ical.Calendar) *bongov1.Event {
 	var buf bytes.Buffer
 	if err := ical.NewEncoder(&buf).Encode(cal); err != nil {
 		b.logger.Warn("caldav: encoding the scheduling status failed", "user", userID, "guid", saved.Guid, "error", err)
@@ -243,8 +286,6 @@ func (b *Backend) organise(userID string, calendar *ical.Calendar, saved, existi
 	updated.IcalRaw = buf.Bytes()
 	updated.UpdatedAt = time.Now().Unix()
 	if err := b.events.Update(userID, saved.Guid, updated); err != nil {
-		// Best-effort: the invitations are sent and the event is saved; only
-		// the status the client would show is missing.
 		b.logger.Warn("caldav: writing the scheduling status failed", "user", userID, "guid", saved.Guid, "error", err)
 		return saved
 	}
@@ -297,10 +338,19 @@ type partstatChange struct {
 // creates the event with PARTSTAT already set, and since the server advertises
 // calendar-auto-schedule the client sends no iMIP itself. The send-as and
 // recipient-budget checks are the sender's, as for a re-PUT.
-func (b *Backend) answer(userID, me string, calendar *ical.Calendar, saved, existing *bongov1.Event) {
+//
+// The outcome of each answer is written as SCHEDULE-STATUS on the ORGANIZER of
+// the VEVENT it came from (RFC 6638 section 3.2.9: in an attendee's copy the
+// status belongs to the organiser, not to the ATTENDEE), so a client can show
+// an answer that was not delivered, such as one given at an alias the user
+// cannot send as (3.8). 1.1 is written on success too, which clears a stale
+// failure. Like organise, the write is a second, non-atomic command after the
+// save, best-effort, and a PUT landing between the two can be overwritten.
+// answer returns the event as stored in the end.
+func (b *Backend) answer(userID, me string, calendar *ical.Calendar, saved, existing *bongov1.Event) *bongov1.Event {
 	master := masterOf(calendar)
 	if master == nil || skipOrganiser(master) {
-		return
+		return saved
 	}
 	var before *ical.Calendar
 	if existing != nil {
@@ -310,11 +360,42 @@ func (b *Backend) answer(userID, me string, calendar *ical.Calendar, saved, exis
 	if len(changes) > maxReplyChangesPerPut {
 		changes = changes[:maxReplyChangesPerPut]
 	}
+	if len(changes) == 0 {
+		return saved
+	}
+	statuses := make(map[string]string, len(changes))
 	for _, c := range changes {
-		if !b.scheduler.Reply(userID, saved, me, c.partstat, c.recurrenceID) {
-			b.logger.Warn("caldav: reply to the organiser not sent", "user", userID, "guid", saved.Guid)
+		st := b.scheduler.Reply(userID, saved, me, c.partstat, c.recurrenceID)
+		if st != scheduleStatusSent {
+			b.logger.Warn("caldav: reply to the organiser not sent", "user", userID, "guid", saved.Guid, "status", st)
+		}
+		statuses[c.recurrenceID] = st
+	}
+	cal := decodeRaw(saved.IcalRaw)
+	if cal == nil || !recordReplyStatus(cal, statuses) {
+		return saved
+	}
+	return b.rewrite(userID, saved, cal)
+}
+
+// recordReplyStatus sets SCHEDULE-STATUS on the ORGANIZER of each VEVENT of cal
+// whose recurrence key is in statuses. It reports whether anything changed.
+func recordReplyStatus(cal *ical.Calendar, statuses map[string]string) bool {
+	changed := false
+	for _, ve := range cal.Children {
+		if ve.Name != ical.CompEvent {
+			continue
+		}
+		st, ok := statuses[recurrenceKey(ve)]
+		if !ok {
+			continue
+		}
+		if p := ve.Props.Get(ical.PropOrganizer); p != nil && p.Params.Get(paramScheduleStatus) != st {
+			p.Params.Set(paramScheduleStatus, st)
+			changed = true
 		}
 	}
+	return changed
 }
 
 // skipOrganiser reports whether the ORGANIZER asks to be handled by the client.
