@@ -41,6 +41,9 @@ type CalendarHandler struct {
 	acl *store.ACLStore
 	// shareLimiter caps ShareCalendar requests per user. nil = unlimited.
 	shareLimiter shareRateLimiter
+	// freeBusyLimiter caps availability lookups by address per user. nil =
+	// unlimited.
+	freeBusyLimiter shareRateLimiter
 	// zones supplies the user's preferred time zone to the agenda. nil falls
 	// back to the process zone, which the month, week and day views use.
 	zones zoneSource
@@ -143,6 +146,9 @@ func (h *CalendarHandler) SetShareLimiter(l shareRateLimiter) { h.shareLimiter =
 
 // ShareLimiter returns the per-user share limiter, or nil.
 func (h *CalendarHandler) ShareLimiter() shareRateLimiter { return h.shareLimiter }
+
+// FreeBusyLimiter returns the per-user availability limiter, or nil.
+func (h *CalendarHandler) FreeBusyLimiter() shareRateLimiter { return h.freeBusyLimiter }
 
 // maxCalendarShares caps how many users one calendar can be shared with.
 const maxCalendarShares = 50
@@ -758,6 +764,16 @@ func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request
 // FreeBusy returns busy time blocks for a user in a date range.
 func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	callerID, callerEmail := middleware.UserFromContext(r.Context())
+	// ?date= (or the form's start_date) asks for the event form's availability
+	// fragment instead of the JSON lookup below.
+	date := r.URL.Query().Get("date")
+	if date == "" {
+		date = r.URL.Query().Get("start_date")
+	}
+	if date != "" {
+		h.freeBusyDay(w, r, date)
+		return
+	}
 	targetUser := r.URL.Query().Get("user")
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
@@ -770,7 +786,7 @@ func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	// Authorization: a caller may read their own free/busy, or that of a user
 	// who has shared a calendar with them. Without this check any authenticated
 	// user could read every user's schedule by guessing the ?user= id (IDOR).
-	if targetUser != callerID && !h.targetSharesWith(targetUser, callerID) && !h.sharedResource(targetUser, callerID) {
+	if !h.mayReadFreeBusy(targetUser, callerID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -810,6 +826,14 @@ func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(blocks); err != nil {
 		return
 	}
+}
+
+// mayReadFreeBusy reports whether callerID may read targetUser's free/busy:
+// their own, that of a user who shared a calendar with them, or that of a
+// resource on their own domain. The web lookup, the event form's availability
+// view and the CalDAV outbox all decide through it.
+func (h *CalendarHandler) mayReadFreeBusy(targetUser, callerID string) bool {
+	return callerID != "" && (targetUser == callerID || h.targetSharesWith(targetUser, callerID) || h.sharedResource(targetUser, callerID))
 }
 
 // targetSharesWith reports whether targetUser has granted callerID at least
@@ -860,6 +884,10 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	event, err := parseEventForm(r, h.userLocation(userID))
 	if err != nil {
+		eventFormError(w, r, err)
+		return
+	}
+	if err := h.checkAttendeeCap(userID, email, event.Attendees, nil); err != nil {
 		eventFormError(w, r, err)
 		return
 	}
@@ -1041,6 +1069,10 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := parseEventForm(r, h.userLocation(userID))
 	if err != nil {
+		eventFormError(w, r, err)
+		return
+	}
+	if err := h.checkAttendeeCap(userID, email, updated.Attendees, existing); err != nil {
 		eventFormError(w, r, err)
 		return
 	}
@@ -1503,8 +1535,9 @@ const maxAttendeesField = 64 << 10
 // parseAttendees reads the attendees field: a comma-separated address list in
 // the "Name <addr>" form the recipient pills produce. Every address is
 // validated, duplicates (case-insensitive) keep the first, and more than
-// icalevent.MaxAttendees after that is refused. An empty field is no
-// attendees. New attendees are required participants who have not answered.
+// icalevent.MaxStoredAttendees after that is refused. Who counts against
+// icalevent.MaxAttendees is decided by checkAttendeeCap, which needs the stored
+// event. An empty field is no attendees. New attendees are required participants who have not answered.
 func parseAttendees(raw string) ([]*bongov1.Attendee, error) {
 	raw = strings.Trim(raw, " \t\r\n,")
 	if raw == "" {
@@ -1536,10 +1569,46 @@ func parseAttendees(raw string) ([]*bongov1.Attendee, error) {
 			Rsvp:     true,
 		})
 	}
-	if len(out) > icalevent.MaxAttendees {
+	if len(out) > icalevent.MaxStoredAttendees {
 		return nil, errAttendeesTooMany
 	}
 	return out, nil
+}
+
+// checkAttendeeCap applies the rule CalDAV scheduling applies: at most
+// icalevent.MaxAttendees attendees the server would invite. The organiser's own
+// line, attendees the stored event schedules for the client (SCHEDULE-AGENT
+// CLIENT or NONE) and the acting user's own addresses do not count, so an event
+// a CalDAV client stored with its organiser line can be saved again. existing is
+// nil for a new event, whose organiser is the acting user.
+func (h *CalendarHandler) checkAttendeeCap(userID, email string, atts []*bongov1.Attendee, existing *bongov1.Event) error {
+	organiser := email
+	var skip map[string]bool
+	if existing != nil {
+		if existing.Organizer != "" {
+			organiser = existing.Organizer
+		}
+		if len(existing.IcalRaw) > 0 {
+			if cal, err := storedCalendar(existing); err == nil {
+				if master, _ := icalevent.Master(cal); master != nil {
+					skip = icalevent.ClientScheduled(master.Props)
+				}
+			}
+		}
+	}
+	if icalevent.CountInvited(atts, organiser, skip, nil) <= icalevent.MaxAttendees {
+		return nil
+	}
+	// Over the limit: only now spend a lookup per address on what the user
+	// sends as, which the sender skips as well.
+	own := func(addr string) bool {
+		ok, err := store.CanSendAs(h.addresses, userID, email, addr)
+		return err == nil && ok
+	}
+	if icalevent.CountInvited(atts, organiser, skip, own) > icalevent.MaxAttendees {
+		return errAttendeesTooMany
+	}
+	return nil
 }
 
 // eventFormError answers a rejected event form with a 400. Attendee errors are

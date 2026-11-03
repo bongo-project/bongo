@@ -816,6 +816,10 @@ func (h *CalendarHandler) updateInstance(w http.ResponseWriter, r *http.Request,
 		eventFormError(w, r, err)
 		return true
 	}
+	if err := h.checkAttendeeCap(userID, email, form.Attendees, existing); err != nil {
+		eventFormError(w, r, err)
+		return true
+	}
 	form.CalendarId = destCal
 	in := instanceEdit{
 		userID: owner, email: email, existing: existing, form: form,

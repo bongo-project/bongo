@@ -70,6 +70,8 @@ type bookOpts struct {
 	uid, organiser, rrule, method string
 	start, end                    string // 20300506T090000Z
 	attendee                      string
+	exdate                        string   // 20300513T090000Z
+	overrides                     []string // extra VEVENT blocks, each a slice of lines joined by \n
 }
 
 func (o bookOpts) ics() string {
@@ -97,7 +99,14 @@ func (o bookOpts) ics() string {
 	if o.rrule != "" {
 		lines = append(lines, "RRULE:"+o.rrule)
 	}
-	lines = append(lines, "END:VEVENT", "END:VCALENDAR")
+	if o.exdate != "" {
+		lines = append(lines, "EXDATE:"+o.exdate)
+	}
+	lines = append(lines, "END:VEVENT")
+	for _, ov := range o.overrides {
+		lines = append(lines, strings.Split(ov, "\n")...)
+	}
+	lines = append(lines, "END:VCALENDAR")
 	return strings.Join(lines, "\r\n") + "\r\n"
 }
 
@@ -458,5 +467,99 @@ func TestResourceAnswersUseTheResourceLocale(t *testing.T) {
 	// A preference of another user does not apply.
 	if other := run(resourcePrefs{aliceID: "de"}); other[0] != english[0] || other[1] != english[1] {
 		t.Errorf("another user's locale changed the subjects: %v", other)
+	}
+}
+
+// override builds a RECURRENCE-ID VEVENT of the booking series.
+func override(uid, recurrenceID, start, end, extra string) string {
+	l := []string{
+		"BEGIN:VEVENT", "UID:" + uid, "DTSTAMP:20300101T000000Z", "RECURRENCE-ID:" + recurrenceID,
+		"DTSTART:" + start, "DTEND:" + end, "SUMMARY:Moved", "SEQUENCE:0",
+		"ORGANIZER;CN=Org:mailto:" + aliceAdr,
+		"ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:" + resMail,
+	}
+	if extra != "" {
+		l = append(l, extra)
+	}
+	l = append(l, "END:VEVENT")
+	return strings.Join(l, "\n")
+}
+
+// A series is checked as it will happen: an override sits at its own time and
+// an excluded occurrence does not exist.
+func TestAnswerBookingSeriesOverridesAndExclusions(t *testing.T) {
+	const uid = "series-1@example.org"
+	weekly := "FREQ=WEEKLY;COUNT=3"
+	tests := []struct {
+		name string
+		opts bookOpts
+		want string
+	}{
+		{"override moved onto a booked slot", bookOpts{
+			uid: uid, rrule: weekly, start: "20300506T090000Z", end: "20300506T100000Z",
+			overrides: []string{override(uid, "20300513T090000Z", "20300509T133000Z", "20300509T143000Z", "")},
+		}, "DECLINED"},
+		{"override moved before the series start onto a booked slot", bookOpts{
+			// The rule starts on the 13th; its second occurrence (the 20th) is
+			// moved back to the 9th, before DTSTART, onto the held slot.
+			uid: uid, rrule: weekly, start: "20300513T090000Z", end: "20300513T100000Z",
+			overrides: []string{override(uid, "20300520T090000Z", "20300509T133000Z", "20300509T143000Z", "")},
+		}, "DECLINED"},
+		{"only colliding occurrence excluded", bookOpts{
+			uid: uid, rrule: "FREQ=DAILY;COUNT=5", start: "20300507T133000Z", end: "20300507T143000Z",
+			exdate: "20300509T133000Z",
+		}, "ACCEPTED"},
+		{"cancelled override on a booked slot", bookOpts{
+			uid: uid, rrule: weekly, start: "20300506T090000Z", end: "20300506T100000Z",
+			overrides: []string{override(uid, "20300513T090000Z", "20300509T133000Z", "20300509T143000Z", "STATUS:CANCELLED")},
+		}, "ACCEPTED"},
+		{"no collision", bookOpts{
+			uid: uid, rrule: weekly, start: "20300506T090000Z", end: "20300506T100000Z",
+		}, "ACCEPTED"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newResourceEnv(t)
+			e.book(resID, aliceAdr, bookOpts{uid: "held@example.org", start: "20300509T133000Z", end: "20300509T143000Z"})
+			e.book(resID, aliceAdr, tt.opts)
+			got := e.answers(t)
+			if len(got) != 2 || got[1] != tt.want {
+				t.Fatalf("answers = %v, want the series %s", got, tt.want)
+			}
+			wantCount := 1
+			if tt.want == "ACCEPTED" {
+				wantCount = 2
+			}
+			if n := e.count(t); n != wantCount {
+				t.Errorf("bookings = %d, want %d", n, wantCount)
+			}
+		})
+	}
+}
+
+func TestMayReadFreeBusyOfResourcesOverCalDAV(t *testing.T) {
+	e := newResourceEnv(t)
+	e.putAccount(t, "alice2", "alice2@other.org", "")
+	e.putAccount(t, "dave-1", "dave@example.org", "")
+	e.book(resID, aliceAdr, bookOpts{})
+	s := NewCalDAVScheduler(e.h, nil, schedEmails{aliceID: aliceAdr})
+	tests := []struct {
+		name, requester, addr string
+		want                  bool
+	}{
+		{"same domain user", aliceID, resMail, true},
+		{"other domain user", "carl-1", resMail, false},
+		{"person on another domain", aliceID, "alice2@other.org", false},
+		{"person on the same domain who shared nothing", aliceID, "dave@example.org", false},
+		{"unknown address", aliceID, "nobody@example.org", false},
+		{"empty requester", "", resMail, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			busy, ok := s.FreeBusy(tt.requester, tt.addr, 0, 4000000000)
+			if ok != tt.want || (ok && len(busy) != 1) {
+				t.Errorf("FreeBusy = %v %v, want ok=%v", busy, ok, tt.want)
+			}
+		})
 	}
 }

@@ -1633,3 +1633,14 @@ PATTERN: [dav] Register discovery redirects (/.well-known/caldav, /carddav) for 
 - Gate: TestIMAPFullRoundTrip failed once in the full make test-all (failure text not captured), then passed 4/4 alone and in a full integration rerun. The batch's only IMAP change is APPEND header fill, which this test does not use. Unexplained; watch for a recurrence and capture the output.
 PATTERN: [verify] Tests that build forms with bare IDs hide the bugs of the real UI, which sends shared:{owner}:{cal} keys; use the key the template renders.
 PATTERN: [gate] Keep the full output of a gate run (tee to a file); a filtered FAIL line without its message cannot be diagnosed after the fact.
+
+## 2026-11-03: Phase 31 batch B (31.7-31.13), Phase 31 complete
+
+- 31.7 resource conflicts expand the request with its overrides and EXDATEs (from 0, bookings listed from the first occurrence); one free/busy authorisation helper mayReadFreeBusy for the JSON lookup, the CalDAV outbox and the availability view.
+- 31.8 an attendee answering over CalDAV as an address they cannot send as gets SCHEDULE-STATUS 3.8 on the ORGANIZER (5.1 on a lookup or delivery failure); the attendee cap counts only invitees the server schedules, the stored copy is bounded at 200, and the web form applies the same rule.
+- 31.9 availability in the event form: per local attendee, Busy blocks for the day against the proposed time; refused and unknown addresses render identically; 20 attendees per request, rate-limited.
+- 31.10 test gaps closed (production-router CSRF for share, unshare, invitation and /tasks; GC tick sweeps and SetResourceBookings wiring; card zone; VALARM over CalDAV; COUNTER/REFRESH; cap 49 to 50).
+- 31.11 SECURITY.md covers the public feed route and the subscription SSRF guard; DAV doc corrected. 31.12 Apple profile adds CalDAV and CardDAV payloads. 31.13 invitations never write into a subscribed calendar (card read-only, storeInvited backstop).
+- Merge: 31.7 and 31.9 each added a free/busy helper (kept mayReadFreeBusy, which refuses an empty caller); dropped an unrequested docscheck package that matched wrapped prose. Full gate green; browser: availability view shows own Busy blocks, a non-sharing local user and an external address render the same.
+PATTERN: [security] A view that looks up people by address must render refused and unknown addresses identically, and must use the same authorisation helper as every other free/busy path.
+PATTERN: [limits] A cap enforced where data is parsed cannot know who is exempt; parse with a hard bound, apply the business rule where the record is in hand, and grep for every other user of a constant before raising it.

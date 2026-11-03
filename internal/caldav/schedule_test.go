@@ -77,11 +77,11 @@ func (f *fakeSched) Organise(user string, before, after *bongov1.Event, skip map
 	return out
 }
 
-func (f *fakeSched) Reply(user string, _ *bongov1.Event, attendee, partstat, rid string) bool {
+func (f *fakeSched) Reply(user string, _ *bongov1.Event, attendee, partstat, rid string) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.replies = append(f.replies, replyCall{user, attendee, partstat, rid})
-	return true
+	return scheduleStatusSent
 }
 
 func (f *fakeSched) FreeBusy(requester, address string, from, to int64) ([][2]int64, bool) {
@@ -103,6 +103,7 @@ type schedEnv struct {
 	inbox  *store.ScheduleInboxStore
 	events *store.EventStore
 	ps     *store.PebbleStore
+	app    *grantApplier // set by realSchedEnv
 }
 
 func newSchedEnv(t *testing.T, withScheduler bool) *schedEnv {

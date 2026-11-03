@@ -97,6 +97,20 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"public link send", "/calendar/missing/publish/send", func(string) url.Values {
 			return url.Values{"send_to": {"friend@example.com"}}
 		}},
+		{"calendar share", "/calendar/missing/share", func(string) url.Values {
+			return url.Values{"share_with": {"friend@example.com"}}
+		}},
+		{"calendar unshare", "/calendar/missing/unshare", func(string) url.Values {
+			return url.Values{"share_with": {"nobody"}}
+		}},
+		{"invitation answer", "/mail/INBOX/1/invitation", func(string) url.Values {
+			return url.Values{"action": {"accept"}}
+		}},
+		{"task create", "/tasks", func(n string) url.Values { return url.Values{"title": {"task " + n}} }},
+		{"task update", "/tasks/missing", func(string) url.Values { return url.Values{"title": {"x"}} }},
+		{"task complete", "/tasks/missing/complete", func(string) url.Values { return url.Values{} }},
+		{"task reopen", "/tasks/missing/reopen", func(string) url.Values { return url.Values{} }},
+		{"task delete", "/tasks/missing/delete", func(string) url.Values { return url.Values{} }},
 		{"domain alias", "/admin/domains", func(n string) url.Values {
 			return url.Values{"domain": {n + ".example"}, "alias_of": {"localhost"}}
 		}},
@@ -156,6 +170,23 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 			})
 		}
 	}
+
+	// adminH.SetResourceBookings: without it the bookings page answers 503.
+	t.Run("resource bookings wired", func(t *testing.T) {
+		id, err := auth.CreateResource(a, a.Metadata, "room1@localhost", "Room 1", auth.ResourceRoom, 4)
+		if err != nil {
+			t.Fatalf("CreateResource: %v", err)
+		}
+		resp, err := client.Get(base + "/admin/users/" + id + "/bookings")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET bookings = %d %q, want 200", resp.StatusCode, b)
+		}
+	})
 
 	t.Run("share invitations page", func(t *testing.T) {
 		resp, err := client.Get(base + "/calendar/shares")

@@ -151,6 +151,46 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 	</nav>
 }
 
+// EventAvailability is the event form's availability fragment: for each
+// attendee either their busy blocks on the day, titled "Busy", or "Availability
+// not shared". It is empty when there is nothing to show. Every attendee whose
+// availability the viewer may not read renders the same, so the fragment says
+// nothing about whether an address has an account.
+templ EventAvailability(v *AvailabilityView) {
+	if v != nil && len(v.Rows) > 0 {
+		<section class="availability-view">
+			<h3 class="availability-title">{ t(ctx, "calendar.availability") }</h3>
+			<ul class="availability-list">
+				for _, row := range v.Rows {
+					if row.Shared {
+						<li class="availability-row">
+							<span class="availability-who">{ row.Label }</span>
+							<svg class="availability-strip" viewBox="0 0 240 12" aria-hidden="true">
+								<rect class="availability-proposed" x={ availabilityXs(v, v.Proposed[0]) } y="0" width={ availabilityWidth(v, v.Proposed[0], v.Proposed[1]) } height="12"></rect>
+								for _, b := range row.Blocks {
+									<rect class={ availabilityBlockClass(v, b) } x={ availabilityXs(v, b[0]) } y="3" width={ availabilityWidth(v, b[0], b[1]) } height="6"></rect>
+								}
+							</svg>
+							if len(row.Blocks) == 0 {
+								<span class="availability-note">{ t(ctx, "calendar.availabilityFree") }</span>
+							}
+							for _, b := range row.Blocks {
+								<span class={ availabilityBlockClass(v, b) }>{ t(ctx, "calendar.busy") } { availabilityRange(v, b[0], b[1]) }</span>
+							}
+						</li>
+					} else {
+						<li class="availability-row">
+							<span class="availability-who">{ row.Label }</span>
+							<span class="availability-note">{ t(ctx, "calendar.availabilityNotShared") }</span>
+						</li>
+					}
+				}
+			</ul>
+			<p class="meta availability-proposed-time">{ t(ctx, "calendar.proposedTime") } { availabilityRange(v, v.Proposed[0], v.Proposed[1]) }</p>
+		</section>
+	}
+}
+
 templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew bool, date string, email string) {
 	@LayoutWithContent(t(ctx, "calendar.event"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
@@ -342,6 +382,16 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						<input type="time" name="end_time" value={ eventEndTime(ctx, formTimes(ctx, event)) }/>
 					</label>
 				</div>
+				<div
+					class="availability"
+					hx-get="/calendar/freebusy"
+					hx-trigger="load, change from:closest form, availability-refresh from:closest form"
+					hx-include="[name=attendees],[name=start_date],[name=start_time],[name=end_time],[name=all_day]"
+					hx-vals={ availabilityVals(event) }
+					hx-target="this"
+					hx-swap="innerHTML"
+					aria-live="polite"
+				></div>
 				<div class="form-grid-two">
 					<label x-bind:hidden="repeatHidden">
 						{ t(ctx, "calendar.repeat") }

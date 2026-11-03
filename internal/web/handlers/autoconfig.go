@@ -15,7 +15,7 @@ import (
 //
 //   - Mozilla autoconfig (Thunderbird): GET /.well-known/autoconfig/mail/config-v1.1.xml
 //   - Microsoft Autodiscover (Outlook): POST/GET /autodiscover/autodiscover.xml
-//   - Apple profile (iOS/macOS Mail):   GET /.well-known/mobileconfig
+//   - Apple profile (iOS/macOS mail, calendar, contacts): GET /.well-known/mobileconfig
 //
 // These endpoints are public by necessity — clients fetch them before any
 // credentials exist. They expose only already-public data (the mail hostname and
@@ -185,10 +185,39 @@ func (h *AutoconfigHandler) Autodiscover(w http.ResponseWriter, r *http.Request)
 	writeXML(w, "application/xml; charset=utf-8", resp)
 }
 
-// AppleMobileconfig serves an unsigned Apple .mobileconfig profile for iOS/macOS
-// Mail. The address is required via the email query parameter (the download link
-// in the web UI supplies the signed-in user's address). The profile is unsigned,
-// so the OS shows it as "Unverified" on install; it contains no password.
+// davHTTPSPort is the port the CalDAV and CardDAV accounts in the Apple profile
+// connect to. It is fixed because the web server is reached over public HTTPS.
+const davHTTPSPort = 443
+
+// writeDAVPayload appends one com.apple.<kind>.account payload dict. kind is the
+// key prefix ("CalDAV" or "CardDAV"), slug the lower-case form used in the
+// payload type and identifier. No password key is written, so the device asks
+// for it. The UUID is derived from uuidSeed plus the address, so it is stable
+// across downloads and a reinstall replaces the account.
+func writeDAVPayload(b *bytes.Buffer, kind, slug, principal, description, host, email, rev, uuidSeed string) {
+	b.WriteString("    <dict>\n")
+	plistStr(b, kind+"AccountDescription", description)
+	plistStr(b, kind+"HostName", host)
+	plistInt(b, kind+"Port", davHTTPSPort)
+	plistStr(b, kind+"PrincipalURL", principal)
+	plistBool(b, kind+"UseSSL", true)
+	plistStr(b, kind+"Username", email)
+	plistStr(b, "PayloadDescription", "Configures "+kind+" account for "+email)
+	plistStr(b, "PayloadDisplayName", description)
+	plistStr(b, "PayloadIdentifier", rev+"."+slug+".account")
+	plistStr(b, "PayloadType", "com.apple."+slug+".account")
+	plistStr(b, "PayloadUUID", stableUUID(uuidSeed+email))
+	plistInt(b, "PayloadVersion", 1)
+	b.WriteString("    </dict>\n")
+}
+
+// AppleMobileconfig serves an unsigned Apple .mobileconfig profile for iOS and
+// macOS Mail, Calendar and Contacts (mail, CalDAV and CardDAV account
+// payloads). The address is required via the email query parameter (the
+// download link in the web UI supplies the signed-in user's address). The
+// profile is unsigned,
+// so the OS shows it as "Unverified" on install; it contains no password and
+// the device asks for it.
 func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.URL.Query().Get("email"))
 	domain := domainOf(email)
@@ -233,8 +262,11 @@ func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Req
 	plistStr(&b, "PayloadType", "com.apple.mail.managed")
 	plistStr(&b, "PayloadUUID", accountUUID)
 	plistInt(&b, "PayloadVersion", 1)
-	b.WriteString("    </dict>\n  </array>\n")
-	plistStr(&b, "PayloadDisplayName", domain+" email")
+	b.WriteString("    </dict>\n")
+	writeDAVPayload(&b, "CalDAV", "caldav", "/caldav/", domain+" calendar", host, email, rev, "bongo-caldav-account:")
+	writeDAVPayload(&b, "CardDAV", "carddav", "/carddav/", domain+" contacts", host, email, rev, "bongo-carddav-account:")
+	b.WriteString("  </array>\n")
+	plistStr(&b, "PayloadDisplayName", domain+" mail, calendar and contacts")
 	plistStr(&b, "PayloadIdentifier", rev+".mail")
 	plistBool(&b, "PayloadRemovalDisallowed", false)
 	plistStr(&b, "PayloadType", "Configuration")

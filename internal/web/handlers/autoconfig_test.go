@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"encoding/xml"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -297,6 +300,218 @@ func TestAutoconfigImplicitTLSSubmission(t *testing.T) {
 				if strings.Contains(body, bad) {
 					t.Errorf("unexpected %q in:\n%s", bad, body)
 				}
+			}
+		})
+	}
+}
+
+// plistPayload is one parsed PayloadContent dict: key to scalar value
+// ("true"/"false" for booleans).
+type plistPayload map[string]string
+
+// parseMobileconfig parses a profile and returns the outer dict's scalar keys
+// and the payloads in PayloadContent. Parsing proves the output is well-formed.
+func parseMobileconfig(t *testing.T, body string) (outer plistPayload, payloads []plistPayload) {
+	t.Helper()
+	dec := xml.NewDecoder(strings.NewReader(body))
+	outer = plistPayload{}
+	depth := 0 // dict and array nesting; the top-level dict is depth 1
+	var cur plistPayload
+	var key string
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("profile is not well-formed: %v", err)
+		}
+		switch el := tok.(type) {
+		case xml.EndElement:
+			if el.Name.Local == "dict" || el.Name.Local == "array" {
+				if el.Name.Local == "dict" && depth == 3 {
+					payloads = append(payloads, cur)
+					cur = nil
+				}
+				depth--
+			}
+		case xml.StartElement:
+			switch el.Name.Local {
+			case "dict", "array":
+				depth++
+				if el.Name.Local == "dict" && depth == 3 {
+					cur = plistPayload{}
+				}
+			case "key", "string", "integer":
+				var v string
+				if err := dec.DecodeElement(&v, &el); err != nil {
+					t.Fatalf("decode %s: %v", el.Name.Local, err)
+				}
+				if el.Name.Local == "key" {
+					key = v
+				} else if cur != nil {
+					cur[key] = v
+				} else if depth == 1 {
+					outer[key] = v
+				}
+			case "true", "false":
+				if cur != nil {
+					cur[key] = el.Name.Local
+				} else if depth == 1 {
+					outer[key] = el.Name.Local
+				}
+			}
+		}
+	}
+	return outer, payloads
+}
+
+func fetchMobileconfig(t *testing.T, h *AutoconfigHandler, email, reqHost string) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/mobileconfig?email="+url.QueryEscape(email), nil)
+	if reqHost != "" {
+		req.Host = reqHost
+	}
+	rec := httptest.NewRecorder()
+	h.AppleMobileconfig(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	return rec.Body.String()
+}
+
+// assertNoPasswords fails if any payload carries a password-valued key. Exact
+// names are checked: OutgoingPasswordSameAsIncoming is legitimate.
+func assertNoPasswords(t *testing.T, payloads []plistPayload) {
+	t.Helper()
+	banned := []string{"CalDAVPassword", "CardDAVPassword", "IncomingPassword", "OutgoingPassword"}
+	for _, p := range payloads {
+		for _, k := range banned {
+			if _, ok := p[k]; ok {
+				t.Errorf("payload %s carries %s", p["PayloadType"], k)
+			}
+		}
+	}
+}
+
+func TestAppleMobileconfigDAVPayloads(t *testing.T) {
+	h := newTestAutoconfig()
+	outer, payloads := parseMobileconfig(t, fetchMobileconfig(t, h, "alice@example.com", ""))
+
+	wantTypes := []string{"com.apple.mail.managed", "com.apple.caldav.account", "com.apple.carddav.account"}
+	if len(payloads) != len(wantTypes) {
+		t.Fatalf("payloads = %d, want %d", len(payloads), len(wantTypes))
+	}
+	for i, want := range wantTypes {
+		if got := payloads[i]["PayloadType"]; got != want {
+			t.Errorf("payload %d type = %q, want %q", i, got, want)
+		}
+	}
+
+	tests := []struct {
+		name   string
+		idx    int
+		prefix string
+		path   string
+	}{
+		{"caldav", 1, "CalDAV", "/caldav/"},
+		{"carddav", 2, "CardDAV", "/carddav/"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := payloads[tc.idx]
+			want := map[string]string{
+				tc.prefix + "HostName":     "mail.example.com",
+				tc.prefix + "Port":         "443",
+				tc.prefix + "UseSSL":       "true",
+				tc.prefix + "PrincipalURL": tc.path,
+				tc.prefix + "Username":     "alice@example.com",
+				"PayloadVersion":           "1",
+			}
+			for k, v := range want {
+				if p[k] != v {
+					t.Errorf("%s = %q, want %q", k, p[k], v)
+				}
+			}
+		})
+	}
+	assertNoPasswords(t, payloads)
+
+	// Identifiers and UUIDs are unique across the outer profile and every payload.
+	uuids, ids := map[string]bool{}, map[string]bool{}
+	for _, p := range append([]plistPayload{outer}, payloads...) {
+		if p["PayloadUUID"] == "" || p["PayloadIdentifier"] == "" {
+			t.Fatalf("payload missing identifier or UUID: %v", p)
+		}
+		if uuids[p["PayloadUUID"]] {
+			t.Errorf("duplicate PayloadUUID %s", p["PayloadUUID"])
+		}
+		if ids[p["PayloadIdentifier"]] {
+			t.Errorf("duplicate PayloadIdentifier %s", p["PayloadIdentifier"])
+		}
+		uuids[p["PayloadUUID"]], ids[p["PayloadIdentifier"]] = true, true
+	}
+}
+
+func TestAppleMobileconfigStableIdentifiers(t *testing.T) {
+	h := newTestAutoconfig()
+	identity := func(email string) (map[string]bool, map[string]bool) {
+		outer, payloads := parseMobileconfig(t, fetchMobileconfig(t, h, email, ""))
+		u, i := map[string]bool{}, map[string]bool{}
+		for _, p := range append([]plistPayload{outer}, payloads...) {
+			u[p["PayloadUUID"]], i[p["PayloadIdentifier"]] = true, true
+		}
+		return u, i
+	}
+	u1, i1 := identity("alice@example.com")
+	u2, i2 := identity("alice@example.com")
+	u3, _ := identity("bob@example.com")
+	if len(u1) != 4 {
+		t.Fatalf("distinct UUIDs = %d, want 4", len(u1))
+	}
+	for k := range u1 {
+		if !u2[k] {
+			t.Errorf("UUID %s not stable across downloads", k)
+		}
+		if u3[k] {
+			t.Errorf("UUID %s shared with another user", k)
+		}
+	}
+	for k := range i1 {
+		if !i2[k] {
+			t.Errorf("identifier %s not stable across downloads", k)
+		}
+	}
+}
+
+func TestAppleMobileconfigInjection(t *testing.T) {
+	evilUser := "a</string><key>CalDAVPassword</key><string>x@example.com"
+	evilHost := "x</string><key>CardDAVPassword</key><string>y"
+	tests := []struct {
+		name     string
+		mailHost string
+		email    string
+		reqHost  string
+		wantUser string
+		wantHost string
+	}{
+		{"markup in local part", "mail.example.com", evilUser, "", evilUser, "mail.example.com"},
+		{"markup in request host fallback", "", "alice@example.com", evilHost, "alice@example.com", evilHost},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := NewAutoconfigHandler(tc.mailHost, 143, 993, 587, 465)
+			h.SetDomainChecker(func(d string) bool { return d == "example.com" })
+			_, payloads := parseMobileconfig(t, fetchMobileconfig(t, h, tc.email, tc.reqHost))
+			if len(payloads) != 3 {
+				t.Fatalf("payloads = %d, want 3", len(payloads))
+			}
+			assertNoPasswords(t, payloads)
+			if got := payloads[1]["CalDAVUsername"]; got != tc.wantUser {
+				t.Errorf("CalDAVUsername = %q, want %q", got, tc.wantUser)
+			}
+			if got := payloads[2]["CardDAVHostName"]; got != tc.wantHost {
+				t.Errorf("CardDAVHostName = %q, want %q", got, tc.wantHost)
 			}
 		})
 	}

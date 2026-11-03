@@ -77,12 +77,14 @@ type invitation struct {
 // A save that changes neither time, place, repeat rule nor attendees sends
 // nothing, so it does not spend the recipient budget.
 func (h *CalendarHandler) notifyAttendees(r *http.Request, userID, email string, before, after *bongov1.Event) (notReached []string) {
-	return h.deliverPlan(r, userID, email, h.planAttendees(userID, email, before, after))
+	return h.deliverPlan(r, userID, email, h.planAttendees(userID, email, before, after, nil))
 }
 
 // planAttendees is the part of notifyAttendees that decides what to send,
-// without sending it. CalDAV implicit scheduling plans with it too.
-func (h *CalendarHandler) planAttendees(userID, email string, before, after *bongov1.Event) []invitation {
+// without sending it. CalDAV implicit scheduling plans with it too; addresses
+// in skip (lower-cased) are sent nothing and take up none of the recipient
+// limit.
+func (h *CalendarHandler) planAttendees(userID, email string, before, after *bongov1.Event, skip map[string]bool) []invitation {
 	if h.invites == nil || (before == nil && after == nil) {
 		return nil
 	}
@@ -98,19 +100,19 @@ func (h *CalendarHandler) planAttendees(userID, email string, before, after *bon
 	var plan []invitation
 	switch {
 	case before == nil:
-		plan = append(plan, invitation{method: imip.MethodRequest, event: after, to: h.inviteRecipients(userID, email, organiser, after.Attendees)})
+		plan = append(plan, invitation{method: imip.MethodRequest, event: after, to: h.inviteRecipients(userID, email, organiser, after.Attendees, skip)})
 	case after == nil:
 		gone := proto.Clone(before).(*bongov1.Event)
 		gone.Sequence = before.Sequence + 1
-		plan = append(plan, invitation{method: imip.MethodCancel, event: gone, to: h.inviteRecipients(userID, email, organiser, before.Attendees)})
+		plan = append(plan, invitation{method: imip.MethodCancel, event: gone, to: h.inviteRecipients(userID, email, organiser, before.Attendees, skip)})
 	case inviteRelevantChange(before, after):
-		plan = append(plan, invitation{method: imip.MethodRequest, updated: true, event: after, to: h.inviteRecipients(userID, email, organiser, after.Attendees)})
+		plan = append(plan, invitation{method: imip.MethodRequest, updated: true, event: after, to: h.inviteRecipients(userID, email, organiser, after.Attendees, skip)})
 		if removed := removedAttendees(before, after); len(removed) > 0 {
 			gone := proto.Clone(before).(*bongov1.Event)
 			gone.Attendees = removed
 			// At least one above the REQUEST the attendee last saw.
 			gone.Sequence = max(after.Sequence, before.Sequence+1)
-			plan = append(plan, invitation{method: imip.MethodCancel, event: gone, to: h.inviteRecipients(userID, email, organiser, removed)})
+			plan = append(plan, invitation{method: imip.MethodCancel, event: gone, to: h.inviteRecipients(userID, email, organiser, removed, skip)})
 		}
 	}
 	return plan
@@ -157,7 +159,7 @@ func (h *CalendarHandler) notifyInstance(r *http.Request, userID, email string, 
 	if !icalevent.ValidAddress(organiser) || !h.maySendAs(userID, email, organiser) {
 		return nil
 	}
-	to := func(e *bongov1.Event) []string { return h.inviteRecipients(userID, email, organiser, e.Attendees) }
+	to := func(e *bongov1.Event) []string { return h.inviteRecipients(userID, email, organiser, e.Attendees, nil) }
 
 	var plan []invitation
 	switch {
@@ -240,22 +242,34 @@ func (h *CalendarHandler) sendInvitation(userID, email, locale string, loc *time
 // maySendAs reports whether the acting user may send as addr: the session
 // address or a verified send-as address of theirs.
 func (h *CalendarHandler) maySendAs(userID, email, addr string) bool {
+	ok, err := h.sendAsCheck(userID, email, addr)
+	return ok && err == nil
+}
+
+// sendAsCheck is maySendAs that also reports a failed lookup, for a caller
+// that must tell "may not" from "could not find out". ok is false on error.
+func (h *CalendarHandler) sendAsCheck(userID, email, addr string) (bool, error) {
 	ok, err := store.CanSendAs(h.addresses, userID, email, addr)
 	if err != nil {
 		slog.Warn("calendar: send-as lookup failed, sending no invitations", "user", userID, "error", err)
-		return false
+		return false, err
 	}
-	return ok
+	return ok, nil
 }
 
 // inviteRecipients returns the addresses to write to: valid, once each, and
 // not the organiser or any other address the user sends as. A stored attendee
 // list can come from a CalDAV client, so each address is validated again.
-func (h *CalendarHandler) inviteRecipients(userID, email, organiser string, attendees []*bongov1.Attendee) []string {
+// Addresses in skip are left out before the limit is counted, so attendees a
+// client schedules for itself do not take a recipient's place.
+func (h *CalendarHandler) inviteRecipients(userID, email, organiser string, attendees []*bongov1.Attendee, skip map[string]bool) []string {
 	seen := map[string]bool{strings.ToLower(organiser): true, strings.ToLower(email): true}
+	for a := range skip {
+		seen[strings.ToLower(a)] = true
+	}
 	var out []string
-	for i, a := range attendees {
-		if i >= icalevent.MaxAttendees {
+	for _, a := range attendees {
+		if len(out) >= icalevent.MaxAttendees {
 			break
 		}
 		key := strings.ToLower(a.Address)

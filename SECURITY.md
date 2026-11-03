@@ -130,6 +130,47 @@ as locally authored), and a reply has no envelope sender so no bounce is ever
 generated for it. Tracking records are swept only by the leader; while an older
 node leads they accumulate until a newer node takes over.
 
+**Published calendar feeds are the one unauthenticated data route.**
+`GET /pub/calendar/{owner}/{calendar}/{token}.ics` serves a calendar to anyone
+who holds the link. The token is 32 random bytes in base64url, independent of
+the session secret, and is compared in constant time; a dummy token is compared
+when the calendar does not exist. An unknown owner, an unknown or unpublished
+calendar, a malformed token and a wrong token all get one identical `404`. The
+token is never logged. It is stored on the calendar record, so it is in every
+backup and on every node: treat a backup as holding live feed links. The
+optional feed password is stored as a bcrypt hash, and any user name is
+accepted. A request with no credentials is a challenge, is not counted and
+costs no bcrypt. After 10 wrong passwords in 15 minutes the client IP and the
+calendar as a whole are answered `429` with `Retry-After: 900`. The
+per-calendar key means anyone who holds the link but not the password can keep
+the feed answering `429` for every subscriber; this is deliberate, and the fix
+is to regenerate the link. The limiter is in memory and per node, so it resets
+on restart and a cluster allows 10 attempts per node. The per-IP key is the
+client address from `middleware.ClientIP`, so it depends on
+`server.trusted_proxies` as described above. Regenerating or unpublishing
+revokes the old link at once on the node that handled the request. Another
+node can still serve the old link until replication reaches it, and responses
+carry `Cache-Control: private, max-age=300`, so a subscriber's client or a
+cache can keep showing the old content for up to five minutes.
+
+**Calendar subscriptions fetch URLs that a user typed.** The fetch client in
+`internal/netx` checks the address in the dialer's control hook, which runs
+after DNS resolution and before every connect, including each of at most 3
+redirects. A name that resolves to an internal address, a DNS rebinding answer
+and a redirect to an internal address are therefore refused by the same check.
+It refuses loopback, RFC 1918, CGNAT, link-local (including cloud metadata),
+multicast, reserved, documentation and benchmarking ranges, IPv6 unique-local
+and link-local addresses, and NAT64 and 6to4 addresses; an IPv4-mapped address
+is judged as IPv4. Only the schemes `http`, `https`, `webcal` and `webcals`
+(both fetched as `https`) are accepted, URLs with user information are refused, and the port
+must be 80, 443 or 8443. `HTTP_PROXY` is ignored, a fetch times out after 30
+seconds, and a body over 5 MiB is refused rather than truncated. The operator
+setting `calendar.subscriptions.allow_private_networks` (default `false`)
+lifts the address rule only, not the scheme, port or user-information rules.
+Turning it on lets every user's subscription make the server fetch from its own
+network, which is server-side request forgery by design; enable it only when
+every user is trusted. It needs a restart to take effect.
+
 ## Scope
 
 In scope: the server (`internal/`, `cmd/`), the protocol implementations, and the

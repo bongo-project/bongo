@@ -39,6 +39,7 @@ type schedHarness struct {
 	acl    *store.ACLStore
 	addrs  *store.AddressStore
 	prefs  schedPrefs
+	ps     *store.PebbleStore
 }
 
 const (
@@ -67,6 +68,7 @@ func newSchedHarness(t *testing.T) *schedHarness {
 		addrs:  store.NewAddressStore(ps, applier, mgr.System),
 		sender: &fakeInviteSender{},
 		prefs:  schedPrefs{},
+		ps:     ps,
 	}
 	h := NewCalendarHandler(hn.events, store.NewCalendarStore(ps, applier), nil)
 	h.SetACL(hn.acl)
@@ -263,8 +265,8 @@ func TestSchedulerReply(t *testing.T) {
 			"ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;SCHEDULE-STATUS=1.1:mailto:alice@d.test\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"),
 	}
 	hn := newSchedHarness(t)
-	if !hn.sched.Reply(schedAlice, ev, "alice@d.test", "ACCEPTED", "") {
-		t.Fatal("reply not sent")
+	if st := hn.sched.Reply(schedAlice, ev, "alice@d.test", "ACCEPTED", ""); st != "1.1" {
+		t.Fatalf("reply status %q, want 1.1", st)
 	}
 	msgs := hn.sender.messages()
 	if len(msgs) != 1 || msgs[0].method != "REPLY" || strings.Join(msgs[0].to, ",") != "zed@elsewhere.test" || msgs[0].from != "alice@d.test" {
@@ -281,8 +283,8 @@ func TestSchedulerReply(t *testing.T) {
 
 	// One occurrence.
 	hn.sender.reset()
-	if !hn.sched.Reply(schedAlice, ev, "alice@d.test", "DECLINED", "20300513T090000Z") {
-		t.Fatal("instance reply not sent")
+	if st := hn.sched.Reply(schedAlice, ev, "alice@d.test", "DECLINED", "20300513T090000Z"); st != "1.1" {
+		t.Fatalf("instance reply status %q, want 1.1", st)
 	}
 	if rid := hn.sender.messages()[0].vevent(t).Props.Get(ical.PropRecurrenceID); rid == nil || rid.Value != "20300513T090000Z" {
 		t.Errorf("RECURRENCE-ID = %v", rid)
@@ -290,11 +292,11 @@ func TestSchedulerReply(t *testing.T) {
 
 	// An address the user cannot send as is never answered as.
 	hn.sender.reset()
-	if hn.sched.Reply(schedAlice, ev, "sales@d.test", "ACCEPTED", "") || len(hn.sender.messages()) != 0 {
-		t.Error("a reply was sent as an alias")
+	if st := hn.sched.Reply(schedAlice, ev, "sales@d.test", "ACCEPTED", ""); st != "3.8" || len(hn.sender.messages()) != 0 {
+		t.Errorf("a reply was sent as an alias, or its status is %q, want 3.8", st)
 	}
-	if hn.sched.Reply(schedAlice, ev, "bob@d.test", "ACCEPTED", "") || len(hn.sender.messages()) != 0 {
-		t.Error("a reply was sent as another user")
+	if st := hn.sched.Reply(schedAlice, ev, "bob@d.test", "ACCEPTED", ""); st != "3.8" || len(hn.sender.messages()) != 0 {
+		t.Errorf("a reply was sent as another user, or its status is %q, want 3.8", st)
 	}
 }
 
@@ -358,5 +360,28 @@ func TestLocalMidnightPlacesAllDayInUserZone(t *testing.T) {
 	}
 	if want := time.Date(2026, 11, 9, 23, 0, 0, 0, time.UTC).Unix(); localMidnight(stored, berlin) != want {
 		t.Errorf("localMidnight = %d, want %d (23:00 UTC the day before)", localMidnight(stored, berlin), want)
+	}
+}
+
+// A send-as lookup that fails is not a refusal: the answer is reported as 5.1,
+// never stored as 3.8 (no authority), and nothing is sent.
+func TestSchedulerReplyLookupFailureIsNotNoAuthority(t *testing.T) {
+	ev := &bongov1.Event{
+		Guid: "g", Organizer: "zed@elsewhere.test", Title: "Their meeting",
+		Attendees: []*bongov1.Attendee{{Address: "broken@d.test", Partstat: "NEEDS-ACTION"}},
+	}
+	hn := newSchedHarness(t)
+	// A record that does not decode makes AddressStore.Get fail.
+	if err := hn.ps.Set([]byte("/system/address/broken@d.test"), []byte{0xff, 0xff, 0xff}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := hn.addrs.Get("broken@d.test"); err == nil {
+		t.Fatal("test setup: the lookup should fail")
+	}
+	if st := hn.sched.Reply(schedAlice, ev, "broken@d.test", "ACCEPTED", ""); st != "5.1" {
+		t.Errorf("status = %q on a failed lookup, want 5.1", st)
+	}
+	if n := len(hn.sender.messages()); n != 0 {
+		t.Errorf("%d messages sent", n)
 	}
 }

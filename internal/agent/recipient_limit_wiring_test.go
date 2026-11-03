@@ -216,6 +216,21 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 		t.Error("share limiter allows a 21st request in the hour")
 	}
 
+	// The availability lookup by address has its own, larger budget. Deleting
+	// the wiring line in Run leaves it unlimited.
+	fl := a.calendarHandler.FreeBusyLimiter()
+	if fl == nil {
+		t.Fatal("calendar handler has no free/busy limiter after Run")
+	}
+	for i := range freeBusyLookupsPerHour {
+		if !fl.Allow("u1") {
+			t.Fatalf("availability request %d refused under limit %d", i+1, freeBusyLookupsPerHour)
+		}
+	}
+	if fl.Allow("u1") {
+		t.Error("free/busy limiter allows a request over the hourly limit")
+	}
+
 	// Share invitation mail: the inviter is wired into the handler and its
 	// worker runs. Deleting either line in Run leaves invitations unsent.
 	if a.shareInviter == nil || a.calendarHandler.ShareInviter() != a.shareInviter {
