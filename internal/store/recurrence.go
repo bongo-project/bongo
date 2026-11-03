@@ -509,21 +509,38 @@ func SeriesEndsBy(event *bongov1.Event, t time.Time) bool {
 // EventEntirelyPast reports whether nothing of event ends after now: a single
 // event or an expanded occurrence whose end (its start when it has none) is
 // before now, or a bounded series by SeriesEndsBy. An open-ended series never
-// is, and nor is a nil event. All-day events are stored at UTC midnight with
-// an exclusive end, so they get 14 hours of slack for the zones furthest from
-// UTC. RDATE is not modelled (see the top of this file) and is not looked at.
-func EventEntirelyPast(event *bongov1.Event, now time.Time) bool {
+// is, and nor is a nil event.
+//
+// All-day events are stored as UTC-midnight dates with an exclusive end, so
+// they are judged by the wall clock of loc (nil means UTC): one dated
+// yesterday in loc is past from local midnight. Timed events are instants and
+// ignore loc. RDATE is not modelled (see the top of this file) and is not
+// looked at.
+func EventEntirelyPast(event *bongov1.Event, now time.Time, loc *time.Location) bool {
 	if event == nil {
 		return false
 	}
-	if event.AllDay {
-		now = now.Add(-14 * time.Hour)
+	if !event.AllDay {
+		// An expanded occurrence keeps the master's RRULE but is one slot.
+		if event.Rrule != "" && event.RecurrenceId == "" {
+			return SeriesEndsBy(event, now)
+		}
+		return max(event.EndTime, event.StartTime) < now.Unix()
 	}
-	// An expanded occurrence keeps the master's RRULE but is one slot.
+	if loc == nil {
+		loc = time.UTC
+	}
+	w := now.In(loc)
+	floating := time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), w.Second(), 0, time.UTC)
 	if event.Rrule != "" && event.RecurrenceId == "" {
-		return SeriesEndsBy(event, now)
+		return SeriesEndsBy(event, floating)
 	}
-	return max(event.EndTime, event.StartTime) < now.Unix()
+	end := event.EndTime
+	if end <= event.StartTime {
+		end = event.StartTime + 86400
+	}
+	// The end is exclusive: the event is past at the midnight that ends it.
+	return end <= floating.Unix()
 }
 
 // todoSeriesCap bounds the slots NextTodoOccurrence walks from DTSTART, so a

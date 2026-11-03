@@ -174,16 +174,81 @@ func TestOrganiserExcludedOccurrenceSendsOneCancel(t *testing.T) {
 }
 
 func TestOrganiserCancelledOverrideSendsOneCancel(t *testing.T) {
-	e, rec := realSchedEnv(t)
-	attendees := []string{orgLine, bobLine}
-	mustPut(t, e, "c1", weekly("c1", attendees))
-	rec.reset()
-	cancelled := veventBlock("UID:c1", "DTSTAMP:20300101T000000Z", "RECURRENCE-ID:20301104T090000Z", "DTSTART:20301104T090000Z",
-		"DTEND:20301104T100000Z", "SUMMARY:Weekly", "STATUS:CANCELLED")
-	// Excluded as well: still one CANCEL for the occurrence.
-	mustPut(t, e, "c1", weekly("c1", append(attendees, "EXDATE:20301104T090000Z"), cancelled))
-	if got := mailed(rec); got != "CANCEL "+occBob {
-		t.Errorf("sent %q, want exactly one CANCEL", got)
+	for _, tc := range []struct {
+		name   string
+		master []string // extra master lines on top of the attendees
+	}{
+		{"with EXDATE", []string{"EXDATE:20301104T090000Z"}},
+		{"override only", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, rec := realSchedEnv(t)
+			attendees := []string{orgLine, bobLine}
+			mustPut(t, e, "c1", weekly("c1", attendees))
+			rec.reset()
+			cancelled := veventBlock("UID:c1", "DTSTAMP:20300101T000000Z", "RECURRENCE-ID:20301104T090000Z", "DTSTART:20301104T090000Z",
+				"DTEND:20301104T100000Z", "SUMMARY:Weekly", "STATUS:CANCELLED")
+			body := weekly("c1", append(append([]string(nil), attendees...), tc.master...), cancelled)
+			mustPut(t, e, "c1", body)
+			if got := mailed(rec); got != "CANCEL "+occBob {
+				t.Fatalf("sent %q, want exactly one CANCEL", got)
+			}
+			cal := rec.last().calendar
+			for _, want := range []string{"RECURRENCE-ID:20301104T090000Z", "UID:c1"} {
+				if !strings.Contains(cal, want) {
+					t.Errorf("CANCEL lacks %s:\n%s", want, cal)
+				}
+			}
+			for _, bad := range []string{"RRULE", "EXDATE"} {
+				if strings.Contains(cal, bad) {
+					t.Errorf("CANCEL carries %s:\n%s", bad, cal)
+				}
+			}
+			rec.reset()
+			mustPut(t, e, "c1", body)
+			if got := mailed(rec); got != "" {
+				t.Errorf("re-upload sent %q, want nothing", got)
+			}
+		})
+	}
+}
+
+// A SUMMARY-only or DESCRIPTION-only change reaches the attendee as one
+// REQUEST with SEQUENCE raised from 0 to 1, through the real scheduler.
+func TestOrganiserTextChangeSendsRequest(t *testing.T) {
+	att := "ATTENDEE:mailto:" + occBob
+	for _, tc := range []struct {
+		name   string
+		change func(ics string) string
+		extra  []string
+		want   string // in the REQUEST
+	}{
+		{"summary only", func(s string) string { return strings.Replace(s, "SUMMARY:Planning", "SUMMARY:Renamed", 1) },
+			nil, "SUMMARY:Renamed"},
+		{"description only", func(s string) string { return s }, []string{"DESCRIPTION:Agenda"}, "DESCRIPTION:Agenda"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, rec := realSchedEnv(t)
+			mustPut(t, e, "t1", meeting("t1", orgLine, att, "SEQUENCE:0"))
+			if got := mailed(rec); got != "REQUEST "+occBob {
+				t.Fatalf("first PUT sent %q", got)
+			}
+			rec.reset()
+			mustPut(t, e, "t1", tc.change(meeting("t1", append([]string{orgLine, att, "SEQUENCE:0"}, tc.extra...)...)))
+			if got := mailed(rec); got != "REQUEST "+occBob {
+				t.Fatalf("sent %q, want exactly one REQUEST to bob", got)
+			}
+			m := rec.last()
+			if m.seq != "1" {
+				t.Errorf("REQUEST SEQUENCE = %q, want 1", m.seq)
+			}
+			if !strings.Contains(m.calendar, tc.want) {
+				t.Errorf("REQUEST lacks %s:\n%s", tc.want, m.calendar)
+			}
+			if got := sequenceOf(t, e.stored("t1").IcalRaw); got != "1" {
+				t.Errorf("stored SEQUENCE = %q, want 1", got)
+			}
+		})
 	}
 }
 

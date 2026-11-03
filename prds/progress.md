@@ -1691,3 +1691,10 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 - Follow-up agent: subscribe errors translated (the new status area made them visible), sidebar and CalDAV listing asserted, limit message interpolates the constant, stale 20-subscription comments fixed.
 - Gate green: make test-all, make lint, gosec. All 26 Phase 32 tasks done.
 - PATTERN: ui - giving a form a data-form-status area makes its error bodies user-visible; translate them in the same change.
+
+## 2026-11-03: v0.15.1 verification and Phase 33
+- norman verify (adversarial, 53 agents) on ba7a047: PASS 13, PARTIAL 13, FAIL 0. Five behaviour defects (web-event ETag, all-day past slack, silent delete refusal, encoded comma names, stale CalDAV guide) and test gaps; report in prds/verification.md.
+- Operator: fix all before the tag. Phase 33, eight tasks via the norman workflow; no merge conflicts. The docs task was rejected by the workflow's no-test rule and reviewed and accepted by the orchestrator. French delete strings aligned to "calendrier".
+- Gate green: make test-all, make lint, gosec.
+- PATTERN: workflow - a docs-only task cannot satisfy the tests-first evidence rule; review its diff by hand rather than re-running it.
+- PATTERN: caldav - an ETag computed from a synthesised object must not include anything stamped with time.Now (DTSTAMP); stamp with the record's modification time.

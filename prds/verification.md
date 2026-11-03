@@ -85,3 +85,45 @@ The invariant sweep then ran against `eefd2e9`. Five read-only agents enumerated
 
 ## Not yet done
 - **Manual client checks (operator):** CalDAV scheduling with Apple Calendar and Thunderbird; tasks with Apple Reminders, Thunderbird and DAVx5 with tasks.org; Apple account setup after the discovery fix (PR #146).
+
+# Verification: Calendar fixes v0.15.1
+
+**Date:** 2026-11-03
+**Commit verified:** `ba7a047` (main after Phase 32)
+**PRD:** [active/prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md)
+**Rigor:** adversarial. Two read-only verifiers per story (implementation and edge cases; whether the tests would go red), then a completeness critic.
+**Scale:** 53 agents, 811 tool calls, 8 minutes.
+
+## Summary
+
+PASS 13 (US-001, 003, 006, 008, 009, 013, 014, 015, 017, 020, 021, 023, 024), PARTIAL 13, FAIL 0. Most PARTIAL verdicts are tests that would not go red; five are behaviour defects.
+
+## Behaviour defects
+
+1. **US-002 weak ETag for web events.** Events created or edited in the web have no `ical_raw`, so CalDAV serves `ETag: "t<unix>"`, which fails the criterion and changes only once a second.
+2. **US-011 all-day slack.** `store.EventEntirelyPast` gives all-day events a fixed 14 hours of slack instead of using the user's zone, so an all-day event dated yesterday still sends invitations until 14:00 UTC.
+3. **US-005 silent refusal.** The settings card's Delete button has no status target, so a refused or failed delete shows nothing; its error bodies are English only.
+4. **US-022 encoded names.** enmime decodes RFC 2047 words before `SplitAddressHeader`, so an encoded "Last, First" display name with a comma arrives unquoted and splits. `parseAddress` also keeps backslash escapes in quoted names.
+5. **Docs (critic).** `docs/caldav-carddav.md` still says MKCALENDAR ignores the component set and that a first MKCALENDAR never gets Tasks; it says a subscribed calendar's DELETE answers 403 (collection DELETE answers 409); it omits collection DELETE, extended MKCOL and the 5-calendar cap (507).
+
+## Test gaps
+
+- US-004: no Windows-TZID test for the whole-series web edit (`setEventTimes`, `eventTimesChanged`), `exdateFor` in published feeds, `freeBusyInstant` (VFREEBUSY POST), or web ICS import.
+- US-005: the confirmation step (`hx-confirm`) is unasserted; no agent-level CalDAV collection DELETE wiring test; the CalDAV delete test does not check the feed.
+- US-007: the agenda colour assertion is satisfied by the sidebar dot, so the row colour is unguarded; no wiring test.
+- US-010: no CalDAV summary-only or description-only PUT through the real scheduler checking the mailed SUMMARY and SEQUENCE; the web description-only case does not check DESCRIPTION.
+- US-011: no real CalDAV PUT or DELETE of a past event; no organiser-level test for an ended COUNT/UNTIL series.
+- US-012: no test of an override set to STATUS:CANCELLED without an EXDATE, checking RECURRENCE-ID and no RRULE.
+- US-018: no test drives `runReminderChecker`, where the hourly wipe lived.
+- US-019: the agent does not prove the reminder mailer gets the real preference store (locale).
+- US-022: no IMAP ENVELOPE (buildEnvelope) test; no Cc backfill test.
+- US-025: no assertion of the `user-created` and `booking-cancelled` redirect Locations.
+- US-026: no de/fr/es test of the new form strings or the subscribe 409; no locale-parity test.
+
+## Recorded, no change
+
+- US-016's "domain usage unchanged" means no mail is stored; accepted bookings add event records, which domain usage counts. Criterion wording corrected in 8.1.
+- A web DELETE of another user's calendar or a `shared:` key answers 404 (nothing changes, existence not revealed); accepted in 8.1.
+- An attendee removed from one override's attendee list gets no CANCEL for that occurrence (same class as the US-012 note in 8.2).
+
+All of the above fixed in Phase 33 at the operator's request (2026-11-03).

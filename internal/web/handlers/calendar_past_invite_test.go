@@ -188,3 +188,88 @@ func TestSchedulerOrganiseSkipsPastEvents(t *testing.T) {
 		t.Errorf("messages = %+v, want one REQUEST", m)
 	}
 }
+
+// An all-day event is over at local midnight in the user's zone, not 14 hours
+// later: in Berlin (UTC+2) one dated 9 May is past from 22:00Z on 9 May. The
+// 21:59Z run is the positive control for the same form.
+func TestInviteAllDayPastFromLocalMidnight(t *testing.T) {
+	tests := []struct {
+		name string
+		now  time.Time
+		want int
+	}{
+		{"just before local midnight", time.Date(2030, 5, 9, 21, 59, 0, 0, time.UTC), 1},
+		{"just after local midnight", time.Date(2030, 5, 9, 22, 0, 1, 0, time.UTC), 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, h, fs := newInviteHandler(t)
+			h.SetZoneSource(fixedZone{mustZone(t, "Europe/Berlin")})
+			h.now = func() time.Time { return tc.now }
+			form := url.Values{
+				"title": {"Away"}, "start_date": {"2030-05-09"}, "end_date": {"2030-05-09"},
+				"all_day": {"on"}, "attendees": {"bob@example.org"},
+			}
+			w := httptest.NewRecorder()
+			h.CreateEvent(w, formReq(http.MethodPost, "/calendar/event", form))
+			if w.Code != http.StatusSeeOther {
+				t.Fatalf("create status = %d: %s", w.Code, w.Body)
+			}
+			if n := len(fs.messages()); n != tc.want {
+				t.Fatalf("create sent %d messages, want %d", n, tc.want)
+			}
+		})
+	}
+}
+
+// A series that has ended sends nothing on create or delete; an open-ended
+// one from the same year does (the control).
+func TestInviteEndedSeriesSendsNothing(t *testing.T) {
+	tests := []struct {
+		name  string
+		rrule string
+		sends bool
+	}{
+		{"count ended", "FREQ=WEEKLY;COUNT=3", false},
+		{"until ended", "FREQ=WEEKLY;UNTIL=20300601T090000Z", false},
+		{"open-ended", "FREQ=WEEKLY", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, h, fs := newInviteHandler(t)
+			h.SetZoneSource(fixedZone{time.UTC})
+			h.now = func() time.Time { return pastNow.AddDate(0, 6, 0) }
+			form := url.Values{
+				"title": {"Weekly"}, "start_date": {"2030-05-06"}, "start_time": {"09:00"},
+				"end_date": {"2030-05-06"}, "end_time": {"10:00"}, "attendees": {"bob@example.org"},
+				"rrule": {tc.rrule},
+			}
+			w := httptest.NewRecorder()
+			h.CreateEvent(w, formReq(http.MethodPost, "/calendar/event", form))
+			if w.Code != http.StatusSeeOther {
+				t.Fatalf("create status = %d: %s", w.Code, w.Body)
+			}
+			want := 0
+			if tc.sends {
+				want = 1
+			}
+			if n := len(fs.messages()); n != want {
+				t.Fatalf("create sent %d messages, want %d", n, want)
+			}
+			events, _, err := env.events.ListAll(quotaUser, 0, 0)
+			if err != nil || len(events) != 1 {
+				t.Fatalf("events = %v, err %v", events, err)
+			}
+			guid := events[0].Guid
+			req := withGUID(withUserContext(httptest.NewRequest(http.MethodDelete, "/calendar/event/"+guid, nil), quotaUser, quotaEmail), guid)
+			w = httptest.NewRecorder()
+			h.DeleteEvent(w, req)
+			if w.Code != http.StatusSeeOther && w.Code != http.StatusOK {
+				t.Fatalf("delete status = %d", w.Code)
+			}
+			if n := len(fs.messages()); n != want*2 {
+				t.Errorf("after delete %d messages, want %d", n, want*2)
+			}
+		})
+	}
+}

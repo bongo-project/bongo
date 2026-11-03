@@ -17,12 +17,19 @@ import (
 // The VEVENT comes from SynthVEvent, which export and iMIP use as well; this
 // adds the calendar wrapper and the VTIMEZONE for the event's own zone.
 func Synthesise(e *bongov1.Event) *ical.Calendar {
+	return SynthesiseAt(e, time.Now())
+}
+
+// SynthesiseAt is Synthesise with the DTSTAMP given. DTSTAMP is the only
+// property that depends on anything but the event, so a caller that hashes the
+// encoding (the CalDAV ETag) passes a stamp taken from the event.
+func SynthesiseAt(e *bongov1.Event, stamp time.Time) *ical.Calendar {
 	cal := ical.NewCalendar()
 	cal.Props.SetText(ical.PropVersion, "2.0")
 	cal.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
 
 	loc := ZoneOrUTC(e.Timezone)
-	vevent := SynthVEvent(e, loc, time.Now())
+	vevent := SynthVEvent(e, loc, stamp)
 
 	// A TZID needs the VTIMEZONE that defines it.
 	if tz := VTimezoneFor(e, loc); tz != nil {

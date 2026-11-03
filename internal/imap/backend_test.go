@@ -135,6 +135,9 @@ func TestParseAddress(t *testing.T) {
 		{"display name", "\"Alice\" <alice@example.com>", "alice", "example.com", "Alice"},
 		{"no quotes", "Bob <bob@test.com>", "bob", "test.com", "Bob"},
 		{"local only", "localuser", "localuser", "", ""},
+		{"escaped quotes", `"A \"B\" C" <a@x.com>`, "a", "x.com", `A "B" C`},
+		{"angle bracket in name", `"a <b>" <c@d.com>`, "c", "d.com", "a <b>"},
+		{"comma in name", `"Smith, John" <j@x.com>`, "j", "x.com", "Smith, John"},
 	}
 
 	for _, tt := range tests {
@@ -698,4 +701,30 @@ func newDirectMailboxStore(ps *store.PebbleStore) *store.MailboxStore {
 	ms := store.NewMailboxStore(ps, applier)
 	applier.mailboxes = ms
 	return ms
+}
+
+func TestBuildEnvelopeQuotedCommaTo(t *testing.T) {
+	tests := []struct {
+		name string
+		to   string
+		want string
+	}{
+		{"quoted comma", `"Smith, John" <j@x.com>, b@y.com`, "Smith, John"},
+		{"encoded comma", "=?UTF-8?Q?M=C3=BCller=2C_J=C3=B6rg?= <j@x.com>, b@y.com", "Müller, Jörg"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := []byte("From: s@ext.test\r\nTo: " + tt.to + "\r\nSubject: s\r\n\r\nhi\r\n")
+			env := (&session{}).buildEnvelope(&bongov1.MailMeta{}, raw)
+			if len(env.To) != 2 {
+				t.Fatalf("To has %d entries, want 2: %+v", len(env.To), env.To)
+			}
+			if a := env.To[0]; a.Name != tt.want || a.Mailbox != "j" || a.Host != "x.com" {
+				t.Errorf("To[0] = %+v, want name %q j@x.com", a, tt.want)
+			}
+			if a := env.To[1]; a.Mailbox != "b" || a.Host != "y.com" {
+				t.Errorf("To[1] = %+v", a)
+			}
+		})
+	}
 }

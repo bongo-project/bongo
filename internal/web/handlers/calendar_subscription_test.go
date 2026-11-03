@@ -211,8 +211,17 @@ func TestSubscribedCalendarCanBeRenamed(t *testing.T) {
 }
 
 func subscribe(e *sharedEnv, actor, feed string) *httptest.ResponseRecorder {
+	return subscribeAs(e, actor, feed, "")
+}
+
+// subscribeAs is subscribe with the request's locale set (empty: none).
+func subscribeAs(e *sharedEnv, actor, feed, locale string) *httptest.ResponseRecorder {
+	req := withRoute(sFormReq("POST", "/calendar/subscribe", url.Values{"url": {feed}, "name": {"Work feed"}}), actor, nil)
+	if locale != "" {
+		req = req.WithContext(middleware.WithLocale(req.Context(), locale))
+	}
 	w := httptest.NewRecorder()
-	e.h.SubscribeCalendar(w, withRoute(sFormReq("POST", "/calendar/subscribe", url.Values{"url": {feed}, "name": {"Work feed"}}), actor, nil))
+	e.h.SubscribeCalendar(w, req)
 	return w
 }
 
@@ -460,6 +469,42 @@ func TestSubscribeErrorsAreTranslated(t *testing.T) {
 			body := w.Body.String()
 			if w.Code != tc.code || !strings.Contains(body, tc.want) || (tc.notWant != "" && strings.Contains(body, tc.notWant)) {
 				t.Errorf("status %d body %q, want %d containing %q", w.Code, body, tc.code, tc.want)
+			}
+		})
+	}
+}
+
+// The 409 at the calendar cap is in the viewer's language, not English.
+func TestSubscribeCalendarLimitLocalised(t *testing.T) {
+	e := newSharedEnv(t)
+	for i := 0; ; i++ {
+		if n, _ := e.cals.List(actWrite); len(n) >= store.MaxCalendarsPerUser {
+			break
+		}
+		if i > 2*store.MaxCalendarsPerUser {
+			t.Fatal("never reached the cap")
+		}
+		if w := subscribe(e, actWrite, fmt.Sprintf("https://feeds.example.com/%d.ics", i)); w.Code != http.StatusSeeOther {
+			t.Fatalf("subscribe %d = %d: %s", i, w.Code, w.Body.String())
+		}
+	}
+	en := calendarLimitMessage("en")
+	for _, tc := range []struct{ locale, literal string }{
+		{"de", fmt.Sprintf("höchstens %d Kalender", store.MaxCalendarsPerUser)},
+		{"fr", fmt.Sprintf("%d calendriers", store.MaxCalendarsPerUser)},
+	} {
+		t.Run(tc.locale, func(t *testing.T) {
+			want := calendarLimitMessage(tc.locale)
+			if want == en {
+				t.Fatalf("%s limit message equals the English one", tc.locale)
+			}
+			w := subscribeAs(e, actWrite, "https://feeds.example.com/over.ics", tc.locale)
+			if w.Code != http.StatusConflict {
+				t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+			}
+			body := w.Body.String()
+			if !strings.Contains(body, want) || !strings.Contains(body, tc.literal) || strings.Contains(body, en) {
+				t.Errorf("body %q lacks %q / %q", body, want, tc.literal)
 			}
 		})
 	}

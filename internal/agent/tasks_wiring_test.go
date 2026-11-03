@@ -25,6 +25,9 @@ func TestTaskRoutesWired(t *testing.T) {
 		`calendarH.SetTaskStore(a.Tasks)`,
 		`tasksH.SetQuotaChecker(a.DomainQuota)`,
 		`tasksH.SetZoneSource(a.Preferences)`,
+		// Without the ACL store no shared task or calendar is shown at all.
+		`tasksH.SetACL(a.ACL)`,
+		`calendarH.SetACL(a.ACL)`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("agent.go does not contain %s", want)

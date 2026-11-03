@@ -64,6 +64,22 @@ func (s *sharedTaskEnv) ownerTask(t *testing.T, owner, guid, summary, cal string
 	}
 }
 
+// taskRow returns the <li> carrying data-task-guid=guid, up to its first
+// closing tag. It fails the test when there is none.
+func taskRow(t *testing.T, body, guid string) string {
+	t.Helper()
+	i := strings.Index(body, `data-task-guid="`+guid+`"`)
+	if i < 0 {
+		t.Fatalf("no row for task %s in\n%s", guid, body)
+	}
+	start := strings.LastIndex(body[:i], "<li")
+	end := strings.Index(body[i:], "</li>")
+	if start < 0 || end < 0 {
+		t.Fatalf("task %s row is not an li", guid)
+	}
+	return body[start : i+end]
+}
+
 func TestSharedTasksDisplay(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -110,8 +126,12 @@ func TestSharedTasksDisplay(t *testing.T) {
 				if !tt.visible {
 					continue
 				}
-				if !strings.Contains(body, templates.CalendarColourClass(taskShareColour)) {
-					t.Errorf("%s: share colour class missing", path)
+				// Scoped to the task's own li: the sidebar dot of the shared
+				// calendar carries the same class. The viewer's default task
+				// colour (blue) differs from the share colour (red), so a row
+				// without the share colour cannot pass by accident.
+				if row := taskRow(t, body, "shared-g"); !strings.Contains(row, templates.CalendarColourClass(taskShareColour)) {
+					t.Errorf("%s: share colour class missing from the task row:\n%s", path, row)
 				}
 				if strings.Contains(body, "/tasks/shared-g") {
 					t.Errorf("%s: shared task is linked or has a form", path)

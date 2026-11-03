@@ -175,6 +175,13 @@ func TestInviteNothingToSend(t *testing.T) {
 	}
 }
 
+// inviteUpdateProps lists, per TestInviteOnUpdate case, the properties the
+// first message's VEVENT must carry.
+var inviteUpdateProps = map[string]map[string]string{
+	"title only":       {"SUMMARY": "Renamed"},
+	"description only": {"DESCRIPTION": "New agenda"},
+}
+
 func TestInviteOnUpdate(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -213,6 +220,15 @@ func TestInviteOnUpdate(t *testing.T) {
 			}
 			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
 				t.Errorf("messages = %q, want %q", got, tc.want)
+			}
+			if wantProps := inviteUpdateProps[tc.name]; len(wantProps) > 0 && len(fs.messages()) > 0 {
+				ve := fs.messages()[0].vevent(t)
+				for name, want := range wantProps {
+					p := ve.Props.Get(name)
+					if p == nil || p.Value != want {
+						t.Errorf("REQUEST %s = %v, want %q", name, p, want)
+					}
+				}
 			}
 		})
 	}

@@ -472,26 +472,55 @@ func TestSeriesEndsBy(t *testing.T) {
 func TestEventEntirelyPast(t *testing.T) {
 	now := time.Date(2030, 5, 10, 12, 0, 0, 0, time.UTC)
 	day := func(d int) int64 { return utcAt(2030, 5, d, 9, 0) }
+	allDay := func(d int) *bongov1.Event {
+		return &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, d, 0, 0), EndTime: utcAt(2030, 5, d+1, 0, 0)}
+	}
+	zone := func(name string) *time.Location {
+		loc, err := time.LoadLocation(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return loc
+	}
+	berlin, kiritimati, la := zone("Europe/Berlin"), zone("Pacific/Kiritimati"), zone("America/Los_Angeles")
+	z := func(d, h, m, s int) time.Time { return time.Date(2030, 5, d, h, m, s, 0, time.UTC) }
+	countSeries := &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 8, 0, 0), EndTime: utcAt(2030, 5, 9, 0, 0), Rrule: "FREQ=DAILY;COUNT=2"}
 	tests := []struct {
 		name string
 		ev   *bongov1.Event
+		now  time.Time
+		loc  *time.Location
 		want bool
 	}{
-		{"nil", nil, false},
-		{"ended", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600}, true},
-		{"future", &bongov1.Event{StartTime: day(11), EndTime: day(11) + 3600}, false},
-		{"running now", &bongov1.Event{StartTime: day(10), EndTime: day(10) + 6*3600}, false},
-		{"no end uses start", &bongov1.Event{StartTime: day(6)}, true},
-		{"all-day yesterday UTC is within slack", &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 9, 0, 0), EndTime: utcAt(2030, 5, 10, 0, 0)}, false},
-		{"all-day two days ago", &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 7, 0, 0), EndTime: utcAt(2030, 5, 8, 0, 0)}, true},
-		{"open-ended series", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY"}, false},
-		{"series ended", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY;COUNT=2"}, true},
-		{"series still running", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY;COUNT=10"}, false},
-		{"past occurrence of an open-ended series", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY", RecurrenceId: "20300506T090000Z"}, true},
+		{"nil", nil, now, time.UTC, false},
+		{"ended", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600}, now, time.UTC, true},
+		{"future", &bongov1.Event{StartTime: day(11), EndTime: day(11) + 3600}, now, time.UTC, false},
+		{"running now", &bongov1.Event{StartTime: day(10), EndTime: day(10) + 6*3600}, now, time.UTC, false},
+		{"no end uses start", &bongov1.Event{StartTime: day(6)}, now, time.UTC, true},
+		{"timed ignores zone", &bongov1.Event{StartTime: day(10), EndTime: day(10) + 6*3600}, now, kiritimati, false},
+		{"all-day two days ago", &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 7, 0, 0), EndTime: utcAt(2030, 5, 8, 0, 0)}, now, time.UTC, true},
+		{"all-day no end is one day, past", &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 9, 0, 0)}, z(10, 0, 0, 0), time.UTC, true},
+		{"all-day no end is one day, running", &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 9, 0, 0)}, z(9, 23, 59, 59), time.UTC, false},
+		{"UTC yesterday at midnight", allDay(9), z(10, 0, 0, 0), time.UTC, true},
+		{"UTC yesterday one second before midnight", allDay(9), z(9, 23, 59, 59), time.UTC, false},
+		{"nil zone is UTC", allDay(9), z(10, 0, 0, 0), nil, true},
+		{"Berlin May 9 past at local midnight", allDay(9), z(9, 22, 0, 0), berlin, true},
+		{"Berlin May 9 one second before local midnight", allDay(9), z(9, 21, 59, 59), berlin, false},
+		{"Kiritimati May 10 past at local midnight", allDay(10), z(10, 10, 0, 0), kiritimati, true},
+		{"Kiritimati May 10 one second before local midnight", allDay(10), z(10, 9, 59, 59), kiritimati, false},
+		{"Los Angeles May 9 past at local midnight", allDay(9), z(10, 7, 0, 0), la, true},
+		{"Los Angeles May 9 one second before local midnight", allDay(9), z(10, 6, 59, 59), la, false},
+		{"all-day COUNT series ended yesterday in Berlin", countSeries, z(9, 22, 0, 0), berlin, true},
+		{"all-day COUNT series one second early in Berlin", countSeries, z(9, 21, 59, 59), berlin, false},
+		{"all-day COUNT series still running", &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 8, 0, 0), EndTime: utcAt(2030, 5, 9, 0, 0), Rrule: "FREQ=DAILY;COUNT=5"}, now, berlin, false},
+		{"open-ended series", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY"}, now, time.UTC, false},
+		{"series ended", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY;COUNT=2"}, now, time.UTC, true},
+		{"series still running", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY;COUNT=10"}, now, time.UTC, false},
+		{"past occurrence of an open-ended series", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY", RecurrenceId: "20300506T090000Z"}, now, time.UTC, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := EventEntirelyPast(tc.ev, now); got != tc.want {
+			if got := EventEntirelyPast(tc.ev, tc.now, tc.loc); got != tc.want {
 				t.Errorf("EventEntirelyPast = %v, want %v", got, tc.want)
 			}
 		})

@@ -40,6 +40,9 @@ type Scheduler interface {
 	Addresses(userID string) []string
 	// Owns reports whether addr is any address of the user, aliases included.
 	Owns(userID, addr string) bool
+	// Location is the user's time zone, which decides when an all-day event
+	// is over.
+	Location(userID string) *time.Location
 	// Organise sends the REQUEST and CANCEL messages that follow a saved
 	// change; before is nil for a create and after nil for a delete. Addresses
 	// in skip are sent nothing. It returns SCHEDULE-STATUS by lower-cased
@@ -632,7 +635,7 @@ func (b *Backend) declineAfterDelete(userID string, existing *bongov1.Event) {
 	if ps, _ := partstatOf(master, me); ps == "DECLINED" {
 		return
 	}
-	if store.EventEntirelyPast(existing, b.clock()) {
+	if store.EventEntirelyPast(existing, b.clock(), b.scheduler.Location(userID)) {
 		return
 	}
 	if st := b.scheduler.Reply(userID, existing, me, "DECLINED", ""); st != scheduleStatusSent {
