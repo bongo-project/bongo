@@ -189,7 +189,7 @@ func rebuildMail(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.
 					}
 					addrs[userID] = mine
 				}
-				if err := indexMailHeaders(metadata, userID, guid, &meta, mine); err != nil {
+				if err := indexMailHeaders(metadata, userID, guid, &meta, mine, false); err != nil {
 					logger.Warn("fsm rebuild: failed to index mail headers", "user", userID, "guid", guid, "error", err)
 				}
 			}

@@ -229,39 +229,111 @@ var busyKept = map[string]bool{
 	ical.PropRecurrenceID:    true,
 }
 
-// publishTransform returns the per-VEVENT transform of a feed. Both modes drop
-// ATTENDEE, ORGANIZER and every sub-component (VALARM). A private event
-// (CLASS PRIVATE or CONFIDENTIAL, read from the raw VEVENT: the Event proto
-// has no class field) is reduced to the busy form even in full mode. In busy
-// mode, transparent and cancelled events are left out.
-func publishTransform(busy bool) func(*ical.Component) *ical.Component {
-	return func(c *ical.Component) *ical.Component {
-		if busy {
-			if v, _ := c.Props.Text(ical.PropTransparency); strings.EqualFold(v, "TRANSPARENT") {
-				return nil
-			}
-			if v, _ := c.Props.Text(ical.PropStatus); strings.EqualFold(v, "CANCELLED") {
-				return nil
+// publishTransform returns the per-object transform of a feed: it sees every
+// VEVENT of one stored object, so an override can be judged against its
+// master. Both modes drop ATTENDEE, ORGANIZER and every sub-component (VALARM).
+// A private event (CLASS PRIVATE or CONFIDENTIAL, read from the raw VEVENT: the
+// Event proto has no class field) is reduced to the busy form even in full
+// mode, and so is every override of a private master, whatever its own CLASS.
+// An object whose raw iCalendar did not decode is reduced too, because its
+// VEVENT is synthesised from the proto and its class is unknown.
+//
+// A reduced VEVENT that is transparent or cancelled is left out, and an
+// override left out adds an EXDATE to its kept master, so the master's rule
+// does not produce that occurrence as busy.
+func publishTransform(busy bool) func([]*ical.Component, bool) []*ical.Component {
+	return func(vevents []*ical.Component, undecodable bool) []*ical.Component {
+		var master *ical.Component
+		for _, c := range vevents {
+			if c.Props.Get(ical.PropRecurrenceID) == nil {
+				master = c
+				break
 			}
 		}
-		class, _ := c.Props.Text(ical.PropClass)
-		class = strings.ToUpper(class)
-		reduce := busy || class == "PRIVATE" || class == "CONFIDENTIAL"
+		masterPrivate := master != nil && isPrivateClass(master)
 
-		delete(c.Props, ical.PropAttendee)
-		delete(c.Props, ical.PropOrganizer)
-		c.Children = nil
-		if !reduce {
-			return c
+		var out, dropped []*ical.Component
+		keptMaster := false
+		for _, c := range vevents {
+			isOverride := c.Props.Get(ical.PropRecurrenceID) != nil
+			reduce := busy || undecodable || isPrivateClass(c) || (isOverride && masterPrivate)
+			if reduce && isHidden(c) {
+				if isOverride {
+					dropped = append(dropped, c)
+				}
+				continue
+			}
+			delete(c.Props, ical.PropAttendee)
+			delete(c.Props, ical.PropOrganizer)
+			c.Children = nil
+			if reduce {
+				for name := range c.Props {
+					if !busyKept[strings.ToUpper(name)] {
+						delete(c.Props, name)
+					}
+				}
+				c.Props.SetText(ical.PropSummary, "Busy")
+			}
+			if c == master {
+				keptMaster = true
+			}
+			out = append(out, c)
 		}
-		for name := range c.Props {
-			if !busyKept[strings.ToUpper(name)] {
-				delete(c.Props, name)
+		if keptMaster {
+			for _, o := range dropped {
+				if ex := exdateFor(master, o.Props.Get(ical.PropRecurrenceID)); ex != nil {
+					master.Props.Add(ex)
+				}
 			}
 		}
-		c.Props.SetText(ical.PropSummary, "Busy")
-		return c
+		return out
 	}
+}
+
+// isPrivateClass reports whether c says CLASS:PRIVATE or CONFIDENTIAL.
+func isPrivateClass(c *ical.Component) bool {
+	class, _ := c.Props.Text(ical.PropClass)
+	class = strings.ToUpper(class)
+	return class == "PRIVATE" || class == "CONFIDENTIAL"
+}
+
+// isHidden reports whether c is transparent or cancelled, so it occupies no
+// time in a feed.
+func isHidden(c *ical.Component) bool {
+	if v, _ := c.Props.Text(ical.PropTransparency); strings.EqualFold(v, "TRANSPARENT") {
+		return true
+	}
+	v, _ := c.Props.Text(ical.PropStatus)
+	return strings.EqualFold(v, "CANCELLED")
+}
+
+// exdateFor builds a fresh EXDATE for the occurrence a RECURRENCE-ID names.
+// Only the value and its VALUE and TZID parameters are copied (never RANGE or
+// an X- parameter), so nothing else of the override reaches the feed. A UTC
+// value against a zoned master is rewritten in the master's zone, because
+// some clients compare the strings.
+func exdateFor(master *ical.Component, rid *ical.Prop) *ical.Prop {
+	if rid == nil || rid.Value == "" {
+		return nil
+	}
+	ex := ical.NewProp(ical.PropExceptionDates)
+	ex.Value = rid.Value
+	for _, k := range []string{ical.ParamValue, "TZID"} {
+		if v := rid.Params.Get(k); v != "" {
+			ex.Params.Set(k, v)
+		}
+	}
+	if start := master.Props.Get(ical.PropDateTimeStart); start != nil && strings.HasSuffix(rid.Value, "Z") && rid.Params.Get("TZID") == "" {
+		if tzid := start.Params.Get("TZID"); tzid != "" {
+			if loc, err := time.LoadLocation(tzid); err == nil {
+				if t, err := time.Parse("20060102T150405Z", rid.Value); err == nil {
+					ex.Value = t.In(loc).Format("20060102T150405")
+					ex.Params.Set("TZID", tzid)
+				}
+			}
+		}
+	}
+	return ex
 }
 
 // newPublishToken returns 32 bytes from crypto/rand.

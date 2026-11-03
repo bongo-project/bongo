@@ -763,6 +763,16 @@ and 8).
   Google Calendar and Outlook do; it is written as TRANSP so CalDAV clients
   and invitations carry it.
 
+- 2026-11-03 (operator): the verification gaps are fixed before the tag
+  (Phase 31). US-004's scheduling assistant is the event form showing each
+  local attendee's busy blocks, titled "Busy", for the event's day, subject
+  to the same grants (and same-domain resources) as the free/busy lookup.
+
+- 2026-11-03 (operator): the CalDAV and CardDAV discovery fix (PR #146)
+  ships with v0.15.0, not as a v0.14.2. The Apple configuration profile also
+  sets up CalDAV and CardDAV (task 31.12). Infra adds redirects for the
+  well-known paths on the hosted domains' websites.
+
 ### 8.2 Candidates for the next release
 
 Audit corrections found while writing this PRD (2026-10-26):
@@ -935,3 +945,48 @@ Found while building batch 6 (2026-11-02):
   "recovery code used" warning after a recovery-code login is lost for users
   whose start page is the inbox (it was lost for everyone before v0.15). The
   summary page shows it, allow-listed and translated.
+
+Found by the v0.15 verification (2026-11-03), accepted or recorded here
+(defects and test gaps are in prds/verification.md):
+
+- A TZID that is not an IANA name (Outlook's "W. Europe Standard Time")
+  expands in UTC. The generated VTIMEZONE has observances up to 10 years
+  past DTSTART for an open-ended series.
+- Old `{guid}_{date}` links redirect for the event owner only.
+- A higher-SEQUENCE REQUEST for one occurrence offers only an answer, not
+  the keep-or-reset update. Attendees listed only in an override are not
+  scheduled over CalDAV.
+- An unverified REPLY or CANCEL is delivered as mail but not placed in the
+  schedule inbox (CalDAV clients act on inbox items automatically).
+- A recurring task appears at its first due date only; an open task due
+  before the agenda window is not shown.
+- A REQUEST for one occurrence of a resource booking gets no answer; an
+  external sender without a DMARC pass gets no answer rather than DECLINED.
+- On a follower, a REPLY can fail the address check when the organiser's
+  address rows exist only on the node that wrote them (as for US-019
+  `to_me`).
+- The CalDAV client fixtures in `internal/caldav/testdata` are hand-made
+  approximations of Apple Calendar and Thunderbird traffic, not captures.
+
+Fixed after verification (Phase 31 batch A, 2026-11-03), with notes:
+
+- US-018: the relay sends SMTPUTF8 when the sender, a recipient or the
+  headers contain non-ASCII bytes and the remote advertises it. When the
+  remote does not advertise it, the message is sent without it and the
+  remote decides, as net/smtp did; RFC 6531 3.4 would have the relay bounce
+  instead. No IDN to A-label conversion is done.
+- US-019: IMAP APPEND and web import now store List-Id and Cc. The header
+  backfill repairs rows written before the fix by reading each row's blob
+  once per node, in batches of 50 with a 200 ms pause. A message appended
+  through an older node during a mixed-version window is marked complete
+  without List-Id or Cc and is not repaired: upgrade every node before
+  importing. Address headers are still split on every comma, so a quoted
+  display name with a comma yields fragments (the address is recovered).
+- US-008: a user whose only event calendars are subscriptions gets a
+  Personal calendar on first access, and ICS import never lands in a
+  subscription. A malformed nameless calendar part next to a named
+  invite.ics sibling lists two entries called invite.ics.
+- US-010: a cancelled or transparent master is dropped from the feed, but
+  its opaque overrides are still published (in busy mode as single busy
+  occurrences). A cancelled RANGE=THISANDFUTURE override excludes one
+  occurrence only. A proto-only cancelled event is published as busy.

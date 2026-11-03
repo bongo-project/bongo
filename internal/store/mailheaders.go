@@ -34,6 +34,54 @@ type MailHeaderValues struct {
 	ListID string
 	// ListName is the list's display name from the List-Id phrase.
 	ListName string
+	// Complete records that the values came from a MailMeta carrying every
+	// header the views read (Cc and List-Id included), so the header backfill
+	// need not revisit the row. A rebuild leaves it false.
+	Complete bool
+}
+
+// MaxStoredHeaderBytes bounds the Reply-To, List-Id and List-Post values kept
+// on MailMeta, which every replica carries in its Raft log and Pebble.
+const MaxStoredHeaderBytes = 998
+
+// StoredHeader prepares a reply or list header for MailMeta: trimmed, with
+// CR and LF removed. A value over MaxStoredHeaderBytes is dropped rather
+// than cut, because a truncated address list or URI could name a different
+// recipient; readers fall back to the blob. The value is untrusted and is
+// validated again where it is used.
+func StoredHeader(v string) string {
+	v = strings.TrimSpace(strings.NewReplacer("\r", "", "\n", "").Replace(v))
+	if len(v) > MaxStoredHeaderBytes {
+		return ""
+	}
+	return v
+}
+
+// HeaderGetter is the part of a parsed message the header extraction needs.
+type HeaderGetter interface {
+	GetHeader(name string) string
+}
+
+// SplitAddressHeader splits a To or Cc header value on commas, trimming each
+// entry and dropping empty ones. The split is naive: a quoted display name
+// holding a comma yields fragments, which BareAddress copes with.
+func SplitAddressHeader(v string) []string {
+	var out []string
+	for _, addr := range strings.Split(v, ",") {
+		if addr = strings.TrimSpace(addr); addr != "" {
+			out = append(out, addr)
+		}
+	}
+	return out
+}
+
+// MailAddressHeaders extracts the To, Cc and List-Id values every writer of
+// MailMeta stores (delivery, IMAP APPEND, web import and the header backfill),
+// so they cannot disagree about what a message's headers say.
+func MailAddressHeaders(h HeaderGetter) (to, cc []string, listID string) {
+	return SplitAddressHeader(h.GetHeader("To")),
+		SplitAddressHeader(h.GetHeader("Cc")),
+		StoredHeader(h.GetHeader("List-Id"))
 }
 
 // MailHeaderFields derives the header columns from a message's metadata.

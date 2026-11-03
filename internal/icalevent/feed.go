@@ -124,8 +124,9 @@ type Feed struct {
 var ErrFeedTooLarge = errors.New("feed has too many events")
 
 // ParseFeed parses a whole subscription body. It is all or nothing: a decode
-// error anywhere, a body with no calendar or no event
-// or a feed over limit events fails the parse. The caller applies a feed only
+// error anywhere, a body with no calendar, a feed whose events all lack a UID
+// or a feed over limit events fails the parse. A well-formed calendar with no
+// events is a valid, empty feed. The caller applies a feed only
 // when it parsed completely, because the refresh deletes events the feed no
 // longer lists, and a partial parse would delete the rest.
 func ParseFeed(body []byte, limit int) (*Feed, error) {
@@ -176,8 +177,11 @@ func ParseFeed(body []byte, limit int) (*Feed, error) {
 			groups = append(groups, group{cal: cal, uid: p.Value, vevs: g})
 		}
 	}
-	if len(groups) == 0 {
-		return nil, errors.New("feed holds no events")
+	// A calendar with no VEVENT at all is a valid, empty feed. One that lists
+	// events none of which has a UID is malformed, not emptied, and must not
+	// wipe the subscription.
+	if len(groups) == 0 && feed.Skipped > 0 {
+		return nil, errors.New("feed holds no events with a UID")
 	}
 	// Counted before any encoding, so an over-cap feed costs nothing.
 	if len(groups) > limit {

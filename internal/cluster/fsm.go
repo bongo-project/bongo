@@ -600,7 +600,7 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 			f.logger.Warn("fsm: failed to index mail in sqlite", "error", err, "user", userID, "guid", guid)
 		} else if mine, err := f.metadata.UserAddresses(userID); err != nil {
 			f.logger.Warn("fsm: failed to read user addresses", "error", err, "user", userID, "guid", guid)
-		} else if err := indexMailHeaders(f.metadata, userID, guid, &meta, mine); err != nil {
+		} else if err := indexMailHeaders(f.metadata, userID, guid, &meta, mine, true); err != nil {
 			f.logger.Warn("fsm: failed to index mail headers in sqlite", "error", err, "user", userID, "guid", guid)
 		}
 

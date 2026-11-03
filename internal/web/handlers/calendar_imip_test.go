@@ -67,6 +67,7 @@ func (e *imipEnv) router(userID, email string) http.Handler {
 	r.Use(middleware.RequireCSRF(e.secret, true))
 	r.Get("/mail/{mailbox}/{uid}", e.mail.ShowMessage)
 	r.Post("/mail/{mailbox}/{uid}/invitation", e.mail.AnswerInvitation)
+	r.Get("/mail/{mailbox}/{uid}/attachment/{idx}", e.mail.ServeAttachment)
 	return r
 }
 

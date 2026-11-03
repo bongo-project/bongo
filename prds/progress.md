@@ -1625,3 +1625,11 @@ PATTERN: [product] Check what mainstream clients default to before stating it: G
 PATTERN: [testing] A class or colour assertion over a whole page is vacuous when a sidebar or legend repeats it; scope to the element and mutate the producer once.
 PATTERN: [security] A redirect parameter that a page renders is a reflection vector; allow-list its exact shape and re-render it from a translation key.
 PATTERN: [dav] Register discovery redirects (/.well-known/caldav, /carddav) for every method: DAV clients lead with PROPFIND, and a GET-only route answers 405.
+
+## 2026-11-03: v0.15 verification and Phase 31 batch A
+
+- norman verify (adversarial, 41 agents): PASS 2, PARTIAL 17, FAIL 1 (US-013 manual client check unrecorded). 13 behaviour defects, test gaps, two doc gaps; report in prds/verification.md. Operator: fix all before the tag (Phase 31); US-004's scheduling assistant becomes availability in the event form; discovery fix ships with v0.15.0; Apple profile also sets up CalDAV/CardDAV; infra adds well-known redirects on the domain websites.
+- Batch A (31.1-31.6) fixed defects 1-7, 10-12, each with a test red on main. Orchestrator: hideCardPart reuses attachmentURL; 31.13 added (invitation writes into a subscribed calendar via findKnown).
+- Gate: TestIMAPFullRoundTrip failed once in the full make test-all (failure text not captured), then passed 4/4 alone and in a full integration rerun. The batch's only IMAP change is APPEND header fill, which this test does not use. Unexplained; watch for a recurrence and capture the output.
+PATTERN: [verify] Tests that build forms with bare IDs hide the bugs of the real UI, which sends shared:{owner}:{cal} keys; use the key the template renders.
+PATTERN: [gate] Keep the full output of a gate run (tee to a file); a filtered FAIL line without its message cannot be diagnosed after the fact.

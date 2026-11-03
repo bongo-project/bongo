@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -349,6 +350,18 @@ func (r *Relay) sendToHostOpts(ctx context.Context, addr, from string, recipient
 	if env != nil {
 		mailOpts.Return, mailOpts.EnvelopeID = env.mailParams()
 	}
+	// SMTPUTF8 (RFC 6531). go-smtp sends it only when UTF8 is set, unlike
+	// net/smtp, which added it whenever the remote advertised it. Set it when
+	// this transaction's sender, recipients or headers carry UTF-8 and the
+	// remote advertises it (read after Hello, so over the final transport).
+	// When the remote does not advertise it, send without it and let the
+	// remote decide, which is what net/smtp did: setting UTF8 then makes
+	// go-smtp fail client-side with a non-permanent error and the queue would
+	// retry until expiry. Body-only 8-bit text is covered by the BODY=8BITMIME
+	// go-smtp adds on its own.
+	if ok, _ := client.Extension("SMTPUTF8"); ok && needsSMTPUTF8(from, recipients, rawMsg) {
+		mailOpts.UTF8 = true
+	}
 	if err := client.Mail(from, mailOpts); err != nil {
 		return nil, nil, fmt.Errorf("MAIL FROM: %w", wireReply(err))
 	}
@@ -402,6 +415,38 @@ func (r *Relay) sendToHostOpts(ctx context.Context, addr, from string, recipient
 	}
 	r.logger.Info("relay: delivered", "host", addr, "from", from, "recipients", len(recipients)-len(permanentFails))
 	return permanentFails, relayedNoDSN, nil
+}
+
+// needsSMTPUTF8 reports whether a transaction carries UTF-8 in the envelope
+// sender, any recipient of this call, or the header section of raw (up to the
+// first blank line, or all of it when there is none). The body is not
+// scanned: 8-bit body text is covered by BODY=8BITMIME.
+func needsSMTPUTF8(from string, rcpts []string, raw []byte) bool {
+	if hasNonASCII([]byte(from)) {
+		return true
+	}
+	for _, rc := range rcpts {
+		if hasNonASCII([]byte(rc)) {
+			return true
+		}
+	}
+	end := len(raw)
+	if i := bytes.Index(raw, []byte("\r\n\r\n")); i >= 0 {
+		end = i
+	}
+	if i := bytes.Index(raw[:end], []byte("\n\n")); i >= 0 {
+		end = i
+	}
+	return hasNonASCII(raw[:end])
+}
+
+func hasNonASCII(b []byte) bool {
+	for _, c := range b {
+		if c >= 0x80 {
+			return true
+		}
+	}
+	return false
 }
 
 // isPermanentError checks if an SMTP error is a 5xx permanent failure. A

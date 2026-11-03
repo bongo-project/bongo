@@ -523,13 +523,15 @@ func (h *CalendarHandler) InvitationCard(r *http.Request, msg inviteMessage) *te
 		if err != nil {
 			slog.Warn("calendar: listing calendars for an invitation failed", "user", msg.UserID, "error", err)
 		}
+		def := store.DefaultEventCalendar(cals)
 		for _, cal := range cals {
-			// A tasks-only calendar cannot hold the event.
-			if !store.CalendarAllows(cal, store.ComponentEvent) {
+			// A tasks-only calendar cannot hold the event, and a subscription
+			// is rewritten from its feed on refresh.
+			if !store.CalendarAllows(cal, store.ComponentEvent) || store.IsSubscribed(cal) {
 				continue
 			}
 			c.Calendars = append(c.Calendars, templates.InvitationCalendar{
-				ID: cal.Guid, Name: cleanDisplay(cal.Name, maxCardName, false), Selected: len(c.Calendars) == 0,
+				ID: cal.Guid, Name: cleanDisplay(cal.Name, maxCardName, false), Selected: cal.Guid == def,
 			})
 		}
 	}
@@ -634,6 +636,9 @@ func (h *CalendarHandler) ownCalendar(userID, id string) (string, inviteResult) 
 	}
 	if !store.CalendarAllows(cal, store.ComponentEvent) {
 		return "", inviteResult{Status: http.StatusBadRequest, Message: "calendar holds tasks only"}
+	}
+	if store.IsSubscribed(cal) {
+		return "", inviteResult{Status: http.StatusBadRequest, Message: "calendar is read-only"}
 	}
 	return id, inviteResult{}
 }

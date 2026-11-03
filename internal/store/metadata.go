@@ -161,6 +161,11 @@ func (u *UserIndex) createSchema() error {
 		{"to_me", "INTEGER"},
 		{"sender_addr", "TEXT"},
 		{"list_name", "TEXT"},
+		// headers_rev is NULL until the columns were derived from a MailMeta
+		// known to carry Cc and List-Id; the header backfill revisits NULL
+		// rows, reading the blob, so mail appended before those headers were
+		// recorded is repaired.
+		{"headers_rev", "INTEGER"},
 	}); err != nil {
 		return err
 	}

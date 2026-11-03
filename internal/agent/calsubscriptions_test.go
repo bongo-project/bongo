@@ -282,7 +282,8 @@ func TestRefreshFailuresWriteNoEvents(t *testing.T) {
 		{"refused address", nil, fmt.Errorf("fetching feeds.example.com: %w", netx.ErrForbiddenAddress), errConnect},
 		{"not a calendar", ok([]byte("<html>login</html>")), nil, ""},
 		{"empty 200", ok(nil), nil, "no calendar"},
-		{"no events", ok(feedBody()), nil, "no events"},
+		{"whitespace only", ok([]byte("\r\n\r\n")), nil, "no calendar"},
+		{"unclosed calendar", ok([]byte("BEGIN:VCALENDAR\r\n")), nil, "no calendar"},
 		{"truncated", ok(truncated), nil, "truncated"},
 		{"over the event cap", ok(feedBody(big.String())), nil, "too many"},
 	}
@@ -323,6 +324,41 @@ func TestRefreshFailuresWriteNoEvents(t *testing.T) {
 				t.Fatal("validators of the last good fetch were dropped")
 			}
 		})
+	}
+}
+
+// A well-formed calendar with no events is the source having emptied it: the
+// refresh succeeds and deletes every event of this subscription only.
+func TestRefreshEmptyFeedEmptiesCalendar(t *testing.T) {
+	e := newSubEnv(t)
+	e.fetch.set(ok(feedBody(feedVEvent("a", "A"), feedVEvent("z", "Z"))), nil)
+	e.pass(t)
+	if len(e.calEvents(t)) != 2 {
+		t.Fatal("setup")
+	}
+	okSucc := e.sub(t).LastSuccessAt
+
+	e.now = e.now.Add(7 * time.Hour)
+	res := ok(feedBody())
+	res.ETag = `"v2"`
+	e.fetch.set(res, nil)
+	e.pass(t)
+
+	if got := len(e.calEvents(t)); got != 0 {
+		t.Fatalf("events = %d, want 0", got)
+	}
+	s := e.sub(t)
+	if s.LastError != "" || s.EventCount != 0 {
+		t.Fatalf("state: %+v", s)
+	}
+	if s.LastSuccessAt != e.now.Unix() || s.LastSuccessAt <= okSucc {
+		t.Fatalf("last_success_at %d not advanced from %d", s.LastSuccessAt, okSucc)
+	}
+	if s.Etag != `"v2"` {
+		t.Fatalf("etag = %q", s.Etag)
+	}
+	if got := time.Duration(s.NextRefreshAt-e.now.Unix()) * time.Second; got != 6*time.Hour {
+		t.Fatalf("next refresh in %v, want 6h", got)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/imip"
 	internalmail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/store"
@@ -511,6 +513,9 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 	env := h.applyEnvelopeBody(&detail, meta)
 	if env != nil && h.invitations != nil {
 		detail.Invitation = h.invitationCard(r, userID, email, mailbox, msg.Uid, env, meta)
+		if detail.Invitation != nil {
+			h.hideCardPart(&detail, env)
+		}
 	}
 
 	detail.Thread = h.loadThreadMessageDetails(userID, msg.MailGuid, realMailbox)
@@ -601,6 +606,9 @@ func (h *MailHandler) findMailboxMessageByGUID(userID, preferredMailbox, guid st
 // It returns the parsed envelope, or nil when the message could not be parsed.
 func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *bongov1.MailMeta) *enmime.Envelope {
 	var parsed *enmime.Envelope
+	// origNames holds the file names the parts really carry, for matching
+	// against the stored attachments; a nameless part is shown as invite.ics.
+	var origNames []string
 	// The stored List-Post decides the button; the blob is the fallback below
 	// for messages that lack the stored field.
 	detail.HasListPost = listPostAddress(meta.ListPost) != ""
@@ -629,14 +637,19 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 				// decoded attachment blobs, or legacy whole-raw) keep the hash.
 				isSplit := len(meta.Layout) > 0
 				for i, att := range servableParts(env) {
+					name := att.FileName
+					if name == "" {
+						name = namelessCalendarName
+					}
+					origNames = append(origNames, att.FileName)
 					a := templates.Attachment{
-						Filename:    att.FileName,
+						Filename:    name,
 						ContentType: att.ContentType,
 						Size:        int64(len(att.Content)),
 					}
 					// Try to match with proto BlobRef by filename for hash.
 					for _, br := range meta.Attachments {
-						if br.Filename == att.FileName {
+						if att.FileName != "" && br.Filename == att.FileName {
 							if !isSplit {
 								a.Hash = br.Hash
 							}
@@ -665,8 +678,8 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 			break
 		}
 		found := false
-		for _, existing := range detail.Attachments {
-			if existing.Hash == blobRef.Hash || (existing.Filename != "" && existing.Filename == blobRef.Filename) {
+		for i, existing := range detail.Attachments {
+			if existing.Hash == blobRef.Hash || (i < len(origNames) && origNames[i] != "" && origNames[i] == blobRef.Filename) {
 				found = true
 				break
 			}
@@ -684,18 +697,54 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 	return parsed
 }
 
+// namelessCalendarName is the fixed name shown for a calendar part that has
+// none. It is never taken from a header.
+const namelessCalendarName = "invite.ics"
+
+// hideCardPart removes the listing of the calendar part the invitation card
+// stands for, when that part has no file name of its own. Other entries keep
+// their URLs, which embed their index.
+func (h *MailHandler) hideCardPart(detail *templates.MessageDetail, env *enmime.Envelope) {
+	part, _ := imip.FindCalendarPart(env)
+	if part == nil || part.FileName != "" {
+		return
+	}
+	for i, p := range servableParts(env) {
+		if p != part {
+			continue
+		}
+		u := h.attachmentURL(detail.Mailbox, detail.UID, i, "")
+		detail.Attachments = slices.DeleteFunc(detail.Attachments, func(a templates.Attachment) bool { return a.URL == u })
+		return
+	}
+}
+
 // servableParts returns the parts addressable as /attachment/{idx}: the
 // envelope's attachments first (so existing indexes stay stable), then any
 // inline-disposition part that carries a filename, then any part with a
-// filename but no Content-Disposition (enmime files those under OtherParts).
+// filename but no Content-Disposition (enmime files those under OtherParts),
+// and last any nameless calendar part (the inline text/calendar of
+// multipart/alternative), so a malformed invitation is still reachable.
 // attsplit stores all of these as attachments, so they must be reachable
-// through the decoding route.
+// through the decoding route. The result does not depend on whether an
+// invitation card is shown.
 func servableParts(env *enmime.Envelope) []*enmime.Part {
 	parts := make([]*enmime.Part, 0, len(env.Attachments)+len(env.Inlines)+len(env.OtherParts))
 	parts = append(parts, env.Attachments...)
 	for _, group := range [][]*enmime.Part{env.Inlines, env.OtherParts} {
 		for _, p := range group {
 			if p.FileName != "" {
+				parts = append(parts, p)
+			}
+		}
+	}
+	for _, group := range [][]*enmime.Part{env.Inlines, env.OtherParts} {
+		for i, p := range group {
+			if i >= 200 {
+				break
+			}
+			ct := strings.ToLower(p.ContentType)
+			if p.FileName == "" && (ct == "text/calendar" || ct == "application/ics") && !slices.Contains(parts, p) {
 				parts = append(parts, p)
 			}
 		}
@@ -1157,15 +1206,7 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		var toAddrs []string
-		if toHeader := env.GetHeader("To"); toHeader != "" {
-			for _, addr := range strings.Split(toHeader, ",") {
-				addr = strings.TrimSpace(addr)
-				if addr != "" {
-					toAddrs = append(toAddrs, addr)
-				}
-			}
-		}
+		toAddrs, ccAddrs, listID := store.MailAddressHeaders(env)
 
 		meta := &bongov1.MailMeta{
 			Guid:       guid,
@@ -1173,6 +1214,8 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 			Subject:    env.GetHeader("Subject"),
 			From:       env.GetHeader("From"),
 			To:         toAddrs,
+			Cc:         ccAddrs,
+			ListId:     listID,
 			ReceivedAt: receivedAt,
 			RawMessage: &bongov1.BlobRef{
 				Hash: hash,

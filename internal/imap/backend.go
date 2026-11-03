@@ -694,16 +694,15 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	subject := ""
 	messageID := ""
 	headerFrom := ""
-	var toAddrs []string
+	var toAddrs, ccAddrs []string
+	var listID string
 	if envelope != nil {
 		subject = envelope.GetHeader("Subject")
 		messageID = envelope.GetHeader("Message-Id")
 		headerFrom = envelope.GetHeader("From")
-		if toHeader := envelope.GetHeader("To"); toHeader != "" {
-			for _, addr := range strings.Split(toHeader, ",") {
-				toAddrs = append(toAddrs, strings.TrimSpace(addr))
-			}
-		}
+		// The same extraction delivery uses, so imported list mail reaches
+		// the Mailing lists and To me views.
+		toAddrs, ccAddrs, listID = store.MailAddressHeaders(envelope)
 	}
 
 	// Determine internal date: from APPEND options, Date header, or now.
@@ -760,6 +759,8 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		Subject:    subject,
 		From:       headerFrom,
 		To:         toAddrs,
+		Cc:         ccAddrs,
+		ListId:     listID,
 		ReceivedAt: internalDate.Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash:        hash,

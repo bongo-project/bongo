@@ -1,12 +1,16 @@
 package store
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
+	"github.com/emersion/go-vcard"
 	"google.golang.org/protobuf/proto"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -187,8 +191,66 @@ func (s *ContactStore) FindByEmail(userID, email string) (*bongov1.Contact, erro
 	return nil, nil
 }
 
+// vcardEmails returns the normalised address of every EMAIL property in raw,
+// which may hold several cards. go-vcard handles grouped properties
+// ("item1.EMAIL;type=INTERNET:..."), folded lines and parameters. When the
+// data does not decode, the cards read before the error are kept and, if none
+// yielded an address, a line scan that strips any group prefix covers the
+// rest, so a malformed card still yields its address. The vCard is untrusted
+// and is never logged.
+func vcardEmails(raw []byte) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var out []string
+	dec := vcard.NewDecoder(bytes.NewReader(raw))
+	for {
+		card, err := dec.Decode()
+		if err != nil {
+			if !errors.Is(err, io.EOF) && len(out) == 0 {
+				out = append(out, scanEmailLines(raw)...)
+			}
+			return out
+		}
+		for _, v := range card.Values(vcard.FieldEmail) {
+			if a := emailValueAddress(v); a != "" {
+				out = append(out, a)
+			}
+		}
+	}
+}
+
+// emailValueAddress normalises one EMAIL value, dropping a "mailto:" prefix.
+func emailValueAddress(v string) string {
+	if len(v) >= 7 && strings.EqualFold(v[:7], "mailto:") {
+		v = v[7:]
+	}
+	return BareAddress(v)
+}
+
+// scanEmailLines is the fallback for a vCard go-vcard rejects: it reads EMAIL
+// lines directly, ignoring a "group." prefix. Folded lines are not joined.
+func scanEmailLines(raw []byte) []string {
+	var out []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if dot := strings.IndexByte(line, '.'); dot > 0 && !strings.ContainsAny(line[:dot], ":;") {
+			line = line[dot+1:]
+		}
+		if len(line) < 6 || !strings.EqualFold(line[:5], "EMAIL") || (line[5] != ':' && line[5] != ';') {
+			continue
+		}
+		if _, v, ok := strings.Cut(line, ":"); ok {
+			if a := emailValueAddress(v); a != "" {
+				out = append(out, a)
+			}
+		}
+	}
+	return out
+}
+
 // Addresses returns the normalised email addresses of the user's contacts: the
-// Email field and any EMAIL lines in the stored vCard. It scans the contacts
+// Email field and every EMAIL property in the stored vCard. It scans the contacts
 // on every call, so a contact added a moment ago is included without any
 // re-index.
 func (s *ContactStore) Addresses(userID string) (map[string]bool, error) {
@@ -211,16 +273,8 @@ func (s *ContactStore) Addresses(userID string) (map[string]bool, error) {
 		if a := BareAddress(contact.Email); a != "" {
 			out[a] = true
 		}
-		for _, line := range strings.Split(string(contact.VcardRaw), "\n") {
-			line = strings.TrimRight(line, "\r")
-			if len(line) < 6 || !strings.EqualFold(line[:5], "EMAIL") || (line[5] != ':' && line[5] != ';') {
-				continue
-			}
-			if _, v, ok := strings.Cut(line, ":"); ok {
-				if a := BareAddress(v); a != "" {
-					out[a] = true
-				}
-			}
+		for _, a := range vcardEmails(contact.VcardRaw) {
+			out[a] = true
 		}
 	}
 	return out, nil

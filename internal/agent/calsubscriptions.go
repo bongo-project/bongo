@@ -33,9 +33,10 @@ import (
 // updates the state record.
 //
 // Applying a feed. The feed is parsed completely before anything is written:
-// an oversize body, a decode error, a truncated body, an empty feed or one
-// over 5000 events fails the refresh, records last_error and leaves the
-// calendar exactly as it was. Only a feed that parsed whole is applied, and
+// an oversize body, a decode error, a truncated body, a body with no
+// calendar or one over 5000 events fails the refresh, records last_error and leaves the
+// calendar exactly as it was. A well-formed calendar with no events is not a
+// failure: it empties the subscription. Only a feed that parsed whole is applied, and
 // it is applied by UID: events new to the calendar are created, changed ones
 // updated, and ones the feed no longer lists deleted, each a separate Raft
 // write (creates and updates first, deletes last). Events are stored under a

@@ -1035,7 +1035,7 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	if destCal != existing.CalendarId && h.refuseNonEventCalendar(w, r, owner, destCal) {
 		return
 	}
-	if h.updateInstance(w, r, userID, owner, email, existing) { // "this event", "this and following"
+	if h.updateInstance(w, r, userID, owner, email, destCal, existing) { // "this event", "this and following"
 		return
 	}
 

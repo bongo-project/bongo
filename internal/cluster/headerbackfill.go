@@ -22,24 +22,31 @@ const (
 // indexMailHeaders fills the header-derived view columns (to_me, sender_addr,
 // list_id, list_name) of an already indexed mail from its metadata. mine are
 // the user's own addresses. It reads no blob, so the live indexer and a
-// rebuild can call it for every message.
-func indexMailHeaders(metadata *store.MetadataManager, userID, guid string, meta *bongov1.MailMeta, mine map[string]bool) error {
-	return metadata.SetMailHeaders(userID, guid, store.MailHeaderFields(meta, mine))
+// rebuild can call it for every message. complete says the metadata is known
+// to carry Cc and List-Id: true for the live indexer, false for a rebuild,
+// which leaves the row for the backfill to repair from the blob.
+func indexMailHeaders(metadata *store.MetadataManager, userID, guid string, meta *bongov1.MailMeta, mine map[string]bool, complete bool) error {
+	v := store.MailHeaderFields(meta, mine)
+	v.Complete = complete
+	return metadata.SetMailHeaders(userID, guid, v)
 }
 
 // HeaderBackfill fills the header-derived view columns for mail indexed before
 // they existed. It has the shape of PreviewBackfill: it runs on every node
 // (the SQLite indexes are node-local and nothing here writes Raft state), a
 // single goroutine works in small batches with a pause between them, and the
-// state lives in the index itself (to_me IS NULL), so it resumes across
-// restarts and never revisits a filled row.
+// state lives in the index itself (to_me IS NULL, or headers_rev IS NULL for a
+// row whose MailMeta may predate Cc and List-Id), so it resumes across
+// restarts and does not revisit a row once it is complete.
 //
 // to_me is judged against the user's addresses as they are when the backfill
 // reaches the row, not as they were at delivery: the addresses index is itself
 // derived.
 //
-// Mail delivered before the List-Id header was recorded in MailMeta has an
-// empty ListId; the backfill then reads the header from the blob. A blob that
+// Mail delivered before List-Id was recorded in MailMeta, and mail appended by
+// IMAP or imported before Cc and List-Id were recorded, has an empty ListId or
+// Cc; the backfill then reads both headers from the blob, once per message
+// (batches of 50, 200 ms apart). A blob that
 // cannot be read does not leave the row pending: the columns that MailMeta can
 // answer are written, so one lost blob cannot make every pass retry the row.
 type HeaderBackfill struct {
@@ -158,30 +165,38 @@ func (b *HeaderBackfill) fill(userID, guid string, mine map[string]bool) bool {
 			meta.Reset()
 		}
 	}
-	if meta.ListId == "" {
-		meta.ListId = b.listIDFromBlob(&meta)
+	if meta.ListId == "" || len(meta.Cc) == 0 {
+		listID, cc := b.headersFromBlob(&meta)
+		if meta.ListId == "" {
+			meta.ListId = listID
+		}
+		if len(meta.Cc) == 0 {
+			meta.Cc = cc
+		}
 	}
-	if err := indexMailHeaders(b.metadata, userID, guid, &meta, mine); err != nil {
+	if err := indexMailHeaders(b.metadata, userID, guid, &meta, mine, true); err != nil {
 		b.logger.Warn("header-backfill: storing headers failed", "user", userID, "guid", guid, "error", err)
 		return false
 	}
 	return true
 }
 
-// listIDFromBlob reads the List-Id header of a message delivered before
-// MailMeta recorded it. It returns "" when the blob is missing or unreadable.
-func (b *HeaderBackfill) listIDFromBlob(meta *bongov1.MailMeta) string {
+// headersFromBlob reads the List-Id and Cc headers of a message whose MailMeta
+// did not record them, with the extraction delivery uses. It returns zero
+// values when the blob is missing or unreadable.
+func (b *HeaderBackfill) headersFromBlob(meta *bongov1.MailMeta) (listID string, cc []string) {
 	if b.blobs == nil || meta.GetRawMessage().GetHash() == "" {
-		return ""
+		return "", nil
 	}
 	raw, err := store.RawMessageBytes(b.blobs, meta)
 	if err != nil {
 		b.logger.Debug("header-backfill: blob unreadable", "guid", meta.GetGuid(), "error", err)
-		return ""
+		return "", nil
 	}
 	env, _, err := mimesafe.ReadEnvelope(raw)
-	if err != nil {
-		return ""
+	if err != nil || env == nil {
+		return "", nil
 	}
-	return env.GetHeader("List-Id")
+	_, cc, listID = store.MailAddressHeaders(env)
+	return listID, cc
 }
