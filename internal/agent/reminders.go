@@ -22,13 +22,17 @@ func (a *Agent) runReminderChecker(ctx context.Context) {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
-	br := a.newBrowserReminders()
+	a.reminderLoop(ctx, ticker.C, a.newBrowserReminders())
+}
+
+// reminderLoop runs one browser reminder check per tick, at the tick's time.
+func (a *Agent) reminderLoop(ctx context.Context, ticks <-chan time.Time, br *browserReminders) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			br.check(time.Now())
+		case now := <-ticks:
+			br.check(now)
 		}
 	}
 }

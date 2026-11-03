@@ -112,3 +112,41 @@ func TestDeleteOfAnInvitationMailsTheDecline(t *testing.T) {
 		rec.check(t, "the delete", map[string]int{})
 	})
 }
+
+// An all-day invitation is over at the end of its last day in the user's zone,
+// not in UTC: the scheduler's zone reaches the past check.
+func TestDeleteOfAllDayInvitationUsesTheUserZone(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ics := "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Client//EN\r\nBEGIN:VEVENT\r\nUID:ad1\r\nDTSTAMP:20300101T000000Z\r\n" +
+		"DTSTART;VALUE=DATE:20300509\r\nDTEND;VALUE=DATE:20300510\r\nSUMMARY:Away\r\n" +
+		"ORGANIZER;CN=Zed:mailto:zed@elsewhere.test\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:" + schEmail + "\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+	tests := []struct {
+		name    string
+		now     time.Time
+		replies int
+	}{
+		// Local midnight in Berlin (UTC+2) is 22:00Z.
+		{"one second before local midnight", time.Date(2030, 5, 9, 21, 59, 59, 0, time.UTC), 1},
+		{"at local midnight", time.Date(2030, 5, 9, 22, 0, 0, 0, time.UTC), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newSchedEnv(t, true)
+			e.sched.zone = berlin
+			e.b.now = func() time.Time { return tt.now }
+			if code, body, _ := e.put("ad1", ics); code != http.StatusCreated {
+				t.Fatalf("PUT = %d: %s", code, body)
+			}
+			_, r0 := e.sched.counts()
+			if code, _, _ := e.do(schUser, "DELETE", objPath("ad1"), "", nil); code != http.StatusNoContent {
+				t.Fatalf("DELETE = %d", code)
+			}
+			if _, r := e.sched.counts(); r-r0 != tt.replies {
+				t.Errorf("DELETE made %d replies, want %d", r-r0, tt.replies)
+			}
+		})
+	}
+}

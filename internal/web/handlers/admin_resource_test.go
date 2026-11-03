@@ -316,6 +316,12 @@ func TestAdminResourceBookings(t *testing.T) {
 			if (tt.cancel == http.StatusSeeOther) != (len(fb.cancelled) == 1) {
 				t.Errorf("cancelled = %v for status %d", fb.cancelled, w.Code)
 			}
+			if tt.cancel == http.StatusSeeOther {
+				want := "/admin/users/" + url.PathEscape(tt.target) + "/bookings?flash=booking-cancelled"
+				if got := w.Header().Get("Location"); got != want {
+					t.Errorf("Location = %q, want %q", got, want)
+				}
+			}
 		})
 	}
 

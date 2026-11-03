@@ -153,12 +153,11 @@ func (b *Backend) putTodo(t target, calendar *ical.Calendar, raw []byte, opts *c
 		return nil, httpErr(http.StatusForbidden, "this calendar is a read-only subscription")
 	}
 
-	var existingRaw []byte
-	var existingUpdated int64
+	var want string
 	if existing != nil {
-		existingRaw, existingUpdated = existing.IcalRaw, existing.UpdatedAt
+		want = store.ContentETagValue(existing.IcalRaw, existing.UpdatedAt)
 	}
-	if err := checkPreconditions(opts, existing != nil, existingRaw, existingUpdated); err != nil {
+	if err := checkPreconditions(opts, existing != nil, want); err != nil {
 		return nil, err
 	}
 

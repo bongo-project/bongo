@@ -1,6 +1,7 @@
 package caldav
 
 import (
+	"encoding/base64"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,8 +11,10 @@ import (
 	"time"
 
 	"github.com/emersion/go-webdav/caldav"
+	"github.com/go-chi/chi/v5"
 
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/handlers"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -96,12 +99,30 @@ func (e *delEnv) calendarExists(owner, id string) bool {
 	return ok
 }
 
+// feedStatus fetches work's public feed through the real feed handler (the
+// env publishes it with an all-zero token).
+func (e *delEnv) feedStatus() int {
+	e.t.Helper()
+	r := chi.NewRouter()
+	r.Get("/pub/calendar/{owner}/{calendar}/{token}.ics", handlers.NewCalendarPublishHandler(e.events, e.cals).ServeFeed)
+	tok := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/pub/calendar/"+mkUser+"/work/"+tok+".ics", nil))
+	return w.Code
+}
+
 func TestCollectionDeleteRemovesEverything(t *testing.T) {
 	for _, path := range []string{mkPath("work"), strings.TrimSuffix(mkPath("work"), "/")} {
 		t.Run(path, func(t *testing.T) {
 			e := newDelEnv(t)
+			if code := e.feedStatus(); code != http.StatusOK {
+				t.Fatalf("feed before delete = %d, want 200", code)
+			}
 			if code := e.del(mkUser, path); code != http.StatusNoContent {
 				t.Fatalf("DELETE = %d, want 204", code)
+			}
+			if code := e.feedStatus(); code != http.StatusNotFound {
+				t.Errorf("feed after delete = %d, want 404", code)
 			}
 			if e.calendarExists(mkUser, "work") {
 				t.Error("calendar still there")

@@ -475,6 +475,12 @@ FR-1 to FR-26 are the acceptance criteria of US-001 to US-026.
 - 2026-11-03, operator: creating a calendar in the web is added as US-026
   (the web had no create; only CalDAV, subscriptions and shares added one).
   Operator: at most 5 calendars per user, on every create path.
+- 2026-11-03, verification: US-016's "domain usage unchanged" is read as
+  "no mail is stored" (accepted bookings add event records, which domain
+  usage counts). A web DELETE of another user's calendar or a `shared:` key
+  answers 404 rather than 403: nothing changes and existence is not
+  revealed. Operator: every verification defect and test gap is fixed
+  before the tag (Phase 33).
 
 ### 8.2 Candidates for the next release
 
@@ -561,4 +567,16 @@ Found while building batch 4 (2026-11-03):
   only the new create path validates `#RRGGBB`. The cap is per node (one
   node in production). With the 5-calendar cap, at most 3 subscriptions fit,
   so `MaxSubscriptionsPerUser` (20) is unreachable.
+- Verification (2026-11-03): an attendee removed from one override's own
+  attendee list gets no CANCEL for that occurrence (`planInstance` sends a
+  REQUEST to the current attendees only). Occurrence REQUEST and CANCEL
+  carry RECURRENCE-ID in UTC form even for a TZID series. The dedupe key of
+  browser reminders includes the offset, so changing it inside a window
+  announces again.
+- Phase 33 (2026-11-03): a legacy task with an empty `ical_raw` still serves
+  a `t<unix>` ETag (web and CalDAV both store a raw). The all-day past check
+  assumes all-day events are stored at UTC midnight. A web change to a field
+  CalDAV does not serve (reminder minutes, colour) leaves a raw-less event's
+  ETag unchanged. `runReminderChecker` is guarded only for wipes driven by
+  its ticks. French uses both "calendrier" and "agenda".
 

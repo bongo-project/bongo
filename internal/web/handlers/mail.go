@@ -2507,9 +2507,7 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 
 	// Also backfill Cc if missing.
 	if len(meta.Cc) == 0 {
-		if ccHeader := env.GetHeader("Cc"); ccHeader != "" {
-			meta.Cc = store.SplitAddressHeader(ccHeader)
-		}
+		meta.Cc = store.EnvelopeAddresses(env, "Cc")
 	}
 
 	metaBytes, err := proto.Marshal(meta)

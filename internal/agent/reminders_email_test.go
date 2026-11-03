@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jhillyerd/enmime"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/auth"
@@ -403,5 +405,66 @@ func TestReminderMailerWired(t *testing.T) {
 	a.bgMu.Unlock()
 	if live != 1 {
 		t.Errorf("reminder-mailer workers live = %d, want 1", live)
+	}
+}
+
+// The reminder mailer built in Run reads the real preference store: a user
+// whose locale is German gets German day and month names. Passing nil
+// preferences to NewReminderMailer in Run renders English.
+func TestReminderMailerUsesUserLocale(t *testing.T) {
+	a := reminderTestAgent(t)
+	uid := newMailUser(t, a, "de")
+	p := store.DefaultPreferences()
+	p.Locale = "de"
+	if err := a.Preferences.Set(uid, p); err != nil {
+		t.Fatal(err)
+	}
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 6 May 2030 is a Monday: "Mo" and "Mai" (unlike Mon, May).
+	start := time.Date(2030, 5, 6, 10, 30, 0, 0, time.UTC)
+	ev := &bongov1.Event{Title: "Sync", CalendarId: "default", ReminderMinutes: 15}
+	if err := a.reminderMailer.SendReminder(uid, "de@localhost", ev, start, berlin); err != nil {
+		t.Fatalf("SendReminder: %v", err)
+	}
+	waitFor(t, "reminder in INBOX", func() bool { return mailCount(a, uid, "INBOX") == 1 })
+
+	msgs, err := a.Mailboxes.ListMessages(uid, "INBOX")
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("ListMessages = %d, %v", len(msgs), err)
+	}
+	raw, err := a.GetKey([]byte("/user/" + uid + "/mail/" + msgs[0].GetMailGuid()))
+	if err != nil {
+		t.Fatalf("reading MailMeta: %v", err)
+	}
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(raw, &meta); err != nil {
+		t.Fatal(err)
+	}
+	rc, err := a.Blobs.Get(meta.GetRawMessage().GetHash())
+	if err != nil {
+		t.Fatalf("reading blob: %v", err)
+	}
+	defer rc.Close()
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(rc); err != nil {
+		t.Fatal(err)
+	}
+	env, err := enmime.ReadEnvelope(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := env.Text + "\n" + env.HTML
+	for _, want := range []string{"Beginn", "Mo 6 Mai 2030", "Europe/Berlin"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body lacks %q:\n%s", want, body)
+		}
+	}
+	for _, bad := range []string{"Mon ", "May", "Starts"} {
+		if strings.Contains(body, bad) {
+			t.Errorf("body contains English %q:\n%s", bad, body)
+		}
 	}
 }

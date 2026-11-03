@@ -766,6 +766,12 @@ func TestCreateUser_DomainAdmin_D1DomainOK(t *testing.T) {
 	if w.Code == http.StatusForbidden {
 		t.Errorf("CreateUser d1 (domain-admin of d1) status = 403, should be allowed")
 	}
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("CreateUser d1 status = %d, want 303", w.Code)
+	}
+	if got, want := w.Header().Get("Location"), "/admin/users?flash=user-created"; got != want {
+		t.Errorf("Location = %q, want %q", got, want)
+	}
 }
 
 // =============================================================================

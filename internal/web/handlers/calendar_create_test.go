@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bongo-project/bongo/internal/caldav"
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -49,6 +51,15 @@ func sidebarItem(page, guid string) string {
 func (e *taskEnv) settingsPage(user string) string {
 	w := httptest.NewRecorder()
 	e.cal.CalendarSettings(w, withRoute(httptest.NewRequest(http.MethodGet, "/calendar/settings", nil), user, nil))
+	return w.Body.String()
+}
+
+// settingsPageAs renders the settings page for a viewer with the given locale.
+func (e *taskEnv) settingsPageAs(user, locale string) string {
+	req := withRoute(httptest.NewRequest(http.MethodGet, "/calendar/settings", nil), user, nil)
+	req = req.WithContext(middleware.WithLocale(req.Context(), locale))
+	w := httptest.NewRecorder()
+	e.cal.CalendarSettings(w, req)
 	return w.Body.String()
 }
 
@@ -184,6 +195,53 @@ func TestCreateCalendarRefusals(t *testing.T) {
 				t.Errorf("calendars = %d, want %d", got, want)
 			}
 		})
+	}
+}
+
+// The New calendar form renders in the viewer's language. i18n.T falls back to
+// English for a missing key, so each string is also required to differ from en.
+func TestCreateCalendarFormLocalised(t *testing.T) {
+	e := newTaskEnv(t)
+	for _, loc := range []string{"de", "fr", "es"} {
+		t.Run(loc, func(t *testing.T) {
+			page := e.settingsPageAs(taskUser, loc)
+			for _, k := range []string{"calendar.newTitle", "calendar.holdsTasks", "calendar.newAdd"} {
+				got, en := i18n.T(loc, k), i18n.T("en", k)
+				if got == en {
+					t.Fatalf("%s: %s equals the English text", loc, k)
+				}
+				if !strings.Contains(page, html.EscapeString(got)) {
+					t.Errorf("%s page lacks %s %q", loc, k, got)
+				}
+			}
+		})
+	}
+}
+
+// The 400 messages of the create handler are in the viewer's language.
+func TestCreateCalendarRefusalsLocalised(t *testing.T) {
+	tests := []struct {
+		name string
+		form url.Values
+		key  string
+	}{
+		{"empty name", url.Values{"name": {""}, "color": {"#112233"}}, "calendar.errNewName"},
+		{"bad colour", url.Values{"name": {"A"}, "color": {"red"}}, "calendar.errNewColour"},
+	}
+	for _, loc := range []string{"de", "fr"} {
+		for _, tc := range tests {
+			t.Run(loc+" "+tc.name, func(t *testing.T) {
+				e := newTaskEnv(t)
+				want, en := i18n.T(loc, tc.key), i18n.T("en", tc.key)
+				if want == en {
+					t.Fatalf("%s: %s equals the English text", loc, tc.key)
+				}
+				w := e.createCalendar(taskUser, loc, tc.form, false)
+				if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), want) {
+					t.Errorf("status %d body %q, want 400 containing %q", w.Code, w.Body.String(), want)
+				}
+			})
+		}
 	}
 }
 

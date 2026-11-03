@@ -433,7 +433,17 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	// If-Match/If-None-Match into opts; ignoring them made every concurrent
 	// edit a silent last-write-wins, which is the failure mode these headers
 	// exist to prevent.
-	if err := checkPreconditions(opts, existing != nil, existingRaw(existing), existingUpdated(existing)); err != nil {
+	var want string
+	if existing != nil {
+		// The ETag the object is served with, from the same code, so a GET
+		// and an If-Match cannot disagree.
+		obj, err := eventToCalendarObject("", "", existing)
+		if err != nil {
+			return nil, fmt.Errorf("computing etag: %w", err)
+		}
+		want = obj.ETag
+	}
+	if err := checkPreconditions(opts, existing != nil, want); err != nil {
 		return nil, err
 	}
 
@@ -511,7 +521,13 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 		// Delete only what the grant covers: an owner event in another
 		// calendar answers as if it did not exist.
 		existing, err := b.events.Get(userID, guid)
-		if err != nil || eventCalendar(existing) != t.calendar {
+		if errors.Is(err, store.ErrEventNotFound) {
+			return httpErr(http.StatusNotFound, "not found")
+		}
+		if err != nil {
+			return fmt.Errorf("reading event: %w", err)
+		}
+		if eventCalendar(existing) != t.calendar {
 			return httpErr(http.StatusNotFound, "not found")
 		}
 	}
@@ -575,9 +591,17 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 		}
 	}
 
+	// modTime is the last change; it is also the DTSTAMP of a synthesised
+	// object, so the encoding (and the ETag hashed from it) depends on the
+	// event alone and not on when it is served.
+	modTime := time.Unix(e.UpdatedAt, 0)
+	if e.UpdatedAt == 0 {
+		modTime = time.Unix(e.CreatedAt, 0)
+	}
+
 	// Otherwise, synthesise from proto fields.
 	if cal == nil {
-		cal = icalevent.Synthesise(e)
+		cal = icalevent.SynthesiseAt(e, modTime)
 	}
 
 	// Encode to bytes to get content length.
@@ -590,16 +614,20 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 		calID = e.CalendarId
 	}
 
-	modTime := time.Unix(e.UpdatedAt, 0)
-	if e.UpdatedAt == 0 {
-		modTime = time.Unix(e.CreatedAt, 0)
+	// An event with no stored raw (created in the web) is hashed by the
+	// encoding served. That covers only what CalDAV serves: a web change to a
+	// field that is not synthesised (reminder minutes, colour) leaves the
+	// served content, and so the ETag, as it was.
+	etag := store.ContentETagValue(e.IcalRaw, e.UpdatedAt)
+	if len(e.IcalRaw) == 0 {
+		etag = store.ContentETagValue(buf.Bytes(), 0)
 	}
 
 	return &caldav.CalendarObject{
 		Path:          objectPath(userID, calID, e.Guid),
 		ModTime:       modTime,
 		ContentLength: int64(buf.Len()),
-		ETag:          store.ContentETagValue(e.IcalRaw, e.UpdatedAt),
+		ETag:          etag,
 		Data:          cal,
 	}, nil
 }
@@ -611,21 +639,6 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 // on message text.
 var ErrPreconditionFailed = errors.New("precondition failed")
 
-// existingRaw and existingUpdated read the ETag inputs of an event that may be nil.
-func existingRaw(e *bongov1.Event) []byte {
-	if e == nil {
-		return nil
-	}
-	return e.IcalRaw
-}
-
-func existingUpdated(e *bongov1.Event) int64 {
-	if e == nil {
-		return 0
-	}
-	return e.UpdatedAt
-}
-
 // checkPreconditions enforces If-Match and If-None-Match for a PUT.
 //
 // If-None-Match: * means "create only" -- fail if the resource exists.
@@ -633,10 +646,12 @@ func existingUpdated(e *bongov1.Event) int64 {
 // gone or has moved on. Both answer 412 so the client re-reads and retries
 // rather than silently clobbering somebody else's edit.
 //
+// want is the bare ETag the object is served with.
+//
 // A malformed header value is treated as a failed precondition rather than
 // ignored: a client that sent a condition it meant must never have the write
 // applied unconditionally.
-func checkPreconditions(opts *caldav.PutCalendarObjectOptions, exists bool, raw []byte, updatedAt int64) error {
+func checkPreconditions(opts *caldav.PutCalendarObjectOptions, exists bool, want string) error {
 	if opts == nil {
 		return nil
 	}
@@ -657,7 +672,6 @@ func checkPreconditions(opts *caldav.PutCalendarObjectOptions, exists bool, raw 
 			return webdav.NewHTTPError(http.StatusPreconditionFailed,
 				fmt.Errorf("%w: If-Match on an object that does not exist", ErrPreconditionFailed))
 		}
-		want := store.ContentETagValue(raw, updatedAt)
 		ok, err := opts.IfMatch.MatchETag(want)
 		if err != nil {
 			return webdav.NewHTTPError(http.StatusPreconditionFailed,

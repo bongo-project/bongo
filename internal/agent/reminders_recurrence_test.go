@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +133,51 @@ func TestBrowserReminderUsesUserList(t *testing.T) {
 	}
 	if fires(t, a, chOrphan, start.Add(-10*time.Minute)) {
 		t.Error("user without a users row was reminded")
+	}
+}
+
+// The production loop, driven by injected ticks, announces a reminder once
+// across an hour boundary: a periodic wipe of the dedupe map inside the loop
+// would repeat it. The ticks start 90 minutes out so a wipe keyed off the
+// first tick falls inside the reminder window.
+func TestReminderLoopFiresOnceAcrossHour(t *testing.T) {
+	a := reminderTestAgent(t)
+	uid := newMailUser(t, a, "loop")
+	ch := a.Notifier.Subscribe(uid, "INBOX")
+	start := time.Date(2030, 5, 6, 10, 30, 0, 0, time.UTC)
+	if _, err := a.Events.Create(uid, &bongov1.Event{
+		Title: "Loop", CalendarId: "default", ReminderMinutes: 60,
+		StartTime: start.Unix(), EndTime: start.Add(time.Hour).Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	br := a.newBrowserReminders()
+	ticks := make(chan time.Time)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		a.reminderLoop(ctx, ticks, br)
+	}()
+	for at := start.Add(-90 * time.Minute); !at.After(start.Add(time.Minute)); at = at.Add(time.Minute) {
+		ticks <- at
+	}
+	cancel()
+	<-done
+
+	count := 0
+	for drained := false; !drained; {
+		select {
+		case <-ch:
+			count++
+		default:
+			drained = true
+		}
+	}
+	if count != 1 {
+		t.Errorf("notifications = %d, want exactly 1", count)
+	}
+	if n := len(br.sent); n != 0 {
+		t.Errorf("sent holds %d entries after the event started, want 0", n)
 	}
 }

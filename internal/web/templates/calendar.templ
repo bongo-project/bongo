@@ -840,11 +840,13 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 							type="button"
 							class="tool-btn calendar-delete-btn"
 							hx-delete={ "/calendar/" + card.Calendar }
-							hx-swap="none"
+							hx-target="next .calendar-delete-status"
+							hx-swap="innerHTML"
 							hx-confirm={ t(ctx, "calendar.deleteConfirm") }
 						>
 							{ t(ctx, "calendar.delete") }
 						</button>
+						<div class="calendar-delete-status" data-form-status aria-live="polite"></div>
 					}
 					if card.CanShare {
 						<h4>{ t(ctx, "calendar.sharing") }</h4>

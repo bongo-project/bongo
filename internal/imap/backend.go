@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"net"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -1281,12 +1282,12 @@ func (s *session) buildEnvelope(meta *bongov1.MailMeta, rawMsg []byte) *imap.Env
 		envelope.Date = time.Unix(meta.ReceivedAt, 0)
 	}
 
-	envelope.From = parseAddressList(env.GetHeader("From"))
-	envelope.Sender = parseAddressList(env.GetHeader("Sender"))
-	envelope.ReplyTo = parseAddressList(env.GetHeader("Reply-To"))
-	envelope.To = parseAddressList(env.GetHeader("To"))
-	envelope.Cc = parseAddressList(env.GetHeader("Cc"))
-	envelope.Bcc = parseAddressList(env.GetHeader("Bcc"))
+	envelope.From = parseAddresses(store.EnvelopeAddresses(env, "From"))
+	envelope.Sender = parseAddresses(store.EnvelopeAddresses(env, "Sender"))
+	envelope.ReplyTo = parseAddresses(store.EnvelopeAddresses(env, "Reply-To"))
+	envelope.To = parseAddresses(store.EnvelopeAddresses(env, "To"))
+	envelope.Cc = parseAddresses(store.EnvelopeAddresses(env, "Cc"))
+	envelope.Bcc = parseAddresses(store.EnvelopeAddresses(env, "Bcc"))
 	if inReplyTo := env.GetHeader("In-Reply-To"); inReplyTo != "" {
 		envelope.InReplyTo = []string{inReplyTo}
 	}
@@ -1298,8 +1299,12 @@ func parseAddressList(header string) []imap.Address {
 	if header == "" {
 		return nil
 	}
+	return parseAddresses(store.SplitAddressHeader(header))
+}
+
+func parseAddresses(parts []string) []imap.Address {
 	var addrs []imap.Address
-	for _, part := range store.SplitAddressHeader(header) {
+	for _, part := range parts {
 		addrs = append(addrs, parseAddress(part))
 	}
 	return addrs
@@ -1308,10 +1313,22 @@ func parseAddressList(header string) []imap.Address {
 func parseAddress(s string) imap.Address {
 	s = strings.TrimSpace(s)
 
+	// RFC 5322 first: it unquotes names, handles backslash escapes and a "<"
+	// inside a quoted name, and splits at the last "@".
+	if a, err := mail.ParseAddress(s); err == nil {
+		addr := imap.Address{Name: a.Name, Mailbox: a.Address}
+		if i := strings.LastIndex(a.Address, "@"); i >= 0 {
+			addr.Mailbox, addr.Host = a.Address[:i], a.Address[i+1:]
+		}
+		return addr
+	}
+
 	// Handle "Display Name <user@host>" format.
-	if idx := strings.Index(s, "<"); idx >= 0 {
+	if idx := strings.LastIndex(s, "<"); idx >= 0 {
 		name := strings.TrimSpace(s[:idx])
-		name = strings.Trim(name, "\"")
+		if len(name) >= 2 && name[0] == '"' && name[len(name)-1] == '"' {
+			name = unescapeQuoted(name[1 : len(name)-1])
+		}
 		email := strings.TrimSuffix(strings.TrimPrefix(s[idx:], "<"), ">")
 		parts := strings.SplitN(email, "@", 2)
 		addr := imap.Address{Name: name, Mailbox: parts[0]}
@@ -1328,6 +1345,21 @@ func parseAddress(s string) imap.Address {
 		addr.Host = parts[1]
 	}
 	return addr
+}
+
+// unescapeQuoted resolves the backslash escapes of a quoted-string body.
+func unescapeQuoted(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			i++
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {

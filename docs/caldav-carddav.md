@@ -110,10 +110,10 @@ OpenTasks when one of them is installed.
 
 | Collection | Path | Notes |
 |------------|------|-------|
-| Calendars | `/caldav/{user}/calendars/{calendar}/` | Events (VEVENT). A new account's first calendar, Personal, is usually named `default`. |
+| Calendars | `/caldav/{user}/calendars/{calendar}/` | Events (VEVENT), tasks (VTODO) or both, as set when the calendar was created. A new account's first calendar, Personal, is usually named `default`. |
 | Tasks | `/caldav/{user}/calendars/tasks/` | Tasks (VTODO) only. See below for when it exists. |
 | Calendars shared with the user | `/caldav/{user}/calendars/shared-{owner}-{calendar}/` | From v0.15.0. Read or read-write, as the owner granted. Writes are stored under the owner and count against the owner's quota. |
-| Subscribed calendars | as calendars | Read-only. A `PUT` or `DELETE` answers `403`. |
+| Subscribed calendars | as calendars | Read-only. A `PUT` or `DELETE` of an object inside one answers `403`. A `DELETE` of the collection itself answers `409`: unsubscribe in the web interface. |
 | Address book | `/carddav/{user}/addressbooks/default/` | Contacts (vCard). |
 
 From v0.15.0 the server also handles calendar scheduling (RFC 6638). It
@@ -122,26 +122,73 @@ CalDAV client, and places received invitations in the client's scheduling
 inbox. Clients that see the `calendar-auto-schedule` capability stop sending
 invitation mail themselves, so each attendee receives one message.
 
-A calendar accepts only the component it is set up for. A `PUT` of a task
-into an events calendar, or of an event into the Tasks calendar, answers
-`403` with the `supported-calendar-component` precondition. A calendar made
-by `MKCALENDAR` holds events only: Bongo ignores the
-`supported-calendar-component-set` the client sends, so a client that creates
-a task list this way gets an events calendar. Use the Tasks calendar for
-tasks.
+A calendar accepts only the components it is set up for. A `PUT` of a task
+into an events calendar, or of an event into a tasks calendar, answers `403`
+with the `supported-calendar-component` precondition.
 
 The Tasks calendar (`tasks`) is not created with the account. Bongo creates
 it, together with the Personal calendar, the first time an account that has
 no calendar at all uses calendars: any calendar page or action in the web
-interface, a CalDAV listing of calendars, or a CalDAV `PUT`. An account that
-already has a calendar never gets one. That covers an account that used
-calendars before upgrading to v0.15.0, an account whose very first request is
-a CalDAV `MKCALENDAR`, and an account that deleted Tasks while keeping another
-calendar.
+interface, a CalDAV listing of calendars, a CalDAV `PUT`, or the first
+`MKCALENDAR` or extended `MKCOL` (Personal and Tasks are made first, then the
+requested calendar). Saving a task in the web interface when no calendar holds
+tasks also creates Tasks. Tasks cannot be deleted.
+
+## Creating and deleting calendars
+
+`MKCALENDAR`, and extended `MKCOL` (RFC 5689) with a resource type of
+collection plus calendar, both create the calendar at the requested path
+`/caldav/{user}/calendars/{segment}/` and answer `201` with a `Location`
+header.
+
+- The `supported-calendar-component-set` is honoured. Without one the
+  calendar holds events. `VEVENT` and `VTODO` together make a calendar that
+  holds both. Other components are dropped. A set with neither answers `403`
+  with the `supported-calendar-component` precondition.
+- The display name becomes the calendar's name: control characters are
+  removed and it is cut to 255 characters. Without one the segment is the
+  name. The description is kept, up to 4096 characters. Bongo ignores the
+  colour, the order and the time zone the client sends, so the client's
+  colour is not kept.
+- A segment uses letters, digits, `_`, `.` and `-`, is at most 128
+  characters, starts with a letter or digit, and keeps its case. It cannot
+  start with `shared-` or `sub-`, or end in `.ics`.
+- An existing path answers `405` with the `DAV:resource-must-be-null`
+  precondition; Bongo never overwrites a calendar. Another user's path, a
+  `shared-` path and an invalid segment answer `403`, decided before the store
+  is read. `MKCALENDAR` outside a calendar collection path answers `403`
+  with `calendar-collection-location-ok`. A plain `MKCOL`, or an extended
+  `MKCOL` that does not ask for a calendar, answers `403`. A body over 64 KiB
+  or bad XML answers `400`.
+- A user owns at most 5 calendars. Personal, Tasks, created calendars and
+  subscribed calendars all count; calendars shared with the user do not.
+  A sixth create answers `507` with a `DAV:error` body naming
+  `DAV:quota-not-exceeded`. At the limit an existing path still answers
+  `405`. The automatic Personal and Tasks calendars are exempt. The limit and
+  the existence check are enforced per node, not across a cluster.
+
+`DELETE` on `/caldav/{user}/calendars/{segment}/` answers `204` and removes
+the calendar with its events and tasks, its shares and its published feed;
+the feed's link then answers `404`. A failure part-way answers `500`, and a
+large calendar may outlast the client's timeout while the delete continues on
+the server. These cases change nothing:
+
+| Case | Answer |
+|------|--------|
+| `tasks` or `default` | `403` |
+| The user's last calendar that holds events and is not a subscription | `409` |
+| A subscribed calendar (unsubscribe in the web interface) | `409` |
+| Another user's path, or a `shared-` path | `403` |
+| A calendar that does not exist | `404` |
+
+Up to v0.15.0, `MKCALENDAR` answered `405` and extended `MKCOL` ignored the
+component set and the path, and no release could delete a calendar over
+CalDAV.
 
 ## Limits
 
 - One request body is at most 10 MiB; a larger one is refused with `413`.
+- A user owns at most 5 calendars; see Creating and deleting calendars.
 - Events, tasks and contacts count towards the domain's quota, checked at
   every `PUT`.
 - An event can invite at most 100 attendees. Only attendees the server would

@@ -89,9 +89,11 @@ trusted proxy, forwarded headers are ignored: rate limits and lockout see the
 proxy's IP and `/metrics` sees a private address, so keep the proxy-level
 restriction on `/metrics`.
 
-**Query-string messages.** `flash` and `error` messages in the query string are
-reflected, escaped, on many pages, so a crafted link can show misleading text but
-cannot inject markup.
+**Query-string messages.** `flash` carries only allow-listed keys and is
+translated: an unknown key, free text or more than three values shows no banner.
+`error` is still shown, escaped, on the sign-in page, security settings,
+forwarding preferences and address verification, so a crafted link there can
+show misleading text but cannot inject markup.
 
 **`RCPT TO:<postmaster>` without a domain is refused by the SMTP library.** RFC 5321
 section 4.5.1 allows the bare form. go-smtp v0.24.0 requires an `@` in the path

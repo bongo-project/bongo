@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
@@ -48,6 +49,7 @@ type fakeSched struct {
 	organise    []organiseCall
 	replies     []replyCall
 	occurrences []occurrenceCall
+	zone        *time.Location // the user's zone; UTC when nil
 }
 
 func newFakeSched() *fakeSched {
@@ -56,6 +58,13 @@ func newFakeSched() *fakeSched {
 }
 
 func (f *fakeSched) Addresses(string) []string { return f.addrs }
+
+func (f *fakeSched) Location(string) *time.Location {
+	if f.zone != nil {
+		return f.zone
+	}
+	return time.UTC
+}
 
 func (f *fakeSched) Owns(_, addr string) bool {
 	for _, a := range f.addrs {

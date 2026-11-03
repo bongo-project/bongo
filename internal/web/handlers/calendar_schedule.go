@@ -3,6 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"slices"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -59,6 +60,11 @@ func (s *CalDAVScheduler) locale(userID string) string {
 		}
 	}
 	return "en"
+}
+
+// Location is the user's time zone, as the web UI uses it.
+func (s *CalDAVScheduler) Location(userID string) *time.Location {
+	return s.h.userLocation(userID)
 }
 
 // Addresses returns the calendar-user-address-set of the user: the primary

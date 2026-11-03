@@ -149,6 +149,36 @@ func loadJSONKeys(t *testing.T, path string) []string {
 	return keys
 }
 
+// TestLocaleKeyParity requires every catalogue to carry exactly the keys of
+// en.json: a key missing from de, fr or es falls back to English at run time,
+// and a key present only in a translation is dead text.
+func TestLocaleKeyParity(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join("messages", "*.json"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no catalogues found: %v", err)
+	}
+	enKeys := loadJSONKeys(t, filepath.Join("messages", "en.json"))
+	enSet := toSet(enKeys)
+	for _, f := range files {
+		name := filepath.Base(f)
+		if name == "en.json" {
+			continue
+		}
+		keys := loadJSONKeys(t, f)
+		set := toSet(keys)
+		for _, k := range enKeys {
+			if !set[k] {
+				t.Errorf("%s lacks key %q present in en.json", name, k)
+			}
+		}
+		for _, k := range keys {
+			if !enSet[k] {
+				t.Errorf("%s has key %q absent from en.json", name, k)
+			}
+		}
+	}
+}
+
 func toSet(items []string) map[string]bool {
 	s := make(map[string]bool, len(items))
 	for _, item := range items {

@@ -7,6 +7,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/jhillyerd/enmime"
+
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -66,11 +68,6 @@ func StoredHeader(v string) string {
 	return v
 }
 
-// HeaderGetter is the part of a parsed message the header extraction needs.
-type HeaderGetter interface {
-	GetHeader(name string) string
-}
-
 // SplitAddressHeader splits an address header value (To, Cc and the like) into
 // one entry per address. A comma inside a quoted display name ("Doe, Jane"
 // <j@x>) does not separate addresses. Lists that parse as RFC 5322 and hold no
@@ -78,13 +75,35 @@ type HeaderGetter interface {
 // come back exactly as the plain comma split returns them, trimmed and without
 // empty entries.
 func SplitAddressHeader(v string) []string {
+	parsed, err := mail.ParseAddressList(v)
+	return splitParsed(v, parsed, err)
+}
+
+// EnvelopeAddresses splits the named address header of a parsed message. The
+// list is parsed from the raw header, so an RFC 2047 word whose decoded name
+// holds a comma (=?UTF-8?Q?M=C3=BCller=2C_J=C3=B6rg?= <j@x>) is one address,
+// not two. The names are decoded once, here.
+func EnvelopeAddresses(env *enmime.Envelope, name string) []string {
+	if env == nil {
+		return nil
+	}
+	parsed, err := env.AddressList(name)
+	// A decoded word can carry CR or LF (=0D=0A); stored entries are later
+	// copied into outgoing headers, so no line break may survive.
+	v := strings.NewReplacer("\r", " ", "\n", " ").Replace(env.GetHeader(name))
+	return splitParsed(v, parsed, err)
+}
+
+// splitParsed splits the decoded header value v. parsed and err are the result
+// of parsing the same list; when the parse found more addresses than there are
+// comma pieces, a name holds a comma and the list is rebuilt from the parse.
+func splitParsed(v string, parsed []*mail.Address, err error) []string {
 	var out []string
 	for _, addr := range strings.Split(v, ",") {
 		if addr = strings.TrimSpace(addr); addr != "" {
 			out = append(out, addr)
 		}
 	}
-	parsed, err := mail.ParseAddressList(v)
 	if err != nil || len(parsed) == 0 || len(parsed) == len(out) {
 		return out
 	}
@@ -105,7 +124,9 @@ func formatAddress(a *mail.Address) string {
 	case isASCII(a.Name):
 		return a.String()
 	}
-	name := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(a.Name)
+	// Control characters (an encoded CR or LF) must not reach stored headers
+	// that a reply later copies into outgoing mail.
+	name := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\r", "", "\n", "", "\x00", "").Replace(a.Name)
 	return `"` + name + `" <` + a.Address + `>`
 }
 
@@ -121,10 +142,10 @@ func isASCII(s string) bool {
 // MailAddressHeaders extracts the To, Cc and List-Id values every writer of
 // MailMeta stores (delivery, IMAP APPEND, web import and the header backfill),
 // so they cannot disagree about what a message's headers say.
-func MailAddressHeaders(h HeaderGetter) (to, cc []string, listID string) {
-	return SplitAddressHeader(h.GetHeader("To")),
-		SplitAddressHeader(h.GetHeader("Cc")),
-		StoredHeader(h.GetHeader("List-Id"))
+func MailAddressHeaders(env *enmime.Envelope) (to, cc []string, listID string) {
+	return EnvelopeAddresses(env, "To"),
+		EnvelopeAddresses(env, "Cc"),
+		StoredHeader(env.GetHeader("List-Id"))
 }
 
 // MailHeaderFields derives the header columns from a message's metadata.
