@@ -48,6 +48,7 @@ type taskEnv struct {
 	cals    *store.CalendarStore
 	events  *store.EventStore
 	applier *switchApplier
+	ps      *store.PebbleStore
 	secret  []byte
 	now     time.Time
 }
@@ -64,6 +65,7 @@ func newTaskEnv(t *testing.T) *taskEnv {
 		cals:    store.NewCalendarStore(q.ps, a),
 		events:  store.NewEventStore(q.ps, a),
 		applier: a,
+		ps:      q.ps,
 		secret:  []byte("tasks-csrf-test-secret-0123456789"),
 		now:     taskNow,
 	}

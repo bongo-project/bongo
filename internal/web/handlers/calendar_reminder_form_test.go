@@ -48,6 +48,7 @@ func TestReminderFormValues(t *testing.T) {
 		{"enum number is not a delivery", "15", "1", http.StatusBadRequest, 0, 0},
 		{"minutes over the largest option", "61", "email", http.StatusBadRequest, 0, 0},
 		{"huge minutes", "1440", "email", http.StatusBadRequest, 0, 0},
+		{"ninety minutes", "90", "email", http.StatusBadRequest, 0, 0},
 		{"negative minutes", "-5", "email", http.StatusBadRequest, 0, 0},
 		{"unoffered minutes", "7", "email", http.StatusBadRequest, 0, 0},
 		{"non-numeric minutes", "abc", "email", http.StatusBadRequest, 0, 0},

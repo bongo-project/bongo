@@ -1426,6 +1426,9 @@ type AgendaItem struct {
 	Task        *bongov1.Task
 	ColourClass string
 	TimeLabel   string
+	// ReadOnly is set for a task of a calendar shared with the viewer. It is
+	// not in the viewer's own key space, so the row links nowhere.
+	ReadOnly bool
 }
 
 // AgendaDay groups the agenda rows that fall on one calendar day.
@@ -1484,7 +1487,11 @@ templ AgendaContent(data AgendaData) {
 									</span>
 									<span class={ "agenda-bar", it.ColourClass }></span>
 									<span class="agenda-body">
-										<a href={ templ.SafeURL(taskPath(it.Task.Guid)) } class="agenda-title">{ it.Task.Summary }</a>
+										if it.ReadOnly {
+											<span class="agenda-title">{ it.Task.Summary }</span>
+										} else {
+											<a href={ templ.SafeURL(taskPath(it.Task.Guid)) } class="agenda-title">{ it.Task.Summary }</a>
+										}
 										<span class="agenda-location">{ t(ctx, "tasks.task") }</span>
 									</span>
 								</li>

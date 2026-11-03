@@ -24,7 +24,7 @@ func renderRows(t *testing.T, msgs []MessageSummary, mailbox string) string {
 func renderContent(t *testing.T, mailbox string, counts ListCounts, msgs []MessageSummary) string {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := MailboxContent(mailbox, counts, msgs, 1, 1, "", false).Render(context.Background(), &buf); err != nil {
+	if err := MailboxContent(mailbox, counts, msgs, 1, 1, "", false, "", "").Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render MailboxContent: %v", err)
 	}
 	return buf.String()
@@ -197,7 +197,7 @@ func TestEmptyReadingPane(t *testing.T) {
 
 func TestInfiniteScrollSentinelUnchanged(t *testing.T) {
 	var buf bytes.Buffer
-	if err := InfiniteScrollSentinel("INBOX", 2).Render(context.Background(), &buf); err != nil {
+	if err := InfiniteScrollSentinel("INBOX", 2, "").Render(context.Background(), &buf); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(buf.String(), "msg-row-grid") {
@@ -226,5 +226,23 @@ func TestMessageRowsRealMailboxAttribute(t *testing.T) {
 				t.Errorf("missing %s in %s", tt.want, out)
 			}
 		})
+	}
+}
+
+func TestPaginationJoinsQueryBase(t *testing.T) {
+	tests := []struct{ base, want string }{
+		{"/search?q=abc", "/search?q=abc&page=2"},
+		{"/contacts", "/contacts?page=2"},
+		{"/mail/to-me?unread=1", "/mail/to-me?unread=1&page=2"},
+	}
+	for _, tc := range tests {
+		var buf bytes.Buffer
+		if err := Pagination(1, 3, tc.base).Render(context.Background(), &buf); err != nil {
+			t.Fatal(err)
+		}
+		out := strings.ReplaceAll(buf.String(), "&amp;", "&")
+		if !strings.Contains(out, `href="`+tc.want+`"`) || !strings.Contains(out, `hx-get="`+tc.want+`"`) {
+			t.Errorf("base %q: want %q in %s", tc.base, tc.want, out)
+		}
 	}
 }

@@ -1083,5 +1083,6 @@
   "summary.upcoming": "Próximos 7 días",
   "summary.upcomingEmpty": "No hay nada programado ni tareas pendientes en los próximos 7 días.",
   "summary.viewAll": "Ver todo",
+  "summary.openInbox": "Abrir INBOX",
   "summary.error": "No se pudo cargar esta sección. Inténtelo de nuevo más tarde."
 }

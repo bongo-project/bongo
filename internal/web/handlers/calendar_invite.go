@@ -75,7 +75,11 @@ type invitation struct {
 // the organiser's name. Rate limits and quota apply to the acting user.
 //
 // A save that changes neither time, place, repeat rule nor attendees sends
-// nothing, so it does not spend the recipient budget.
+// nothing, so it does not spend the recipient budget. Nor does a change whose
+// every side lies entirely in the past (see changeEntirelyPast): a create, a delete
+// or an edit of an event that has ended. An edit that moves a past event into
+// the future, or a future one into the past, still sends, so attendees do not
+// keep a stale entry.
 func (h *CalendarHandler) notifyAttendees(r *http.Request, userID, email string, before, after *bongov1.Event) (notReached []string) {
 	return h.deliverPlan(r, userID, email, h.planAttendees(userID, email, before, after, nil))
 }
@@ -86,6 +90,9 @@ func (h *CalendarHandler) notifyAttendees(r *http.Request, userID, email string,
 // limit.
 func (h *CalendarHandler) planAttendees(userID, email string, before, after *bongov1.Event, skip map[string]bool) []invitation {
 	if h.invites == nil || (before == nil && after == nil) {
+		return nil
+	}
+	if h.changeEntirelyPast(before, after) {
 		return nil
 	}
 	ev := after
@@ -116,6 +123,15 @@ func (h *CalendarHandler) planAttendees(userID, email string, before, after *bon
 		}
 	}
 	return plan
+}
+
+// changeEntirelyPast reports whether every side of a change that exists is
+// entirely past (store.EventEntirelyPast), by the handler's clock. A missing
+// side counts as past, so a create or a delete is judged by the other.
+func (h *CalendarHandler) changeEntirelyPast(before, after *bongov1.Event) bool {
+	now := h.clock()
+	past := func(e *bongov1.Event) bool { return e == nil || store.EventEntirelyPast(e, now) }
+	return past(before) && past(after)
 }
 
 // deliverPlan sends each invitation of plan that has recipients and returns
@@ -164,12 +180,16 @@ func (h *CalendarHandler) notifyInstance(r *http.Request, userID, email string, 
 	var plan []invitation
 	switch {
 	case c.Scope == scopeThis && !c.Deleted:
-		if c.Instance != nil {
+		var orig *bongov1.Event
+		if o, ok := store.FindOccurrence(c.Before, c.RecurrenceID); ok {
+			orig = o
+		}
+		if c.Instance != nil && !h.changeEntirelyPast(orig, c.Instance) {
 			plan = append(plan, invitation{method: imip.MethodRequest, updated: true, event: c.Instance, to: to(c.Instance),
 				recurrenceID: c.RecurrenceID, uid: seriesUID(c.After)})
 		}
 	case c.Scope == scopeThis:
-		if inst, ok := store.FindOccurrence(c.Before, c.RecurrenceID); ok {
+		if inst, ok := store.FindOccurrence(c.Before, c.RecurrenceID); ok && !h.changeEntirelyPast(inst, nil) {
 			// At least one above the SEQUENCE the attendee last saw.
 			inst.Sequence = max(c.After.Sequence, c.Before.Sequence+1)
 			plan = append(plan, invitation{method: imip.MethodCancel, event: inst, to: to(inst),
@@ -177,6 +197,9 @@ func (h *CalendarHandler) notifyInstance(r *http.Request, userID, email string, 
 		}
 	case c.After == nil:
 		// The first instance was chosen: the whole series is gone.
+		if h.changeEntirelyPast(c.Before, nil) {
+			break
+		}
 		gone := proto.Clone(c.Before).(*bongov1.Event)
 		gone.Sequence = c.Before.Sequence + 1
 		plan = append(plan, invitation{method: imip.MethodCancel, event: gone, to: to(gone)})
@@ -185,8 +208,10 @@ func (h *CalendarHandler) notifyInstance(r *http.Request, userID, email string, 
 			plan = append(plan, invitation{method: imip.MethodRequest, event: c.NewSeries, to: to(c.NewSeries)})
 		}
 	default:
-		plan = append(plan, invitation{method: imip.MethodRequest, updated: true, event: c.After, to: to(c.After)})
-		if c.NewSeries != nil {
+		if !h.changeEntirelyPast(c.Before, c.After) {
+			plan = append(plan, invitation{method: imip.MethodRequest, updated: true, event: c.After, to: to(c.After)})
+		}
+		if c.NewSeries != nil && !h.changeEntirelyPast(nil, c.NewSeries) {
 			plan = append(plan, invitation{method: imip.MethodRequest, event: c.NewSeries, to: to(c.NewSeries)})
 		}
 	}
@@ -290,13 +315,9 @@ func (h *CalendarHandler) inviteRecipients(userID, email, organiser string, atte
 }
 
 // inviteRelevantChange reports whether an edit changes what an invitation
-// tells: when, where, how often or who.
+// tells: when, where, how often, who, or the title and description.
 func inviteRelevantChange(before, after *bongov1.Event) bool {
-	if before.StartTime != after.StartTime || before.EndTime != after.EndTime || before.AllDay != after.AllDay ||
-		before.Location != after.Location || before.Rrule != after.Rrule {
-		return true
-	}
-	return len(removedAttendees(before, after)) > 0 || len(removedAttendees(after, before)) > 0
+	return icalevent.InviteRelevantChange(before, after)
 }
 
 // removedAttendees returns the attendees of before that after no longer has.

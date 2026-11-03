@@ -126,6 +126,15 @@ type replyOpts struct {
 	uid, organiser, rid, method string
 	seq                         int
 	attendees                   []string // "addr=PARTSTAT"
+	noMaster                    bool     // omit the VEVENT built from rid/seq/attendees
+	overrides                   []replyOverride
+}
+
+// replyOverride is an extra VEVENT with a RECURRENCE-ID in a REPLY.
+type replyOverride struct {
+	rid       string
+	seq       int
+	attendees []string // "addr=PARTSTAT"
 }
 
 func (o replyOpts) ics() string {
@@ -141,19 +150,27 @@ func (o replyOpts) ics() string {
 	if o.attendees == nil {
 		o.attendees = []string{replyBob + "=ACCEPTED"}
 	}
-	lines := []string{
-		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Test//EN", "METHOD:" + o.method, "BEGIN:VEVENT",
-		"UID:" + o.uid, "DTSTAMP:20300102T000000Z", "DTSTART:20300506T090000Z", "DTEND:20300506T100000Z",
-		fmt.Sprintf("SEQUENCE:%d", o.seq), "ORGANIZER:mailto:" + o.organiser,
+	lines := []string{"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Test//EN", "METHOD:" + o.method}
+	vevent := func(rid string, seq int, attendees []string) {
+		lines = append(lines, "BEGIN:VEVENT",
+			"UID:"+o.uid, "DTSTAMP:20300102T000000Z", "DTSTART:20300506T090000Z", "DTEND:20300506T100000Z",
+			fmt.Sprintf("SEQUENCE:%d", seq), "ORGANIZER:mailto:"+o.organiser)
+		if rid != "" {
+			lines = append(lines, "RECURRENCE-ID:"+rid)
+		}
+		for _, a := range attendees {
+			addr, ps, _ := strings.Cut(a, "=")
+			lines = append(lines, "ATTENDEE;PARTSTAT="+ps+":mailto:"+addr)
+		}
+		lines = append(lines, "END:VEVENT")
 	}
-	if o.rid != "" {
-		lines = append(lines, "RECURRENCE-ID:"+o.rid)
+	if !o.noMaster {
+		vevent(o.rid, o.seq, o.attendees)
 	}
-	for _, a := range o.attendees {
-		addr, ps, _ := strings.Cut(a, "=")
-		lines = append(lines, "ATTENDEE;PARTSTAT="+ps+":mailto:"+addr)
+	for _, ov := range o.overrides {
+		vevent(ov.rid, ov.seq, ov.attendees)
 	}
-	lines = append(lines, "END:VEVENT", "END:VCALENDAR")
+	lines = append(lines, "END:VCALENDAR")
 	return strings.Join(lines, "\r\n") + "\r\n"
 }
 

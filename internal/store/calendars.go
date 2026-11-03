@@ -19,6 +19,10 @@ type CalendarStore struct {
 	// scan is the prefix scan used by List. It defaults to
 	// pebble.PrefixScan and exists so tests can record which prefixes are read.
 	scan func(prefix []byte) (Iterator, error)
+	// get is the key read used by Exists. It is nil in production (pebble.Get
+	// is used); tests set it to inject read failures, since a closed
+	// PebbleStore panics.
+	get func(key []byte) ([]byte, error)
 	// locks serialises Mutate per calendar (striped by key hash).
 	locks [calendarLockStripes]sync.Mutex
 }
@@ -189,6 +193,24 @@ func (s *CalendarStore) Get(userID, guid string) (*bongov1.Calendar, error) {
 		return nil, fmt.Errorf("unmarshaling calendar: %w", err)
 	}
 	return &cal, nil
+}
+
+// Exists reports whether the user has a calendar with this GUID. Only a
+// missing key is "no"; any other read error is returned so a caller can fail
+// the request rather than treat a storage fault as a missing calendar.
+func (s *CalendarStore) Exists(userID, guid string) (bool, error) {
+	get := s.get
+	if get == nil {
+		get = s.pebble.Get
+	}
+	data, err := get(calendarKey(userID, guid))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("reading calendar: %w", err)
+	}
+	return len(data) > 0, nil
 }
 
 // Update updates an existing calendar.

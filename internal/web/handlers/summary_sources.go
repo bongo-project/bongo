@@ -171,6 +171,9 @@ func (s *calendarSummary) Upcoming(r *http.Request, userID, email string, days, 
 			}
 			row := templates.SummaryRow{Fallback: summaryNoTitleKey, When: day.Date, TimeLabel: it.TimeLabel, AllDay: it.TimeLabel == ""}
 			switch {
+			case it.Task != nil && it.ReadOnly:
+				// A shared task has no page of the viewer's own to link to.
+				continue
 			case it.Task != nil:
 				row.Task = true
 				row.Title = cleanDisplay(it.Task.Summary, maxSummaryTitle, false)

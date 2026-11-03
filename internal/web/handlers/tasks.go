@@ -41,17 +41,19 @@ const (
 // reads the user from the session and touches that user's own tasks only: no
 // route names an owner.
 //
-// Limitation: tasks in a VTODO calendar shared by another user are reachable
-// over CalDAV but not here; the list and the agenda show the actor's own
-// tasks.
+// Tasks in a calendar another user shared at read or write level are listed
+// read-only (no link, no Complete, Reopen or Delete). The mutation routes
+// still touch only the actor's own tasks, so web editing of a shared task
+// is not possible; CalDAV allows it for a write grant.
 //
 // Limitation: completing a recurring task completes the whole series. DUE is
 // not advanced to the next occurrence the way CalDAV clients do.
 type TasksHandler struct {
 	tasks     *store.TaskStore
 	calendars *store.CalendarStore
-	quota     QuotaChecker // nil = unlimited
-	zones     zoneSource   // nil = process zone
+	acl       *store.ACLStore // nil = no shared tasks
+	quota     QuotaChecker    // nil = unlimited
+	zones     zoneSource      // nil = process zone
 	logger    *slog.Logger
 	// now is the clock; nil means time.Now.
 	now func() time.Time
@@ -61,6 +63,9 @@ type TasksHandler struct {
 func NewTasksHandler(tasks *store.TaskStore, calendars *store.CalendarStore) *TasksHandler {
 	return &TasksHandler{tasks: tasks, calendars: calendars, logger: slog.Default()}
 }
+
+// SetACL enables listing tasks of calendars shared with the user.
+func (h *TasksHandler) SetACL(a *store.ACLStore) { h.acl = a }
 
 // SetQuotaChecker enables the domain storage-quota check on task writes.
 func (h *TasksHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
@@ -240,6 +245,19 @@ func (h *TasksHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	colours := buildCalColorMap(calendars)
 
+	// Tasks of shared calendars join the list, read-only. A failure shows
+	// the user's own tasks alone.
+	if _, set, shareColours := loadSharedCalendars(h.acl, h.calendars, userID); len(set) > 0 {
+		if st, err := sharedTasks(h.tasks, set); err != nil {
+			h.logger.Warn("tasks: loading shared tasks failed", "user", userID, "error", err)
+		} else {
+			all = append(all, st...)
+			for k, v := range shareColours {
+				colours[k] = v
+			}
+		}
+	}
+
 	var picked []sortableTask
 	for _, s := range readTasks(all) {
 		if isOpenTask(s.task) != showCompleted {
@@ -258,13 +276,15 @@ func (h *TasksHandler) List(w http.ResponseWriter, r *http.Request) {
 		if c := colours[s.task.CalendarId]; c != "" {
 			colour = c
 		}
+		shared := strings.HasPrefix(s.task.CalendarId, templates.SharedKeyPrefix)
 		row := templates.TaskRow{
 			Task:        s.task,
 			Overdue:     taskOverdue(s.task, s.dateOnly, now),
 			Recurring:   s.recurs,
 			ColourClass: templates.CalendarColourClass(colour),
 			// The rule writable applies to the mutations.
-			ReadOnly: subscribed[s.task.CalendarId],
+			ReadOnly: subscribed[s.task.CalendarId] || shared,
+			Shared:   shared,
 		}
 		switch {
 		case s.task.Due == 0:

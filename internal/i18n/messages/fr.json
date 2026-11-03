@@ -1083,5 +1083,6 @@
   "summary.upcoming": "7 prochains jours",
   "summary.upcomingEmpty": "Rien de prévu et aucune tâche à échéance dans les 7 prochains jours.",
   "summary.viewAll": "Tout afficher",
+  "summary.openInbox": "Ouvrir INBOX",
   "summary.error": "Cette section n'a pas pu être chargée. Réessayez plus tard."
 }

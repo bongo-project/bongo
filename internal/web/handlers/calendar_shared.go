@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -166,8 +167,18 @@ func (h *CalendarHandler) resolveEventTarget(r *http.Request, actor, guid, need 
 // An empty ref is the actor's default calendar. A shared target must name an
 // existing calendar the actor holds a grant on.
 func (h *CalendarHandler) resolveCalendarTarget(actor, ref, need string) (owner, calID string, status int) {
-	if ref == "" {
-		return actor, "default", 0
+	if ref == "" || ref == "default" {
+		// A new user may have no calendars yet: the default is made on demand.
+		// "default" names it too (an event with no calendar is listed there),
+		// so it resolves before the existence check below.
+		guid, err := h.calendars.EnsureDefault(actor)
+		if err != nil {
+			slog.Error("calendar: ensuring default calendar failed", "user", actor, "error", err)
+			return actor, "", http.StatusInternalServerError
+		}
+		if ref == "" || guid == "default" {
+			return actor, guid, 0
+		}
 	}
 	if strings.HasPrefix(ref, templates.SharedKeyPrefix) {
 		o, c, ok := templates.ParseSharedKey(ref)
@@ -185,7 +196,27 @@ func (h *CalendarHandler) resolveCalendarTarget(actor, ref, need string) (owner,
 	if _, st := h.calendarAccess(actor, actor, ref, need); st != 0 {
 		return actor, ref, st
 	}
+	// Events go only into calendars the user has. The check and the write are
+	// not atomic: a calendar deleted in between can still leave an event under
+	// a dead ID (acceptable on one node).
+	if st := h.refuseMissingCalendar(actor, ref); st != 0 {
+		return actor, ref, st
+	}
 	return actor, ref, 0
+}
+
+// refuseMissingCalendar answers 404 when the user has no calendar calID, 500
+// when that cannot be read, else 0.
+func (h *CalendarHandler) refuseMissingCalendar(userID, calID string) int {
+	ok, err := h.calendars.Exists(userID, calID)
+	if err != nil {
+		slog.Error("calendar: reading calendar failed", "user", userID, "error", err)
+		return http.StatusInternalServerError
+	}
+	if !ok {
+		return http.StatusNotFound
+	}
+	return 0
 }
 
 // resolveMoveTarget returns the calendar, in owner's key space, an update
@@ -210,6 +241,17 @@ func (h *CalendarHandler) resolveMoveTarget(actor, owner string, existing *bongo
 		// Not into a subscription: the next refresh would delete the event.
 		if _, status := h.calendarAccess(actor, actor, cal, needWrite); status != 0 {
 			return "", status
+		}
+		// A calendar the event already sits in may be missing (stored before
+		// this check); only a real move must land in an existing one.
+		stored := existing.CalendarId
+		if stored == "" {
+			stored = "default"
+		}
+		if cal != stored {
+			if status := h.refuseMissingCalendar(actor, cal); status != 0 {
+				return "", status
+			}
 		}
 		return cal, 0
 	}
@@ -236,10 +278,17 @@ type sharedSet map[string]map[string]bool
 // grants grouped by owner for event loading. Failures degrade to "nothing
 // shared": a view of the user's own calendar must not break on a bad grant.
 func (h *CalendarHandler) loadShared(actor string) ([]templates.SharedCalendar, sharedSet, map[string]string) {
-	if h.acl == nil {
+	return loadSharedCalendars(h.acl, h.calendars, actor)
+}
+
+// loadSharedCalendars is loadShared for any handler that shows shared
+// calendars. A nil acl or calendars store means nothing is shared. Grants are
+// read on every call, never cached, so a revoke applies to the next request.
+func loadSharedCalendars(acl *store.ACLStore, calendars *store.CalendarStore, actor string) ([]templates.SharedCalendar, sharedSet, map[string]string) {
+	if acl == nil || calendars == nil {
 		return nil, nil, nil
 	}
-	grants, err := h.acl.ListCalendarGrantsHeld(actor)
+	grants, err := acl.ListCalendarGrantsHeld(actor)
 	if err != nil {
 		slog.Warn("calendar: listing shared calendars failed", "user", actor, "error", err)
 		return nil, nil, nil
@@ -252,12 +301,12 @@ func (h *CalendarHandler) loadShared(actor string) ([]templates.SharedCalendar, 
 		if !store.LevelSatisfies(g.Level, needRead) {
 			continue
 		}
-		cal, err := h.calendars.Get(g.Owner, g.Calendar)
+		cal, err := calendars.Get(g.Owner, g.Calendar)
 		if err != nil {
 			continue
 		}
 		if _, ok := labels[g.Owner]; !ok {
-			labels[g.Owner] = h.acl.UserEmail(g.Owner)
+			labels[g.Owner] = acl.UserEmail(g.Owner)
 		}
 		key := templates.SharedKey(g.Owner, g.Calendar)
 		if set[g.Owner] == nil {
@@ -272,6 +321,38 @@ func (h *CalendarHandler) loadShared(actor string) ([]templates.SharedCalendar, 
 		})
 	}
 	return cals, set, colours
+}
+
+// sharedTasks loads the tasks of the shared calendars, one store scan per
+// owner, and rekeys each to its display key. A task with no calendar is in
+// the owner's Tasks calendar. Only calendars in set are kept, by the task's
+// stored calendar, so a grant on one calendar shows nothing of another. The
+// tasks are fresh from the store, so rewriting CalendarId persists nothing.
+func sharedTasks(tasks *store.TaskStore, set sharedSet) ([]*bongov1.Task, error) {
+	owners := make([]string, 0, len(set))
+	for o := range set {
+		owners = append(owners, o)
+	}
+	sort.Strings(owners)
+	var out []*bongov1.Task
+	for _, owner := range owners {
+		all, err := tasks.ListAll(owner)
+		if err != nil {
+			return nil, fmt.Errorf("listing tasks of %s: %w", owner, err)
+		}
+		for _, t := range all {
+			cal := t.CalendarId
+			if cal == "" {
+				cal = store.TasksCalendarGUID
+			}
+			if !set[owner][cal] {
+				continue
+			}
+			t.CalendarId = templates.SharedKey(owner, cal)
+			out = append(out, t)
+		}
+	}
+	return out, nil
 }
 
 // sharedEvents loads the shared calendars' events in [start, end), one store
@@ -306,11 +387,12 @@ func (h *CalendarHandler) sharedEvents(set sharedSet, start, end int64) ([]*bong
 
 // withShared adds the calendars shared with the viewer to a calendar view:
 // their events in [start, end), their colours in colours (keyed by display
-// key) and the sidebar group on the request context.
-func (h *CalendarHandler) withShared(r *http.Request, actor string, events []*bongov1.Event, colours map[string]string, start, end int64) (*http.Request, []*bongov1.Event) {
+// key) and the sidebar group on the request context. It also returns the set
+// of shared calendars, for callers that load more than events.
+func (h *CalendarHandler) withShared(r *http.Request, actor string, events []*bongov1.Event, colours map[string]string, start, end int64) (*http.Request, []*bongov1.Event, sharedSet) {
 	cals, set, shareColours := h.loadShared(actor)
 	if len(cals) == 0 {
-		return r, events
+		return r, events, nil
 	}
 	for k, v := range shareColours {
 		colours[k] = v
@@ -322,7 +404,7 @@ func (h *CalendarHandler) withShared(r *http.Request, actor string, events []*bo
 		events = append(events, shared...)
 		sort.SliceStable(events, func(i, j int) bool { return events[i].StartTime < events[j].StartTime })
 	}
-	return r.WithContext(templates.WithSharedCalendars(r.Context(), cals)), events
+	return r.WithContext(templates.WithSharedCalendars(r.Context(), cals)), events, set
 }
 
 // sharedSidebar puts the shared calendars on the context for pages that list

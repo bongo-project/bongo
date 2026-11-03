@@ -22,26 +22,29 @@ func (a *Agent) runReminderChecker(ctx context.Context) {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
-	// Track which reminders we've already sent to avoid duplicates.
-	var mu sync.Mutex
-	sent := make(map[string]bool) // key: "userID:guid:minutesBefore"
-
-	// Clean old entries every hour.
-	cleanTicker := time.NewTicker(1 * time.Hour)
-	defer cleanTicker.Stop()
-
+	br := a.newBrowserReminders()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-cleanTicker.C:
-			mu.Lock()
-			sent = make(map[string]bool)
-			mu.Unlock()
 		case <-ticker.C:
-			a.checkReminders(time.Now(), &mu, sent)
+			br.check(time.Now())
 		}
 	}
+}
+
+// browserReminders is the browser (SSE) reminder pass and its dedupe state.
+// sent maps an occurrence key to the occurrence start; check prunes entries
+// whose start has passed, so the map holds only occurrences inside their
+// window and a reminder is never announced twice.
+type browserReminders struct {
+	a    *Agent
+	mu   sync.Mutex
+	sent map[string]time.Time
+}
+
+func (a *Agent) newBrowserReminders() *browserReminders {
+	return &browserReminders{a: a, sent: make(map[string]time.Time)}
 }
 
 // maxZoneOffset is the largest UTC offset in use (Pacific/Kiritimati, UTC+14).
@@ -168,61 +171,43 @@ func (a *Agent) dueReminders(now time.Time, userIDs []string) []dueReminder {
 	return out
 }
 
-// usersWithData lists the IDs found under the /user/ key prefix.
-func (a *Agent) usersWithData() []string {
-	iter, err := a.Store.PrefixScan([]byte("/user/"))
-	if err != nil {
-		return nil
-	}
-	seen := make(map[string]bool)
-	var ids []string
-	for iter.Next() {
-		key := string(iter.Key())
-		// Extract userID from /user/{userID}/...
-		if len(key) < 7 {
-			continue
-		}
-		rest := key[6:] // after "/user/"
-		idx := 0
-		for idx < len(rest) && rest[idx] != '/' {
-			idx++
-		}
-		if idx == 0 {
-			continue
-		}
-		if id := rest[:idx]; !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
-		}
-	}
-	if err := iter.Close(); err != nil {
-		a.logger.Warn("reminders: failed to close user iterator", "error", err)
-	}
-	return ids
-}
-
-// checkReminders fires the browser (SSE) reminders due at now. Events set to
+// check fires the browser (SSE) reminders due at now. Events set to
 // email-only are left to the email worker.
-func (a *Agent) checkReminders(now time.Time, mu *sync.Mutex, sent map[string]bool) {
-	if a.Events == nil || a.Notifier == nil || a.Store == nil {
+func (br *browserReminders) check(now time.Time) {
+	a := br.a
+	if a.Events == nil || a.Notifier == nil || a.Store == nil || a.Metadata == nil || a.Metadata.System == nil {
 		return
 	}
-	for _, d := range a.dueReminders(now, a.usersWithData()) {
+	// dueReminders drops every occurrence with !now.Before(start), so an
+	// entry whose start is not after now can never be due again.
+	br.mu.Lock()
+	for k, start := range br.sent {
+		if !start.After(now) {
+			delete(br.sent, k)
+		}
+	}
+	br.mu.Unlock()
+
+	userIDs, err := a.Metadata.System.ListUserIDs()
+	if err != nil {
+		a.logger.Warn("reminders: listing users for browser reminders failed", "error", err)
+		return
+	}
+	for _, d := range a.dueReminders(now, userIDs) {
 		e := d.ev
 		if e.ReminderEmail == bongov1.ReminderDelivery_REMINDER_DELIVERY_EMAIL {
 			continue
 		}
 		// Occurrences share the series guid, so the start tells them
-		// apart: without it every occurrence of an HOURLY series
-		// inside the cleared-hourly window would share one key and
-		// only the first would ever be announced.
+		// apart: without it every occurrence of an HOURLY series would
+		// share one key and only the first would ever be announced.
 		sentKey := fmt.Sprintf("%s:%s:%d:%d", d.userID, e.Guid, e.ReminderMinutes, d.start.Unix())
-		mu.Lock()
-		alreadySent := sent[sentKey]
+		br.mu.Lock()
+		_, alreadySent := br.sent[sentKey]
 		if !alreadySent {
-			sent[sentKey] = true
+			br.sent[sentKey] = d.start
 		}
-		mu.Unlock()
+		br.mu.Unlock()
 
 		if alreadySent {
 			continue

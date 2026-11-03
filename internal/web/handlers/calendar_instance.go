@@ -287,10 +287,7 @@ func (s *seriesCal) setRule(rule string) {
 }
 
 // clampSequence converts a SEQUENCE for the structured Sequence field.
-func clampSequence(n int) int32 {
-	n = max(0, min(n, 1<<30))
-	return int32(n)
-}
+func clampSequence(n int) int32 { return icalevent.ClampSequence(n) }
 
 func sequenceOf(c *ical.Component) int { return icalevent.Sequence(c.Props) }
 

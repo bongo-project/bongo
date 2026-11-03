@@ -32,11 +32,24 @@ func BumpRevision(props ical.Props, now time.Time) int {
 	return n
 }
 
+// SetSequence sets SEQUENCE to seq and leaves DTSTAMP and LAST-MODIFIED as
+// they are, for a caller that keeps a client's object otherwise untouched.
+func SetSequence(props ical.Props, seq int) {
+	setInt(props, ical.PropSequence, seq)
+}
+
 // SetRevision sets SEQUENCE to seq exactly, and DTSTAMP and LAST-MODIFIED to
 // now in UTC. Use BumpRevision for an edit; this is for a caller that already
 // knows the value to carry.
 func SetRevision(props ical.Props, seq int, now time.Time) {
-	setInt(props, ical.PropSequence, seq)
+	SetSequence(props, seq)
 	props.SetDateTime(ical.PropDateTimeStamp, now.UTC())
 	props.SetDateTime(ical.PropLastModified, now.UTC())
+}
+
+// ClampSequence converts a SEQUENCE to the structured int32 field, within
+// 0 to 1<<30.
+func ClampSequence(n int) int32 {
+	n = max(0, min(n, 1<<30))
+	return int32(n)
 }

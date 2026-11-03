@@ -61,6 +61,11 @@ func TestSubscribedCollectionIsReadOnlyOverCalDAV(t *testing.T) {
 			return put(e, shOwner, ownPath(shCalB, subGUID), subGUID)
 		}},
 		{"owner PUT the feed event's guid through the default collection", func(e *shEnv) int {
+			// The collection must exist, or the PUT is refused for another reason.
+			if err := e.cals.Update(shOwner, "default", &bongov1.Calendar{Guid: "default", Name: "Default"}); err != nil {
+				t.Fatal(err)
+			}
+			e.app.writes = 0
 			return put(e, shOwner, ownPath("default", subGUID), subGUID)
 		}},
 		{"owner DELETE in the subscription", func(e *shEnv) int {

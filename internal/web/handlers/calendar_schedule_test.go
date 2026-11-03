@@ -193,10 +193,18 @@ func TestSchedulerOrganise(t *testing.T) {
 
 	// A change that tells nobody anything sends nothing and reports nothing.
 	hn.sender.reset()
+	reminded := schedMeeting(bobA, carolA)
+	reminded.ReminderMinutes = 15
+	if st := hn.sched.Organise(schedAlice, schedMeeting(bobA, carolA), reminded, nil); len(st) != 0 || len(hn.sender.messages()) != 0 {
+		t.Errorf("a reminder change sent %v / %d messages", st, len(hn.sender.messages()))
+	}
+
+	// A rename is shown to attendees, so it is sent (US-010).
+	hn.sender.reset()
 	renamed := schedMeeting(bobA, carolA)
 	renamed.Title = "Renamed"
-	if st := hn.sched.Organise(schedAlice, schedMeeting(bobA, carolA), renamed, nil); len(st) != 0 || len(hn.sender.messages()) != 0 {
-		t.Errorf("a rename sent %v / %d messages", st, len(hn.sender.messages()))
+	if st := hn.sched.Organise(schedAlice, schedMeeting(bobA, carolA), renamed, nil); len(st) != 2 || len(hn.sender.messages()) != 1 {
+		t.Errorf("a rename sent %v / %d messages, want both attendees in one REQUEST", st, len(hn.sender.messages()))
 	}
 
 	// An unreachable recipient is reported by name and does not stop the rest.

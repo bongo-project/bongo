@@ -46,3 +46,25 @@ func TestBumpRevision(t *testing.T) {
 		})
 	}
 }
+
+func TestSetSequenceLeavesStampsAlone(t *testing.T) {
+	props := ical.Props{}
+	stamp := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	props.SetDateTime(ical.PropDateTimeStamp, stamp)
+	old := ical.NewProp(ical.PropSequence)
+	old.Value = "2"
+	props.Set(old)
+	SetSequence(props, 7)
+	if got := Sequence(props); got != 7 {
+		t.Errorf("Sequence = %d, want 7", got)
+	}
+	if n := len(props.Values(ical.PropSequence)); n != 1 {
+		t.Errorf("%d SEQUENCE props, want 1", n)
+	}
+	if got, err := props.DateTime(ical.PropDateTimeStamp, time.UTC); err != nil || !got.Equal(stamp) {
+		t.Errorf("DTSTAMP = %v, %v; want %v", got, err, stamp)
+	}
+	if props.Get(ical.PropLastModified) != nil {
+		t.Error("SetSequence added LAST-MODIFIED")
+	}
+}

@@ -72,8 +72,8 @@ func (h *CalendarHandler) ApplyReply(userID, verifiedSender string, part []byte,
 	if err != nil || inv.Method != imip.MethodReply {
 		return
 	}
-	partstat, ok := repliedPartstat(inv, sender)
-	if !ok {
+	replies := repliedPartstats(inv, sender)
+	if len(replies) == 0 {
 		return
 	}
 
@@ -88,16 +88,7 @@ func (h *CalendarHandler) ApplyReply(userID, verifiedSender string, part []byte,
 		!h.myAddresses(userID, "")[store.NormaliseAddress(known.Organizer)] {
 		return
 	}
-	seriesLevel := inv.RecurrenceID == "" || isInstanceOnly(known) && sameInstance(known, inv.RecurrenceID)
-	var ev *bongov1.Event
-	if seriesLevel {
-		if inv.Sequence > int(known.Sequence) || !hasAttendee(known, sender) {
-			return
-		}
-		ev, err = replySeries(known, sender, partstat)
-	} else {
-		ev, err = replyInstance(known, inv, sender, partstat, h.nowIn(userID))
-	}
+	ev, err := applyReplyEvents(userID, known, replies, sender, h.nowIn(userID))
 	if err != nil {
 		slog.Warn("calendar: applying a reply failed", "user", userID, "guid", known.Guid, "error", err)
 		return
@@ -110,18 +101,34 @@ func (h *CalendarHandler) ApplyReply(userID, verifiedSender string, part []byte,
 	}
 }
 
-// repliedPartstat returns the PARTSTAT that sender, an ATTENDEE of the VEVENT
-// the REPLY is about, gives; false when there is no such attendee or the value
-// is not an answer.
-func repliedPartstat(inv *imip.Invite, sender string) (string, bool) {
+// vevent answer is what the verified sender says in one VEVENT of a REPLY.
+type veventAnswer struct {
+	key      string // "" for the master, else the canonical RECURRENCE-ID
+	seq      int    // the VEVENT's own SEQUENCE, not the master's
+	partstat string
+}
+
+// repliedPartstats returns, per VEVENT of the REPLY, the PARTSTAT that sender
+// gives as an ATTENDEE of it. A VEVENT without the sender, with a value that is
+// not an answer, or with a RECURRENCE-ID that does not parse is skipped. When
+// two VEVENTs carry the same key the first that answers wins.
+func repliedPartstats(inv *imip.Invite, sender string) []veventAnswer {
+	var out []veventAnswer
+	seen := map[string]bool{}
 	for _, ve := range inv.Events {
 		key := ""
 		if p := ve.Props.Get(ical.PropRecurrenceID); p != nil {
-			key, _ = imip.RecurrenceKey(p)
+			var ok bool
+			if key, ok = imip.RecurrenceKey(p); !ok {
+				continue
+			}
 		}
-		if key != inv.RecurrenceID {
+		if seen[key] {
 			continue
 		}
+		// A key is taken only by a VEVENT that answers, so an unusable one
+		// does not hide a later answer for the same key.
+	attendees:
 		for _, p := range ve.Props.Values(ical.PropAttendee) {
 			addr, ok := icalevent.AddressFromCalAddress(p.Value)
 			if !ok || store.NormaliseAddress(addr) != sender {
@@ -129,11 +136,22 @@ func repliedPartstat(inv *imip.Invite, sender string) (string, bool) {
 			}
 			switch ps := strings.ToUpper(strings.TrimSpace(p.Params.Get(ical.ParamParticipationStatus))); ps {
 			case "ACCEPTED", "TENTATIVE", "DECLINED":
-				return ps, true
+				out = append(out, veventAnswer{key: key, seq: componentSequence(ve), partstat: ps})
+				seen[key] = true
+				break attendees
 			}
 		}
 	}
-	return "", false
+	return out
+}
+
+// componentSequence returns the SEQUENCE of a VEVENT, 0 when absent.
+func componentSequence(c *ical.Component) int {
+	seq := 0
+	if p := c.Props.Get(ical.PropSequence); p != nil {
+		seq, _ = strconv.Atoi(strings.TrimSpace(p.Value))
+	}
+	return seq
 }
 
 // hasAttendee reports whether sender is an attendee of e.
@@ -144,26 +162,6 @@ func hasAttendee(e *bongov1.Event, sender string) bool {
 		}
 	}
 	return false
-}
-
-// replySeries sets the attendee's answer on the series: the master VEVENT in
-// ical_raw, when the event has one, and the structured attendees.
-func replySeries(known *bongov1.Event, sender, partstat string) (*bongov1.Event, error) {
-	ev := proto.Clone(known).(*bongov1.Event)
-	if len(known.IcalRaw) > 0 {
-		cal, err := storedCalendar(known)
-		if err != nil {
-			return nil, err
-		}
-		if master, _ := icalevent.Master(cal); master != nil {
-			imip.SetPartstat(master, sender, partstat)
-		}
-		if ev.IcalRaw, err = encodeCalendar(cal); err != nil {
-			return nil, err
-		}
-	}
-	setAttendeePartstat(ev, map[string]bool{sender: true}, partstat)
-	return ev, nil
 }
 
 // maxReplyOverrides caps the override components (VEVENTs with a
@@ -185,51 +183,106 @@ func (s *seriesCal) overrideCount() int {
 	return n
 }
 
-// replyInstance sets the attendee's answer on one occurrence: the PARTSTAT of
-// the existing override, or of a new override cloned from the occurrence when
-// there is none. The structured attendees describe the series and stay. The
-// SEQUENCE of a new override is the series', so later replies still match.
-// A nil event means there is nothing to change.
-func replyInstance(known *bongov1.Event, inv *imip.Invite, sender, partstat string, now time.Time) (*bongov1.Event, error) {
-	_, slot, err := resolveSlot(known, inv.RecurrenceID)
-	if err != nil {
-		return nil, err
+// applyReplyEvents applies every answer of a REPLY to one copy of known, so
+// the caller makes a single store write. Each VEVENT stands alone: one that is
+// refused (newer SEQUENCE, sender not an attendee of it, not an occurrence,
+// override limit reached) is skipped and the rest still apply. The structured
+// attendees change only when the master VEVENT applied; ical_raw is rewritten
+// only when an override changed or the event already had one. A nil event means
+// there is nothing to change.
+func applyReplyEvents(userID string, known *bongov1.Event, replies []veventAnswer, sender string, now time.Time) (*bongov1.Event, error) {
+	if isInstanceOnly(known) {
+		return replyInstanceOnly(known, replies, sender)
 	}
 	s, err := seriesForEdit(known)
 	if err != nil {
 		return nil, err
 	}
-	i, ov := s.overrideAt(slot)
-	if ov != nil {
-		seq := 0
-		if p := ov.Props.Get(ical.PropSequence); p != nil {
-			seq, _ = strconv.Atoi(strings.TrimSpace(p.Value))
+	var masterChanged, overridesChanged bool
+	for _, r := range replies {
+		if r.key == "" {
+			if r.seq > int(known.Sequence) || !hasAttendee(known, sender) {
+				continue
+			}
+			imip.SetPartstat(s.master, sender, r.partstat)
+			masterChanged = true
+			continue
 		}
-		if inv.Sequence > seq || !imip.SetPartstat(ov, sender, partstat) {
-			return nil, nil
+		_, slot, err := resolveSlot(known, r.key)
+		if err != nil {
+			slog.Info("calendar: a reply names no occurrence of the series, skipped", "user", userID, "guid", known.Guid, "error", err)
+			continue
 		}
-		s.cal.Children[i] = ov
-	} else {
-		if inv.Sequence > int(known.Sequence) || !hasAttendee(known, sender) {
-			return nil, nil
+		i, ov := s.overrideAt(slot)
+		if ov != nil {
+			if r.seq > componentSequence(ov) || !imip.SetPartstat(ov, sender, r.partstat) {
+				continue
+			}
+			s.cal.Children[i] = ov
+			overridesChanged = true
+			continue
+		}
+		if r.seq > int(known.Sequence) || !hasAttendee(known, sender) {
+			continue
 		}
 		if s.overrideCount() >= maxReplyOverrides {
 			slog.Info("calendar: a reply would exceed the override limit, left as mail", "guid", known.Guid, "limit", maxReplyOverrides)
-			return nil, nil
+			continue
 		}
-		occ, found := store.FindOccurrence(known, inv.RecurrenceID)
+		occ, found := store.FindOccurrence(known, r.key)
 		if !found {
-			return nil, nil
+			continue
 		}
 		ov = newOverride(s, nil, occ, slot, int(known.Sequence), now)
-		if !imip.SetPartstat(ov, sender, partstat) {
-			return nil, nil
+		if !imip.SetPartstat(ov, sender, r.partstat) {
+			continue
 		}
 		s.cal.Children = append(s.cal.Children, ov)
+		overridesChanged = true
+	}
+	if !masterChanged && !overridesChanged {
+		return nil, nil
 	}
 	ev := proto.Clone(known).(*bongov1.Event)
-	if ev.IcalRaw, err = s.encode(); err != nil {
-		return nil, err
+	if overridesChanged || len(known.IcalRaw) > 0 {
+		if ev.IcalRaw, err = s.encode(); err != nil {
+			return nil, err
+		}
+	}
+	if masterChanged {
+		for _, r := range replies {
+			if r.key == "" {
+				setAttendeePartstat(ev, map[string]bool{sender: true}, r.partstat)
+				break
+			}
+		}
 	}
 	return ev, nil
+}
+
+// replyInstanceOnly applies the answer for the one occurrence an override-only
+// object holds: its VEVENT is the series, so there are no overrides to make.
+func replyInstanceOnly(known *bongov1.Event, replies []veventAnswer, sender string) (*bongov1.Event, error) {
+	for _, r := range replies {
+		if r.key != "" && !sameInstance(known, r.key) {
+			continue
+		}
+		if r.seq > int(known.Sequence) || !hasAttendee(known, sender) {
+			return nil, nil
+		}
+		cal, err := storedCalendar(known)
+		if err != nil {
+			return nil, err
+		}
+		if master, _ := icalevent.Master(cal); master != nil {
+			imip.SetPartstat(master, sender, r.partstat)
+		}
+		ev := proto.Clone(known).(*bongov1.Event)
+		if ev.IcalRaw, err = encodeCalendar(cal); err != nil {
+			return nil, err
+		}
+		setAttendeePartstat(ev, map[string]bool{sender: true}, r.partstat)
+		return ev, nil
+	}
+	return nil, nil
 }

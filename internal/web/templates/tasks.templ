@@ -18,6 +18,9 @@ type TaskRow struct {
 	// ReadOnly is set for a task in a subscribed calendar: the server answers
 	// 403 to Complete, Reopen and Delete, so the row does not offer them.
 	ReadOnly bool
+	// Shared is set for a task of a calendar shared with the user. It is
+	// not in the user's own key space, so the row has no link to Edit.
+	Shared bool
 }
 
 // TasksData is everything the task list renders.
@@ -173,7 +176,11 @@ templ TasksPage(data TasksData) {
 							</span>
 							<span class={ "agenda-bar", row.ColourClass }></span>
 							<span class="agenda-body">
-								<a href={ templ.SafeURL(taskPath(row.Task.Guid)) } class={ "agenda-title", templ.KV("event-cancelled", row.Task.Status == "CANCELLED") }>{ row.Task.Summary }</a>
+								if row.Shared {
+									<span class={ "agenda-title", templ.KV("event-cancelled", row.Task.Status == "CANCELLED") }>{ row.Task.Summary }</span>
+								} else {
+									<a href={ templ.SafeURL(taskPath(row.Task.Guid)) } class={ "agenda-title", templ.KV("event-cancelled", row.Task.Status == "CANCELLED") }>{ row.Task.Summary }</a>
+								}
 								if row.Overdue {
 									<span class="agenda-location">{ t(ctx, "tasks.overdue") }</span>
 								}

@@ -35,6 +35,8 @@ type SummarySection struct {
 	Items    []SummaryRow
 	Err      bool
 	MoreHref string
+	// MoreKey is the i18n key of the link text; empty means "View all".
+	MoreKey string
 }
 
 // SummaryData is everything the summary page renders.
@@ -80,7 +82,7 @@ templ summarySection(id, title, empty string, sec SummarySection) {
 		<div class="summary-section-head">
 			<h2 class="summary-section-title" id={ "summary-" + id + "-title" }>{ title }</h2>
 			if sec.MoreHref != "" {
-				<a class="summary-more" href={ templ.SafeURL(sec.MoreHref) }>{ t(ctx, "summary.viewAll") }</a>
+				<a class="summary-more" href={ templ.SafeURL(sec.MoreHref) }>{ summaryMoreText(ctx, sec) }</a>
 			}
 		</div>
 		if sec.Err {
@@ -128,4 +130,12 @@ func summaryRowTitle(ctx context.Context, row SummaryRow) string {
 func summaryDate(ctx context.Context, d time.Time) string {
 	day := strings.ToLower(d.Weekday().String()[:3])
 	return t(ctx, "calendar."+day) + " " + strconv.Itoa(d.Day()) + " " + t(ctx, "calendar.monthAbbr."+strconv.Itoa(int(d.Month())))
+}
+
+// summaryMoreText is the text of a section's link.
+func summaryMoreText(ctx context.Context, sec SummarySection) string {
+	if sec.MoreKey != "" {
+		return t(ctx, sec.MoreKey)
+	}
+	return t(ctx, "summary.viewAll")
 }

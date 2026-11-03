@@ -26,6 +26,7 @@ type viewFixture struct {
 	mailboxes *store.MailboxStore
 	metadata  *store.MetadataManager
 	contacts  *store.ContactStore
+	prefs     *store.PreferenceStore
 	logs      *bytes.Buffer // what the mail handler logged
 }
 
@@ -53,6 +54,8 @@ func newViewFixture(t *testing.T) *viewFixture {
 	h.SetApplier(applier)
 	h.SetMetadata(meta)
 	h.SetContacts(contacts)
+	prefs := store.NewPreferenceStore(ps, applier)
+	h.SetPreferences(prefs)
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
@@ -62,6 +65,9 @@ func newViewFixture(t *testing.T) *viewFixture {
 				user = "user1"
 			}
 			ctx := middleware.WithUserContext(req.Context(), user, user+"@example.com")
+			if loc := req.Header.Get("X-Test-Locale"); loc != "" {
+				ctx = middleware.WithLocale(ctx, loc)
+			}
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})
@@ -72,7 +78,7 @@ func newViewFixture(t *testing.T) *viewFixture {
 	r.Get("/mail/{mailbox}", h.ListMessages)
 	r.Post("/mail/{mailbox}/bulk", h.BulkAction)
 
-	return &viewFixture{t: t, router: r, mailboxes: mailboxes, metadata: meta, contacts: contacts, logs: logs}
+	return &viewFixture{t: t, router: r, mailboxes: mailboxes, metadata: meta, contacts: contacts, prefs: prefs, logs: logs}
 }
 
 type seedMsg struct {

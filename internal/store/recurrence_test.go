@@ -433,3 +433,67 @@ func TestExpandRecurrenceOverrideCarriesAttendeePartstat(t *testing.T) {
 		t.Error("the master's attendee was changed")
 	}
 }
+
+func TestSeriesEndsBy(t *testing.T) {
+	now := time.Date(2030, 11, 10, 12, 0, 0, 0, time.UTC)
+	start := time.Date(2030, 11, 5, 9, 0, 0, 0, time.UTC)
+	mk := func(rrule string, raw []byte) *bongov1.Event {
+		return &bongov1.Event{Guid: "g", StartTime: start.Unix(), EndTime: start.Add(time.Hour).Unix(), Rrule: rrule, IcalRaw: raw}
+	}
+	override := func(extra ...string) []byte {
+		lines := append([]string{"BEGIN:VEVENT", "UID:g", "DTSTART:20301105T090000Z", "RRULE:FREQ=DAILY;COUNT=3", "END:VEVENT", "BEGIN:VEVENT", "UID:g", "RECURRENCE-ID:20301106T090000Z"}, extra...)
+		return ics(append(lines, "END:VEVENT")...)
+	}
+	tests := []struct {
+		name string
+		ev   *bongov1.Event
+		want bool
+	}{
+		{"no rule", mk("", nil), false},
+		{"open ended", mk("FREQ=DAILY", nil), false},
+		{"count ended", mk("FREQ=DAILY;COUNT=3", nil), true},
+		{"count still running", mk("FREQ=DAILY;COUNT=10", nil), false},
+		{"until ended", mk("FREQ=DAILY;UNTIL=20301107T090000Z", nil), true},
+		{"until future", mk("FREQ=DAILY;UNTIL=20301120T090000Z", nil), false},
+		{"bad rule", mk("FREQ=NOPE;COUNT=2", nil), false},
+		{"override moved to future", mk("FREQ=DAILY;COUNT=3", override("DTSTART:20301112T090000Z")), false},
+		{"override moved within past", mk("FREQ=DAILY;COUNT=3", override("DTSTART:20301108T090000Z")), true},
+		{"cancelled override ignored", mk("FREQ=DAILY;COUNT=3", override("STATUS:CANCELLED")), true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := SeriesEndsBy(tc.ev, now); got != tc.want {
+				t.Errorf("SeriesEndsBy = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEventEntirelyPast(t *testing.T) {
+	now := time.Date(2030, 5, 10, 12, 0, 0, 0, time.UTC)
+	day := func(d int) int64 { return utcAt(2030, 5, d, 9, 0) }
+	tests := []struct {
+		name string
+		ev   *bongov1.Event
+		want bool
+	}{
+		{"nil", nil, false},
+		{"ended", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600}, true},
+		{"future", &bongov1.Event{StartTime: day(11), EndTime: day(11) + 3600}, false},
+		{"running now", &bongov1.Event{StartTime: day(10), EndTime: day(10) + 6*3600}, false},
+		{"no end uses start", &bongov1.Event{StartTime: day(6)}, true},
+		{"all-day yesterday UTC is within slack", &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 9, 0, 0), EndTime: utcAt(2030, 5, 10, 0, 0)}, false},
+		{"all-day two days ago", &bongov1.Event{AllDay: true, StartTime: utcAt(2030, 5, 7, 0, 0), EndTime: utcAt(2030, 5, 8, 0, 0)}, true},
+		{"open-ended series", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY"}, false},
+		{"series ended", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY;COUNT=2"}, true},
+		{"series still running", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY;COUNT=10"}, false},
+		{"past occurrence of an open-ended series", &bongov1.Event{StartTime: day(6), EndTime: day(6) + 3600, Rrule: "FREQ=DAILY", RecurrenceId: "20300506T090000Z"}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := EventEntirelyPast(tc.ev, now); got != tc.want {
+				t.Errorf("EventEntirelyPast = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

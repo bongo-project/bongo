@@ -2,6 +2,7 @@ package caldav
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -192,22 +193,7 @@ func (b *Backend) planSchedule(userID string, calendar *ical.Calendar, event, ex
 		}
 		return schedulePlan{mode: scheduleModeOrganiser}, nil
 	}
-	// The user may be invited at several of their addresses. Answer as one
-	// they may send as, which the organiser can be sent a REPLY from; a plain
-	// alias is the fallback and its answer is reported as 3.8.
-	me := ""
-	for _, a := range atts {
-		if a.address == "" || !b.scheduler.Owns(userID, a.address) {
-			continue
-		}
-		if slices.Contains(b.scheduler.Addresses(userID), a.address) {
-			return schedulePlan{mode: scheduleModeAttendee, me: a.address}, nil
-		}
-		if me == "" {
-			me = a.address
-		}
-	}
-	if me != "" {
+	if me := b.answeringAddress(userID, atts); me != "" {
 		return schedulePlan{mode: scheduleModeAttendee, me: me}, nil
 	}
 	// A foreign organiser and the user is not invited: the event is only
@@ -223,6 +209,26 @@ func (b *Backend) planSchedule(userID string, calendar *ical.Calendar, event, ex
 		}
 	}
 	return schedulePlan{}, nil
+}
+
+// answeringAddress is the address the user answers an invitation as. The user
+// may be invited at several of their addresses: answer as one they may send as,
+// which the organiser can be sent a REPLY from; a plain alias is the fallback
+// and its answer is reported as 3.8. It is "" when the user is not invited.
+func (b *Backend) answeringAddress(userID string, atts []scheduleAttendee) string {
+	me := ""
+	for _, a := range atts {
+		if a.address == "" || !b.scheduler.Owns(userID, a.address) {
+			continue
+		}
+		if slices.Contains(b.scheduler.Addresses(userID), a.address) {
+			return a.address
+		}
+		if me == "" {
+			me = a.address
+		}
+	}
+	return me
 }
 
 // scheduledCount is the number of distinct addresses the server would send an
@@ -496,4 +502,92 @@ func (b *Backend) cancelAfterDelete(userID string, existing *bongov1.Event) {
 		b.logger.Warn("caldav: a cancellation was not delivered to every attendee",
 			"user", userID, "guid", existing.Guid, "not_delivered", notDelivered)
 	}
+}
+
+// organiserRevision keeps the organiser's SEQUENCE moving forward before the
+// first write, so the stored object, GET and the REQUEST built from the saved
+// event all carry one value. A client that edits a meeting without raising
+// SEQUENCE would otherwise send attendees a REQUEST they may ignore as not
+// newer. An invite-relevant change needs a value above the stored one; any
+// other update never lowers it. A higher value from the client is kept. Only
+// the master's SEQUENCE is handled; the object is re-encoded into event.
+func organiserRevision(calendar *ical.Calendar, event, existing *bongov1.Event) error {
+	master := masterOf(calendar)
+	if master == nil || existing == nil {
+		return nil
+	}
+	client := icalevent.Sequence(master.Props)
+	want := min(int(existing.Sequence), 1<<30)
+	if icalevent.InviteRelevantChange(existing, event) {
+		want = min(want+1, 1<<30)
+	}
+	if client >= want {
+		return nil
+	}
+	icalevent.SetSequence(master.Props, want)
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(calendar); err != nil {
+		return fmt.Errorf("encoding the revised sequence: %w", err)
+	}
+	event.IcalRaw = buf.Bytes()
+	event.Sequence = icalevent.ClampSequence(want)
+	return nil
+}
+
+// declineAfterDelete sends the REPLY PARTSTAT=DECLINED for a deleted event the
+// user was invited to (RFC 6638 section 3.2.2.1: an attendee removing the
+// object declines it). It is the counterpart of cancelAfterDelete and never
+// overlaps it: an organiser that is any address of the user is not "someone
+// else". Nothing is sent for an ORGANIZER with a SCHEDULE-AGENT other than
+// SERVER, a cancelled event, an answer that already is DECLINED, a user who is
+// not an attendee, or an event entirely past (store.EventEntirelyPast: a
+// bounded series is past once its last occurrence has ended, an open-ended
+// one never is).
+//
+// The send is best-effort and follows the delete, which cannot be undone: a
+// failure is logged and DELETE still answers 204, and nothing retries it. The
+// REPLY goes through Scheduler.Reply, so the send-as check (3.8 for an alias
+// only invitation, which sends nothing), recipient budget and rate limits
+// apply. SCHEDULE-STATUS is not written back: the object is gone.
+func (b *Backend) declineAfterDelete(userID string, existing *bongov1.Event) {
+	if b.scheduler == nil || existing == nil || existing.Organizer == "" {
+		return
+	}
+	org := store.NormaliseAddress(existing.Organizer)
+	if !strings.Contains(org, "@") {
+		return
+	}
+	// Owns covers the calendar-user-address-set too: an organiser that is any
+	// address of the user is cancelAfterDelete's case, not a decline.
+	if b.scheduler.Owns(userID, org) {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(existing.Status), "CANCELLED") {
+		return
+	}
+	master := masterOf(decodeRaw(existing.IcalRaw))
+	if master == nil || skipOrganiser(master) {
+		return
+	}
+	me := b.answeringAddress(userID, scheduleAttendees(master))
+	if me == "" {
+		return
+	}
+	if ps, _ := partstatOf(master, me); ps == "DECLINED" {
+		return
+	}
+	if store.EventEntirelyPast(existing, b.clock()) {
+		return
+	}
+	if st := b.scheduler.Reply(userID, existing, me, "DECLINED", ""); st != scheduleStatusSent {
+		b.logger.Warn("caldav: the decline of a deleted invitation was not sent", "user", userID, "guid", existing.Guid, "status", st)
+	}
+}
+
+// clock is the time source of the past check; tests replace it.
+func (b *Backend) clock() time.Time {
+	if b.now != nil {
+		return b.now()
+	}
+	return time.Now()
 }

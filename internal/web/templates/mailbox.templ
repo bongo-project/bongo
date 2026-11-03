@@ -83,22 +83,25 @@ type ThreadChild struct {
 	Mailbox string
 }
 
-templ MailboxPage(mailbox string, mailboxes []MailboxInfo, tags []SidebarTagInfo, counts ListCounts, messages []MessageSummary, page, totalPages int, email string, flash string, infiniteScroll bool) {
+templ MailboxPage(mailbox string, mailboxes []MailboxInfo, tags []SidebarTagInfo, counts ListCounts, messages []MessageSummary, page, totalPages int, email string, flash string, infiniteScroll bool, listURL, warning string) {
 	@LayoutWithContent(mailbox, email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, mailbox)
 		</aside>
 		<main class="content" id="main-content" data-selected-mailbox={ mailbox }>
-			@MailboxContent(mailbox, counts, messages, page, totalPages, flash, infiniteScroll)
+			@MailboxContent(mailbox, counts, messages, page, totalPages, flash, infiniteScroll, listURL, warning)
 		</main>
 	}
 }
 
-templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummary, page, totalPages int, flash string, infiniteScroll bool) {
+templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummary, page, totalPages int, flash string, infiniteScroll bool, listURL, warning string) {
 	if flash != "" {
 		@FlashMessage(flash, "success")
 	}
-	<div class="mail-view" data-mailbox={ mailbox } x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
+	if warning != "" {
+		@FlashMessage(warning, "warning")
+	}
+	<div class="mail-view" data-mailbox={ mailbox } data-list-url={ listBase(mailbox, listURL) } x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
 		<div class="mail-head">
 			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
 			<h1 class="mail-head-title">{ mailboxHeading(ctx, mailbox) }</h1>
@@ -115,7 +118,7 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 				<button type="button" class="layout-opt" x-on:click="setLayout('two-pane')" x-bind:class="{'active': layoutMode === 'two-pane'}" title={ t(ctx, "mail.twoPaneView") } aria-label={ t(ctx, "mail.twoPaneView") }>@layoutIcon("two-pane")</button>
 				<button type="button" class="layout-opt" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title={ t(ctx, "mail.threePaneView") } aria-label={ t(ctx, "mail.threePaneView") }>@layoutIcon("three-pane")</button>
 			</span>
-			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">@Icon("refresh", "")<span>{ t(ctx, "mail.refresh") }</span></button>
+			<button class="tool-btn" hx-get={ listBase(mailbox, listURL) } hx-target="#main-content">@Icon("refresh", "")<span>{ t(ctx, "mail.refresh") }</span></button>
 			<div
 				x-data={ fmt.Sprintf("spamScan('%s')", mailbox) }
 				class="u-inline-flex u-items-center u-gap-05"
@@ -218,11 +221,11 @@ templ MailboxContent(mailbox string, counts ListCounts, messages []MessageSummar
 				<div class="msg-list" role="list" aria-label={ t(ctx, "mail.messages") }>
 					@MessageRows(messages, mailbox)
 					if infiniteScroll && page < totalPages {
-						@InfiniteScrollSentinel(mailbox, page+1)
+						@InfiniteScrollSentinel(mailbox, page+1, listURL)
 					}
 				</div>
 				if !infiniteScroll {
-					@Pagination(page, totalPages, mailboxURL(mailbox))
+					@Pagination(page, totalPages, listBase(mailbox, listURL))
 				}
 			}
 		</div>
@@ -350,10 +353,10 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 }
 
 // InfiniteScrollSentinel renders a sentinel element that triggers loading the next page when revealed.
-templ InfiniteScrollSentinel(mailbox string, nextPage int) {
+templ InfiniteScrollSentinel(mailbox string, nextPage int, listURL string) {
 	<div
 		class="msg-row"
-		hx-get={ fmt.Sprintf("/mail/%s?page=%d&partial=1", encMailbox(mailbox), nextPage) }
+		hx-get={ pageURL(listBase(mailbox, listURL), nextPage) + "&partial=1" }
 		hx-trigger="intersect once"
 		hx-swap="outerHTML"
 		hx-indicator=".load-more-spinner"
@@ -366,10 +369,10 @@ templ InfiniteScrollSentinel(mailbox string, nextPage int) {
 
 // MessageRowsPartial renders just the rows for use in infinite scroll partial responses.
 // If there are more pages, it appends a new sentinel row.
-templ MessageRowsPartial(messages []MessageSummary, mailbox string, page int, totalPages int) {
+templ MessageRowsPartial(messages []MessageSummary, mailbox string, page int, totalPages int, listURL string) {
 	@MessageRows(messages, mailbox)
 	if page < totalPages {
-		@InfiniteScrollSentinel(mailbox, page+1)
+		@InfiniteScrollSentinel(mailbox, page+1, listURL)
 	}
 }
 

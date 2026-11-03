@@ -107,7 +107,7 @@ func (h *SummaryHandler) Summary(w http.ResponseWriter, r *http.Request) {
 
 	var data templates.SummaryData
 	data.Warning = recoveryWarning(r)
-	data.ToMe = h.section(userID, "to-me", "/mail/to-me", func() ([]templates.SummaryRow, error) {
+	data.ToMe = h.section(userID, "to-me", "/mail/to-me?unread=1", func() ([]templates.SummaryRow, error) {
 		if h.mail == nil {
 			return nil, nil
 		}
@@ -127,6 +127,7 @@ func (h *SummaryHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		}
 		return h.invitations.Awaiting(userID, email, summaryLimit)
 	})
+	data.Invitations.MoreKey = "summary.openInbox"
 	data.Upcoming = h.section(userID, "upcoming", "/calendar/agenda", func() ([]templates.SummaryRow, error) {
 		if h.upcoming == nil {
 			return nil, nil

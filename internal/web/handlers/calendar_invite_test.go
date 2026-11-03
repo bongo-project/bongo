@@ -192,7 +192,10 @@ func TestInviteOnUpdate(t *testing.T) {
 			[]string{"REQUEST 1 bob@example.org", "CANCEL 1 carol@example.org"}},
 		{"everyone removed", map[string]string{"attendees": ""},
 			[]string{"CANCEL 1 bob@example.org,carol@example.org"}},
-		{"title only", map[string]string{"title": "Renamed"}, nil},
+		{"title only", map[string]string{"title": "Renamed"},
+			[]string{"REQUEST 1 bob@example.org,carol@example.org"}},
+		{"description only", map[string]string{"description": "New agenda"},
+			[]string{"REQUEST 1 bob@example.org,carol@example.org"}},
 		{"no change", nil, nil},
 		{"case-only change of an address", map[string]string{"attendees": "BOB@example.org, carol@example.org"}, nil},
 	} {
@@ -269,6 +272,26 @@ func TestInviteOnDelete(t *testing.T) {
 		if _, err := env.events.Get(quotaUser, guid); err == nil {
 			t.Error("event not deleted")
 		}
+	}
+}
+
+func TestInviteOnRenameCarriesNewSummary(t *testing.T) {
+	env, h, fs := newInviteHandler(t)
+	guid, ev := createMeeting(t, h, env, "bob@example.org")
+	fs.reset()
+
+	if w := putEdit(t, h, guid, browserForm(ev, map[string]string{"title": "Renamed"})); w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d: %s", w.Code, w.Body)
+	}
+	msgs := fs.messages()
+	if len(msgs) != 1 || msgs[0].method != "REQUEST" {
+		t.Fatalf("messages = %+v", msgs)
+	}
+	if got := msgs[0].vevent(t).Props.Get(ical.PropSummary).Value; got != "Renamed" {
+		t.Errorf("SUMMARY = %q", got)
+	}
+	if got := msgs[0].seq(t); got != "1" {
+		t.Errorf("SEQUENCE = %q", got)
 	}
 }
 

@@ -58,3 +58,15 @@ func TestHeaderViewActionsTargetTheRowsRealMailbox(t *testing.T) {
 		}
 	}
 }
+
+// A list reload must go through listReloadURL, or an action in the unread
+// To me view drops the filter.
+func TestListReloadsKeepTheListURL(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	if strings.Contains(js, "htmx.ajax('GET', '/mail/' + encodeURIComponent(") {
+		t.Error("a list reload builds its URL by hand; use listReloadURL")
+	}
+	if b := funcBody(t, js, "listReloadURL"); !strings.Contains(b, "listUrl") {
+		t.Error("listReloadURL must read data-list-url")
+	}
+}
