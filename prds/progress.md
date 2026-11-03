@@ -1644,3 +1644,8 @@ PATTERN: [gate] Keep the full output of a gate run (tee to a file); a filtered F
 - Merge: 31.7 and 31.9 each added a free/busy helper (kept mayReadFreeBusy, which refuses an empty caller); dropped an unrequested docscheck package that matched wrapped prose. Full gate green; browser: availability view shows own Busy blocks, a non-sharing local user and an external address render the same.
 PATTERN: [security] A view that looks up people by address must render refused and unknown addresses identically, and must use the same authorisation helper as every other free/busy path.
 PATTERN: [limits] A cap enforced where data is parsed cannot know who is exempt; parse with a hard bound, apply the business rule where the record is in hand, and grep for every other user of a constant before raising it.
+
+## 2026-11-03: v0.15 invariant sweep
+
+- Enumerated 61 v0.15 guarantees across sharing, recurrence and tasks, iTIP and scheduling, publish and subscribe, and mail (59 after dedup); broke each through go test -overlay against eefd2e9. 58 guarded. MM-1 (require-TLS domain refuses to continue in plaintext after an injected 454 to STARTTLS) was confirmed unguarded by the verifier; added TestRelayRequireTLSRefusedSTARTTLSNeverFallsBackToPlaintext (red under the break, with a no-policy control). Removed the last story numbers from production comments.
+PATTERN: [security] A downgrade guard needs a test with a mock that offers the capability and then refuses it; mocks that never offer it exercise a different branch.

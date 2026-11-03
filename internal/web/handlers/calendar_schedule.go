@@ -25,7 +25,7 @@ const (
 // client's PUT and DELETE (RFC 6638 implicit scheduling). It adds no sending
 // rules of its own: it plans and delivers through the same CalendarHandler
 // paths the web UI uses, so send-as checks, SEQUENCE rules, rate limits and
-// the recipient budget are those of US-007 and US-008. There is no request, so
+// the recipient budget are those of the web invitation path. There is no request, so
 // iMIP text is written in the acting user's preference locale. *CalDAVScheduler
 // satisfies the Scheduler interface of internal/caldav.
 type CalDAVScheduler struct {

@@ -4103,7 +4103,7 @@ func (a *Agent) migrateAddressIndex() {
 }
 
 // pruneLegacyCalendarShares removes calendar SharedWith entries that are not
-// the ID of an existing profile (US-023), through Raft, logging the calendar
+// the ID of an existing profile, through Raft, logging the calendar
 // and the number removed. Leader-only: a follower applies nothing.
 //
 // It rewrites whole calendar records, so it runs during startup before this

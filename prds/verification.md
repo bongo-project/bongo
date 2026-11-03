@@ -74,7 +74,14 @@ PASS 2, PARTIAL 17, FAIL 1. Most PARTIAL verdicts come from test gaps or from li
 
 Non-IANA TZIDs fall back to UTC. The generated VTIMEZONE covers 10 years for an open series. An override also listed in EXDATE is shown. Old `{guid}_{date}` links redirect for the owner only. A higher-SEQUENCE REQUEST for one occurrence offers only an answer. An event stored by a CalDAV client under another object name is not recognised by the invitation card. Override-only edits send no per-occurrence iTIP. The server does not bump SEQUENCE. The schedule-inbox cap is per node. Recurring tasks show at their first due date only. Resource bookings list the first 500 events in UTC. The client recordings in `internal/caldav/testdata` are hand-made approximations of Apple and Thunderbird traffic.
 
-## Not yet done
+## Phase 31 and the mutation sweep (2026-11-03)
 
-- **Mutation sweep (step 6).** It runs after the defects are fixed, as it did for v0.14.
+All 13 defects, the missing availability view, the test gaps and the doc gaps were fixed in Phase 31 (PRs #148 and #149), each defect with a test that was red on main.
+
+The invariant sweep then ran against `eefd2e9`. Five read-only agents enumerated 61 falsifiable v0.15 guarantees in five areas: sharing, recurrence and tasks, iTIP and scheduling, publish and subscribe, and mail. After deduplication, 59 remained. Each was broken with the smallest compiling edit through `go test -overlay`, so the working tree was never touched.
+
+- **58 guarded:** a named test went red for each.
+- **1 unguarded, confirmed by an adversarial verifier (MM-1, medium).** A domain whose MTA-STS or DANE policy requires TLS was protected against a remote that offers STARTTLS and then refuses it with 454, but no test exercised that path. An injected 454 is a downgrade attack. Fixed by `TestRelayRequireTLSRefusedSTARTTLSNeverFallsBackToPlaintext`, which is red under the break and green on main.
+
+## Not yet done
 - **Manual client checks (operator):** CalDAV scheduling with Apple Calendar and Thunderbird; tasks with Apple Reminders, Thunderbird and DAVx5 with tasks.org; Apple account setup after the discovery fix (PR #146).

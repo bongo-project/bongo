@@ -29,7 +29,7 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// Published calendar feeds (US-010).
+// Published calendar feeds.
 //
 // GET /pub/calendar/{owner}/{calendar}/{token}.ics is the one unauthenticated
 // data route. The token is a capability stored on the Calendar record: 32
