@@ -1299,13 +1299,8 @@ func parseAddressList(header string) []imap.Address {
 		return nil
 	}
 	var addrs []imap.Address
-	for _, part := range strings.Split(header, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		addr := parseAddress(part)
-		addrs = append(addrs, addr)
+	for _, part := range store.SplitAddressHeader(header) {
+		addrs = append(addrs, parseAddress(part))
 	}
 	return addrs
 }

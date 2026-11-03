@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"testing"
@@ -90,6 +91,12 @@ func TestCancelBooking(t *testing.T) {
 		}
 		if e.count(t) != 1 || len(e.fs.sent) != before {
 			t.Errorf("bookings %d, messages %d -> %d", e.count(t), before, len(e.fs.sent))
+		}
+	})
+	t.Run("a missing booking matches ErrEventNotFound", func(t *testing.T) {
+		err := e.h.CancelBooking(resID, uidGuid("never-booked@example.org"))
+		if !errors.Is(err, store.ErrEventNotFound) {
+			t.Errorf("CancelBooking(missing) = %v, want ErrEventNotFound", err)
 		}
 	})
 	t.Run("a person is not cancelled through it", func(t *testing.T) {

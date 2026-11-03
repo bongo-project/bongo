@@ -82,8 +82,10 @@ func TestInSeriesForm(t *testing.T) {
 		{"date without VALUE", dtstartProp("20301014"), "20301104", "", "DATE"},
 		{"zoned", dtstartProp("20301014T090000", "TZID", "Europe/Amsterdam"), "20301104T090000", "Europe/Amsterdam", ""},
 		{"utc", dtstartProp("20301014T080000Z"), "20301104T080000Z", "", ""},
+		{"TZID=UTC writes a Z value without TZID", dtstartProp("20301014T090000", "TZID", "UTC"), "20301104T080000Z", "", ""},
 		{"floating", dtstartProp("20301014T090000"), "20301104T080000", "", ""},
-		{"non-IANA zone reads as UTC", dtstartProp("20301014T090000", "TZID", "W. Europe Standard Time"), "20301104T080000Z", "", ""},
+		{"Windows zone keeps its TZID", dtstartProp("20301014T090000", "TZID", "W. Europe Standard Time"), "20301104T090000", "W. Europe Standard Time", ""},
+		{"unknown zone reads as UTC", dtstartProp("20301014T090000", "TZID", "Mars Standard Time"), "20301104T080000Z", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := InSeriesForm(ical.PropRecurrenceID, tc.dtstart, slot)

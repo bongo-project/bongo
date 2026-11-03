@@ -2481,12 +2481,7 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 	// Also backfill Cc if missing.
 	if len(meta.Cc) == 0 {
 		if ccHeader := env.GetHeader("Cc"); ccHeader != "" {
-			for _, addr := range strings.Split(ccHeader, ",") {
-				addr = strings.TrimSpace(addr)
-				if addr != "" {
-					meta.Cc = append(meta.Cc, addr)
-				}
-			}
+			meta.Cc = store.SplitAddressHeader(ccHeader)
 		}
 	}
 

@@ -234,26 +234,6 @@ func (b *Backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 	}, nil
 }
 
-// CreateCalendar creates a new calendar.
-func (b *Backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
-	userID := getUserID(ctx)
-	if userID == "" {
-		return fmt.Errorf("no user in context")
-	}
-
-	cal := &bongov1.Calendar{
-		Name:        calendar.Name,
-		Description: calendar.Description,
-	}
-	_, err := b.calendars.Create(userID, cal)
-	if err != nil {
-		b.logger.Warn("caldav: create calendar failed", "user", userID, "name", calendar.Name, "error", err)
-		return err
-	}
-	b.logger.Info("caldav: calendar created", "user", userID, "name", calendar.Name)
-	return nil
-}
-
 // GetCalendarObject returns a single event as a CalDAV calendar object.
 func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
 	t, err := b.resolve(ctx, path, kindObject)
@@ -272,8 +252,11 @@ func (b *Backend) GetCalendarObject(ctx context.Context, path string, req *calda
 	}
 
 	event, err := b.events.Get(t.keyOwner, t.guid)
+	if errors.Is(err, store.ErrEventNotFound) {
+		return nil, httpErr(http.StatusNotFound, "not found")
+	}
 	if err != nil {
-		return nil, fmt.Errorf("event not found: %w", err)
+		return nil, fmt.Errorf("reading event: %w", err)
 	}
 	// A grant covers one calendar: an event the owner keeps in another
 	// calendar is not reachable through this one, by guid or otherwise.
@@ -527,7 +510,10 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 		} else if subscribed {
 			return httpErr(http.StatusForbidden, "this calendar is a read-only subscription")
 		}
-	} else if !errors.Is(err, store.ErrEventNotFound) {
+	} else if errors.Is(err, store.ErrEventNotFound) {
+		// Nothing to delete: answer 404 rather than apply a DELETE of an absent key.
+		return httpErr(http.StatusNotFound, "not found")
+	} else {
 		return fmt.Errorf("reading event: %w", err)
 	}
 
@@ -596,7 +582,7 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 		Path:          objectPath(userID, calID, e.Guid),
 		ModTime:       modTime,
 		ContentLength: int64(buf.Len()),
-		ETag:          store.ContentETag(e.IcalRaw, e.UpdatedAt),
+		ETag:          store.ContentETagValue(e.IcalRaw, e.UpdatedAt),
 		Data:          cal,
 	}, nil
 }

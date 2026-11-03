@@ -1660,3 +1660,10 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 - v0.15.0 tagged at ba14689 and deployed to production by the infra session (image digest c06e4275...).
 - The 58 v0.15 PRD 8.2 notes were triaged; four read-only reviewers checked group A against v0.15.0. Worse than noted: MKCALENDAR is 405 in go-webdav v0.7.0, Windows TZIDs give StartTime 0, missing CalDAV objects answer 500, ETags are double-quoted (If-Match always 412). Already fixed: user-zone week/day views, reminder_minutes bound.
 - prd-calendar-fixes-v0.15.1.md (23 stories) imported as Phase 32 with the operator-approved defaults in its 8.1.
+
+## 2026-11-03: Phase 32 batch 1 (32.1, 32.2, 32.4, 32.6, 32.9, 32.17, 32.21, 32.22)
+- Eight tasks via the norman workflow (opus advisor, sonnet golang-pro workers in worktrees, review). 32.4 had one fix round (TZID=UTC written as Z; CLDR release 48 file checked in unmodified).
+- Follow-up agent closed review test gaps: MKCALENDAR production wiring, CreateNew store test, CalDAV listing after leaving a share, replaceFollowing compensation. Deleted the near-vacuous TestPlanACLAcceptIgnoresWallClock (passed under a time.Now() mutant; TestACLAcceptExpiry catches it).
+- Gate green: make test-all, make lint, gosec.
+- PATTERN: testing - a wall-clock determinism test needs a command timestamp far from now; two calls 2ms apart prove nothing.
+- PATTERN: caldav - go-webdav v0.7.0 decodes only displayname for extended MKCOL; intercept MKCOL on collection paths too.

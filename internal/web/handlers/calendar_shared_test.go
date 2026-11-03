@@ -88,7 +88,7 @@ func newSharedEnv(t *testing.T) *sharedEnv {
 		{actRead, store.GrantLevelRead, store.GrantStateAccepted},
 		{actWrite, store.GrantLevelWrite, store.GrantStateAccepted},
 	} {
-		if err := e.acl.SetCalendarGrant(sharedOwner, sharedCalA, g.who, g.level, g.state, sharedOwner, time.Unix(1, 0)); err != nil {
+		if err := e.acl.SetCalendarGrant(sharedOwner, sharedCalA, g.who, g.level, g.state, sharedOwner, time.Unix(sharedEvAWhn, 0)); err != nil {
 			t.Fatal(err)
 		}
 	}

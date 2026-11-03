@@ -97,7 +97,7 @@ func TestListPendingCalendarGrantsHeld(t *testing.T) {
 	e.grant(t, "o1", "gone", "me", GrantLevelRead, GrantStatePending)
 	e.grant(t, "o1", "c1", "other", GrantLevelRead, GrantStatePending)
 
-	got, err := e.acl.ListPendingCalendarGrantsHeld("me")
+	got, err := e.acl.ListPendingCalendarGrantsHeld("me", time.Unix(2000, 0))
 	if err != nil {
 		t.Fatal(err)
 	}

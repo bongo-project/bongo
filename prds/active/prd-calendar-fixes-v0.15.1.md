@@ -409,4 +409,29 @@ FR-1 to FR-23 are the acceptance criteria of US-001 to US-023.
 
 ### 8.2 Candidates for the next release
 
-(empty)
+Found while building batch 1 (2026-11-03):
+
+- CardDAV passes the already-quoted `ContentETag` to go-webdav
+  (`carddav/server.go:367`), so contact ETags are probably double-quoted and
+  If-Match PUTs refused, as events were before US-002. `schedule_http.go`
+  `getItem` (~683) also quotes `itemETag` twice. Not in US-002's text.
+- US-004: an unknown TZID (neither IANA nor in the CLDR table) is now read
+  as UTC by `EventStart`/`EventEnd`; before, `ToEvent` stored StartTime 0.
+  `Zone` tries the IANA name first and the table on a miss (keeps
+  `Zone("UTC") == time.UTC`), not table-first as 8.1 worded it.
+  `exportZoneSpans` keys spans by the raw `e.Timezone`, so a structured
+  series in "W. Europe Standard Time" and one in Europe/Berlin would emit two
+  VTIMEZONEs with TZID Europe/Berlin (near-unreachable).
+- US-006: a non-cancelled override moved to before the split slot whose
+  RECURRENCE-ID is not on the rule is not counted as visible.
+- US-009: `alignStart` changes DTSTART's value type but leaves RRULE UNTIL,
+  EXDATE and RECURRENCE-ID of a recurring VTODO in the old type (matters for
+  US-008). `calendar_reply.go` (~205) keeps its own SEQUENCE parser.
+- US-017: expired pending grants are never deleted; the owner's sharing list
+  still shows them as pending and the grantee cannot decline them (404). A
+  node on v0.15.0 would still accept an expired grant (single node, moot).
+- US-021: the profile UUID seeds hash the raw, case-sensitive address, while
+  the identifiers use the lower-cased one.
+- US-022: a group mixed with addresses (`undisclosed-recipients:;, a@x`)
+  returns only the addresses; a non-ASCII quoted name is returned unencoded
+  rather than RFC 2047-encoded.

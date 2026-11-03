@@ -94,6 +94,9 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"share decline", "/calendar/shares/decline", func(string) url.Values {
 			return url.Values{"owner": {"nobody"}, "calendar": {"none"}}
 		}},
+		{"share leave", "/calendar/shares/leave", func(string) url.Values {
+			return url.Values{"owner": {"nobody"}, "calendar": {"none"}}
+		}},
 		{"public link send", "/calendar/missing/publish/send", func(string) url.Values {
 			return url.Values{"send_to": {"friend@example.com"}}
 		}},

@@ -6,8 +6,9 @@ import (
 	"fmt"
 )
 
-// ContentETag returns a strong HTTP ETag derived from a resource's stored
-// bytes, for the CalDAV and CardDAV backends.
+// ContentETag returns a strong HTTP ETag, quoted, derived from a resource's
+// stored bytes. Use it where we write the header ourselves; go-webdav backends
+// return ContentETagValue instead, because the library adds the quotes.
 //
 // It replaces an ETag built from the record's UpdatedAt timestamp in whole
 // seconds. That was not merely imprecise: two edits landing in the same second
@@ -33,11 +34,11 @@ func ContentETag(content []byte, fallback int64) string {
 
 // ContentETagValue is ContentETag without the surrounding quotes.
 //
-// Both forms are needed and they are not interchangeable. The ETag *header*
-// carries the quoted form, while go-webdav's ConditionalMatch.MatchETag
+// Both forms are needed and they are not interchangeable. go-webdav quotes the
+// ETag a backend returns (for the header and for getetag), so a backend passes
+// the bare value; a quoted one would be quoted twice. MatchETag likewise
 // compares against the bare value it has already unquoted from the client's
-// If-Match header. Passing the quoted form to MatchETag makes every comparison
-// fail, which presents as a server rejecting the very ETag it just issued.
+// If-Match header, so the quoted form never matches.
 func ContentETagValue(content []byte, fallback int64) string {
 	if len(content) == 0 {
 		return fmt.Sprintf("t%d", fallback)

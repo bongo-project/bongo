@@ -407,9 +407,7 @@ func TestTaskPreconditionsAndQuota(t *testing.T) {
 	if got, _ := e.tasks.Get(tdOwner, "p1"); got.Summary != "One" {
 		t.Errorf("a refused PUT changed the task: %q", got.Summary)
 	}
-	// The wire form of the ETag is the library's business (it quotes the
-	// backend's already-quoted value, for events as well); the condition is
-	// the strong ETag of the stored bytes.
+	// The condition is the quoted strong ETag of the stored bytes, as served.
 	cur, err := e.tasks.Get(tdOwner, "p1")
 	if err != nil {
 		t.Fatal(err)

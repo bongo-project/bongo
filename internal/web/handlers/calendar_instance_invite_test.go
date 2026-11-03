@@ -245,3 +245,33 @@ func TestInstanceWriteFailuresAreLogged(t *testing.T) {
 		})
 	}
 }
+
+// Replacing a series whose leading instances are excluded cancels the old UID
+// and invites to the new one.
+func TestInstanceInvitesReplacedSeries(t *testing.T) {
+	both := "bob@example.org,carol@example.org"
+	e := newInstEnv(t)
+	guid, fs := e.seedWithAttendees(t, kinds[1], true)
+	ev := e.get(t, guid)
+	ev.Exdates = []string{"20301014T090000"}
+	if err := e.events.Update(quotaUser, guid, ev); err != nil {
+		t.Fatal(err)
+	}
+	fs.reset()
+	over := map[string]string{"occurrence": ridOct21Timed, "scope": "following", "attendees": "bob@example.org, carol@example.org"}
+	if w := e.update(guid, occurrenceForm(kinds[1], "FREQ=WEEKLY", "Replaced", "2030-10-21", over)); w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d: %s", w.Code, w.Body.String())
+	}
+	msgs := fs.messages()
+	if len(msgs) != 2 {
+		t.Fatalf("messages = %d, want a CANCEL and a REQUEST", len(msgs))
+	}
+	newGuid := e.otherGuid(t, "")
+	cancel, request := msgs[0], msgs[1]
+	if cancel.method != "CANCEL" || uidOf(t, cancel) != guid || addrsOf(cancel) != both {
+		t.Errorf("first message: %s uid %q to %s, want a CANCEL of %q", cancel.method, uidOf(t, cancel), addrsOf(cancel), guid)
+	}
+	if request.method != "REQUEST" || uidOf(t, request) != newGuid || addrsOf(request) != both || ridOf(t, request) != "" {
+		t.Errorf("second message: %s uid %q to %s, want a REQUEST of %q", request.method, uidOf(t, request), addrsOf(request), newGuid)
+	}
+}

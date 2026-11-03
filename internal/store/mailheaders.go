@@ -62,9 +62,12 @@ type HeaderGetter interface {
 	GetHeader(name string) string
 }
 
-// SplitAddressHeader splits a To or Cc header value on commas, trimming each
-// entry and dropping empty ones. The split is naive: a quoted display name
-// holding a comma yields fragments, which BareAddress copes with.
+// SplitAddressHeader splits an address header value (To, Cc and the like) into
+// one entry per address. A comma inside a quoted display name ("Doe, Jane"
+// <j@x>) does not separate addresses. Lists that parse as RFC 5322 and hold no
+// such comma, lists that do not parse, and groups (undisclosed-recipients:;)
+// come back exactly as the plain comma split returns them, trimmed and without
+// empty entries.
 func SplitAddressHeader(v string) []string {
 	var out []string
 	for _, addr := range strings.Split(v, ",") {
@@ -72,7 +75,38 @@ func SplitAddressHeader(v string) []string {
 			out = append(out, addr)
 		}
 	}
-	return out
+	parsed, err := mail.ParseAddressList(v)
+	if err != nil || len(parsed) == 0 || len(parsed) == len(out) {
+		return out
+	}
+	rebuilt := make([]string, 0, len(parsed))
+	for _, a := range parsed {
+		rebuilt = append(rebuilt, formatAddress(a))
+	}
+	return rebuilt
+}
+
+// formatAddress renders one parsed address. A non-ASCII name is quoted as is:
+// mail.Address.String would turn it into an RFC 2047 word, and the header value
+// reaching here has already been decoded.
+func formatAddress(a *mail.Address) string {
+	switch {
+	case a.Name == "":
+		return a.Address
+	case isASCII(a.Name):
+		return a.String()
+	}
+	name := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(a.Name)
+	return `"` + name + `" <` + a.Address + `>`
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // MailAddressHeaders extracts the To, Cc and List-Id values every writer of

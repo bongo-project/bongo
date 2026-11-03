@@ -173,6 +173,16 @@ func TestParseAddressList(t *testing.T) {
 			t.Errorf("second mailbox = %q, want bob", addrs[1].Mailbox)
 		}
 	})
+
+	t.Run("quoted comma in display name", func(t *testing.T) {
+		addrs := parseAddressList(`"Smith, John" <j@x.com>, b@y.com`)
+		if len(addrs) != 2 {
+			t.Fatalf("expected 2 addresses, got %d", len(addrs))
+		}
+		if addrs[0].Name != "Smith, John" || addrs[0].Mailbox != "j" || addrs[0].Host != "x.com" {
+			t.Errorf("first address = %+v, want Smith, John <j@x.com>", addrs[0])
+		}
+	})
 }
 
 func TestSessionReportedSeqNum(t *testing.T) {

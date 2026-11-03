@@ -1603,6 +1603,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/calendar/shares", calendarH.ShareInvitations)
 			r.Post("/calendar/shares/accept", calendarH.AcceptShare)
 			r.Post("/calendar/shares/decline", calendarH.DeclineShare)
+			r.Post("/calendar/shares/leave", calendarH.LeaveShare)
 			r.Post("/calendar/{calendarID}/publish/send", calendarH.SendPublicLink)
 			r.Post("/calendar/{calendarID}/publish", calendarH.PublishCalendar)
 			r.Post("/calendar/{calendarID}/publish/regenerate", calendarH.RegeneratePublish)
@@ -5182,6 +5183,8 @@ func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Scheduling (RFC 6638) sits outside it: it answers the inbox and outbox
 	// itself and adds its properties to what go-webdav says.
 	next = bongocaldav.ScheduleHandler(next, h.backend, h.logger)
+	// MKCALENDAR and extended MKCOL create calendars; go-webdav cannot.
+	next = bongocaldav.MkcalendarHandler(next, h.backend, h.logger)
 	serveDAVBody(w, r, h.budget, h.logger, userID, next)
 }
 

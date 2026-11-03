@@ -650,7 +650,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Split recipients into local and external before any user-visible writes
 	// so pre-delivery rejection does not leave a partial Sent copy behind.
-	allRecipients := append(splitRecipients(to), splitRecipients(cc)...)
+	allRecipients := append(store.SplitAddressHeader(to), store.SplitAddressHeader(cc)...)
 	localRecipients, externalRecipients := h.splitLocal(allRecipients)
 
 	maxRcpts := h.maxRecipients
@@ -778,8 +778,8 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		MessageId:  messageID,
 		Subject:    subject,
 		From:       fromAddr,
-		To:         splitRecipients(to),
-		Cc:         splitRecipients(cc),
+		To:         store.SplitAddressHeader(to),
+		Cc:         store.SplitAddressHeader(cc),
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: rawHash,
@@ -940,7 +940,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 		// Index sender's copy. Use searchBody (derived plain text in rich mode).
 		if h.search != nil {
-			if err := h.search.IndexMail(userID, guid, subject, fromAddr, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
+			if err := h.search.IndexMail(userID, guid, subject, fromAddr, store.SplitAddressHeader(to), searchBody, time.Now().Unix(), false, nil); err != nil {
 				h.logger.Warn("web: failed to index sender copy", "guid", guid, "error", err)
 			}
 		}
@@ -1073,8 +1073,8 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		Guid:       guid,
 		Subject:    subject,
 		From:       email,
-		To:         splitRecipients(to),
-		Cc:         splitRecipients(cc),
+		To:         store.SplitAddressHeader(to),
+		Cc:         store.SplitAddressHeader(cc),
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: rawHash,
@@ -1469,35 +1469,4 @@ func normalizeRecipient(rcpt string) string {
 		return addr.Address
 	}
 	return rcpt
-}
-
-// splitRecipients splits a To/Cc field into one entry per recipient. A comma
-// inside a quoted display name ("Doe, Jane" <j@x>) does not separate
-// recipients. Lists that parse as RFC 5322 and contain no such comma are
-// returned exactly as the plain comma split would return them, so existing
-// input is unchanged; a list that does not parse falls back to the comma split.
-func splitRecipients(s string) []string {
-	if s == "" {
-		return nil
-	}
-	var result []string
-	for _, r := range strings.Split(s, ",") {
-		r = strings.TrimSpace(r)
-		if r != "" {
-			result = append(result, r)
-		}
-	}
-	parsed, err := netmail.ParseAddressList(s)
-	if err != nil || len(parsed) == len(result) {
-		return result
-	}
-	quoted := make([]string, 0, len(parsed))
-	for _, a := range parsed {
-		if a.Name == "" {
-			quoted = append(quoted, a.Address)
-		} else {
-			quoted = append(quoted, a.String())
-		}
-	}
-	return quoted
 }

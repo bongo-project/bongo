@@ -79,8 +79,9 @@ func newRecurrenceSet(event *bongov1.Event) (*recurrenceSet, error) {
 		overrides:  map[int64]*override{},
 	}
 	// An all-day series is a run of dates and takes no zone. A name that does
-	// not load (Outlook's "W. Europe Standard Time", a client's custom TZID)
-	// falls back to UTC; icalevent.Zone logs it once.
+	// not load (a client's custom TZID) falls back to UTC; icalevent.Zone logs
+	// it once. A Windows name such as "W. Europe Standard Time" loads through
+	// Zone's CLDR table.
 	if !event.AllDay {
 		s.loc = icalevent.ZoneOrUTC(event.Timezone)
 	}

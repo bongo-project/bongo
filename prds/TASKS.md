@@ -197,26 +197,26 @@ Imported 2026-11-03 from the v0.15 follow-ups (operator: all of group A as v0.15
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 32.1 | US-001: create calendars and lists over CalDAV (MKCALENDAR and extended MKCOL with component set and requested path) | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.2 | US-002: CalDAV 404 for missing objects; single-quoted ETags so If-Match works | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.3 | US-003: events only into existing own calendars (web, import, move, CalDAV PUT); empty calendar_id in the owner's default listing | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.4 | US-004: Windows TZIDs via an embedded CLDR windowsZones table in icalevent.Zone; switch go-ical/LoadLocation call sites | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.5 | US-005: delete a calendar (web and CalDAV) with its events, tasks, grants and feed | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO | needs: 32.3 |
-| 32.6 | US-006: "this and following" with excluded leading instances deletes the emptied original | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.7 | US-007: tasks from shared calendars in /tasks and the agenda (read-only) | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.8 | US-008: recurring tasks expanded in the agenda and /tasks; overdue open tasks in today's window | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.9 | US-009: task edits keep DUE and DTSTART types and order; one icalevent.BumpRevision helper | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO | before 32.10 |
-| 32.10 | US-010: CalDAV organiser updates bump SEQUENCE; title and description changes send REQUEST | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO | needs: 32.9 |
-| 32.11 | US-011: no iTIP for events entirely in the past (web and CalDAV) | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.12 | US-012: CalDAV per-occurrence REQUEST/CANCEL and override-only attendees | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO | needs: 32.10 |
-| 32.13 | US-013: attendee CalDAV DELETE sends REPLY DECLINED | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.14 | US-014: a REPLY with master and overrides is applied to all of them | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.15 | US-015: invitation card shows the user's stored status; prefer a send-as address; note for alias-only invitees | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.16 | US-016: resource bookings per occurrence; handled iMIP not kept in the resource INBOX | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.17 | US-017: pending shares expire after 30 days (deterministic in the FSM); leave an accepted share | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.18 | US-018: browser reminders fire once without a full /user/ scan; reminder_minutes regression test | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.19 | US-019: localised dates in reminder mail and the agenda (one i18n date helper) | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.20 | US-020: /mail/to-me?unread=1 for the summary link; relabel the invitations link; INBOX renders ?warning= | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.21 | US-021: per-user PayloadIdentifiers in the Apple profile | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.22 | US-022: address headers parsed with net/mail (quoted commas); IMAP ENVELOPE and Cc backfill use it | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
-| 32.23 | US-023: header views move to /mail/view/... so folders named to-me or lists are reachable | [prd-calendar-fixes-v0.15.1.md](backlog/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.1 | US-001: create calendars and lists over CalDAV (MKCALENDAR and extended MKCOL with component set and requested path) | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | DONE (2026-11-03) | MkcalendarHandler in front of go-webdav handles MKCALENDAR and extended MKCOL; CalendarStore.CreateNew/ErrExists. Batch 1. |
+| 32.2 | US-002: CalDAV 404 for missing objects; single-quoted ETags so If-Match works | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | DONE (2026-11-03) | EventStore.Get matches ErrEventNotFound and ErrNotFound; unquoted ETag values to go-webdav. Batch 1. |
+| 32.3 | US-003: events only into existing own calendars (web, import, move, CalDAV PUT); empty calendar_id in the owner's default listing | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.4 | US-004: Windows TZIDs via an embedded CLDR windowsZones table in icalevent.Zone; switch go-ical/LoadLocation call sites | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | DONE (2026-11-03) | CLDR release 48 windowsZones.xml checked in; windowszones_gen.go generated; resolver used at every TZID site. Batch 1. |
+| 32.5 | US-005: delete a calendar (web and CalDAV) with its events, tasks, grants and feed | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO | needs: 32.3 |
+| 32.6 | US-006: "this and following" with excluded leading instances deletes the emptied original | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | DONE (2026-11-03) | store.VisibleInstancesBefore; replaceFollowing for an emptied original, with compensation test. Batch 1. |
+| 32.7 | US-007: tasks from shared calendars in /tasks and the agenda (read-only) | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.8 | US-008: recurring tasks expanded in the agenda and /tasks; overdue open tasks in today's window | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.9 | US-009: task edits keep DUE and DTSTART types and order; one icalevent.BumpRevision helper | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | DONE (2026-11-03) | icalevent.BumpRevision/Sequence/SetRevision; alignStart; DUE before DTSTART refused (400). Batch 1. before 32.10 |
+| 32.10 | US-010: CalDAV organiser updates bump SEQUENCE; title and description changes send REQUEST | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO | needs: 32.9 |
+| 32.11 | US-011: no iTIP for events entirely in the past (web and CalDAV) | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.12 | US-012: CalDAV per-occurrence REQUEST/CANCEL and override-only attendees | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO | needs: 32.10 |
+| 32.13 | US-013: attendee CalDAV DELETE sends REPLY DECLINED | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.14 | US-014: a REPLY with master and overrides is applied to all of them | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.15 | US-015: invitation card shows the user's stored status; prefer a send-as address; note for alias-only invitees | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.16 | US-016: resource bookings per occurrence; handled iMIP not kept in the resource INBOX | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.17 | US-017: pending shares expire after 30 days (deterministic in the FSM); leave an accepted share | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | DONE (2026-11-03) | PendingGrantTTL 30 days decided from the command At; CountActiveCalendarGrants; POST /calendar/shares/leave. Batch 1. |
+| 32.18 | US-018: browser reminders fire once without a full /user/ scan; reminder_minutes regression test | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.19 | US-019: localised dates in reminder mail and the agenda (one i18n date helper) | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.20 | US-020: /mail/to-me?unread=1 for the summary link; relabel the invitations link; INBOX renders ?warning= | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |
+| 32.21 | US-021: per-user PayloadIdentifiers in the Apple profile | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | DONE (2026-11-03) | addressTag(email) in all four PayloadIdentifiers. Batch 1. |
+| 32.22 | US-022: address headers parsed with net/mail (quoted commas); IMAP ENVELOPE and Cc backfill use it | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | DONE (2026-11-03) | store.SplitAddressHeader parses quoted commas; compose splitRecipients removed; IMAP ENVELOPE and Cc backfill use it. Batch 1. |
+| 32.23 | US-023: header views move to /mail/view/... so folders named to-me or lists are reachable | [prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md) | TODO |  |

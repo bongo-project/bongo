@@ -15,7 +15,7 @@ type PendingShare struct {
 	Level        string
 }
 
-templ CalendarSharesPage(rows []PendingShare, calendars []*bongov1.Calendar, email string) {
+templ CalendarSharesPage(rows []PendingShare, joined []PendingShare, calendars []*bongov1.Calendar, email string) {
 	@LayoutWithContent(t(ctx, "calendar.sharesTitle"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@CalendarSidebar(calendars)
@@ -47,6 +47,22 @@ templ CalendarSharesPage(rows []PendingShare, calendars []*bongov1.Calendar, ema
 					</li>
 				}
 			</ul>
+			if len(joined) > 0 {
+				<h3>{ t(ctx, "calendar.sharesJoined") }</h3>
+				<ul class="share-list">
+					for _, row := range joined {
+						<li class="share-item">
+							<span class="share-target">{ row.OwnerLabel } &middot; { row.CalendarName } &middot; { shareLevelLabel(ctx, row.Level) }</span>
+							<form hx-post="/calendar/shares/leave" hx-swap="none" class="share-decline-form">
+								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+								<input type="hidden" name="owner" value={ row.Owner }/>
+								<input type="hidden" name="calendar" value={ row.Calendar }/>
+								<button type="submit" class="tool-btn">{ t(ctx, "calendar.shareLeave") }</button>
+							</form>
+						</li>
+					}
+				</ul>
+			}
 		</main>
 	}
 }

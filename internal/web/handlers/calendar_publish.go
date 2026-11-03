@@ -23,6 +23,7 @@ import (
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
 	"github.com/bongo-project/bongo/internal/i18n"
+	"github.com/bongo-project/bongo/internal/icalevent"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -325,7 +326,7 @@ func exdateFor(master *ical.Component, rid *ical.Prop) *ical.Prop {
 	}
 	if start := master.Props.Get(ical.PropDateTimeStart); start != nil && strings.HasSuffix(rid.Value, "Z") && rid.Params.Get("TZID") == "" {
 		if tzid := start.Params.Get("TZID"); tzid != "" {
-			if loc, err := time.LoadLocation(tzid); err == nil {
+			if loc, ok := icalevent.Zone(tzid); ok {
 				if t, err := time.Parse("20060102T150405Z", rid.Value); err == nil {
 					ex.Value = t.In(loc).Format("20060102T150405")
 					ex.Params.Set("TZID", tzid)
