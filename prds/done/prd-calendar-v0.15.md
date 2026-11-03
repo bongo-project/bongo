@@ -1016,3 +1016,9 @@ Phase 31 batch B (2026-11-03), notes:
   users of one domain on one device replace each other's profile; the DAV
   accounts use port 443, so they do not verify on a dev server or behind
   another public port.
+
+Triaged 2026-11-03: the defects and small gaps above were checked against
+v0.15.0 and scoped into v0.15.1
+([backlog/prd-calendar-fixes-v0.15.1.md](../backlog/prd-calendar-fixes-v0.15.1.md),
+Phase 32). Cluster-only items, the four open design decisions and the
+accepted notes stay here.

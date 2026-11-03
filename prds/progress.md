@@ -1655,3 +1655,8 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 ## 2026-11-03: Phases 30 and 31 closed
 
 - Phases 30 (20 tasks) and 31 (13 tasks) moved to TASKS-archive.md; the v0.15 PRD moved to prds/done/. Remaining before the v0.15.0 tag: the operator's manual client checks (CalDAV scheduling with Apple Calendar and Thunderbird; tasks with Apple Reminders, Thunderbird and DAVx5 with tasks.org; Apple account setup by discovery and by profile) and tag approval.
+
+## 2026-11-03: v0.15.0 released; v0.15.1 imported as Phase 32
+- v0.15.0 tagged at ba14689 and deployed to production by the infra session (image digest c06e4275...).
+- The 58 v0.15 PRD 8.2 notes were triaged; four read-only reviewers checked group A against v0.15.0. Worse than noted: MKCALENDAR is 405 in go-webdav v0.7.0, Windows TZIDs give StartTime 0, missing CalDAV objects answer 500, ETags are double-quoted (If-Match always 412). Already fixed: user-zone week/day views, reminder_minutes bound.
+- prd-calendar-fixes-v0.15.1.md (23 stories) imported as Phase 32 with the operator-approved defaults in its 8.1.
