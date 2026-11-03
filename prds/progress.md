@@ -1651,3 +1651,7 @@ PATTERN: [limits] A cap enforced where data is parsed cannot know who is exempt;
 PATTERN: [security] A downgrade guard needs a test with a mock that offers the capability and then refuses it; mocks that never offer it exercise a different branch.
 - PR #150 CI: TestSubmitDelivers/starttls (internal/sendmail) failed because the random hex Message-ID contained "bcc" and the test searched the whole message for that substring. No Bcc header leaked. The test now matches a Bcc header line (and dave's address); still red when Bcc stripping is disabled.
 PATTERN: [testing] Do not search a message for a short substring when it carries random hex (Message-ID, boundaries); match the header line or a distinctive value.
+
+## 2026-11-03: Phases 30 and 31 closed
+
+- Phases 30 (20 tasks) and 31 (13 tasks) moved to TASKS-archive.md; the v0.15 PRD moved to prds/done/. Remaining before the v0.15.0 tag: the operator's manual client checks (CalDAV scheduling with Apple Calendar and Thunderbird; tasks with Apple Reminders, Thunderbird and DAVx5 with tasks.org; Apple account setup by discovery and by profile) and tag approval.
