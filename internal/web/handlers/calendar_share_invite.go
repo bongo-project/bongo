@@ -23,7 +23,7 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// Sharing a calendar by email (US-005). A share creates a pending grant and
+// Sharing a calendar by email. A share creates a pending grant and
 // mails the grantee a link to /calendar/shares, where they accept or decline.
 // Only an accepted grant authorises anything; the grant is authoritative and
 // the email is best-effort.
