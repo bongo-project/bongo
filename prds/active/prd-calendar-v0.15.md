@@ -763,6 +763,11 @@ and 8).
   Google Calendar and Outlook do; it is written as TRANSP so CalDAV clients
   and invitations carry it.
 
+- 2026-11-03 (operator): the verification gaps are fixed before the tag
+  (Phase 31). US-004's scheduling assistant is the event form showing each
+  local attendee's busy blocks, titled "Busy", for the event's day, subject
+  to the same grants (and same-domain resources) as the free/busy lookup.
+
 ### 8.2 Candidates for the next release
 
 Audit corrections found while writing this PRD (2026-10-26):
