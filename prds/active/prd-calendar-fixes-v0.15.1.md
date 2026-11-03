@@ -555,3 +555,10 @@ Found while building batch 3 (2026-11-03):
 - US-005: the empty-to-"default" mapping exists in three places (store,
   web `eventCalendarID`, caldav `eventCalendar`).
 
+Found while building batch 4 (2026-11-03):
+
+- US-026: `PUT /calendar/{id}` (UpdateCalendar) stores any colour string;
+  only the new create path validates `#RRGGBB`. The cap is per node (one
+  node in production). With the 5-calendar cap, at most 3 subscriptions fit,
+  so `MaxSubscriptionsPerUser` (20) is unreachable.
+

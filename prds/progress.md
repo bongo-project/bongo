@@ -1684,3 +1684,10 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 - Operator added US-026 (create a calendar in the web, at most 5 owned calendars on every create path) as 32.26.
 - PATTERN: testing - a RECURRENCE-ID mutant can survive a UTC-only test because the value is copied verbatim; use a TZID case.
 - PATTERN: merge - after resolving a *_templ.go conflict with "ours", run make generate and stage the result before anything else.
+
+## 2026-11-03: Phase 32 batch 4 (32.26)
+- US-026 via the norman workflow; the advisor corrected the brief (UpdateCalendar has no colour validation; create adds a strict #RRGGBB check).
+- CreateNew holds a per-user lock (separate stripe array, user then GUID order) so concurrent creates cannot pass the 5-calendar cap together.
+- Follow-up agent: subscribe errors translated (the new status area made them visible), sidebar and CalDAV listing asserted, limit message interpolates the constant, stale 20-subscription comments fixed.
+- Gate green: make test-all, make lint, gosec. All 26 Phase 32 tasks done.
+- PATTERN: ui - giving a form a data-form-status area makes its error bodies user-visible; translate them in the same change.

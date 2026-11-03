@@ -5,7 +5,7 @@ templ calendarSubscribeForm() {
 	<section class="card calendar-subscribe-card" id="calendar-subscribe">
 		<h4>{ t(ctx, "calendar.subscribe") }</h4>
 		<p class="meta">{ t(ctx, "calendar.subscribeHelp") }</p>
-		<form hx-post="/calendar/subscribe" hx-swap="none" class="calendar-subscribe-form">
+		<form hx-post="/calendar/subscribe" hx-target="find .calendar-subscribe-status" hx-swap="innerHTML" class="calendar-subscribe-form">
 			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 			<label>
 				{ t(ctx, "calendar.subscribeUrl") }
@@ -16,6 +16,7 @@ templ calendarSubscribeForm() {
 				<input type="text" name="name" maxlength="100"/>
 			</label>
 			<button type="submit">{ t(ctx, "calendar.subscribeAdd") }</button>
+			<div class="calendar-subscribe-status" data-form-status aria-live="polite"></div>
 		</form>
 	</section>
 }

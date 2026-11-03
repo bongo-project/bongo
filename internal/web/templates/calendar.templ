@@ -814,6 +814,9 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 				<a href="/calendar" class="tool-btn">&larr; { t(ctx, "calendar.backToCalendar") }</a>
 			</div>
 			<h3>{ t(ctx, "calendar.settings") }</h3>
+			if len(calendars) < store.MaxCalendarsPerUser {
+				@calendarNewForm()
+			}
 			@calendarSubscribeForm()
 			for _, card := range cards {
 				<section class="card calendar-settings-card" id={ "calendar-settings-" + card.Calendar }>
@@ -906,6 +909,31 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 			}
 		</main>
 	}
+}
+
+// calendarNewForm is the New calendar card. The settings page omits it once
+// the user owns store.MaxCalendarsPerUser calendars.
+templ calendarNewForm() {
+	<section class="card calendar-new-card" id="calendar-new">
+		<h4>{ t(ctx, "calendar.newTitle") }</h4>
+		<form hx-post="/calendar" hx-target="find .calendar-new-status" hx-swap="innerHTML" class="calendar-new-form">
+			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+			<label>
+				{ t(ctx, "calendar.name") }
+				<input type="text" name="name" maxlength="255" required/>
+			</label>
+			<label>
+				{ t(ctx, "calendar.colour") }
+				<input type="color" name="color" value="#4A90D9"/>
+			</label>
+			<label>
+				<input type="checkbox" name="holds_tasks" value="1"/>
+				{ t(ctx, "calendar.holdsTasks") }
+			</label>
+			<button type="submit">{ t(ctx, "calendar.newAdd") }</button>
+			<div class="calendar-new-status" data-form-status aria-live="polite"></div>
+		</form>
+	</section>
 }
 
 templ levelOption(level, current, label string) {

@@ -25,7 +25,24 @@ type CalendarStore struct {
 	get func(key []byte) ([]byte, error)
 	// locks serialises Mutate per calendar (striped by key hash).
 	locks [calendarLockStripes]sync.Mutex
+	// userLocks serialises CreateNew per user so the calendar count check and
+	// the write are one step. It is a separate array from locks: a user stripe
+	// and a GUID stripe could collide and sync.Mutex is not re-entrant. Lock
+	// order is user, then GUID.
+	userLocks [calendarLockStripes]sync.Mutex
 }
+
+// MaxCalendarsPerUser is the number of calendar records one user may own
+// (Personal, Tasks, created and subscribed). Calendars shared with the user are
+// grants, not records under their key space, and do not count.
+const MaxCalendarsPerUser = 5
+
+// ErrCalendarLimit is returned by CreateNew when the user already owns
+// MaxCalendarsPerUser calendars.
+var ErrCalendarLimit = errors.New("calendar limit reached")
+
+// NewCalendarGUID returns a fresh calendar GUID.
+func NewCalendarGUID() string { return generateGUID() }
 
 const calendarLockStripes = 64
 
@@ -146,17 +163,26 @@ func (s *CalendarStore) Create(userID string, cal *bongov1.Calendar) (string, er
 var ErrExists = errors.New("calendar already exists")
 
 // CreateNew creates cal under cal.Guid only if no calendar holds that GUID,
-// returning ErrExists otherwise. Create is a blind PUT and would overwrite an
+// returning ErrExists otherwise, and ErrCalendarLimit when the user already
+// owns MaxCalendarsPerUser calendars (existence is checked first, so an
+// existing path still answers ErrExists at the cap). EnsureDefault and the
+// Tasks fallback use Create and are exempt. Create is a blind PUT and would overwrite an
 // existing calendar with its publish token and subscription.
 //
 // It holds the same per-calendar lock as Mutate, so on this node two
 // creations, or a creation racing a Mutate, cannot interleave between the
 // existence check and the write. The lock is per node; cluster-wide
-// serialisation is not provided (production runs one node).
+// serialisation is not provided (production runs one node), so the cap is
+// per node as well.
 func (s *CalendarStore) CreateNew(userID string, cal *bongov1.Calendar) error {
 	if cal.Guid == "" {
 		return fmt.Errorf("creating calendar: no GUID")
 	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(userID))
+	ul := &s.userLocks[h.Sum32()%calendarLockStripes]
+	ul.Lock()
+	defer ul.Unlock()
 	mu := s.lockFor(userID, cal.Guid)
 	mu.Lock()
 	defer mu.Unlock()
@@ -167,6 +193,13 @@ func (s *CalendarStore) CreateNew(userID string, cal *bongov1.Calendar) error {
 		return ErrExists
 	case err != nil && !errors.Is(err, ErrNotFound):
 		return fmt.Errorf("reading calendar: %w", err)
+	}
+	owned, err := s.List(userID)
+	if err != nil {
+		return fmt.Errorf("counting calendars: %w", err)
+	}
+	if len(owned) >= MaxCalendarsPerUser {
+		return ErrCalendarLimit
 	}
 	_, err = s.Create(userID, cal)
 	return err
