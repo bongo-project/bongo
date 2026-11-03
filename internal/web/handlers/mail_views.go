@@ -128,7 +128,8 @@ func listSortKey(l templates.MailingList) string {
 
 // headerViewMessages returns the messages of a header view and, index for
 // index, the real mailbox each one lives in, newest first across folders.
-func (h *MailHandler) headerViewMessages(userID string, view store.HeaderView) ([]*bongov1.MailboxMessage, []string, error) {
+// unreadOnly keeps the messages not yet seen.
+func (h *MailHandler) headerViewMessages(userID string, view store.HeaderView, unreadOnly bool) ([]*bongov1.MailboxMessage, []string, error) {
 	guids, err := h.headerViewGUIDs(userID, view)
 	if err != nil {
 		return nil, nil, err
@@ -140,7 +141,11 @@ func (h *MailHandler) headerViewMessages(userID string, view store.HeaderView) (
 	for _, g := range guids {
 		guidSet[g] = true
 	}
-	msgs, names, _, err := h.mailboxes.ListViewMessages(userID, guidSet, 0, maxMessagePageLimit)
+	var keep func(*bongov1.MailboxMessage) bool
+	if unreadOnly {
+		keep = func(m *bongov1.MailboxMessage) bool { return m.Flags&store.FlagSeen == 0 }
+	}
+	msgs, names, _, err := h.mailboxes.ListViewMessagesFiltered(userID, guidSet, keep, 0, maxMessagePageLimit)
 	return msgs, names, err
 }
 

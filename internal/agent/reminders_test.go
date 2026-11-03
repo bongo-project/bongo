@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -53,8 +52,7 @@ var lastStart int64
 // whether the owner was notified.
 func fires(t *testing.T, a *Agent, ch chan bongoimap.Notification, now time.Time) bool {
 	t.Helper()
-	var mu sync.Mutex
-	a.checkReminders(now, &mu, map[string]bool{})
+	a.newBrowserReminders().check(now)
 	select {
 	case n := <-ch:
 		if n.Type != bongoimap.NotifEventReminder {
@@ -96,7 +94,7 @@ func TestAllDayReminderUsesOwnerZone(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			user := "u" + string(rune('a'+i))
+			user := newMailUser(t, a, "u"+string(rune('a'+i)))
 			setZone(t, a, user, tc.zone)
 			ch := a.Notifier.Subscribe(user, "INBOX")
 			if _, err := a.Events.Create(user, &bongov1.Event{
@@ -130,10 +128,11 @@ func TestAllDayReminderUsesOwnerZone(t *testing.T) {
 // overlap test only finds it when the query reaches back before now.
 func TestZeroLengthAllDayReminderWestOfUTC(t *testing.T) {
 	a := reminderTestAgent(t)
-	setZone(t, a, "west", "Etc/GMT+12")
-	ch := a.Notifier.Subscribe("west", "INBOX")
+	west := newMailUser(t, a, "west")
+	setZone(t, a, west, "Etc/GMT+12")
+	ch := a.Notifier.Subscribe(west, "INBOX")
 	start := time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC)
-	if _, err := a.Events.Create("west", &bongov1.Event{
+	if _, err := a.Events.Create(west, &bongov1.Event{
 		Title: "Holiday", CalendarId: "default", AllDay: true, ReminderMinutes: 14,
 		StartTime: start.Unix(), EndTime: start.Unix(),
 	}); err != nil {
@@ -153,10 +152,11 @@ func TestZeroLengthAllDayReminderWestOfUTC(t *testing.T) {
 
 func TestTimedReminderUnchanged(t *testing.T) {
 	a := reminderTestAgent(t)
-	setZone(t, a, "timed", "Pacific/Kiritimati")
-	ch := a.Notifier.Subscribe("timed", "INBOX")
+	timed := newMailUser(t, a, "timed")
+	setZone(t, a, timed, "Pacific/Kiritimati")
+	ch := a.Notifier.Subscribe(timed, "INBOX")
 	start := time.Date(2026, 11, 5, 14, 37, 0, 0, time.UTC)
-	if _, err := a.Events.Create("timed", &bongov1.Event{
+	if _, err := a.Events.Create(timed, &bongov1.Event{
 		Title: "Call", CalendarId: "default", ReminderMinutes: 15,
 		StartTime: start.Unix(), EndTime: start.Add(time.Hour).Unix(),
 	}); err != nil {

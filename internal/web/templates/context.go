@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,6 +103,24 @@ func encMailbox(name string) string {
 // mailboxURL returns a URL path for a mailbox with the name properly encoded.
 func mailboxURL(name string) string {
 	return "/mail/" + encMailbox(name)
+}
+
+// listBase is the URL of a list: listURL when the handler worked one out
+// (it can carry a filter such as ?unread=1), otherwise the mailbox's own.
+func listBase(mailbox, listURL string) string {
+	if listURL != "" {
+		return listURL
+	}
+	return mailboxURL(mailbox)
+}
+
+// pageURL adds a page number to a list URL, which may already have a query.
+func pageURL(base string, page int) string {
+	sep := "?"
+	if strings.Contains(base, "?") {
+		sep = "&"
+	}
+	return base + sep + "page=" + strconv.Itoa(page)
 }
 
 // require2FAFromCtx returns true when the system requires 2FA and the

@@ -31,6 +31,7 @@ change under review introduced it.
 | B | Recurrence and tasks | US-006 to US-009 |
 | C | Invitations | US-010 to US-016 |
 | D | Sharing, reminders, mail and setup | US-017 to US-023 |
+| E | Added by the operator | US-024, US-025 |
 
 Dependencies: US-012 needs US-010. US-009 lands before US-010 (shared
 revision helper). US-005 needs US-003. Others are independent.
@@ -346,9 +347,47 @@ a non-goal (CalDAV already allows it for write grants).
 - [ ] All links, the summary page and tests use the new paths. No redirect
   from the old paths (no users).
 
+### Phase E: Added at the operator's request (2026-11-03)
+
+### US-024: CardDAV ETags quoted once (S)
+**Description:** As a CardDAV client, I want an ETag I can send back in
+If-Match, so contact updates are not refused with 412.
+
+`carddav/server.go:367` passes the already-quoted `store.ContentETag` to
+go-webdav, which quotes it again, as CalDAV did before US-002.
+
+**Acceptance Criteria:**
+- [ ] The ETag header and `getetag` of an existing contact match
+  `^"[0-9a-f]{32}"$` with no escaped quotes.
+- [ ] A contact PUT with `If-Match:` set to that ETag returns 2xx; with a
+  stale ETag, 412.
+- [ ] The scheduling GET in `caldav/schedule_http.go` (`getItem`, ~683)
+  writes a single-quoted ETag.
+
+### US-025: Flash messages cannot carry arbitrary text (M)
+**Description:** As a user, I want a link someone sends me to be unable to
+show a success banner with their own words on a Bongo page.
+
+Today 21 handlers read `?flash=` and render the raw text as a success
+banner; about 80 redirects write it, some as English free text and some as
+translated text (`fwdText`).
+
+**Acceptance Criteria:**
+- [ ] Redirects carry a flash key (e.g. `flash=user-created`), never text.
+  Every page renders only keys in one allow-list, translated through i18n in
+  en, de, fr and es. An unknown key, or free text, renders no banner.
+- [ ] `GET /mail/INBOX?flash=Your+account+is+suspended` and the same on
+  `/settings/addresses` and `/admin/users` render no banner; each existing
+  flow (user created, address verified, booking cancelled, a mail action)
+  still shows its translated message.
+- [ ] A flash that carried dynamic data (e.g. "User " + action) uses a fixed
+  key per case; no request value is ever interpolated.
+- [ ] A test enumerates every `flash=` written by a handler and checks each
+  key is in the allow-list.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-23 are the acceptance criteria of US-001 to US-023.
+FR-1 to FR-25 are the acceptance criteria of US-001 to US-025.
 
 ## 5. Non-Goals (Out of Scope)
 
@@ -406,12 +445,14 @@ FR-1 to FR-23 are the acceptance criteria of US-001 to US-023.
   address; the summary's invitations link is relabelled, not replaced by a
   view; header views move to `/mail/view/...` with no redirects; `tasks`,
   `default` and the last event calendar cannot be deleted.
+- 2026-11-03, operator: the CardDAV ETag fix and the `?flash=` fix, both
+  found in batch reviews, are added as US-024 and US-025.
 
 ### 8.2 Candidates for the next release
 
 Found while building batch 1 (2026-11-03):
 
-- CardDAV passes the already-quoted `ContentETag` to go-webdav
+- Scoped in as US-024: CardDAV passes the already-quoted `ContentETag` to go-webdav
   (`carddav/server.go:367`), so contact ETags are probably double-quoted and
   If-Match PUTs refused, as events were before US-002. `schedule_http.go`
   `getItem` (~683) also quotes `itemETag` twice. Not in US-002's text.
@@ -435,3 +476,25 @@ Found while building batch 1 (2026-11-03):
 - US-022: a group mixed with addresses (`undisclosed-recipients:;, a@x`)
   returns only the addresses; a non-ASCII quoted name is returned unencoded
   rather than RFC 2047-encoded.
+
+Found while building batch 2 (2026-11-03):
+
+- Scoped in as US-025 (the flash part): `?flash=` on mailbox pages puts any attacker-chosen text into a success
+  banner (content injection, the class US-020 closed for `?warning=`).
+  Predates v0.15. The search page's pagination base does not URL-escape the
+  query, so a query containing `&` or `#` breaks the page links.
+- US-003: task creation (`tasks.go` `targetCalendar`) may file a task under
+  a missing own calendar. A CalDAV PUT to `/calendars/default/` answers 409
+  if `EnsureDefault` ever returns another guid.
+- US-007: `/summary` Upcoming drops shared tasks (its rows always link);
+  shared task rows do not name the owner.
+- US-011: a past event moved into the future is sent as "Updated
+  invitation", and an attendee removed in the same edit gets a CANCEL.
+  `SeriesEndsBy` ignores EXDATE (errs towards sending) and RDATE-only future
+  occurrences.
+- US-013: the decline is sent for NEEDS-ACTION and TENTATIVE as well as
+  ACCEPTED, as RFC 6638 3.2.2.1 says.
+- US-018: the browser-reminder dedupe is in memory, so a restart inside a
+  reminder window announces it again; an all-day event can fire twice if the
+  owner changes zone during the window.
+

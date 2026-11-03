@@ -220,7 +220,7 @@ func (h *CalendarHandler) MonthView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	events = h.hideDeclined(userID, email, events)
-	r, events = h.withShared(r, userID, events, calColorMap, gridStart.AddDate(0, 0, -1).Unix(), gridEnd.AddDate(0, 0, 1).Unix())
+	r, events, _ = h.withShared(r, userID, events, calColorMap, gridStart.AddDate(0, 0, -1).Unix(), gridEnd.AddDate(0, 0, 1).Unix())
 
 	// Build day cells for the grid.
 	days := buildMonthGrid(year, time.Month(month), events, now)
@@ -270,7 +270,7 @@ func (h *CalendarHandler) WeekView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	events = h.hideDeclined(userID, email, events)
-	r, events = h.withShared(r, userID, events, calColorMap, weekStart.Unix(), weekEnd.Unix())
+	r, events, _ = h.withShared(r, userID, events, calColorMap, weekStart.Unix(), weekEnd.Unix())
 
 	days := buildWeekColumns(weekStart, events, calColorMap, now)
 
@@ -322,7 +322,7 @@ func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	events = h.hideDeclined(userID, email, events)
-	r, events = h.withShared(r, userID, events, calColorMap, date.Unix(), dayEnd.Unix())
+	r, events, _ = h.withShared(r, userID, events, calColorMap, date.Unix(), dayEnd.Unix())
 
 	col := buildDayColumn(date, events, calColorMap, now)
 
@@ -417,12 +417,21 @@ func (h *CalendarHandler) agendaDays(r *http.Request, userID, email string, from
 		return r, nil, calendars, fmt.Errorf("%w: %w", errAgendaEvents, err)
 	}
 	events = h.hideDeclined(userID, email, events)
-	r, events = h.withShared(r, userID, events, calColorMap, from.Unix(), to.Unix())
+	r, events, shared := h.withShared(r, userID, events, calColorMap, from.Unix(), to.Unix())
 
 	var dueTasks []*bongov1.Task
 	if h.tasks != nil {
 		if dueTasks, err = h.tasks.ListAll(userID); err != nil {
 			return r, nil, calendars, fmt.Errorf("%w: %w", errAgendaTasks, err)
+		}
+		// Tasks of shared calendars are shown read-only. A failure here
+		// shows the user's own tasks alone.
+		if len(shared) > 0 {
+			if st, err := sharedTasks(h.tasks, shared); err != nil {
+				slog.Warn("calendar: loading shared tasks failed", "user", userID, "error", err)
+			} else {
+				dueTasks = append(dueTasks, st...)
+			}
 		}
 	}
 	return r, buildAgenda(from, days, events, dueTasks, calColorMap, loc), calendars, nil
@@ -491,7 +500,11 @@ func buildAgenda(from time.Time, days int, events []*bongov1.Event, tasks []*bon
 			if c := calColorMap[k.task.CalendarId]; c != "" {
 				colour = c
 			}
-			item = templates.AgendaItem{Task: k.task, ColourClass: templates.CalendarColourClass(colour)}
+			item = templates.AgendaItem{
+				Task: k.task, ColourClass: templates.CalendarColourClass(colour),
+				// A shared task is not in the viewer's key space: no link.
+				ReadOnly: strings.HasPrefix(k.task.CalendarId, templates.SharedKeyPrefix),
+			}
 		} else {
 			item = templates.AgendaItem{Event: k.ev, ColourClass: templates.EventColourClass(k.ev, calColorMap)}
 		}
@@ -1279,11 +1292,6 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	if quotaExceeded(h.quota, nil, owner, hdr.Size) {
 		refuseQuotaFlash(w, r, "/calendar")
 		return
-	}
-
-	// Ensure default calendar.
-	if r.FormValue("calendar_id") == "" {
-		calID, _ = h.calendars.EnsureDefault(userID)
 	}
 
 	dec := ical.NewDecoder(file)

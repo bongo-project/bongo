@@ -2,7 +2,6 @@ package agent
 
 import (
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -20,9 +19,10 @@ func icalSeries(lines ...string) []byte {
 // moves it, because reminders read the same expansion the views do.
 func TestReminderHonoursExdateAndOverride(t *testing.T) {
 	a := reminderTestAgent(t)
-	ch := a.Notifier.Subscribe("series", "INBOX")
+	series := newMailUser(t, a, "series")
+	ch := a.Notifier.Subscribe(series, "INBOX")
 	start := time.Date(2030, 5, 6, 9, 0, 0, 0, time.UTC) // Monday
-	if _, err := a.Events.Create("series", &bongov1.Event{
+	if _, err := a.Events.Create(series, &bongov1.Event{
 		Title: "Sync", CalendarId: "default", ReminderMinutes: 15, Rrule: "FREQ=WEEKLY;BYDAY=MO",
 		StartTime: start.Unix(), EndTime: start.Add(time.Hour).Unix(),
 		IcalRaw: icalSeries(
@@ -52,25 +52,85 @@ func TestReminderHonoursExdateAndOverride(t *testing.T) {
 // or an HOURLY series announces only its first occurrence.
 func TestReminderDedupeKeyIncludesOccurrence(t *testing.T) {
 	a := reminderTestAgent(t)
-	ch := a.Notifier.Subscribe("hourly", "INBOX")
+	hourly := newMailUser(t, a, "hourly")
+	ch := a.Notifier.Subscribe(hourly, "INBOX")
 	start := time.Date(2030, 5, 6, 9, 0, 0, 0, time.UTC)
-	if _, err := a.Events.Create("hourly", &bongov1.Event{
+	if _, err := a.Events.Create(hourly, &bongov1.Event{
 		Title: "Stretch", CalendarId: "default", ReminderMinutes: 15, Rrule: "FREQ=HOURLY",
 		StartTime: start.Unix(), EndTime: start.Add(10 * time.Minute).Unix(),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	var mu sync.Mutex
-	sent := map[string]bool{}
+	br := a.newBrowserReminders()
 	for i, tick := range []time.Time{
 		time.Date(2030, 5, 6, 10, 50, 0, 0, time.UTC),
 		time.Date(2030, 5, 6, 11, 50, 0, 0, time.UTC),
 	} {
-		a.checkReminders(tick, &mu, sent)
+		br.check(tick)
 		select {
 		case <-ch:
 		default:
 			t.Fatalf("tick %d: the occurrence was not announced", i)
 		}
+	}
+}
+
+// A reminder is announced once across its whole window, including when the
+// ticks cross an hour boundary (the point the old hourly wipe fired), and the
+// dedupe map is empty again once the event has started.
+func TestBrowserReminderFiresOnceAcrossHour(t *testing.T) {
+	a := reminderTestAgent(t)
+	uid := newMailUser(t, a, "once")
+	ch := a.Notifier.Subscribe(uid, "INBOX")
+	start := time.Date(2030, 5, 6, 10, 30, 0, 0, time.UTC)
+	if _, err := a.Events.Create(uid, &bongov1.Event{
+		Title: "Once", CalendarId: "default", ReminderMinutes: 60,
+		StartTime: start.Unix(), EndTime: start.Add(time.Hour).Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	br := a.newBrowserReminders()
+	count := 0
+	for i := 0; i <= 60; i++ {
+		br.check(start.Add(-60*time.Minute + time.Duration(i)*time.Minute))
+		for drained := false; !drained; {
+			select {
+			case <-ch:
+				count++
+			default:
+				drained = true
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("notifications = %d, want exactly 1", count)
+	}
+	if n := len(br.sent); n != 0 {
+		t.Errorf("sent holds %d entries after the event started, want 0", n)
+	}
+}
+
+// The checker reads users from the users table (ListUserIDs), not a scan of
+// the /user/ key prefix: an owner with events but no users row is not reminded.
+func TestBrowserReminderUsesUserList(t *testing.T) {
+	a := reminderTestAgent(t)
+	known := newMailUser(t, a, "known")
+	const orphan = "orphan-no-users-row"
+	start := time.Date(2030, 5, 6, 10, 30, 0, 0, time.UTC)
+	chKnown := a.Notifier.Subscribe(known, "INBOX")
+	chOrphan := a.Notifier.Subscribe(orphan, "INBOX")
+	for _, uid := range []string{known, orphan} {
+		if _, err := a.Events.Create(uid, &bongov1.Event{
+			Title: "E", CalendarId: "default", ReminderMinutes: 15,
+			StartTime: start.Unix(), EndTime: start.Add(time.Hour).Unix(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !fires(t, a, chKnown, start.Add(-10*time.Minute)) {
+		t.Error("listed user was not reminded")
+	}
+	if fires(t, a, chOrphan, start.Add(-10*time.Minute)) {
+		t.Error("user without a users row was reminded")
 	}
 }

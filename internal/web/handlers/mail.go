@@ -209,7 +209,15 @@ func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox 
 		}
 	}
 
-	msgs, realMailboxes, err := h.listDisplayCandidates(userID, mailbox)
+	// ?unread=1 narrows the To me view to unread mail. Only that exact value
+	// counts, and the list URL is built from constants, never from the query.
+	unreadOnly := mailbox == store.ViewToMe && r.URL.Query().Get("unread") == "1"
+	listURL := ""
+	if unreadOnly {
+		listURL = "/mail/" + store.ViewToMe + "?unread=1"
+	}
+
+	msgs, realMailboxes, err := h.listDisplayCandidates(userID, mailbox, unreadOnly)
 	if err != nil {
 		http.Error(w, "Error loading messages", http.StatusInternalServerError)
 		return
@@ -228,7 +236,7 @@ func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox 
 
 	// Infinite scroll partial: return only message rows (no layout, no sidebar, no pagination wrapper).
 	if r.URL.Query().Get("partial") == "1" {
-		templ.Handler(templates.MessageRowsPartial(summaries, mailbox, page, totalPages)).ServeHTTP(w, r)
+		templ.Handler(templates.MessageRowsPartial(summaries, mailbox, page, totalPages, listURL)).ServeHTTP(w, r)
 		return
 	}
 
@@ -237,14 +245,20 @@ func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox 
 	sidebarTags := h.loadSidebarTags(userID, mailbox)
 
 	flash := r.URL.Query().Get("flash")
+	// The sign-in with a recovery code lands here; recoveryWarning passes
+	// only that message, in the user's language.
+	warning := ""
+	if mailbox == "INBOX" {
+		warning = recoveryWarning(r)
+	}
 
 	// HTMX partial vs full page.
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.MailboxContent(mailbox, counts, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
+		templ.Handler(templates.MailboxContent(mailbox, counts, summaries, page, totalPages, flash, infiniteScroll, listURL, warning)).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll, listURL, warning)).ServeHTTP(w, r)
 }
 
 // ListTagMessages renders the message list for a tag virtual view.
@@ -309,7 +323,7 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Query().Get("partial") == "1" {
-		templ.Handler(templates.MessageRowsPartial(summaries, virtualMailbox, page, totalPages)).ServeHTTP(w, r)
+		templ.Handler(templates.MessageRowsPartial(summaries, virtualMailbox, page, totalPages, "")).ServeHTTP(w, r)
 		return
 	}
 
@@ -318,19 +332,19 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	flash := r.URL.Query().Get("flash")
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.MailboxContent(virtualMailbox, counts, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
+		templ.Handler(templates.MailboxContent(virtualMailbox, counts, summaries, page, totalPages, flash, infiniteScroll, "", "")).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll, "", "")).ServeHTTP(w, r)
 }
 
 // listDisplayCandidates returns the messages for a list view and, index for
 // index, the real mailbox each one lives in (nil for a real mailbox, where it
 // is the list mailbox itself).
-func (h *MailHandler) listDisplayCandidates(userID, mailbox string) ([]*bongov1.MailboxMessage, []string, error) {
+func (h *MailHandler) listDisplayCandidates(userID, mailbox string, unreadOnly bool) ([]*bongov1.MailboxMessage, []string, error) {
 	if view, ok := store.ParseHeaderView(mailbox); ok {
-		return h.headerViewMessages(userID, view)
+		return h.headerViewMessages(userID, view, unreadOnly)
 	}
 	if store.VirtualMailboxes[mailbox] {
 		msgs, names, _, err := h.mailboxes.ListVirtualMessages(userID, mailbox, 0, maxMessagePageLimit)

@@ -1644,6 +1644,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Tasks != nil && a.Calendars != nil {
 			tasksH := handlers.NewTasksHandler(a.Tasks, a.Calendars)
+			if a.ACL != nil {
+				tasksH.SetACL(a.ACL)
+			}
 			if a.DomainQuota != nil {
 				tasksH.SetQuotaChecker(a.DomainQuota)
 			}

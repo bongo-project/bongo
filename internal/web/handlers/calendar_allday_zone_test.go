@@ -47,6 +47,11 @@ type allDayEnv struct {
 func newAllDayEnv(t *testing.T) *allDayEnv {
 	t.Helper()
 	env := newQuotaEnv(t)
+	// A user who has opened any calendar view has the default calendar; an
+	// event form that names it is refused when it does not exist.
+	if _, err := env.calendars.EnsureDefault(quotaUser); err != nil {
+		t.Fatal(err)
+	}
 	return &allDayEnv{
 		quotaEnv: env,
 		h:        NewCalendarHandler(env.events, env.calendars, nil),

@@ -50,6 +50,9 @@ type Backend struct {
 	scheduler Scheduler
 	// inbox is the schedule inbox collection. Nil means it is empty.
 	inbox ScheduleInbox
+
+	// now is the clock of the entirely-past check; nil means time.Now.
+	now func() time.Time
 }
 
 // StorageGate is satisfied by *diskspace.Monitor.
@@ -303,13 +306,8 @@ func (b *Backend) ListCalendarObjects(ctx context.Context, path string, req *cal
 	}
 
 	for _, e := range events {
-		// Filter by calendar. A shared collection matches the shared
-		// calendar exactly, an empty calendar ID meaning the default one.
-		if t.shared() {
-			if eventCalendar(e) != t.calendar {
-				continue
-			}
-		} else if e.CalendarId != t.calendar {
+		// Filter by calendar, an empty calendar ID meaning the default one.
+		if eventCalendar(e) != t.calendar {
 			continue
 		}
 		obj, err := eventToCalendarObject(t.user, t.calSeg, e)
@@ -350,6 +348,17 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	if !t.shared() {
 		if _, err := b.calendars.EnsureDefault(userID); err != nil {
 			return nil, fmt.Errorf("ensuring default calendar: %w", err)
+		}
+		// No parent collection: 409 Conflict (RFC 4918 9.7.1). Checked before
+		// the component switch so an event and a task get the same answer, and
+		// for an update too, which would otherwise move the event into a
+		// calendar that does not exist. Not atomic with the write below.
+		ok, err := b.calendars.Exists(userID, calID)
+		if err != nil {
+			return nil, fmt.Errorf("checking calendar: %w", err)
+		}
+		if !ok {
+			return nil, httpErr(http.StatusConflict, "calendar does not exist")
 		}
 	}
 
@@ -436,6 +445,11 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		if plan, err = b.planSchedule(userID, calendar, event, existing); err != nil {
 			return nil, err
 		}
+		if plan.mode == scheduleModeOrganiser {
+			if err := organiserRevision(calendar, event, existing); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Size the write with the quantity the usage recompute counts: the stored
@@ -519,6 +533,8 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 
 	// An event the user organises is cancelled for its attendees once it is
 	// gone. A shared calendar's events are the owner's and send nothing.
+	// An invitation the user was sent is declined for the organiser, again
+	// only on the user's own calendar, never in the owner's name.
 	var organised *bongov1.Event
 	if b.scheduler != nil && !t.shared() {
 		if e, err := b.events.Get(userID, guid); err == nil {
@@ -532,6 +548,7 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 	}
 	b.logger.Info("caldav: event deleted", "user", userID, "guid", guid)
 	b.cancelAfterDelete(userID, organised)
+	b.declineAfterDelete(userID, organised)
 	return nil
 }
 

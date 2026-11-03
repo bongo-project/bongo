@@ -1083,5 +1083,6 @@
   "summary.upcoming": "Next 7 days",
   "summary.upcomingEmpty": "Nothing scheduled and no tasks due in the next 7 days.",
   "summary.viewAll": "View all",
+  "summary.openInbox": "Open INBOX",
   "summary.error": "This section could not be loaded. Try again later."
 }

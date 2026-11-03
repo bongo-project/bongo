@@ -424,3 +424,58 @@ func FindOccurrence(event *bongov1.Event, rid string) (*bongov1.Event, bool) {
 	}
 	return s.find(rid)
 }
+
+// SeriesEndsBy reports whether a recurring event is bounded (UNTIL or COUNT)
+// and nothing of it ends after t. It answers false on any doubt: no rule, an
+// open-ended rule, a rule that does not parse, or an override that is not
+// cancelled and ends after t. EXDATEs are ignored, which errs towards
+// "not past".
+func SeriesEndsBy(event *bongov1.Event, t time.Time) bool {
+	if event == nil || event.Rrule == "" {
+		return false
+	}
+	opt, err := rrule.StrToROption(event.Rrule)
+	if err != nil || (opt.Until.IsZero() && opt.Count == 0) {
+		return false
+	}
+	s, err := newRecurrenceSet(event)
+	if err != nil {
+		return false
+	}
+	if !s.rule.After(t.Add(-time.Duration(s.duration)*time.Second), false).IsZero() {
+		return false
+	}
+	for _, o := range s.overrides {
+		if o.cancelled {
+			continue
+		}
+		end := o.end
+		if !o.hasEnd {
+			end = o.start + s.duration
+		}
+		if end > t.Unix() {
+			return false
+		}
+	}
+	return true
+}
+
+// EventEntirelyPast reports whether nothing of event ends after now: a single
+// event or an expanded occurrence whose end (its start when it has none) is
+// before now, or a bounded series by SeriesEndsBy. An open-ended series never
+// is, and nor is a nil event. All-day events are stored at UTC midnight with
+// an exclusive end, so they get 14 hours of slack for the zones furthest from
+// UTC. RDATE is not modelled (see the top of this file) and is not looked at.
+func EventEntirelyPast(event *bongov1.Event, now time.Time) bool {
+	if event == nil {
+		return false
+	}
+	if event.AllDay {
+		now = now.Add(-14 * time.Hour)
+	}
+	// An expanded occurrence keeps the master's RRULE but is one slot.
+	if event.Rrule != "" && event.RecurrenceId == "" {
+		return SeriesEndsBy(event, now)
+	}
+	return max(event.EndTime, event.StartTime) < now.Unix()
+}

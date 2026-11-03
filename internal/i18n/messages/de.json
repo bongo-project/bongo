@@ -1083,5 +1083,6 @@
   "summary.upcoming": "Nächste 7 Tage",
   "summary.upcomingEmpty": "In den nächsten 7 Tagen ist nichts geplant und keine Aufgabe fällig.",
   "summary.viewAll": "Alle anzeigen",
+  "summary.openInbox": "INBOX öffnen",
   "summary.error": "Dieser Bereich konnte nicht geladen werden. Versuchen Sie es später erneut."
 }

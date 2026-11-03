@@ -637,7 +637,7 @@ document.addEventListener('alpine:init', () => {
           this.lastClicked = null;
           setToolbarSelectAllChecked(false);
           // Refresh message list via HTMX.
-          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+          htmx.ajax('GET', listReloadURL(mailbox), '#main-content');
         }
       } catch (e) {
         console.error('Bulk action failed:', e);
@@ -728,7 +728,7 @@ document.addEventListener('alpine:init', () => {
           this.count = 0;
           this.lastClicked = null;
           setToolbarSelectAllChecked(false);
-          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+          htmx.ajax('GET', listReloadURL(mailbox), '#main-content');
         }
       } catch (e) {
         console.error('Bulk action failed:', e);
@@ -769,7 +769,7 @@ document.addEventListener('alpine:init', () => {
           this.count = 0;
           this.lastClicked = null;
           setToolbarSelectAllChecked(false);
-          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+          htmx.ajax('GET', listReloadURL(mailbox), '#main-content');
         } else {
           console.error('Bulk tag action failed:', resp.status);
         }
@@ -830,7 +830,7 @@ document.addEventListener('alpine:init', () => {
             resetSwipeState(row);
             return;
           }
-          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+          htmx.ajax('GET', listReloadURL(mailbox), '#main-content');
         }).catch(function() {
           resetSwipeState(row);
         });
@@ -843,7 +843,7 @@ document.addEventListener('alpine:init', () => {
         fetch('/mail/' + encodeURIComponent(actionMailbox(row2, mailbox)) + '/bulk', {
           method: 'POST', body: params2
         }).then(function() {
-          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+          htmx.ajax('GET', listReloadURL(mailbox), '#main-content');
         }).catch(function() {});
       } else {
         this._resetSwipe();
@@ -1187,7 +1187,7 @@ document.addEventListener('alpine:init', () => {
             method: 'POST'
           }).then(resp => {
             if (resp.ok) {
-              htmx.ajax('GET', '/mail/' + encodeURIComponent(view), '#main-content');
+              htmx.ajax('GET', listReloadURL(view), '#main-content');
             }
           }).catch(() => {});
           break;
@@ -1196,7 +1196,7 @@ document.addEventListener('alpine:init', () => {
             method: 'POST'
           }).then(resp => {
             if (resp.ok) {
-              htmx.ajax('GET', '/mail/' + encodeURIComponent(view), '#main-content');
+              htmx.ajax('GET', listReloadURL(view), '#main-content');
             }
           }).catch(() => {});
           break;
@@ -1213,7 +1213,7 @@ document.addEventListener('alpine:init', () => {
             body: params
           }).then(resp => {
             if (resp.ok) {
-              htmx.ajax('GET', '/mail/' + encodeURIComponent(view), '#main-content');
+              htmx.ajax('GET', listReloadURL(view), '#main-content');
             }
           }).catch(() => {});
           break;
@@ -1230,7 +1230,7 @@ document.addEventListener('alpine:init', () => {
                 body: JSON.stringify({ action: tagAction, tags: [tagName], message_ids: [{ mailbox: mailbox, uid: uid }] })
               }).then(resp => {
                 if (resp.ok) {
-                  htmx.ajax('GET', '/mail/' + encodeURIComponent(view), '#main-content');
+                  htmx.ajax('GET', listReloadURL(view), '#main-content');
                 }
               }).catch(() => {});
             }
@@ -2174,6 +2174,17 @@ function currentMailbox() {
   return view ? view.dataset.mailbox : null;
 }
 
+// listReloadURL is the URL that reloads the list on screen. A filtered list
+// (To me, unread only) says so in data-list-url, so a reload after an action
+// keeps the filter. Any other list reloads from its mailbox name.
+function listReloadURL(mailbox) {
+  const view = document.querySelector('.mail-view[data-mailbox]');
+  if (view && view.dataset.mailbox === mailbox && view.dataset.listUrl) {
+    return view.dataset.listUrl;
+  }
+  return '/mail/' + encodeURIComponent(mailbox);
+}
+
 // actionMailbox is the mailbox an action on a row must target. In the To me,
 // From my contacts and Mailing lists views a row carries data-sel-key and the
 // list mailbox is only a view name, so the message's real mailbox is used.
@@ -2212,7 +2223,7 @@ function deleteRow(row, idx) {
   const params = new URLSearchParams();
   params.set('action', 'delete');
   params.append('uids', uid);
-  const url = '/mail/' + encodeURIComponent(mailbox);
+  const url = listReloadURL(mailbox);
   fetch('/mail/' + encodeURIComponent(actionMailbox(row, mailbox)) + '/bulk', { method: 'POST', body: params })
     .then(resp => {
       if (!resp.ok) return;
@@ -2234,7 +2245,7 @@ function archiveRow(row, idx) {
   // folder, not for a virtual view such as Starred.
   const real = row.dataset.realMailbox || mailbox;
   const verb = real === 'Archive' ? 'unarchive' : 'archive';
-  const url = '/mail/' + encodeURIComponent(mailbox);
+  const url = listReloadURL(mailbox);
   fetch('/mail/' + encodeURIComponent(real) + '/' + uid + '/' + verb, { method: 'POST' })
     .then(resp => {
       if (!resp.ok) return;

@@ -82,3 +82,26 @@ func TestSummaryShowsOnlyTheRecoveryCodeWarning(t *testing.T) {
 		}
 	})
 }
+
+func TestSummaryInvitationsLinkOpensTheInbox(t *testing.T) {
+	tests := []struct{ locale, want string }{
+		{"en", "Open INBOX"},
+		{"de", "INBOX \u00f6ffnen"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.locale, func(t *testing.T) {
+			e := newSummaryEnv(t)
+			body := e.summaryAs(t, tc.locale)
+			inv := section(t, body, "invitations")
+			if !strings.Contains(inv, `href="/mail/INBOX"`) || !strings.Contains(inv, ">"+tc.want+"</a>") {
+				t.Errorf("invitations link wrong: %s", inv)
+			}
+			if strings.Contains(inv, "View all") || strings.Contains(inv, "Alle anzeigen") {
+				t.Errorf("invitations link still says view all: %s", inv)
+			}
+			if toMe := section(t, body, "to-me"); !strings.Contains(toMe, `href="/mail/to-me?unread=1"`) {
+				t.Errorf("to-me link: %s", toMe)
+			}
+		})
+	}
+}

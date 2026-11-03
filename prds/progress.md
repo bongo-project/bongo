@@ -1667,3 +1667,11 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 - Gate green: make test-all, make lint, gosec.
 - PATTERN: testing - a wall-clock determinism test needs a command timestamp far from now; two calls 2ms apart prove nothing.
 - PATTERN: caldav - go-webdav v0.7.0 decodes only displayname for extended MKCOL; intercept MKCOL on collection paths too.
+
+## 2026-11-03: Phase 32 batch 2 (32.3, 32.7, 32.10, 32.11, 32.13, 32.14, 32.18, 32.20)
+- Eight tasks via the norman workflow; worktrees were cut before batch 1 merged, applied with --3way (one conflict in caldav/schedule.go, both sides kept; duplicate CalendarHandler.clock removed).
+- Follow-up agent fixed review findings: one store.EventEntirelyPast for web and CalDAV; organiserRevision uses icalevent.Sequence/SetSequence; repliedPartstats marked a key seen before validating it (a first unusable VEVENT hid a valid one) - fixed with a test; CalendarStore.Exists read-error test.
+- Gate found: TestSchedulerOrganise pinned "a rename sends nothing" (reversed by US-010, test updated); gosec G115 in organiserRevision (icalevent.ClampSequence shared); integration tests showed calendar_id=default refused for a new user (32.3 regression) - "default" now resolves through EnsureDefault, unit test added and mutation-checked.
+- Operator scoped in US-024 (CardDAV ETags) and US-025 (flash allow-list) as 32.24 and 32.25.
+- Gate green: make test-all, make lint, gosec.
+- PATTERN: testing - run the integration suite before trusting a resolver change; handler tests built on seeded calendars missed the new-user path.

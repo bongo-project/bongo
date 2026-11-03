@@ -346,8 +346,8 @@ templ Pagination(page, totalPages int, baseURL string) {
 			if page > 1 {
 				<a
 					class="page-btn"
-					href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page-1)) }
-					hx-get={ fmt.Sprintf("%s?page=%d", baseURL, page-1) }
+					href={ templ.SafeURL(pageURL(baseURL, page-1)) }
+					hx-get={ pageURL(baseURL, page-1) }
 					hx-target="#message-list"
 					hx-push-url="true"
 					aria-label={ t(ctx, "common.previousPage") }
@@ -363,8 +363,8 @@ templ Pagination(page, totalPages int, baseURL string) {
 				} else {
 					<a
 						class="page-btn"
-						href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, i)) }
-						hx-get={ fmt.Sprintf("%s?page=%d", baseURL, i) }
+						href={ templ.SafeURL(pageURL(baseURL, i)) }
+						hx-get={ pageURL(baseURL, i) }
 						hx-target="#message-list"
 						hx-push-url="true"
 						aria-label={ fmt.Sprintf("Page %d", i) }
@@ -376,8 +376,8 @@ templ Pagination(page, totalPages int, baseURL string) {
 			if page < totalPages {
 				<a
 					class="page-btn"
-					href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page+1)) }
-					hx-get={ fmt.Sprintf("%s?page=%d", baseURL, page+1) }
+					href={ templ.SafeURL(pageURL(baseURL, page+1)) }
+					hx-get={ pageURL(baseURL, page+1) }
 					hx-target="#message-list"
 					hx-push-url="true"
 					aria-label={ t(ctx, "common.nextPage") }
