@@ -57,8 +57,9 @@ import (
 // it are removed.
 //
 // Quota. The refresh does not check the domain storage quota: a subscription
-// is bounded by 5000 events and 20 subscriptions per user, and the quota
-// recompute counts these events like any others.
+// is bounded by store.MaxEventsPerSubscription events and counts towards the
+// user's store.MaxCalendarsPerUser calendars, and the quota recompute counts
+// these events like any others.
 //
 // Secrecy. The feed URL is a secret. Logs and last_error carry the host only.
 

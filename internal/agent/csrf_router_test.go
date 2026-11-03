@@ -87,6 +87,9 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"calendar subscribe", "/calendar/subscribe", func(n string) url.Values {
 			return url.Values{"url": {"https://feeds.example.com/" + n + ".ics"}}
 		}},
+		{"calendar create", "/calendar", func(n string) url.Values {
+			return url.Values{"name": {"Work " + n}, "color": {"#112233"}}
+		}},
 		{"calendar unsubscribe", "/calendar/missing/unsubscribe", func(string) url.Values { return url.Values{} }},
 		{"share accept", "/calendar/shares/accept", func(string) url.Values {
 			return url.Values{"owner": {"nobody"}, "calendar": {"none"}}

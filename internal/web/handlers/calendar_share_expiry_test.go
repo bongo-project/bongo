@@ -259,6 +259,12 @@ func davHome(t *testing.T, e *sharedEnv, user string) string {
 	t.Helper()
 	b := caldav.NewBackend(e.events, e.cals, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	b.SetGrants(e.acl)
+	return davHomeOf(t, b, user)
+}
+
+// davHomeOf runs PROPFIND Depth 1 on user's CalDAV calendar home through b.
+func davHomeOf(t *testing.T, b *caldav.Backend, user string) string {
+	t.Helper()
 	req := httptest.NewRequest("PROPFIND", "/caldav/"+user+"/calendars/",
 		strings.NewReader(`<propfind xmlns="DAV:"><prop><displayname/></prop></propfind>`))
 	req.Header.Set("Depth", "1")

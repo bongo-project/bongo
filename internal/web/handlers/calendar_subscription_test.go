@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -287,7 +288,15 @@ func TestSubscribeDuplicateAndLimit(t *testing.T) {
 		t.Error("duplicate wrote")
 	}
 
-	for i := 1; i < store.MaxSubscriptionsPerUser; i++ {
+	// The per-user calendar cap (store.MaxCalendarsPerUser) binds long before
+	// MaxSubscriptionsPerUser: fill up to it, then the next one is refused.
+	for i := 1; ; i++ {
+		if cals, _ := e.cals.List(actWrite); len(cals) >= store.MaxCalendarsPerUser {
+			break
+		}
+		if i > store.MaxSubscriptionsPerUser {
+			t.Fatal("never reached the calendar cap")
+		}
 		if w := subscribe(e, actWrite, fmt.Sprintf("https://h%d.example.com/x.ics", i)); w.Code != http.StatusSeeOther {
 			t.Fatalf("subscription %d: %d", i+1, w.Code)
 		}
@@ -295,7 +304,7 @@ func TestSubscribeDuplicateAndLimit(t *testing.T) {
 	before = e.app.writes
 	w := subscribe(e, actWrite, "https://one-too-many.example.com/x.ics")
 	if w.Code != http.StatusConflict {
-		t.Fatalf("21st subscription: %d, want 409", w.Code)
+		t.Fatalf("subscription over the cap: %d, want 409", w.Code)
 	}
 	if e.app.writes != before {
 		t.Error("the refused subscription wrote")
@@ -304,10 +313,10 @@ func TestSubscribeDuplicateAndLimit(t *testing.T) {
 	if w := subscribe(e, actRead, "https://one-too-many.example.com/x.ics"); w.Code != http.StatusSeeOther {
 		t.Fatalf("another user at the same URL: %d", w.Code)
 	}
-	// Ordinary calendars do not count against it.
+	cals, _ := e.cals.List(actWrite)
 	n, _ := e.cals.ListSubscribed(actWrite)
-	if len(n) != store.MaxSubscriptionsPerUser {
-		t.Fatalf("subscriptions = %d", len(n))
+	if len(cals) != store.MaxCalendarsPerUser || len(n) == 0 || len(n) >= len(cals) {
+		t.Fatalf("calendars = %d, subscriptions = %d", len(cals), len(n))
 	}
 }
 
@@ -420,4 +429,38 @@ func TestUnsubscribe(t *testing.T) {
 			t.Fatalf("grant survived: %q", lvl)
 		}
 	})
+}
+
+// The subscribe form shows the error body to the user, so it is in the
+// request's locale.
+func TestSubscribeErrorsAreTranslated(t *testing.T) {
+	e := newSharedEnv(t)
+	run := func(locale, feed string) *httptest.ResponseRecorder {
+		req := withRoute(sFormReq("POST", "/calendar/subscribe", url.Values{"url": {feed}}), actWrite, nil)
+		w := httptest.NewRecorder()
+		e.h.SubscribeCalendar(w, req.WithContext(middleware.WithLocale(req.Context(), locale)))
+		return w
+	}
+	if w := run("de", "https://feeds.example.com/de.ics"); w.Code != http.StatusSeeOther {
+		t.Fatalf("first subscribe = %d: %s", w.Code, w.Body.String())
+	}
+	tests := []struct {
+		name, locale, feed string
+		code               int
+		want, notWant      string
+	}{
+		{"invalid URL de", "de", "ftp://feeds.example.com/x.ics", http.StatusBadRequest, "Geben Sie eine gültige Kalenderadresse ein", "Enter a valid"},
+		{"duplicate de", "de", "https://feeds.example.com/de.ics", http.StatusConflict, "Sie haben diesen Kalender bereits abonniert.", "already subscribed"},
+		{"invalid URL en", "en", "not a url", http.StatusBadRequest, "Enter a valid calendar address", ""},
+		{"duplicate en", "en", "https://feeds.example.com/de.ics", http.StatusConflict, "You are already subscribed to this calendar.", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			w := run(tc.locale, tc.feed)
+			body := w.Body.String()
+			if w.Code != tc.code || !strings.Contains(body, tc.want) || (tc.notWant != "" && strings.Contains(body, tc.notWant)) {
+				t.Errorf("status %d body %q, want %d containing %q", w.Code, body, tc.code, tc.want)
+			}
+		})
+	}
 }

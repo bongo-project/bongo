@@ -11,7 +11,10 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// Limits of calendar subscriptions (external ICS feeds).
+// Limits of calendar subscriptions (external ICS feeds). MaxCalendarsPerUser
+// binds first: a subscription is a calendar the user owns, so with the default
+// and tasks calendars at most three fit. MaxSubscriptionsPerUser stays as an
+// independent ceiling should that cap be raised.
 const (
 	MaxSubscriptionsPerUser   = 20
 	MaxEventsPerSubscription  = 5000

@@ -28,6 +28,7 @@ import (
 
 var (
 	errCalendarExists    = errors.New("calendar already exists")
+	errCalendarLimit     = errors.New("calendar limit reached")
 	errBadCalendarName   = errors.New("invalid calendar path")
 	errNoCalendarComps   = errors.New("no supported calendar component")
 	errCalendarForeign   = errors.New("calendar belongs to another user")
@@ -148,6 +149,8 @@ func (b *Backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 	switch {
 	case errors.Is(err, store.ErrExists):
 		return errCalendarExists
+	case errors.Is(err, store.ErrCalendarLimit):
+		return errCalendarLimit
 	case err != nil:
 		return fmt.Errorf("creating calendar: %w", err)
 	}
@@ -242,6 +245,9 @@ func MkcalendarHandler(next http.Handler, b *Backend, logger *slog.Logger) http.
 			w.WriteHeader(http.StatusCreated)
 		case errors.Is(err, errCalendarExists):
 			writePrecondition(w, http.StatusMethodNotAllowed, xml.Name{Space: davNS, Local: "resource-must-be-null"})
+		case errors.Is(err, errCalendarLimit):
+			logger.Info("caldav: calendar limit reached", "user", user)
+			writePrecondition(w, http.StatusInsufficientStorage, xml.Name{Space: davNS, Local: "quota-not-exceeded"})
 		case errors.Is(err, errNoCalendarComps):
 			writePrecondition(w, http.StatusForbidden, xml.Name{Space: caldavNS, Local: "supported-calendar-component"})
 		case errors.Is(err, errBadCalendarName), errors.Is(err, errCalendarForeign), errors.Is(err, errCalendarSharedSeg):

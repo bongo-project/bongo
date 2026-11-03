@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
@@ -34,26 +37,28 @@ const (
 // first fetch is left to the worker: the new subscription is due at once.
 func (h *CalendarHandler) SubscribeCalendar(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
+	locale := middleware.LocaleFromContext(r.Context())
 
 	u, err := netx.ValidateURL(strings.TrimSpace(r.FormValue("url")))
 	if err != nil {
-		http.Error(w, "invalid feed URL", http.StatusBadRequest)
+		http.Error(w, i18n.T(locale, "calendar.errSubscribeURL"), http.StatusBadRequest)
 		return
 	}
 	feedURL := u.String()
 
 	existing, err := h.calendars.ListSubscribed(userID)
 	if err != nil {
-		http.Error(w, "failed to load calendars", http.StatusInternalServerError)
+		slog.Error("calendar: subscribe failed", "user", userID, "error", err)
+		http.Error(w, i18n.T(locale, "calendar.errSubscribeFailed"), http.StatusInternalServerError)
 		return
 	}
 	if len(existing) >= store.MaxSubscriptionsPerUser {
-		http.Error(w, "subscription limit reached", http.StatusConflict)
+		http.Error(w, fmt.Sprintf(i18n.T(locale, "calendar.errSubscriptionLimit"), store.MaxSubscriptionsPerUser), http.StatusConflict)
 		return
 	}
 	for _, c := range existing {
 		if c.Subscription.SourceUrl == feedURL {
-			http.Error(w, "already subscribed", http.StatusConflict)
+			http.Error(w, i18n.T(locale, "calendar.errAlreadySubscribed"), http.StatusConflict)
 			return
 		}
 	}
@@ -63,7 +68,8 @@ func (h *CalendarHandler) SubscribeCalendar(w http.ResponseWriter, r *http.Reque
 		name = u.Hostname()
 	}
 	if _, err := h.calendars.EnsureDefault(userID); err != nil {
-		http.Error(w, "failed to init calendar", http.StatusInternalServerError)
+		slog.Error("calendar: subscribe failed", "user", userID, "error", err)
+		http.Error(w, i18n.T(locale, "calendar.errSubscribeFailed"), http.StatusInternalServerError)
 		return
 	}
 	cal := &bongov1.Calendar{
@@ -71,9 +77,13 @@ func (h *CalendarHandler) SubscribeCalendar(w http.ResponseWriter, r *http.Reque
 		Color:        subscriptionColour,
 		Subscription: &bongov1.CalendarSubscription{SourceUrl: feedURL},
 	}
-	if _, err := h.calendars.Create(userID, cal); err != nil {
+	cal.Guid = store.NewCalendarGUID()
+	if err := h.calendars.CreateNew(userID, cal); errors.Is(err, store.ErrCalendarLimit) {
+		http.Error(w, calendarLimitMessage(locale), http.StatusConflict)
+		return
+	} else if err != nil {
 		slog.Error("calendar: subscribe failed", "user", userID, "host", u.Hostname(), "error", err)
-		http.Error(w, "failed to subscribe", http.StatusInternalServerError)
+		http.Error(w, i18n.T(locale, "calendar.errSubscribeFailed"), http.StatusInternalServerError)
 		return
 	}
 	slog.Info("calendar: subscribed", "user", userID, "calendar", cal.Guid, "host", u.Hostname())
@@ -89,8 +99,9 @@ func (h *CalendarHandler) SubscribeCalendar(w http.ResponseWriter, r *http.Reque
 
 // UnsubscribeCalendar deletes a subscription calendar and its events. Without
 // it a mistyped or dead feed would refresh for ever and hold one of the
-// user's 20 slots. It acts on subscriptions only; DeleteCalendar handles the
-// ordinary ones. store.PurgeCalendar documents the partial-failure semantics.
+// user's store.MaxCalendarsPerUser calendar slots, which subscriptions share
+// with ordinary calendars. It acts on subscriptions only; DeleteCalendar
+// handles the ordinary ones. store.PurgeCalendar documents the partial-failure semantics.
 func (h *CalendarHandler) UnsubscribeCalendar(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	calID := chi.URLParam(r, "calendarID")

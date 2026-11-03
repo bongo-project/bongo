@@ -1591,6 +1591,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				caldavBackend.SetScheduler(handlers.NewCalDAVScheduler(calendarH, prefs, a.ACL))
 			}
 			r.Get("/calendar", calendarH.CalendarIndex)
+			r.Post("/calendar", calendarH.CreateCalendar)
 			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/agenda", calendarH.AgendaView)
 			r.Get("/calendar/settings", calendarH.CalendarSettings)
