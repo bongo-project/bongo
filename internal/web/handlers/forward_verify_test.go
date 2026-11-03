@@ -283,6 +283,9 @@ func TestForwardRule_ExternalTargetStartsPending(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, body %q", w.Code, w.Body.String())
 	}
+	if loc := w.Header().Get("Location"); loc != "/settings/rules?flash=rule-created&flash=forward-rule-verify" {
+		t.Errorf("Location = %q, want the created flash and the verification note", loc)
+	}
 	if e.allowed(t, "u-alice", "rule@other.example") {
 		t.Fatal("rule forward target allowed before verification")
 	}

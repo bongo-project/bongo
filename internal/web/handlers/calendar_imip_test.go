@@ -90,6 +90,8 @@ type icsOpts struct {
 	summary, description     string
 	rid, rrule, status       string
 	alarm                    bool
+	// firstAttendee is listed before attendee, with the same request.
+	firstAttendee string
 }
 
 func (o icsOpts) build(method string) string {
@@ -113,9 +115,14 @@ func (o icsOpts) build(method string) string {
 		"UID:" + o.uid, "DTSTAMP:20300101T000000Z", "DTSTART:" + o.start, "DTEND:" + o.end,
 		"SUMMARY:" + o.summary, "SEQUENCE:" + fmt.Sprint(o.seq),
 		"ORGANIZER;CN=Olive:mailto:" + o.organiser,
-		"ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:" + o.attendee,
-		"ATTENDEE;PARTSTAT=ACCEPTED:mailto:carol@example.org",
 	}
+	if o.firstAttendee != "" {
+		lines = append(lines, "ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:"+o.firstAttendee)
+	}
+	lines = append(lines,
+		"ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:"+o.attendee,
+		"ATTENDEE;PARTSTAT=ACCEPTED:mailto:carol@example.org",
+	)
 	if o.description != "" {
 		lines = append(lines, "DESCRIPTION:"+o.description)
 	}
@@ -882,7 +889,7 @@ func TestReplyUsesTheInvitedAddressOnlyWhenItMaySendAs(t *testing.T) {
 		wantLocation string
 	}{
 		{"send-as alias", true, true, "%d"},
-		{"receive-only alias", false, false, "%d?ir=failed"},
+		{"receive-only alias", false, false, "%d"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newImipEnv(t)
@@ -914,6 +921,16 @@ func TestReplyUsesTheInvitedAddressOnlyWhenItMaySendAs(t *testing.T) {
 			}
 			if tc.wantReply && msgs[0].from != "alias@example.com" {
 				t.Errorf("reply sent from %q", msgs[0].from)
+			}
+			for _, m := range msgs {
+				if m.from == quotaEmail {
+					t.Errorf("a reply went out from the primary address %q", m.from)
+				}
+			}
+			if !tc.wantReply {
+				if !strings.Contains(e.view(t, uid), "the organiser will not be told") {
+					t.Error("the card does not say the organiser will not be told")
+				}
 			}
 		})
 	}
@@ -1248,5 +1265,166 @@ func TestStoreInvitedRefusesSubscribedCalendar(t *testing.T) {
 	}
 	if after.Title != old.Title {
 		t.Errorf("title %q, want %q", after.Title, old.Title)
+	}
+}
+
+// partstatLabel returns the label shown on the card row of addr.
+func partstatLabel(t *testing.T, html, addr string) string {
+	t.Helper()
+	i := strings.Index(html, addr)
+	if i < 0 {
+		t.Fatalf("no row for %s in the card", addr)
+	}
+	rest := html[i:]
+	const marker = `class="invite-partstat">`
+	j := strings.Index(rest, marker)
+	if j < 0 {
+		t.Fatalf("no partstat after %s", addr)
+	}
+	rest = rest[j+len(marker):]
+	return rest[:strings.Index(rest, "</span>")]
+}
+
+func TestCardShowsTheStoredAnswer(t *testing.T) {
+	t.Run("series", func(t *testing.T) {
+		e := newImipEnv(t)
+		uid := e.invite(t, icsOpts{})
+		if got := partstatLabel(t, e.view(t, uid), quotaEmail); got != "no answer" {
+			t.Fatalf("before answering: %q", got)
+		}
+		if w := e.answer(t, uid, "ACCEPTED"); w.Code != http.StatusSeeOther {
+			t.Fatalf("status %d: %s", w.Code, w.Body)
+		}
+		body := e.view(t, uid)
+		if got := partstatLabel(t, body, quotaEmail); got != "accepted" {
+			t.Errorf("user row = %q, want accepted", got)
+		}
+		if got := partstatLabel(t, body, "carol@example.org"); got != "accepted" {
+			t.Errorf("other attendee row = %q, want the message value", got)
+		}
+	})
+	t.Run("other attendee keeps the message value", func(t *testing.T) {
+		e := newImipEnv(t)
+		uid := e.invite(t, icsOpts{firstAttendee: "dave@example.org"})
+		e.answer(t, uid, "DECLINED")
+		body := e.view(t, uid)
+		if got := partstatLabel(t, body, "dave@example.org"); got != "no answer" {
+			t.Errorf("dave = %q, want no answer", got)
+		}
+		if got := partstatLabel(t, body, quotaEmail); got != "declined" {
+			t.Errorf("user = %q, want declined", got)
+		}
+	})
+	t.Run("instance", func(t *testing.T) {
+		e := newImipEnv(t)
+		series := e.invite(t, icsOpts{uid: "weekly@example.org", rrule: "FREQ=WEEKLY;COUNT=4"})
+		e.answer(t, series, "ACCEPTED")
+		inst := e.invite(t, icsOpts{uid: "weekly@example.org", rid: "20300513T090000Z"})
+		if got := partstatLabel(t, e.view(t, inst), quotaEmail); got != "accepted" {
+			t.Errorf("instance without an override = %q, want the series answer", got)
+		}
+		if w := e.answer(t, inst, "DECLINED"); w.Code != http.StatusSeeOther {
+			t.Fatalf("status %d: %s", w.Code, w.Body)
+		}
+		if got := partstatLabel(t, e.view(t, inst), quotaEmail); got != "declined" {
+			t.Errorf("instance card = %q, want declined", got)
+		}
+		if got := partstatLabel(t, e.view(t, series), quotaEmail); got != "accepted" {
+			t.Errorf("series card = %q, want accepted", got)
+		}
+	})
+	t.Run("a different organiser's message is not painted", func(t *testing.T) {
+		e := newImipEnv(t)
+		uid := e.invite(t, icsOpts{})
+		e.answer(t, uid, "ACCEPTED")
+		forged := e.invite(t, icsOpts{organiser: "mallory@example.net"})
+		if got := partstatLabel(t, e.view(t, forged), quotaEmail); got != "no answer" {
+			t.Errorf("forged card shows %q, want the message value", got)
+		}
+	})
+}
+
+func (e *imipEnv) putAddress(t *testing.T, addr string, canSend bool) {
+	t.Helper()
+	if e.cal.addresses == nil {
+		md, err := store.NewMetadataManager(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { md.Close() })
+		e.cal.SetAddressStore(store.NewAddressStore(e.q.ps, &directApplierTags{ps: e.q.ps}, md.System))
+	}
+	if err := e.cal.addresses.Put(addr, &bongov1.AddressRecord{UserId: quotaUser, CanSend: canSend, Verified: canSend}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReplyPrefersTheSendAsAddress(t *testing.T) {
+	e := newImipEnv(t)
+	e.putAddress(t, "alias@example.com", false)
+	e.putAddress(t, "sendas@example.com", true)
+	// The plain alias is listed first, so a first-match choice would pick it.
+	uid := e.invite(t, icsOpts{firstAttendee: "alias@example.com", attendee: "sendas@example.com"})
+	if w := e.answer(t, uid, "ACCEPTED"); w.Code != http.StatusSeeOther || strings.Contains(w.Header().Get("Location"), "ir=failed") {
+		t.Fatalf("status %d location %q", w.Code, w.Header().Get("Location"))
+	}
+	msgs := e.fs.messages()
+	if len(msgs) != 1 || msgs[0].from != "sendas@example.com" {
+		t.Fatalf("messages = %+v, want one REPLY from the send-as address", msgs)
+	}
+	if strings.Contains(e.view(t, uid), "the organiser will not be told") {
+		t.Error("the alias note shows although a send-as address was invited")
+	}
+}
+
+// A send-as lookup that fails is not "may not send as": the card does not say
+// the organiser will not be told, and the answer is stored with the usual
+// failed-reply warning instead of passing as a deliberate silence.
+func TestReplySendAsLookupErrorIsAFailureNotNoReply(t *testing.T) {
+	e := newImipEnv(t)
+	e.putAddress(t, "alias@example.com", true)
+	// A record that no longer decodes makes the send-as lookup fail.
+	if err := e.q.ps.Set([]byte("/system/address/alias@example.com"), []byte{0x0a, 0x05}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CanSendAs(e.cal.addresses, quotaUser, quotaEmail, "alias@example.com"); err == nil {
+		t.Fatal("the send-as lookup did not fail")
+	}
+	uid := e.invite(t, icsOpts{attendee: "alias@example.com"})
+	if strings.Contains(e.view(t, uid), "the organiser will not be told") {
+		t.Error("a failed lookup is shown as an address the user cannot reply from")
+	}
+	w := e.answer(t, uid, "ACCEPTED")
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != fmt.Sprintf("/mail/INBOX/%d?ir=failed", uid) {
+		t.Fatalf("status %d location %q, want the failed-reply warning", w.Code, w.Header().Get("Location"))
+	}
+	if ev := e.stored(t, imipUID); myPartstat(ev, map[string]bool{"alias@example.com": true}) != "ACCEPTED" {
+		t.Error("the answer was not stored")
+	}
+	if n := len(e.fs.messages()); n != 0 {
+		t.Errorf("%d messages sent, want none", n)
+	}
+}
+
+func TestAliasOnlyInviteeSendsNothing(t *testing.T) {
+	e := newImipEnv(t)
+	e.putAddress(t, "alias@example.com", false)
+	uid := e.invite(t, icsOpts{attendee: "alias@example.com"})
+	body := e.view(t, uid)
+	if !strings.Contains(body, "the organiser will not be told") {
+		t.Error("no note on the card")
+	}
+	if !strings.Contains(body, `value="ACCEPTED"`) {
+		t.Error("the card no longer offers an answer")
+	}
+	w := e.answer(t, uid, "ACCEPTED")
+	if w.Code != http.StatusSeeOther || strings.Contains(w.Header().Get("Location"), "ir=failed") {
+		t.Fatalf("status %d location %q", w.Code, w.Header().Get("Location"))
+	}
+	if ev := e.stored(t, imipUID); myPartstat(ev, map[string]bool{"alias@example.com": true}) != "ACCEPTED" {
+		t.Error("the answer was not stored")
+	}
+	if n := len(e.fs.messages()); n != 0 {
+		t.Errorf("%d messages sent, want none", n)
 	}
 }

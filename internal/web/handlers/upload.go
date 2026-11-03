@@ -42,6 +42,6 @@ func parseUploadForm(w http.ResponseWriter, r *http.Request, maxBytes int64, red
 		http.Error(w, "File too large", http.StatusRequestEntityTooLarge)
 		return false
 	}
-	http.Redirect(w, r, redirectBase+"?flash=No+file+uploaded", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash(redirectBase, flashNoFileUploaded), http.StatusSeeOther)
 	return false
 }

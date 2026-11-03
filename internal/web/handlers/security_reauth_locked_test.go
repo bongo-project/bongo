@@ -58,7 +58,7 @@ func TestReauthComparesAgainstLockedProfile(t *testing.T) {
 				}
 
 				rr := env.call(ep, "old-pass", totpNowIf(t, twoFA))
-				if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/settings/security?flash=Invalid+password" {
+				if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/settings/security?flash=security-invalid-password" {
 					t.Fatalf("got %d to %q, want 303 to the invalid-password flash", rr.Code, rr.Header().Get("Location"))
 				}
 				if env.store.writes != 0 {
@@ -147,7 +147,7 @@ func TestReauthRefusesDisabledProfile(t *testing.T) {
 			env.store.writes = 0
 
 			rr := env.call(ep, "right", "")
-			if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/settings/security?flash=Invalid+password" {
+			if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/settings/security?flash=security-invalid-password" {
 				t.Fatalf("got %d to %q, want 303 to the invalid-password flash", rr.Code, rr.Header().Get("Location"))
 			}
 			if env.store.writes != 0 {

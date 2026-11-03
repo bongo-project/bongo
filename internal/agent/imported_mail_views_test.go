@@ -132,13 +132,13 @@ func TestImportedMailReachesHeaderViews(t *testing.T) {
 		{"AppendedSubject", "appended.example.org"},
 		{"WebImportSubject", "web.example.org"},
 	} {
-		for _, path := range []string{"/mail/to-me", "/mail/from-contacts", "/mail/lists/" + tc.list} {
+		for _, path := range []string{"/mail/view/to-me", "/mail/view/from-contacts", "/mail/view/lists/" + tc.list} {
 			if body := get(path); !strings.Contains(body, tc.subject) {
 				t.Errorf("GET %s lacks %s", path, tc.subject)
 			}
 		}
-		if body := get("/mail/lists"); !strings.Contains(body, `href="/mail/lists/`+tc.list+`"`) {
-			t.Errorf("GET /mail/lists lacks %s", tc.list)
+		if body := get("/mail/view/lists"); !strings.Contains(body, `href="/mail/view/lists/`+tc.list+`"`) {
+			t.Errorf("GET /mail/view/lists lacks %s", tc.list)
 		}
 	}
 }

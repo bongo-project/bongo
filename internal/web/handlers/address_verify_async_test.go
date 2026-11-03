@@ -306,7 +306,7 @@ func TestRequestVerification_FullBufferResetsClaim(t *testing.T) {
 	}
 
 	w := env.requestVerificationHTTP(t, "userB", "b@example.com", addr)
-	if w.Code != http.StatusSeeOther || !strings.Contains(w.Header().Get("Location"), "flash=Verification+code+sent") {
+	if w.Code != http.StatusSeeOther || !strings.Contains(w.Header().Get("Location"), "flash=verification-code-sent") {
 		t.Errorf("reply = %d %q, want the normal success redirect", w.Code, w.Header().Get("Location"))
 	}
 	assertBare(t, env, "userB", addr)
@@ -316,7 +316,7 @@ func TestRequestVerification_FullBufferResetsClaim(t *testing.T) {
 	// The user can ask again once the buffer drains.
 	startRun(t, env.handler)
 	env.flush(t)
-	if loc := env.requestVerificationHTTP(t, "userB", "b@example.com", addr).Header().Get("Location"); !strings.Contains(loc, "flash=Verification+code+sent") {
+	if loc := env.requestVerificationHTTP(t, "userB", "b@example.com", addr).Header().Get("Location"); !strings.Contains(loc, "flash=verification-code-sent") {
 		t.Errorf("re-request Location = %q", loc)
 	}
 }

@@ -90,7 +90,7 @@ func TestSubmitCode_ConcurrentSameAddressOneOwner(t *testing.T) {
 	var winner, loser string
 	for uid, loc := range locs {
 		switch {
-		case strings.Contains(loc, "flash=Address+verified"):
+		case strings.Contains(loc, "flash=address-verified"):
 			if winner != "" {
 				t.Fatalf("both users verified %s: %v", addr, locs)
 			}

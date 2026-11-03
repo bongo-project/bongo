@@ -225,7 +225,7 @@ func (h *CalendarHandler) MonthView(w http.ResponseWriter, r *http.Request) {
 	// Build day cells for the grid.
 	days := buildMonthGrid(year, time.Month(month), events, now)
 
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	// Check if HTMX partial request.
 	if r.Header.Get("HX-Request") == "true" {
@@ -274,7 +274,7 @@ func (h *CalendarHandler) WeekView(w http.ResponseWriter, r *http.Request) {
 
 	days := buildWeekColumns(weekStart, events, calColorMap, now)
 
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	if r.Header.Get("HX-Request") == "true" {
 		templ.Handler(templates.WeekViewGrid(year, week, days, calendars, calColorMap)).ServeHTTP(w, r)
@@ -326,7 +326,7 @@ func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
 
 	col := buildDayColumn(date, events, calColorMap, now)
 
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	if r.Header.Get("HX-Request") == "true" {
 		templ.Handler(templates.DayViewGrid(date, col, calendars, calColorMap)).ServeHTTP(w, r)
@@ -389,7 +389,7 @@ func (h *CalendarHandler) AgendaView(w http.ResponseWriter, r *http.Request) {
 		templ.Handler(templates.AgendaContent(data)).ServeHTTP(w, r)
 		return
 	}
-	templ.Handler(templates.AgendaPage(data, calendars, email, r.URL.Query().Get("flash"))).ServeHTTP(w, r)
+	templ.Handler(templates.AgendaPage(data, calendars, email, flashText(r))).ServeHTTP(w, r)
 }
 
 // errAgendaEvents and errAgendaTasks say which store failed in agendaDays, so
@@ -434,7 +434,7 @@ func (h *CalendarHandler) agendaDays(r *http.Request, userID, email string, from
 			}
 		}
 	}
-	return r, buildAgenda(from, days, events, dueTasks, calColorMap, loc), calendars, nil
+	return r, buildAgenda(from, days, events, dueTasks, calColorMap, loc, h.nowIn(userID).In(loc)), calendars, nil
 }
 
 func agendaFromPath(d time.Time) string {
@@ -447,10 +447,24 @@ func agendaFromPath(d time.Time) string {
 // neighbouring day, so occurrences whose date falls outside the range are
 // dropped here. Within a day, all-day rows come first, then by time; events
 // come before tasks at the same time.
-func buildAgenda(from time.Time, days int, events []*bongov1.Event, tasks []*bongov1.Task, calColorMap map[string]string, loc *time.Location) []templates.AgendaDay {
+//
+// Tasks follow these rules, with today the current time in loc:
+//   - A recurring open task is expanded (store.ExpandTodo, so EXDATE and
+//     RECURRENCE-ID overrides apply) and each occurrence is listed on its due
+//     day. Occurrences before today are not listed and are not overdue, since
+//     one occurrence cannot be completed on its own. A bounded series with no
+//     occurrence left on or after today counts as overdue at its last one.
+//   - An open task that is overdue is listed once, on today's row and labelled
+//     overdue, when the window contains today. Otherwise it is listed on its
+//     due day, as any task.
+func buildAgenda(from time.Time, days int, events []*bongov1.Event, tasks []*bongov1.Task, calColorMap map[string]string, loc *time.Location, today time.Time) []templates.AgendaDay {
 	first := from.In(loc)
 	firstKey := first.Format("2006-01-02")
-	endKey := first.AddDate(0, 0, days).Format("2006-01-02")
+	end := first.AddDate(0, 0, days)
+	endKey := end.Format("2006-01-02")
+	today = today.In(loc)
+	todayKey := today.Format("2006-01-02")
+	hasToday := firstKey <= todayKey && todayKey < endKey
 
 	type keyed struct {
 		key    string
@@ -458,6 +472,8 @@ func buildAgenda(from time.Time, days int, events []*bongov1.Event, tasks []*bon
 		task   *bongov1.Task
 		allDay bool
 		at     int64
+		// overdue puts the task on today's row with the label.
+		overdue bool
 	}
 	var in []keyed
 	for _, e := range events {
@@ -471,7 +487,35 @@ func buildAgenda(from time.Time, days int, events []*bongov1.Event, tasks []*bon
 		if t.Due == 0 || !isOpenTask(t) {
 			continue
 		}
-		dateOnly, _ := icalevent.TodoTraits(t.IcalRaw)
+		dateOnly, recurs := icalevent.TodoTraits(t.IcalRaw)
+		if recurs {
+			// Widened by a day each side: a DATE due is UTC midnight, which
+			// the user's zone can move across the window edge, and the day
+			// key decides.
+			occs, _ := store.ExpandTodo(t, first.AddDate(0, 0, -1).Unix(), end.AddDate(0, 0, 1).Unix())
+			listed := false
+			for _, o := range occs {
+				k := taskDueDay(o.Due, dateOnly, loc)
+				if k < firstKey || k >= endKey || k < todayKey {
+					continue
+				}
+				listed = true
+				in = append(in, keyed{key: k, task: o, allDay: dateOnly, at: o.Due})
+			}
+			if listed || !hasToday {
+				continue
+			}
+			// Nothing on or after today in the window: overdue only when the
+			// series has ended.
+			if last, found := store.NextTodoOccurrence(t, dueFloor(today, dateOnly)); last != nil && !found {
+				in = append(in, keyed{key: todayKey, task: last, allDay: true, at: last.Due, overdue: true})
+			}
+			continue
+		}
+		if hasToday && taskOverdue(t, dateOnly, today) {
+			in = append(in, keyed{key: todayKey, task: t, allDay: true, at: t.Due, overdue: true})
+			continue
+		}
 		k := taskDueDay(t.Due, dateOnly, loc)
 		if k < firstKey || k >= endKey {
 			continue
@@ -504,11 +548,12 @@ func buildAgenda(from time.Time, days int, events []*bongov1.Event, tasks []*bon
 				Task: k.task, ColourClass: templates.CalendarColourClass(colour),
 				// A shared task is not in the viewer's key space: no link.
 				ReadOnly: strings.HasPrefix(k.task.CalendarId, templates.SharedKeyPrefix),
+				Overdue:  k.overdue,
 			}
 		} else {
 			item = templates.AgendaItem{Event: k.ev, ColourClass: templates.EventColourClass(k.ev, calColorMap)}
 		}
-		if !k.allDay {
+		if !k.allDay && !k.overdue {
 			item.TimeLabel = time.Unix(k.at, 0).In(loc).Format("15:04")
 		}
 		out[len(out)-1].Items = append(out[len(out)-1].Items, item)
@@ -934,7 +979,7 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	notReached := h.notifyAttendees(r, userID, email, nil, event)
 	t := eventMonthTime(event, h.userLocation(userID))
-	http.Redirect(w, r, withInviteWarning(fmt.Sprintf("/calendar/%d/%d?flash=Event+created", t.Year(), int(t.Month())), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
+	http.Redirect(w, r, withInviteWarning(withFlash(fmt.Sprintf("/calendar/%d/%d", t.Year(), int(t.Month())), flashEventCreated), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
 // ShowEvent renders an event detail/edit view.
@@ -1158,7 +1203,7 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	notReached := h.notifyAttendees(r, userID, email, existing, updated)
 	t := eventMonthTime(updated, h.userLocation(userID))
-	http.Redirect(w, r, withInviteWarning(fmt.Sprintf("/calendar/%d/%d?flash=Event+updated", t.Year(), int(t.Month())), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
+	http.Redirect(w, r, withInviteWarning(withFlash(fmt.Sprintf("/calendar/%d/%d", t.Year(), int(t.Month())), flashEventUpdated), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
 // DeleteEvent handles DELETE to remove an event.
@@ -1191,10 +1236,10 @@ func (h *CalendarHandler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 
 	if event != nil {
 		t := eventMonthTime(event, h.userLocation(userID))
-		http.Redirect(w, r, withInviteWarning(fmt.Sprintf("/calendar/%d/%d?flash=Event+deleted", t.Year(), int(t.Month())), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
+		http.Redirect(w, r, withInviteWarning(withFlash(fmt.Sprintf("/calendar/%d/%d", t.Year(), int(t.Month())), flashEventDeleted), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 		return
 	}
-	http.Redirect(w, r, withInviteWarning("/calendar?flash=Event+deleted", notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path; the parameters are url-encoded
+	http.Redirect(w, r, withInviteWarning(withFlash("/calendar", flashEventDeleted), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path; the parameters are url-encoded
 }
 
 // ExportCalendar exports all events as an .ics file.
@@ -1280,7 +1325,7 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	}
 	file, hdr, err := r.FormFile("ics")
 	if err != nil {
-		http.Redirect(w, r, "/calendar?flash=No+file+uploaded", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/calendar", flashNoFileUploaded), http.StatusSeeOther)
 		return
 	}
 	defer file.Close()
@@ -1330,12 +1375,12 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	flash := fmt.Sprintf("Imported+%d+events", imported)
+	flash := flashEventsImported
 	if failed > 0 {
-		flash = fmt.Sprintf("Imported+%d+events,+%d+failed", imported, failed)
+		flash = flashEventsImportedSomeFailed
 	}
 
-	http.Redirect(w, r, "/calendar?flash="+strings.ReplaceAll(flash, " ", "+"), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/calendar", flash), http.StatusSeeOther)
 }
 
 // MiniCalendar returns the mini calendar sidebar as an HTMX partial.

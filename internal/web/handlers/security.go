@@ -70,7 +70,7 @@ func (h *SecurityHandler) SetTLSEnabled(enabled bool) {
 // SecuritySettings renders the security settings page.
 func (h *SecurityHandler) SecuritySettings(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	var totpEnabled bool
 	if h.profiles != nil {
@@ -132,7 +132,7 @@ func (h *SecurityHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
 	// Get pending secret from signed cookie.
 	secret, err := h.getTOTPPendingCookie(r)
 	if err != nil {
-		http.Redirect(w, r, "/settings/security?flash=Setup+expired.+Please+try+again.", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/security", flashSecuritySetupExpired), http.StatusSeeOther)
 		return
 	}
 
@@ -142,7 +142,7 @@ func (h *SecurityHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
 	if !valid {
 		// Re-render setup page with error.
 		// Re-generate QR code from the pending secret.
-		http.Redirect(w, r, "/settings/security?flash=Invalid+code.+Please+try+again.", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/security", flashSecurityInvalidCode), http.StatusSeeOther)
 		return
 	}
 
@@ -199,7 +199,7 @@ func (h *SecurityHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
 
 	password := r.FormValue("password")
 	if password == "" {
-		http.Redirect(w, r, "/settings/security?flash=Password+is+required", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/security", flashSecurityPasswordRequired), http.StatusSeeOther)
 		return
 	}
 
@@ -219,7 +219,7 @@ func (h *SecurityHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.succeed(r, email)
 
-	http.Redirect(w, r, "/settings/security?flash=Two-factor+authentication+disabled", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/security", flashSecurity2FADisabled), http.StatusSeeOther)
 }
 
 // hashPassword is a seam so tests can count calls to the expensive hash.
@@ -241,22 +241,22 @@ func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 
 	// Validate inputs.
 	if currentPassword == "" || newPassword == "" || confirmPassword == "" {
-		http.Redirect(w, r, "/settings/security?flash=All+fields+are+required", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/security", flashSecurityFieldsRequired), http.StatusSeeOther)
 		return
 	}
 
 	if newPassword != confirmPassword {
-		http.Redirect(w, r, "/settings/security?flash=Passwords+do+not+match", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/security", flashSecurityPasswordsMismatch), http.StatusSeeOther)
 		return
 	}
 
 	if len(newPassword) < 8 {
-		http.Redirect(w, r, "/settings/security?flash=Password+must+be+at+least+8+characters", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/security", flashSecurityPasswordShort), http.StatusSeeOther)
 		return
 	}
 
 	if currentPassword == newPassword {
-		http.Redirect(w, r, "/settings/security?flash=New+password+must+be+different+from+current+password", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/security", flashSecurityPasswordSame), http.StatusSeeOther)
 		return
 	}
 
@@ -295,10 +295,10 @@ func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 		http.SetCookie(w, middleware.ReissueSessionCookie(h.sessionSecret, *data, h.tlsEnabled, epoch))
 	}
 
-	http.Redirect(w, r, "/settings/security?flash=Password+changed+successfully", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/security", flashSecurityPasswordChanged), http.StatusSeeOther)
 }
 
-const totpAlreadyEnabledRedirect = "/settings/security?flash=Two-factor+authentication+is+already+enabled.+Disable+it+first+to+replace+it."
+var totpAlreadyEnabledRedirect = withFlash("/settings/security", flashSecurity2FAAlreadyEnabled)
 
 // totpEnrolled reports whether the user already has 2FA enabled. A profile
 // that cannot be read counts as enrolled, so the guard fails closed.
@@ -334,14 +334,14 @@ func (h *SecurityHandler) reauthenticate(w http.ResponseWriter, r *http.Request,
 	if err != nil || profile.Disabled ||
 		bcrypt.CompareHashAndPassword(profile.PasswordHash, []byte(password)) != nil {
 		h.fail(ip, email)
-		http.Redirect(w, r, "/settings/security?flash=Invalid+password", http.StatusSeeOther)
+		http.Redirect(w, r, withFlash("/settings/security", flashSecurityInvalidPassword), http.StatusSeeOther)
 		return nil, false
 	}
 
 	if profile.TotpEnabled {
 		if ok, _ := consumeSecondFactor(profile, r.FormValue("totp_code"), time.Now()); !ok {
 			h.fail(ip, email)
-			http.Redirect(w, r, "/settings/security?flash=Invalid+authentication+code", http.StatusSeeOther)
+			http.Redirect(w, r, withFlash("/settings/security", flashSecurityInvalidAuthCode), http.StatusSeeOther)
 			return nil, false
 		}
 	}

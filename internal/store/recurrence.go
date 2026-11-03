@@ -50,6 +50,10 @@ type override struct {
 	// override's ATTENDEE lines carry, so an answer to one occurrence reaches
 	// the expanded instance.
 	partstats map[string]string
+	// attendees is the override's own ATTENDEE list and sequence its own
+	// SEQUENCE. Only Series reads them; the expansion keeps the master's list.
+	attendees []*bongov1.Attendee
+	sequence  int
 }
 
 type recurrenceSet struct {
@@ -61,10 +65,22 @@ type recurrenceSet struct {
 	exInstants map[int64]bool
 	exDays     map[string]bool // "20060102" in loc, from date-only EXDATEs on a timed series
 	overrides  map[int64]*override
+	// todo marks a series built from a VTODO (see todoSet): ical_raw is read
+	// for VTODO components, and an override with STATUS:COMPLETED drops its
+	// occurrence like a cancelled one.
+	todo bool
+	// dueAnchor is set when the series has no DTSTART and recurs on DUE.
+	dueAnchor bool
 }
 
 // newRecurrenceSet prepares the expansion of a recurring event.
 func newRecurrenceSet(event *bongov1.Event) (*recurrenceSet, error) {
+	return newRecurrenceSetFor(event, false, false)
+}
+
+// newRecurrenceSetFor is newRecurrenceSet for an event or, with todo set, the
+// shim of a VTODO (see todoSet); dueAnchor says the series recurs on DUE.
+func newRecurrenceSetFor(event *bongov1.Event, todo, dueAnchor bool) (*recurrenceSet, error) {
 	opt, err := rrule.StrToROption(event.Rrule)
 	if err != nil {
 		return nil, fmt.Errorf("parsing rrule %q: %w", event.Rrule, err)
@@ -77,6 +93,8 @@ func newRecurrenceSet(event *bongov1.Event) (*recurrenceSet, error) {
 		exInstants: map[int64]bool{},
 		exDays:     map[string]bool{},
 		overrides:  map[int64]*override{},
+		todo:       todo,
+		dueAnchor:  dueAnchor,
 	}
 	// An all-day series is a run of dates and takes no zone. A name that does
 	// not load (a client's custom TZID) falls back to UTC; icalevent.Zone logs
@@ -122,9 +140,14 @@ func (s *recurrenceSet) readIcal(raw []byte) {
 	if err != nil {
 		return
 	}
-	master, _ := icalevent.Master(cal)
+	name, master := ical.CompEvent, (*ical.Component)(nil)
+	if s.todo {
+		name, master = ical.CompToDo, icalevent.TodoMaster(cal)
+	} else {
+		master, _ = icalevent.Master(cal)
+	}
 	for _, c := range cal.Children {
-		if c.Name != ical.CompEvent {
+		if c.Name != name {
 			continue
 		}
 		if c == master {
@@ -143,7 +166,7 @@ func (s *recurrenceSet) readIcal(raw []byte) {
 		if !ok {
 			continue
 		}
-		s.overrides[s.key(at)] = s.parseOverride(c)
+		s.overrides[s.key(at)] = s.parseOverride(c, s.key(at))
 	}
 }
 
@@ -205,13 +228,27 @@ func (s *recurrenceSet) key(t time.Time) int64 {
 	return t.Unix()
 }
 
-func (s *recurrenceSet) parseOverride(c *ical.Component) *override {
+// parseOverride reads one RECURRENCE-ID component; slot is the key of the
+// instance it replaces.
+func (s *recurrenceSet) parseOverride(c *ical.Component, slot int64) *override {
 	o := &override{}
-	if st := c.Props.Get(ical.PropStatus); st != nil && strings.EqualFold(strings.TrimSpace(st.Value), "CANCELLED") {
-		o.cancelled = true
-		return o
+	if st := c.Props.Get(ical.PropStatus); st != nil {
+		v := strings.TrimSpace(st.Value)
+		// Clients write COMPLETED on a VTODO override when one occurrence is
+		// ticked off; it leaves the open views.
+		if strings.EqualFold(v, "CANCELLED") || (s.todo && strings.EqualFold(v, "COMPLETED")) {
+			o.cancelled = true
+			return o
+		}
 	}
+	o.attendees = icalevent.ParseAttendees(c.Props)
+	o.sequence = icalevent.Sequence(c.Props)
 	o.start, o.end = s.event.StartTime, s.event.EndTime
+	if s.todo {
+		// An override without a date stays in its own slot.
+		o.start = slot
+		o.end = slot + s.duration
+	}
 	o.allDay = s.allDay
 	if p := c.Props.Get(ical.PropDateTimeStart); p != nil {
 		if t, dateOnly, ok := s.parseTime(p); ok {
@@ -219,7 +256,15 @@ func (s *recurrenceSet) parseOverride(c *ical.Component) *override {
 			o.end = o.start + s.duration
 		}
 	}
-	if p := c.Props.Get(ical.PropDateTimeEnd); p != nil {
+	if p := c.Props.Get(ical.PropDue); s.todo && p != nil {
+		if t, dateOnly, ok := s.parseTime(p); ok {
+			if s.dueAnchor {
+				o.start, o.allDay = t.Unix(), dateOnly
+				o.end = o.start
+			}
+			o.end, o.hasEnd = t.Unix(), true
+		}
+	} else if p := c.Props.Get(ical.PropDateTimeEnd); p != nil {
 		if t, _, ok := s.parseTime(p); ok {
 			o.end, o.hasEnd = t.Unix(), true
 		}
@@ -358,28 +403,9 @@ func (s *recurrenceSet) instances(rangeStart, rangeEnd int64) []*bongov1.Event {
 // find returns the occurrence named by a RECURRENCE-ID value, or false when
 // the series has no such occurrence (not on the rule, excluded or cancelled).
 func (s *recurrenceSet) find(rid string) (*bongov1.Event, bool) {
-	if !recurrenceIDRe.MatchString(rid) {
+	t, ok := s.parseRecurrenceID(rid)
+	if !ok {
 		return nil, false
-	}
-	var t time.Time
-	if len(rid) == len("20060102") {
-		if !s.allDay {
-			return nil, false
-		}
-		d, err := time.ParseInLocation("20060102", rid, time.UTC)
-		if err != nil {
-			return nil, false
-		}
-		t = d
-	} else {
-		if s.allDay {
-			return nil, false
-		}
-		d, err := time.ParseInLocation("20060102T150405Z", rid, time.UTC)
-		if err != nil {
-			return nil, false
-		}
-		t = d
 	}
 	key := s.key(t)
 	if o, ok := s.overrides[key]; ok {
@@ -393,6 +419,26 @@ func (s *recurrenceSet) find(rid string) (*bongov1.Event, bool) {
 		return nil, false
 	}
 	return s.instance(key, t.Unix(), t.Unix()+s.duration), true
+}
+
+// parseRecurrenceID reads a canonical RECURRENCE-ID value: a UTC date-time for
+// a timed series, a date for an all-day one.
+func (s *recurrenceSet) parseRecurrenceID(rid string) (time.Time, bool) {
+	if !recurrenceIDRe.MatchString(rid) {
+		return time.Time{}, false
+	}
+	if len(rid) == len("20060102") {
+		if !s.allDay {
+			return time.Time{}, false
+		}
+		d, err := time.ParseInLocation("20060102", rid, time.UTC)
+		return d, err == nil
+	}
+	if s.allDay {
+		return time.Time{}, false
+	}
+	d, err := time.ParseInLocation("20060102T150405Z", rid, time.UTC)
+	return d, err == nil
 }
 
 // ExpandRecurrence generates the occurrences of a recurring event that
@@ -478,4 +524,166 @@ func EventEntirelyPast(event *bongov1.Event, now time.Time) bool {
 		return SeriesEndsBy(event, now)
 	}
 	return max(event.EndTime, event.StartTime) < now.Unix()
+}
+
+// todoSeriesCap bounds the slots NextTodoOccurrence walks from DTSTART, so a
+// rule that recurs every second (a shared task is written by another user)
+// ends the search instead of spinning.
+const todoSeriesCap = 200000
+
+// todoSet holds a recurring VTODO as a recurrence set. The set expands a
+// shim Event whose times are the task's anchor (DTSTART, else DUE) and whose
+// duration is DUE minus the anchor; mapBack turns an instance into a Task.
+type todoSet struct {
+	*recurrenceSet
+	task   *bongov1.Task
+	hasDue bool
+}
+
+// newTodoSet returns nil for a task that does not recur, has no usable
+// anchor, or whose rule does not parse.
+func newTodoSet(task *bongov1.Task) *todoSet {
+	if task == nil || len(task.IcalRaw) == 0 || !containsFold(task.IcalRaw, "RRULE") {
+		return nil
+	}
+	cal, err := ical.NewDecoder(bytes.NewReader(task.IcalRaw)).Decode()
+	if err != nil {
+		return nil
+	}
+	m := icalevent.TodoMaster(cal)
+	if m == nil {
+		return nil
+	}
+	rr := m.Props.Get(ical.PropRecurrenceRule)
+	if rr == nil {
+		return nil
+	}
+	dtstart, due := m.Props.Get(ical.PropDateTimeStart), m.Props.Get(ical.PropDue)
+	anchor := dtstart
+	if anchor == nil {
+		anchor = due
+	}
+	if anchor == nil {
+		return nil
+	}
+	at, dateOnly, ok := icalevent.PropInstant(anchor, time.UTC)
+	if !ok {
+		return nil
+	}
+	ev := &bongov1.Event{
+		Guid: task.Guid, CalendarId: task.CalendarId, Title: task.Summary,
+		Description: task.Description,
+		StartTime:   at.Unix(), EndTime: at.Unix(),
+		AllDay: dateOnly, Rrule: strings.TrimSpace(rr.Value),
+		Timezone: anchor.Params.Get(ical.PropTimezoneID),
+		IcalRaw:  task.IcalRaw,
+	}
+	hasDue := due != nil
+	if hasDue && anchor != due {
+		if d, _, ok := icalevent.PropInstant(due, time.UTC); ok && d.Unix() > ev.StartTime {
+			ev.EndTime = d.Unix()
+		}
+	}
+	s, err := newRecurrenceSetFor(ev, true, anchor == due)
+	if err != nil {
+		return nil
+	}
+	return &todoSet{recurrenceSet: s, task: task, hasDue: hasDue}
+}
+
+// mapBack turns an instance of the shim event into a copy of the task. The
+// stored task is never touched.
+func (t *todoSet) mapBack(inst *bongov1.Event) *bongov1.Task {
+	out := proto.Clone(t.task).(*bongov1.Task)
+	out.Summary = inst.Title
+	out.Description = inst.Description
+	if t.hasDue {
+		out.Due = inst.EndTime
+	}
+	if !t.dueAnchor && t.task.Start != 0 {
+		out.Start = inst.StartTime
+	}
+	return out
+}
+
+// ExpandTodo lists the occurrences of a recurring VTODO whose due instant lies
+// in [rangeStart, rangeEnd), as copies of the task with Due (and Start, when
+// the task has one) moved to the occurrence and an override's SUMMARY applied.
+// EXDATE, RECURRENCE-ID overrides and a COMPLETED or CANCELLED override are
+// honoured. A task that does not recur is returned as is. RDATE and
+// THISANDFUTURE are not handled.
+func ExpandTodo(task *bongov1.Task, rangeStart, rangeEnd int64) ([]*bongov1.Task, error) {
+	s := newTodoSet(task)
+	if s == nil {
+		return []*bongov1.Task{task}, nil
+	}
+	// A zero-duration instance at rangeStart would otherwise be dropped.
+	insts := s.instances(rangeStart-1, rangeEnd)
+	out := make([]*bongov1.Task, 0, len(insts))
+	for _, inst := range insts {
+		if inst.EndTime < rangeStart || inst.EndTime >= rangeEnd {
+			continue
+		}
+		out = append(out, s.mapBack(inst))
+	}
+	return out, nil
+}
+
+// NextTodoOccurrence finds the first occurrence of a recurring VTODO whose due
+// instant is not before notBefore, and reports true. When the series has none
+// (it ended), it returns the last occurrence and false. It returns nil and
+// false for a task that does not recur, or whose series cannot be walked
+// within todoSeriesCap slots.
+func NextTodoOccurrence(task *bongov1.Task, notBefore time.Time) (*bongov1.Task, bool) {
+	s := newTodoSet(task)
+	if s == nil {
+		return nil, false
+	}
+	nb := notBefore.Unix()
+	var next, last *bongov1.Event
+	iter := s.rule.Iterator()
+	walked := 0
+	for {
+		occ, ok := iter()
+		if !ok {
+			break
+		}
+		if walked++; walked > todoSeriesCap {
+			return nil, false
+		}
+		start := occ.Unix()
+		end := start + s.duration
+		if s.excluded(occ) {
+			continue
+		}
+		key := s.key(occ)
+		if _, moved := s.overrides[key]; moved {
+			continue
+		}
+		if end < nb {
+			last = s.instance(key, start, end)
+			continue
+		}
+		next = s.instance(key, start, end)
+		break
+	}
+	for key, o := range s.overrides {
+		if o.cancelled {
+			continue
+		}
+		inst := s.overrideInstance(key, o)
+		switch {
+		case inst.EndTime >= nb && (next == nil || inst.EndTime < next.EndTime):
+			next = inst
+		case inst.EndTime < nb && (last == nil || inst.EndTime > last.EndTime):
+			last = inst
+		}
+	}
+	switch {
+	case next != nil:
+		return s.mapBack(next), true
+	case last != nil:
+		return s.mapBack(last), false
+	}
+	return nil, false
 }

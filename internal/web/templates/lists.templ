@@ -4,11 +4,11 @@ import "fmt"
 
 // ListsPage renders the Mailing lists overview with the sidebar.
 templ ListsPage(mailboxes []MailboxInfo, tags []SidebarTagInfo, lists []MailingList, email string) {
-	@LayoutWithContent("lists", email) {
+	@LayoutWithContent(listsNavKey, email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-			@Sidebar(mailboxes, tags, "lists")
+			@Sidebar(mailboxes, tags, listsNavKey)
 		</aside>
-		<main class="content" id="main-content" data-selected-mailbox="lists">
+		<main class="content" id="main-content" data-selected-mailbox={ listsNavKey }>
 			@ListsContent(lists)
 		</main>
 	}
@@ -18,7 +18,7 @@ templ ListsPage(mailboxes []MailboxInfo, tags []SidebarTagInfo, lists []MailingL
 // number of messages in the folders the list views show. The name is mail
 // header text, so templ escapes it and it is never rendered as HTML.
 templ ListsContent(lists []MailingList) {
-	<div class="mail-view" data-mailbox="lists">
+	<div class="mail-view" data-mailbox={ listsNavKey }>
 		<div class="mail-head">
 			<h1 class="mail-head-title">{ t(ctx, "nav.mailingLists") }</h1>
 		</div>

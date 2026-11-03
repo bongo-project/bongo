@@ -99,7 +99,7 @@ func TestSummaryInvitationsLinkOpensTheInbox(t *testing.T) {
 			if strings.Contains(inv, "View all") || strings.Contains(inv, "Alle anzeigen") {
 				t.Errorf("invitations link still says view all: %s", inv)
 			}
-			if toMe := section(t, body, "to-me"); !strings.Contains(toMe, `href="/mail/to-me?unread=1"`) {
+			if toMe := section(t, body, "to-me"); !strings.Contains(toMe, `href="/mail/view/to-me?unread=1"`) {
 				t.Errorf("to-me link: %s", toMe)
 			}
 		})

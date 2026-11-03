@@ -163,7 +163,7 @@ func TestMarkSpam_TrainingRateLimited(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("limited status = %d, want 200", w.Code)
 	}
-	if loc := w.Header().Get("HX-Redirect"); !strings.Contains(loc, "training+skipped") {
+	if loc := w.Header().Get("HX-Redirect"); !strings.Contains(loc, "flash=training-skipped") {
 		t.Errorf("HX-Redirect = %q, want a training-skipped flash", loc)
 	}
 	if s, hm := e.count("spam"), e.count("ham"); s != 1 || hm != 0 {

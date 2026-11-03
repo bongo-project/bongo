@@ -39,13 +39,14 @@ func TestToMeUnreadFilter(t *testing.T) {
 		{"unread=1", "?unread=1", []string{"subj-Unr1", "subj-Unr2"}},
 		{"no parameter", "", []string{"subj-Unr1", "subj-Rd1", "subj-Unr2"}},
 		{"unread=0", "?unread=0", []string{"subj-Unr1", "subj-Rd1", "subj-Unr2"}},
+		{"unread=2", "?unread=2", []string{"subj-Unr1", "subj-Rd1", "subj-Unr2"}},
 		{"unread=true", "?unread=true", []string{"subj-Unr1", "subj-Rd1", "subj-Unr2"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newViewFixture(t)
 			seedUnreadMix(f)
-			code, body := f.get("/mail/to-me"+tc.query, "", false)
+			code, body := f.get("/mail/view/to-me"+tc.query, "", false)
 			if code != http.StatusOK {
 				t.Fatalf("status %d", code)
 			}
@@ -89,13 +90,13 @@ func TestToMeUnreadSurvivesPagination(t *testing.T) {
 	}
 	t.Run("page 2 and pagination links", func(t *testing.T) {
 		f := setup(t, false)
-		_, body := f.get("/mail/to-me?unread=1&page=2", "", false)
+		_, body := f.get("/mail/view/to-me?unread=1&page=2", "", false)
 		if got := subjectsInOrder(body); !equalStrings(got, []string{"subj-U2", "subj-U3"}) {
 			t.Errorf("page 2 = %v", got)
 		}
 		noRead(t, body)
 		plain := strings.ReplaceAll(body, "&amp;", "&")
-		if !strings.Contains(plain, `href="/mail/to-me?unread=1&page=3"`) || !strings.Contains(plain, `hx-get="/mail/to-me?unread=1&page=3"`) {
+		if !strings.Contains(plain, `href="/mail/view/to-me?unread=1&page=3"`) || !strings.Contains(plain, `hx-get="/mail/view/to-me?unread=1&page=3"`) {
 			t.Errorf("pagination lacks unread=1: %s", body)
 		}
 		if strings.Contains(plain, "unread=1?") {
@@ -104,7 +105,7 @@ func TestToMeUnreadSurvivesPagination(t *testing.T) {
 	})
 	t.Run("sentinel and partial", func(t *testing.T) {
 		f := setup(t, true)
-		_, body := f.get("/mail/to-me?unread=1", "", false)
+		_, body := f.get("/mail/view/to-me?unread=1", "", false)
 		i := strings.Index(body, "partial=1")
 		if i < 0 {
 			t.Fatalf("no sentinel: %s", body)
@@ -130,19 +131,19 @@ func TestToMeListURLCarriesFilter(t *testing.T) {
 	f := newViewFixture(t)
 	seedUnreadMix(f)
 	for _, htmx := range []bool{false, true} {
-		_, body := f.get("/mail/to-me?unread=1", "", htmx)
-		if !strings.Contains(body, `data-list-url="/mail/to-me?unread=1"`) {
+		_, body := f.get("/mail/view/to-me?unread=1", "", htmx)
+		if !strings.Contains(body, `data-list-url="/mail/view/to-me?unread=1"`) {
 			t.Errorf("htmx=%v: no data-list-url", htmx)
 		}
-		if !strings.Contains(body, `hx-get="/mail/to-me?unread=1" hx-target="#main-content"`) {
+		if !strings.Contains(body, `hx-get="/mail/view/to-me?unread=1" hx-target="#main-content"`) {
 			t.Errorf("htmx=%v: Refresh lacks unread=1", htmx)
 		}
 	}
-	_, body := f.get("/mail/to-me", "", false)
+	_, body := f.get("/mail/view/to-me", "", false)
 	if strings.Contains(body, "unread=1") {
 		t.Errorf("unfiltered view carries unread=1")
 	}
-	if !strings.Contains(body, `data-list-url="/mail/to-me"`) {
+	if !strings.Contains(body, `data-list-url="/mail/view/to-me"`) {
 		t.Errorf("unfiltered view lacks data-list-url")
 	}
 }

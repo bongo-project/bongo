@@ -229,7 +229,7 @@ func TestSummaryAllFourSectionsRender(t *testing.T) {
 			t.Errorf("to-me lists %q", not)
 		}
 	}
-	if !strings.Contains(toMe, fmt.Sprintf(`href="/mail/INBOX/%d"`, inboxUID)) || !strings.Contains(toMe, `href="/mail/to-me?unread=1"`) {
+	if !strings.Contains(toMe, fmt.Sprintf(`href="/mail/INBOX/%d"`, inboxUID)) || !strings.Contains(toMe, `href="/mail/view/to-me?unread=1"`) {
 		t.Errorf("to-me links wrong: %s", toMe)
 	}
 

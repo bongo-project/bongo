@@ -2,6 +2,7 @@ package store
 
 import (
 	"net/mail"
+	"net/url"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -11,13 +12,21 @@ import (
 
 // Header-based mailbox views. They are not folders: each is a filter over the
 // derived SQLite index whose results are shown with their real mailbox.
+//
+// A view is identified by a HeaderView value, never by a mailbox name: folder
+// names are not reserved, so no string can be told apart from a folder.
+
+// HeaderViewKind says which header-based view a HeaderView is.
+type HeaderViewKind int
+
 const (
-	ViewToMe         = "to-me"
-	ViewFromContacts = "from-contacts"
-	ViewLists        = "lists"
-	// ViewListPrefix starts the name of a single list's view, "lists/<id>".
-	ViewListPrefix = "lists/"
+	ViewToMe HeaderViewKind = iota + 1
+	ViewFromContacts
+	ViewLists
 )
+
+// ViewPathPrefix is the URL prefix of the header views.
+const ViewPathPrefix = "/mail/view/"
 
 const (
 	maxListIDLen   = 255
@@ -232,25 +241,24 @@ func ValidListID(id string) bool {
 
 // HeaderView names a header-based view.
 type HeaderView struct {
-	Kind   string // ViewToMe, ViewFromContacts or ViewLists
-	ListID string // set for a single list's view
+	Kind   HeaderViewKind
+	ListID string // set for a single list's view; must satisfy ValidListID
 }
 
-// ParseHeaderView recognises the names of the header-based views, including
-// "lists/<id>". An invalid list id is not a view.
-func ParseHeaderView(name string) (HeaderView, bool) {
-	switch name {
-	case ViewToMe, ViewFromContacts, ViewLists:
-		return HeaderView{Kind: name}, true
+// URL is the path of the view, without any query. The list id is escaped.
+func (v HeaderView) URL() string {
+	switch {
+	case v.Kind == ViewToMe:
+		return ViewPathPrefix + "to-me"
+	case v.Kind == ViewFromContacts:
+		return ViewPathPrefix + "from-contacts"
+	case v.ListID != "":
+		return ViewPathPrefix + "lists/" + url.PathEscape(v.ListID)
 	}
-	if id, ok := strings.CutPrefix(name, ViewListPrefix); ok && ValidListID(id) {
-		return HeaderView{Kind: ViewLists, ListID: id}, true
-	}
-	return HeaderView{}, false
+	return ViewPathPrefix + "lists"
 }
 
-// IsHeaderView reports whether name is one of the header-based views.
-func IsHeaderView(name string) bool {
-	_, ok := ParseHeaderView(name)
-	return ok
+// BulkURL is the path bulk actions on the view's messages are posted to.
+func (v HeaderView) BulkURL() string {
+	return v.URL() + "/bulk"
 }

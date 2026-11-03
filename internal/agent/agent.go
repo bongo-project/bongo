@@ -1421,12 +1421,18 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			mailH.SetTagStore(store.NewTagStore(a.Store, a))
 			r.Get("/mail/tag/{name}", mailH.ListTagMessages)
-			// Header-based views, registered before /mail/{mailbox} so they
-			// are not read as a folder name or as /mail/{mailbox}/{uid}.
-			r.Get("/mail/to-me", mailH.ListToMe)
-			r.Get("/mail/from-contacts", mailH.ListFromContacts)
-			r.Get("/mail/lists", mailH.ListMailingLists)
-			r.Get("/mail/lists/{listID}", mailH.ListMailingList)
+			// Header-based views live under /mail/view/ and are registered
+			// before /mail/{mailbox}. Only multi-segment paths are static:
+			// /mail/view and /mail/view/bulk stay free for a folder called
+			// "view", and a folder called "to-me" or "lists" is an ordinary
+			// /mail/{mailbox}.
+			r.Get("/mail/view/to-me", mailH.ListToMe)
+			r.Get("/mail/view/from-contacts", mailH.ListFromContacts)
+			r.Get("/mail/view/lists", mailH.ListMailingLists)
+			r.Get("/mail/view/lists/{listID}", mailH.ListMailingList)
+			r.Post("/mail/view/to-me/bulk", mailH.BulkToMe)
+			r.Post("/mail/view/from-contacts/bulk", mailH.BulkFromContacts)
+			r.Post("/mail/view/lists/{listID}/bulk", mailH.BulkMailingList)
 			r.Get("/api/mail/unread-counts", mailH.UnreadCounts)
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
@@ -1598,6 +1604,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/calendar/day/{year}/{month}/{day}", calendarH.DayView)
 			r.Post("/calendar/event/{guid}/reschedule", calendarH.RescheduleEvent)
 			r.Put("/calendar/{calendarID}", calendarH.UpdateCalendar)
+			r.Delete("/calendar/{calendarID}", calendarH.DeleteCalendar)
 			r.Post("/calendar/{calendarID}/share", calendarH.ShareCalendar)
 			r.Post("/calendar/{calendarID}/unshare", calendarH.UnshareCalendar)
 			r.Get("/calendar/shares", calendarH.ShareInvitations)

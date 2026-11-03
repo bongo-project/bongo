@@ -82,6 +82,10 @@ type InstanceChange struct {
 	NewSeries *bongov1.Event
 	// Instance is the edited occurrence after the change ("this" edit only).
 	Instance *bongov1.Event
+	// Original is the occurrence as attendees last saw it, for a caller that
+	// knows it better than the master's attendee list tells (an override with
+	// its own ATTENDEEs); nil means it is found in Before.
+	Original *bongov1.Event
 }
 
 // instanceError carries the HTTP status an instance operation ends with.
@@ -895,7 +899,7 @@ func (h *CalendarHandler) updateInstance(w http.ResponseWriter, r *http.Request,
 
 	notReached := h.notifyInstance(r, userID, email, change)
 	t := eventMonthTime(form, loc)
-	http.Redirect(w, r, withInviteWarning(fmt.Sprintf("/calendar/%d/%d?flash=Event+updated", t.Year(), int(t.Month())), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
+	http.Redirect(w, r, withInviteWarning(withFlash(fmt.Sprintf("/calendar/%d/%d", t.Year(), int(t.Month())), flashEventUpdated), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 	return true
 }
 
@@ -997,6 +1001,6 @@ func (h *CalendarHandler) deleteInstance(w http.ResponseWriter, r *http.Request,
 		return true
 	}
 	t := eventMonthTime(event, h.userLocation(userID))
-	http.Redirect(w, r, withInviteWarning(fmt.Sprintf("/calendar/%d/%d?flash=Event+deleted", t.Year(), int(t.Month())), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
+	http.Redirect(w, r, withInviteWarning(withFlash(fmt.Sprintf("/calendar/%d/%d", t.Year(), int(t.Month())), flashEventDeleted), notReached), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 	return true
 }

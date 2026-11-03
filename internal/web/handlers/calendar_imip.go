@@ -253,8 +253,13 @@ func localMidnight(ts int64, loc *time.Location) int64 {
 type inviteState struct {
 	inv  *imip.Invite
 	mine map[string]bool
-	// me is the attendee entry that is one of the user's addresses.
+	// me is the attendee entry the answer is recorded and sent as: an invited
+	// address of the user's that they may send as, or, when there is none, the
+	// first invited address of theirs.
 	me *bongov1.Attendee
+	// noReplyAddress: the user is invited, but only at addresses they cannot
+	// send from, so an answer is stored and nobody is told.
+	noReplyAddress bool
 	// self is true when the user is the organiser, who is served from their
 	// own calendar (a forged invitation naming the user as organiser must not
 	// make later edits mail attacker-chosen attendees as the user).
@@ -280,12 +285,7 @@ func (h *CalendarHandler) assess(msg inviteMessage) (*inviteState, error) {
 		return nil, errNotInvitation
 	}
 	st := &inviteState{inv: inv, mine: h.myAddresses(msg.UserID, msg.Email)}
-	for _, a := range inv.Event.Attendees {
-		if st.mine[store.NormaliseAddress(a.Address)] {
-			st.me = a
-			break
-		}
-	}
+	st.me, st.noReplyAddress = h.replyAttendee(msg.UserID, msg.Email, inv.Event.Attendees, st.mine)
 	st.self = st.mine[store.NormaliseAddress(inv.Organizer)]
 
 	if st.known, err = h.findKnown(msg.UserID, inv.UID); err != nil {
@@ -302,6 +302,34 @@ func (h *CalendarHandler) assess(msg inviteMessage) (*inviteState, error) {
 	}
 	st.decide()
 	return st, nil
+}
+
+// replyAttendee picks the attendee entry the user answers as: the first one in
+// mine that the user may send as. The address always comes from the attendee
+// list, never from the session address unless that was invited. When none may
+// be sent as, it returns the first one in mine (so the answer can still be
+// stored) and noReply true. A failed lookup is not "may not": noReply stays
+// false and the delivery check fails the send with the usual warning.
+func (h *CalendarHandler) replyAttendee(userID, email string, attendees []*bongov1.Attendee, mine map[string]bool) (me *bongov1.Attendee, noReply bool) {
+	var first *bongov1.Attendee
+	lookupFailed := false
+	for _, a := range attendees {
+		if !mine[store.NormaliseAddress(a.Address)] {
+			continue
+		}
+		if first == nil {
+			first = a
+		}
+		ok, err := h.sendAsCheck(userID, email, a.Address)
+		if err != nil {
+			lookupFailed = true
+			continue
+		}
+		if ok {
+			return a, false
+		}
+	}
+	return first, first != nil && !lookupFailed
 }
 
 // decide fills the capabilities, the status line and the notes.
@@ -359,6 +387,9 @@ func (st *inviteState) decide() {
 				st.canUpdate = true
 				st.status = "invite.statusUpdate"
 			}
+		}
+		if st.canAnswer && st.noReplyAddress {
+			st.notes = append(st.notes, "invite.noteNoReplyAddress")
 		}
 	case imip.MethodCancel:
 		switch {
@@ -525,6 +556,13 @@ func (h *CalendarHandler) InvitationCard(r *http.Request, msg inviteMessage) *te
 			Partstat: a.Partstat,
 		})
 	}
+	if ps := storedPartstat(st); ps != "" {
+		for i, a := range ev.Attendees {
+			if i < len(c.Attendees) && st.mine[store.NormaliseAddress(a.Address)] {
+				c.Attendees[i].Partstat = ps
+			}
+		}
+	}
 
 	if inv.Method == imip.MethodRequest {
 		c.ConflictsChecked = true
@@ -549,6 +587,64 @@ func (h *CalendarHandler) InvitationCard(r *http.Request, msg inviteMessage) *te
 		}
 	}
 	return c
+}
+
+// storedPartstat is the answer the user's calendar holds for the invitation,
+// or "" to keep the values of the message. A message that is not about the
+// stored event (the user's own, or from another organiser) shows its own
+// values, so a forged reuse of a UID paints nothing. For an instance
+// invitation the override's answer is used; an instance without an override
+// inherits the series answer.
+func storedPartstat(st *inviteState) string {
+	if st.known == nil || !st.organiserMatches || st.self {
+		return ""
+	}
+	inv := st.inv
+	if inv.RecurrenceID != "" && !st.instanceOnly {
+		if ps := overridePartstat(st.known, inv.RecurrenceID, st.me, st.mine); ps != "" {
+			return ps
+		}
+	}
+	return myPartstat(st.known, st.mine)
+}
+
+// overridePartstat returns the PARTSTAT of the user's ATTENDEE in the override
+// of e at rid: the answering address first, then any address of the user's
+// (an answer stored before the address choice may sit on another row). It is
+// "" when there is no such override or e cannot be parsed.
+func overridePartstat(e *bongov1.Event, rid string, me *bongov1.Attendee, mine map[string]bool) string {
+	cal, err := storedCalendar(e)
+	if err != nil {
+		return ""
+	}
+	for _, c := range cal.Children {
+		if c.Name != ical.CompEvent {
+			continue
+		}
+		p := c.Props.Get(ical.PropRecurrenceID)
+		if p == nil {
+			continue
+		}
+		if key, ok := imip.RecurrenceKey(p); !ok || key != rid {
+			continue
+		}
+		fallback := ""
+		for _, a := range c.Props.Values(ical.PropAttendee) {
+			addr, ok := icalevent.AddressFromCalAddress(a.Value)
+			if !ok {
+				continue
+			}
+			ps := a.Params.Get(ical.ParamParticipationStatus)
+			if me != nil && strings.EqualFold(addr, me.Address) && ps != "" {
+				return ps
+			}
+			if fallback == "" && mine[store.NormaliseAddress(addr)] {
+				fallback = ps
+			}
+		}
+		return fallback
+	}
+	return ""
 }
 
 // inviteConflicts lists the user's events that overlap the first instance of
@@ -688,6 +784,11 @@ func (h *CalendarHandler) answerInvitation(r *http.Request, msg inviteMessage, s
 	}
 	if res := h.storeInvited(userID, st.known, ev); res.Status != 0 {
 		return res
+	}
+	if st.noReplyAddress {
+		// Invited only at an address the user cannot send from: the answer is
+		// stored and the card says the organiser is not told. Nothing failed.
+		return inviteResult{}
 	}
 	return inviteResult{ReplyFailed: !h.sendReply(r, msg, st, act.Partstat)}
 }

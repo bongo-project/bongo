@@ -680,7 +680,7 @@ func (s *scheduleServer) getItem(w http.ResponseWriter, r *http.Request, sp sche
 		return
 	}
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
-	w.Header().Set("ETag", `"`+itemETag(*it)+`"`)
+	w.Header().Set("ETag", itemETag(*it))
 	w.Header().Set("Content-Length", strconv.Itoa(len(it.Data)))
 	w.Header().Set("Last-Modified", it.Received.UTC().Format(http.TimeFormat))
 	if r.Method == http.MethodHead {

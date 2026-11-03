@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -561,5 +562,208 @@ func TestMayReadFreeBusyOfResourcesOverCalDAV(t *testing.T) {
 				t.Errorf("FreeBusy = %v %v, want ok=%v", busy, ok, tt.want)
 			}
 		})
+	}
+}
+
+// ridICS is an iTIP message about one occurrence only: a lone override.
+func ridICS(method, uid, organiser, rid, start, end string) string {
+	l := []string{
+		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Test//EN", "METHOD:" + method, "BEGIN:VEVENT",
+		"UID:" + uid, "DTSTAMP:20300101T000000Z", "RECURRENCE-ID:" + rid, "DTSTART:" + start, "DTEND:" + end,
+		"SUMMARY:Moved", "SEQUENCE:1", "ORGANIZER;CN=Org:mailto:" + organiser,
+		"ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:" + resMail, "END:VEVENT", "END:VCALENDAR",
+	}
+	return strings.Join(l, "\r\n") + "\r\n"
+}
+
+// answerRIDs returns the RECURRENCE-ID of each REPLY sent, "" for none.
+func (e *resourceEnv) answerRIDs(t *testing.T) []string {
+	t.Helper()
+	e.fs.mu.Lock()
+	defer e.fs.mu.Unlock()
+	var out []string
+	for _, s := range e.fs.sent {
+		if s.method != "REPLY" || s.cal == nil {
+			continue
+		}
+		for _, ve := range s.cal.Events() {
+			rid := ""
+			if p := ve.Props.Get(ical.PropRecurrenceID); p != nil {
+				rid = p.Value
+			}
+			out = append(out, rid)
+		}
+	}
+	return out
+}
+
+// busyStarts lists the start times (UTC) of the events that hold the resource
+// in 2030-10 and 2030-11, expanded as free/busy is.
+func (e *resourceEnv) busyStarts(t *testing.T) string {
+	t.Helper()
+	from := time.Date(2030, 10, 1, 0, 0, 0, 0, time.UTC).Unix()
+	to := time.Date(2030, 12, 1, 0, 0, 0, 0, time.UTC).Unix()
+	evs, err := e.events.ListByDateRange(resID, from, to, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, ev := range evs {
+		if bookingHolds(ev) {
+			out = append(out, time.Unix(ev.StartTime, 0).UTC().Format("20060102T150405Z"))
+		}
+	}
+	sort.Strings(out)
+	return fmt.Sprint(out)
+}
+
+// bookWeekly books alice's series on Mondays 09:00: 28 October, 4 November and
+// 11 November 2030.
+func (e *resourceEnv) bookWeekly(t *testing.T) {
+	t.Helper()
+	if !e.h.AnswerBooking(resID, aliceAdr, []byte(bookOpts{
+		uid: "weekly@example.org", rrule: "FREQ=WEEKLY;COUNT=3", start: "20301028T090000Z", end: "20301028T100000Z",
+	}.ics()), "REQUEST") {
+		t.Fatal("the weekly booking was not answered")
+	}
+}
+
+const allThree = "[20301028T090000Z 20301104T090000Z 20301111T090000Z]"
+
+func TestAnswerBookingCancelOfOneOccurrenceFreesOnlyThatSlot(t *testing.T) {
+	tests := []struct {
+		name             string
+		uid, sender, rid string
+		handled          bool
+		busy             string
+	}{
+		{"organiser cancels the 4th", "weekly@example.org", aliceAdr, "20301104T090000Z", true, "[20301028T090000Z 20301111T090000Z]"},
+		{"not an occurrence", "weekly@example.org", aliceAdr, "20301105T090000Z", false, allThree},
+		{"unknown series", "other@example.org", aliceAdr, "20301104T090000Z", false, allThree},
+		{"someone else's cancel", "weekly@example.org", "carl@other.org", "20301104T090000Z", false, allThree},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newResourceEnv(t)
+			e.bookWeekly(t)
+			ics := ridICS("CANCEL", tt.uid, tt.sender, tt.rid, tt.rid, "20301104T100000Z")
+			if handled := e.h.AnswerBooking(resID, tt.sender, []byte(ics), "CANCEL"); handled != tt.handled {
+				t.Errorf("handled = %v, want %v", handled, tt.handled)
+			}
+			if got := e.busyStarts(t); got != tt.busy {
+				t.Errorf("busy = %s, want %s", got, tt.busy)
+			}
+			if e.count(t) != 1 {
+				t.Errorf("bookings = %d, want the one series", e.count(t))
+			}
+			// A CANCEL sends no reply.
+			if got := e.answers(t); fmt.Sprint(got) != "[ACCEPTED]" {
+				t.Errorf("answers = %v", got)
+			}
+		})
+	}
+}
+
+func TestAnswerBookingMovesOneOccurrence(t *testing.T) {
+	tests := []struct {
+		name       string
+		start, end string
+		held       bool // another booking at 2030-11-13 09:00
+		want       string
+		busy       string
+	}{
+		{"free slot", "20301113T140000Z", "20301113T150000Z", false, "ACCEPTED",
+			"[20301028T090000Z 20301104T090000Z 20301113T140000Z]"},
+		{"overlapping its own old slot", "20301111T093000Z", "20301111T103000Z", false, "ACCEPTED",
+			"[20301028T090000Z 20301104T090000Z 20301111T093000Z]"},
+		{"onto another booking", "20301113T090000Z", "20301113T100000Z", true, "DECLINED",
+			// The old slot is released; the other booking stays.
+			"[20301028T090000Z 20301104T090000Z 20301113T090000Z]"},
+		{"onto another week of the same series", "20301104T093000Z", "20301104T103000Z", false, "DECLINED",
+			"[20301028T090000Z 20301104T090000Z]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newResourceEnv(t)
+			e.bookWeekly(t)
+			if tt.held {
+				e.book(resID, aliceAdr, bookOpts{uid: "held@example.org", start: "20301113T090000Z", end: "20301113T100000Z"})
+			}
+			before := len(e.answers(t))
+			ics := ridICS("REQUEST", "weekly@example.org", aliceAdr, "20301111T090000Z", tt.start, tt.end)
+			if !e.h.AnswerBooking(resID, aliceAdr, []byte(ics), "REQUEST") {
+				t.Fatal("the move was not handled")
+			}
+			got, rids := e.answers(t)[before:], e.answerRIDs(t)[before:]
+			if fmt.Sprint(got) != "["+tt.want+"]" || fmt.Sprint(rids) != "[20301111T090000Z]" {
+				t.Errorf("answers = %v with RECURRENCE-IDs %v, want one %s for 20301111T090000Z", got, rids, tt.want)
+			}
+			if b := e.busyStarts(t); b != tt.busy {
+				t.Errorf("busy = %s, want %s", b, tt.busy)
+			}
+		})
+	}
+}
+
+// The REPLY to a single-occurrence REQUEST names that occurrence in its own
+// RECURRENCE-ID, in the expander's form, whatever form the request used: a
+// zoned RECURRENCE-ID is answered as the UTC instant it denotes.
+func TestAnswerBookingOccurrenceReplyCarriesItsRecurrenceID(t *testing.T) {
+	e := newResourceEnv(t)
+	e.bookWeekly(t)
+	before := len(e.answers(t))
+	ics := strings.Replace(
+		ridICS("REQUEST", "weekly@example.org", aliceAdr, "20301111T090000Z", "20301113T140000Z", "20301113T150000Z"),
+		"RECURRENCE-ID:20301111T090000Z", "RECURRENCE-ID;TZID=Europe/Berlin:20301111T100000", 1)
+	if !e.h.AnswerBooking(resID, aliceAdr, []byte(ics), "REQUEST") {
+		t.Fatal("the move was not handled")
+	}
+	got, rids := e.answers(t)[before:], e.answerRIDs(t)[before:]
+	if fmt.Sprint(got) != "[ACCEPTED]" || fmt.Sprint(rids) != "[20301111T090000Z]" {
+		t.Errorf("answers = %v with RECURRENCE-IDs %v, want one ACCEPTED for 20301111T090000Z", got, rids)
+	}
+}
+
+func TestAnswerBookingOccurrenceOfAnUnknownSeriesIsDeclined(t *testing.T) {
+	e := newResourceEnv(t)
+	ics := ridICS("REQUEST", "nobody@example.org", aliceAdr, "20301111T090000Z", "20301113T140000Z", "20301113T150000Z")
+	if !e.h.AnswerBooking(resID, aliceAdr, []byte(ics), "REQUEST") {
+		t.Fatal("not handled")
+	}
+	if got, rids := e.answers(t), e.answerRIDs(t); fmt.Sprint(got) != "[DECLINED]" || fmt.Sprint(rids) != "[20301111T090000Z]" {
+		t.Errorf("answers = %v, RECURRENCE-IDs %v", got, rids)
+	}
+	if e.count(t) != 0 {
+		t.Errorf("bookings = %d, want none", e.count(t))
+	}
+}
+
+// A message is handled only when it reached a final outcome.
+func TestAnswerBookingHandledOnlyOnAnOutcome(t *testing.T) {
+	e := newResourceEnv(t)
+	ics := []byte(bookOpts{}.ics())
+	if e.h.AnswerBooking(resID, "", ics, "REQUEST") {
+		t.Error("an unverified sender was handled")
+	}
+	if e.h.AnswerBooking(resID, "carl@other.org", ics, "REQUEST") {
+		t.Error("a sender that is not the organiser was handled")
+	}
+	if e.h.AnswerBooking(aliceID, aliceAdr, ics, "REQUEST") {
+		t.Error("a person account was handled")
+	}
+	if e.h.AnswerBooking(resID, aliceAdr, []byte(bookOpts{attendee: "other@example.org"}.ics()), "REQUEST") {
+		t.Error("a request that does not name the resource was handled")
+	}
+	if e.h.AnswerBooking(resID, aliceAdr, []byte(bookOpts{method: "CANCEL"}.ics()), "CANCEL") {
+		t.Error("a CANCEL of an unknown booking was handled")
+	}
+	if len(e.answers(t)) != 0 {
+		t.Errorf("answers = %v", e.answers(t))
+	}
+	if !e.h.AnswerBooking(resID, aliceAdr, ics, "REQUEST") {
+		t.Error("an answered request was not handled")
+	}
+	if !e.h.AnswerBooking(resID, aliceAdr, []byte(bookOpts{method: "CANCEL"}.ics()), "CANCEL") {
+		t.Error("an applied CANCEL was not handled")
 	}
 }

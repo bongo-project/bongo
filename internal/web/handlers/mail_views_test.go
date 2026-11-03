@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -71,10 +72,13 @@ func newViewFixture(t *testing.T) *viewFixture {
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})
-	r.Get("/mail/to-me", h.ListToMe)
-	r.Get("/mail/from-contacts", h.ListFromContacts)
-	r.Get("/mail/lists", h.ListMailingLists)
-	r.Get("/mail/lists/{listID}", h.ListMailingList)
+	r.Get("/mail/view/to-me", h.ListToMe)
+	r.Get("/mail/view/from-contacts", h.ListFromContacts)
+	r.Get("/mail/view/lists", h.ListMailingLists)
+	r.Get("/mail/view/lists/{listID}", h.ListMailingList)
+	r.Post("/mail/view/to-me/bulk", h.BulkToMe)
+	r.Post("/mail/view/from-contacts/bulk", h.BulkFromContacts)
+	r.Post("/mail/view/lists/{listID}/bulk", h.BulkMailingList)
 	r.Get("/mail/{mailbox}", h.ListMessages)
 	r.Post("/mail/{mailbox}/bulk", h.BulkAction)
 
@@ -217,9 +221,8 @@ func TestHeaderViewsListFromRealFoldersNewestFirst(t *testing.T) {
 		name, path string
 		want       []string
 	}{
-		{"to me", "/mail/to-me", []string{"subj-B", "subj-C", "subj-A"}},
-		{"one list", "/mail/lists/golang.example.org", []string{"subj-L2", "subj-L1"}},
-		{"list through the encoded mailbox name", "/mail/lists%2Fgolang.example.org", []string{"subj-L2", "subj-L1"}},
+		{"to me", "/mail/view/to-me", []string{"subj-B", "subj-C", "subj-A"}},
+		{"one list", "/mail/view/lists/golang.example.org", []string{"subj-L2", "subj-L1"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -240,7 +243,7 @@ func TestFromContactsFollowsContactsWithoutReindex(t *testing.T) {
 	f := newViewFixture(t)
 	seedViewMail(f)
 
-	_, body := f.get("/mail/from-contacts", "", false)
+	_, body := f.get("/mail/view/from-contacts", "", false)
 	if got := subjectsInOrder(body); len(got) != 0 {
 		t.Fatalf("before the contact exists the view shows %v", got)
 	}
@@ -249,7 +252,7 @@ func TestFromContactsFollowsContactsWithoutReindex(t *testing.T) {
 	}
 	// Nothing re-indexed: the same SQLite rows now match. Junk, Trash, Sent and
 	// Drafts mail from the same contact stays out.
-	_, body = f.get("/mail/from-contacts", "", false)
+	_, body = f.get("/mail/view/from-contacts", "", false)
 	if got := subjectsInOrder(body); !equalStrings(got, []string{"subj-L1"}) {
 		t.Fatalf("after adding the contact the view shows %v, want [subj-L1]", got)
 	}
@@ -257,7 +260,7 @@ func TestFromContactsFollowsContactsWithoutReindex(t *testing.T) {
 	if _, err := f.contacts.Create("user2", &bongov1.Contact{Email: "stranger@elsewhere.test"}); err != nil {
 		t.Fatal(err)
 	}
-	_, body = f.get("/mail/from-contacts", "", false)
+	_, body = f.get("/mail/view/from-contacts", "", false)
 	if got := subjectsInOrder(body); !equalStrings(got, []string{"subj-L1"}) {
 		t.Fatalf("user2's contact changed user1's view: %v", got)
 	}
@@ -269,7 +272,7 @@ func TestHeaderViewPaginatesLikeAMailbox(t *testing.T) {
 	for i := range 30 {
 		f.deliver(seedMsg{mailbox: "INBOX", guid: fmt.Sprintf("p%02d", i), to: me, at: int64(1000 + i), listID: "<pages.example.org>"})
 	}
-	for _, path := range []string{"/mail/to-me", "/mail/lists/pages.example.org"} {
+	for _, path := range []string{"/mail/view/to-me", "/mail/view/lists/pages.example.org"} {
 		t.Run(path, func(t *testing.T) {
 			_, p1 := f.get(path, "", false)
 			got := subjectsInOrder(p1)
@@ -285,9 +288,20 @@ func TestHeaderViewPaginatesLikeAMailbox(t *testing.T) {
 			}
 		})
 	}
-	// Page 2 of a list is requested as /mail/lists%2F<id>?page=2&partial=1 and
-	// reaches ListMessages: it must render the same list view.
-	code, part := f.get("/mail/lists%2Fpages.example.org?page=2&partial=1", "", false)
+	// Every page, refresh and infinite-scroll request of a view goes back to
+	// the view's own URL, not to a folder of the same name.
+	_, p1 := f.get("/mail/view/lists/pages.example.org", "", false)
+	for _, want := range []string{
+		`data-list-url="/mail/view/lists/pages.example.org"`,
+		`data-bulk-url="/mail/view/lists/pages.example.org/bulk"`,
+		`hx-get="/mail/view/lists/pages.example.org" hx-target="#main-content"`,
+		`href="/mail/view/lists/pages.example.org?page=2"`,
+	} {
+		if !strings.Contains(strings.ReplaceAll(p1, "&amp;", "&"), want) {
+			t.Errorf("list view lacks %s", want)
+		}
+	}
+	code, part := f.get("/mail/view/lists/pages.example.org?page=2&partial=1", "", false)
 	if code != http.StatusOK {
 		t.Fatalf("status %d", code)
 	}
@@ -296,6 +310,76 @@ func TestHeaderViewPaginatesLikeAMailbox(t *testing.T) {
 	}
 	if strings.Contains(part, "<html") {
 		t.Error("partial response carries a full page")
+	}
+	// The sentinel of page 1 asks for page 2 of the view.
+	_, inf := f.get("/mail/view/to-me?partial=1", "", false)
+	if strings.Contains(inf, "/mail/to-me") || strings.Contains(inf, "lists%2F") {
+		t.Errorf("sentinel points at a folder URL: %s", inf)
+	}
+	if !strings.Contains(inf, `hx-get="/mail/view/to-me?page=2&amp;partial=1"`) {
+		t.Errorf("sentinel does not point at the view: %s", inf)
+	}
+}
+
+// A folder whose name equals a view's old name is an ordinary folder: its
+// own path lists its own mail and the view's mail stays at /mail/view/....
+func TestFoldersNamedLikeViewsAreOrdinaryFolders(t *testing.T) {
+	f := newViewFixture(t)
+	me := []string{"user1@example.com"}
+	f.deliver(seedMsg{mailbox: "INBOX", guid: "inbox-to-me", to: me, at: 100})
+	f.deliver(seedMsg{mailbox: "to-me", guid: "folder-to-me", to: []string{"x@else.test"}, at: 200})
+	f.deliver(seedMsg{mailbox: "lists", guid: "folder-lists", to: []string{"x@else.test"}, at: 300})
+	f.deliver(seedMsg{mailbox: "lists/golang.example.org", guid: "folder-sub", to: []string{"x@else.test"}, at: 400})
+	f.deliver(seedMsg{mailbox: "INBOX", guid: "list-mail", to: []string{"x@else.test"}, at: 500, listID: "<golang.example.org>"})
+
+	tests := []struct {
+		name, path string
+		want       []string
+	}{
+		{"folder to-me", "/mail/to-me", []string{"subj-folder-to-me"}},
+		{"folder lists", "/mail/lists", []string{"subj-folder-lists"}},
+		{"folder lists/x by encoded name", "/mail/lists%2Fgolang.example.org", []string{"subj-folder-sub"}},
+		{"view to-me", "/mail/view/to-me", []string{"subj-inbox-to-me"}},
+		{"view list", "/mail/view/lists/golang.example.org", []string{"subj-list-mail"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code, body := f.get(tt.path, "", false)
+			if code != http.StatusOK {
+				t.Fatalf("status = %d", code)
+			}
+			if got := subjectsInOrder(body); !equalStrings(got, tt.want) {
+				t.Errorf("subjects = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	// A folder is not a view: its rows key by UID and its bulk action takes
+	// plain UIDs; the page carries no view bulk URL.
+	_, body := f.get("/mail/to-me", "", false)
+	if strings.Contains(body, "data-sel-key") || strings.Contains(body, `data-bulk-url="/`) {
+		t.Error("a folder named to-me is rendered as a header view")
+	}
+	if code, _ := f.post("/mail/to-me/bulk", "", url.Values{"action": {"flag"}, "uids": {"1"}}); code != http.StatusOK {
+		t.Errorf("uids bulk in folder to-me = %d, want 200", code)
+	}
+	if m, err := f.mailboxes.GetMessage("user1", "to-me", 1); err != nil || m.Flags&store.FlagFlagged == 0 {
+		t.Errorf("bulk flag did not reach the message of folder to-me: %v", err)
+	}
+	// The list view's bulk route also wants targets, and only a valid list id.
+	if code, _ := f.post("/mail/view/lists/golang.example.org/bulk", "", url.Values{"action": {"flag"}, "uids": {"1"}}); code != http.StatusBadRequest {
+		t.Errorf("uids-only bulk in a list view = %d, want 400", code)
+	}
+	if code, _ := f.post("/mail/view/lists/Bad%20Id/bulk", "", url.Values{"action": {"flag"}, "targets": {"1:INBOX"}}); code != http.StatusNotFound {
+		t.Errorf("bulk in an invalid list view = %d, want 404", code)
+	}
+	// The sidebar of the folder highlights the folder, not the To me view.
+	if regexp.MustCompile(`href="/mail/view/to-me"[^>]*class="active"`).MatchString(body) {
+		t.Error("the To me entry is highlighted on a folder called to-me")
+	}
+	_, viewBody := f.get("/mail/view/to-me", "", false)
+	if !regexp.MustCompile(`href="/mail/view/to-me"[^>]*class="active"`).MatchString(viewBody) {
+		t.Error("the To me entry is not highlighted on the To me view")
 	}
 }
 
@@ -311,14 +395,14 @@ func TestMailingListsOverview(t *testing.T) {
 	f.deliver(seedMsg{mailbox: "INBOX", guid: "z1", to: other, at: 60})
 
 	for _, htmx := range []bool{false, true} {
-		code, body := f.get("/mail/lists", "", htmx)
+		code, body := f.get("/mail/view/lists", "", htmx)
 		if code != http.StatusOK {
 			t.Fatalf("status %d: %s", code, body)
 		}
 		if !strings.Contains(body, "Go Users") {
 			t.Errorf("htmx=%v: list name missing", htmx)
 		}
-		if !strings.Contains(body, `href="/mail/lists/golang.example.org"`) {
+		if !strings.Contains(body, `href="/mail/view/lists/golang.example.org"`) {
 			t.Errorf("htmx=%v: group does not link to its view", htmx)
 		}
 		if !strings.Contains(body, `aria-label="Messages: 2"`) {
@@ -342,7 +426,7 @@ func TestMailingListsOverview(t *testing.T) {
 
 func TestMailingListsEmptyState(t *testing.T) {
 	f := newViewFixture(t)
-	code, body := f.get("/mail/lists", "", false)
+	code, body := f.get("/mail/view/lists", "", false)
 	if code != http.StatusOK || !strings.Contains(body, "No mailing lists") {
 		t.Fatalf("status %d, body lacks the empty state: %s", code, body)
 	}
@@ -352,10 +436,10 @@ func TestInvalidListIDIsNotFound(t *testing.T) {
 	f := newViewFixture(t)
 	f.deliver(seedMsg{mailbox: "INBOX", guid: "g1", listID: "<golang.example.org>"})
 	for _, path := range []string{
-		"/mail/lists/Bad%20Id",
-		"/mail/lists/UPPER.example.org",
-		"/mail/lists/..%2F..%2Fadmin",
-		"/mail/lists/a%3Cscript%3E",
+		"/mail/view/lists/Bad%20Id",
+		"/mail/view/lists/UPPER.example.org",
+		"/mail/view/lists/..%2F..%2Fadmin",
+		"/mail/view/lists/a%3Cscript%3E",
 	} {
 		if code, _ := f.get(path, "", false); code != http.StatusNotFound {
 			t.Errorf("GET %s = %d, want 404", path, code)
@@ -367,7 +451,7 @@ func TestListIDIsNeverStoredOrLinkedWhenUnsafe(t *testing.T) {
 	f := newViewFixture(t)
 	f.deliver(seedMsg{mailbox: "INBOX", guid: "e1", listID: `Evil <x/../y.example.org>`})
 	f.deliver(seedMsg{mailbox: "INBOX", guid: "e2", listID: `Evil <a"onmouseover="x.example.org>`})
-	_, body := f.get("/mail/lists", "", false)
+	_, body := f.get("/mail/view/lists", "", false)
 	if strings.Contains(body, "Evil") || strings.Contains(body, "onmouseover") {
 		t.Errorf("an unsafe List-Id reached the overview: %s", body)
 	}
@@ -382,13 +466,13 @@ func TestHeaderViewsAreIsolatedBetweenUsers(t *testing.T) {
 
 	// The shared list: each user sees their own copy only.
 	for user, want := range map[string]string{"user1": "subj-u1a", "user2": "subj-u2a"} {
-		_, body := f.get("/mail/lists/shared.example.org", user, false)
+		_, body := f.get("/mail/view/lists/shared.example.org", user, false)
 		if got := subjectsInOrder(body); !equalStrings(got, []string{want}) {
 			t.Errorf("%s sees %v on the shared list, want [%s]", user, got, want)
 		}
 	}
 	// The overview: user2 has one message and has never heard of user1's list.
-	_, body := f.get("/mail/lists", "user2", false)
+	_, body := f.get("/mail/view/lists", "user2", false)
 	if strings.Contains(body, "secret.example.org") {
 		t.Error("user2's overview names user1's private list")
 	}
@@ -396,17 +480,17 @@ func TestHeaderViewsAreIsolatedBetweenUsers(t *testing.T) {
 		t.Errorf("user2's count for the shared list must be 1: %s", body)
 	}
 	// Asking for the other user's list id directly finds nothing.
-	_, body = f.get("/mail/lists/secret.example.org", "user2", false)
+	_, body = f.get("/mail/view/lists/secret.example.org", "user2", false)
 	if got := subjectsInOrder(body); len(got) != 0 {
 		t.Errorf("user2 reads user1's list: %v", got)
 	}
-	_, body = f.get("/mail/to-me", "user2", false)
+	_, body = f.get("/mail/view/to-me", "user2", false)
 	if got := subjectsInOrder(body); !equalStrings(got, []string{"subj-u2a"}) {
 		t.Errorf("user2 to-me = %v", got)
 	}
 
 	// A bulk request naming user1's folder and UID, sent as user2, changes nothing.
-	code, _ := f.post("/mail/to-me/bulk", "user2", url.Values{"action": {"flag"}, "targets": {"1:Private"}})
+	code, _ := f.post("/mail/view/to-me/bulk", "user2", url.Values{"action": {"flag"}, "targets": {"1:Private"}})
 	if code != http.StatusBadRequest {
 		t.Errorf("bulk on another user's mailbox = %d, want 400", code)
 	}
@@ -414,7 +498,7 @@ func TestHeaderViewsAreIsolatedBetweenUsers(t *testing.T) {
 		t.Error("user2 flagged user1's message")
 	}
 	// Naming INBOX/1 as user2 acts on user2's INBOX, never user1's.
-	if code, _ := f.post("/mail/to-me/bulk", "user2", url.Values{"action": {"flag"}, "targets": {"1:INBOX"}}); code != http.StatusOK {
+	if code, _ := f.post("/mail/view/to-me/bulk", "user2", url.Values{"action": {"flag"}, "targets": {"1:INBOX"}}); code != http.StatusOK {
 		t.Fatalf("bulk on own mailbox = %d", code)
 	}
 	m1, _ := f.mailboxes.GetMessage("user1", "INBOX", 1)
@@ -444,7 +528,7 @@ func TestHeaderViewActionsActOnTheRealMailbox(t *testing.T) {
 	}
 
 	// The rows carry the real mailbox in every URL an action uses.
-	_, body := f.get("/mail/to-me", "", false)
+	_, body := f.get("/mail/view/to-me", "", false)
 	for _, want := range []string{
 		`data-sel-key="1:Projects"`, `data-sel-key="1:INBOX"`,
 		`hx-post="/mail/Projects/1/flags"`, `hx-post="/mail/INBOX/1/flags"`,
@@ -454,13 +538,13 @@ func TestHeaderViewActionsActOnTheRealMailbox(t *testing.T) {
 			t.Errorf("rows lack %s", want)
 		}
 	}
-	if strings.Contains(body, "/mail/to-me/1") {
+	if strings.Contains(body, "/mail/view/to-me/1") {
 		t.Error("a row URL still uses the view name")
 	}
 
 	// A plain UID is ambiguous in a header view, so it is not accepted even
 	// though the same request flags the message in a real folder.
-	if code, _ := f.post("/mail/to-me/bulk", "", url.Values{"action": {"flag"}, "uids": {"1"}}); code != http.StatusBadRequest {
+	if code, _ := f.post("/mail/view/to-me/bulk", "", url.Values{"action": {"flag"}, "uids": {"1"}}); code != http.StatusBadRequest {
 		t.Errorf("uids-only bulk in a header view = %d, want 400", code)
 	}
 	if flagged("INBOX") || flagged("Projects") {
@@ -471,7 +555,7 @@ func TestHeaderViewActionsActOnTheRealMailbox(t *testing.T) {
 	}
 
 	// Flag the Projects message only.
-	if code, body := f.post("/mail/to-me/bulk", "", url.Values{"action": {"flag"}, "targets": {"1:Projects"}}); code != http.StatusOK {
+	if code, body := f.post("/mail/view/to-me/bulk", "", url.Values{"action": {"flag"}, "targets": {"1:Projects"}}); code != http.StatusOK {
 		t.Fatalf("bulk = %d %s", code, body)
 	}
 	if flagged("INBOX") || !flagged("Projects") {
@@ -479,18 +563,18 @@ func TestHeaderViewActionsActOnTheRealMailbox(t *testing.T) {
 	}
 
 	// Delete the INBOX one from the view: it lands in Trash, the other stays.
-	if code, body := f.post("/mail/to-me/bulk", "", url.Values{"action": {"delete"}, "targets": {"1:INBOX"}}); code != http.StatusOK {
+	if code, body := f.post("/mail/view/to-me/bulk", "", url.Values{"action": {"delete"}, "targets": {"1:INBOX"}}); code != http.StatusOK {
 		t.Fatalf("bulk delete = %d %s", code, body)
 	}
 	if _, err := f.mailboxes.GetMessage("user1", "Projects", 1); err != nil {
 		t.Errorf("the Projects message went with it: %v", err)
 	}
-	if _, body := f.get("/mail/to-me", "", false); !equalStrings(subjectsInOrder(body), []string{"subj-Y"}) {
+	if _, body := f.get("/mail/view/to-me", "", false); !equalStrings(subjectsInOrder(body), []string{"subj-Y"}) {
 		t.Errorf("view after delete = %v", subjectsInOrder(body))
 	}
 
 	// A mailbox that is not one of the user's own is dropped.
-	if code, _ := f.post("/mail/to-me/bulk", "", url.Values{"action": {"flag"}, "targets": {"1:Nope", "x:INBOX", "1"}}); code != http.StatusBadRequest {
+	if code, _ := f.post("/mail/view/to-me/bulk", "", url.Values{"action": {"flag"}, "targets": {"1:Nope", "x:INBOX", "1"}}); code != http.StatusBadRequest {
 		t.Errorf("malformed targets = %d, want 400", code)
 	}
 }
@@ -503,7 +587,7 @@ func TestHeaderViewBulkActionLogsTargetCount(t *testing.T) {
 	u2 := f.deliver(seedMsg{mailbox: "INBOX", guid: "g2", to: []string{"user1@example.com"}, at: 200})
 	f.deliver(seedMsg{mailbox: "INBOX", guid: "g3", to: []string{"user1@example.com"}, at: 300})
 	f.logs.Reset()
-	code, body := f.post("/mail/to-me/bulk", "", url.Values{"action": {"flag"}, "targets": {
+	code, body := f.post("/mail/view/to-me/bulk", "", url.Values{"action": {"flag"}, "targets": {
 		fmt.Sprintf("%d:INBOX", u1), fmt.Sprintf("%d:INBOX", u2),
 	}})
 	if code != http.StatusOK {

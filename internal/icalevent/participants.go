@@ -156,6 +156,15 @@ func CountInvited(attendees []*bongov1.Attendee, organiser string, skip map[stri
 	return len(seen)
 }
 
+// ParseAttendees reads the ATTENDEE lines of props the way ToEvent does: the
+// usable mailto addresses, once each, to the stored-list limit. An override's
+// own list is read with it.
+func ParseAttendees(props ical.Props) []*bongov1.Attendee {
+	var e bongov1.Event
+	fillParticipants(&e, props)
+	return e.Attendees
+}
+
 // fillParticipants copies ORGANIZER, ATTENDEE, SEQUENCE, STATUS and TRANSP of a VEVENT
 // into event. Attendees that are not mailto addresses or fail validation are
 // skipped, duplicates (case-insensitive) keep the first, and the structured

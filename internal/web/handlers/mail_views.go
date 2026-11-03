@@ -20,33 +20,73 @@ import (
 // INBOX and the user's folders, never Junk, Trash, Sent or Drafts. Each row is
 // shown with its real mailbox, and actions on it target that mailbox.
 //
-// Folders are not reserved names: a folder called "lists" or "to-me" is
-// shadowed in the web UI by these routes, as "starred" already is.
+// Folders are not reserved names: a folder called "lists" or "to-me" is an
+// ordinary folder at /mail/lists and /mail/to-me. The views live under
+// /mail/view/ and are identified by a store.HeaderView, never by a mailbox name.
 
-// ListToMe renders the To me view. GET /mail/to-me
+var (
+	toMeView         = store.HeaderView{Kind: store.ViewToMe}
+	fromContactsView = store.HeaderView{Kind: store.ViewFromContacts}
+	listsOverview    = store.HeaderView{Kind: store.ViewLists}
+)
+
+// ListToMe renders the To me view. GET /mail/view/to-me
 func (h *MailHandler) ListToMe(w http.ResponseWriter, r *http.Request) {
-	h.serveList(w, r, store.ViewToMe)
+	h.serveList(w, r, toMeView.URL(), &toMeView)
 }
 
-// ListFromContacts renders the From my contacts view. GET /mail/from-contacts
+// ListFromContacts renders the From my contacts view. GET /mail/view/from-contacts
 func (h *MailHandler) ListFromContacts(w http.ResponseWriter, r *http.Request) {
-	h.serveList(w, r, store.ViewFromContacts)
+	h.serveList(w, r, fromContactsView.URL(), &fromContactsView)
 }
 
-// ListMailingList renders one mailing list's messages. GET /mail/lists/{listID}
-func (h *MailHandler) ListMailingList(w http.ResponseWriter, r *http.Request) {
+// listViewFromRequest is the view of one mailing list named by the {listID}
+// path parameter. List-Id is attacker-controlled: only an id from the stored
+// character set is a view, anything else is not found.
+func listViewFromRequest(r *http.Request) (store.HeaderView, bool) {
 	id := decodeMailbox(chi.URLParam(r, "listID"))
-	// List-Id is attacker-controlled: only an id from the stored character
-	// set is a view, anything else is not found.
 	if !store.ValidListID(id) {
+		return store.HeaderView{}, false
+	}
+	return store.HeaderView{Kind: store.ViewLists, ListID: id}, true
+}
+
+// ListMailingList renders one mailing list's messages.
+// GET /mail/view/lists/{listID}
+func (h *MailHandler) ListMailingList(w http.ResponseWriter, r *http.Request) {
+	view, ok := listViewFromRequest(r)
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	h.serveList(w, r, store.ViewListPrefix+id)
+	h.serveList(w, r, view.URL(), &view)
+}
+
+// BulkToMe applies a bulk action to messages of the To me view, which are named
+// as uid:mailbox targets. POST /mail/view/to-me/bulk
+func (h *MailHandler) BulkToMe(w http.ResponseWriter, r *http.Request) {
+	h.bulkAction(w, r, toMeView.URL(), &toMeView)
+}
+
+// BulkFromContacts is BulkToMe for the From my contacts view.
+// POST /mail/view/from-contacts/bulk
+func (h *MailHandler) BulkFromContacts(w http.ResponseWriter, r *http.Request) {
+	h.bulkAction(w, r, fromContactsView.URL(), &fromContactsView)
+}
+
+// BulkMailingList is BulkToMe for one mailing list's view.
+// POST /mail/view/lists/{listID}/bulk
+func (h *MailHandler) BulkMailingList(w http.ResponseWriter, r *http.Request) {
+	view, ok := listViewFromRequest(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	h.bulkAction(w, r, view.URL(), &view)
 }
 
 // ListMailingLists renders the Mailing lists overview: each list with its name
-// and message count, linking to the list's view. GET /mail/lists
+// and message count, linking to the list's view. GET /mail/view/lists
 func (h *MailHandler) ListMailingLists(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 
@@ -61,8 +101,8 @@ func (h *MailHandler) ListMailingLists(w http.ResponseWriter, r *http.Request) {
 		templ.Handler(templates.ListsContent(lists)).ServeHTTP(w, r)
 		return
 	}
-	mailboxInfos := h.loadMailboxInfos(userID, store.ViewLists)
-	sidebarTags := h.loadSidebarTags(userID, store.ViewLists)
+	mailboxInfos := h.loadMailboxInfos(userID, listsOverview.URL())
+	sidebarTags := h.loadSidebarTags(userID, listsOverview.URL())
 	templ.Handler(templates.ListsPage(mailboxInfos, sidebarTags, lists, email)).ServeHTTP(w, r)
 }
 

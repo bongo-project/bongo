@@ -38,7 +38,7 @@ func TestRuleFlashesAreTranslated(t *testing.T) {
 	}
 	check := func(w *httptest.ResponseRecorder, key string) {
 		t.Helper()
-		flash := flashOf(t, w)
+		flash := flashOf(t, w, "de")
 		want := i18n.T("de", key)
 		if want == key || want == i18n.T("en", key) {
 			t.Fatalf("key %s has no distinct de translation: %q", key, want)

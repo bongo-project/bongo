@@ -113,10 +113,10 @@ func TestVacationSaveStoresFieldsAndKeepsTheRest(t *testing.T) {
 	}
 
 	w := e.post(validVacationForm())
-	if w.Code != http.StatusSeeOther || !strings.HasPrefix(w.Header().Get("Location"), "/settings/vacation?flash=") {
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/settings/vacation?flash=vacation-saved" {
 		t.Fatalf("response = %d %q", w.Code, w.Header().Get("Location"))
 	}
-	if flash, _ := url.QueryUnescape(strings.TrimPrefix(w.Header().Get("Location"), "/settings/vacation?flash=")); flash != "Vacation reply saved" {
+	if flash := flashOf(t, w, "en"); flash != "Vacation reply saved" {
 		t.Errorf("flash = %q, want the translated message", flash)
 	}
 	got := e.prefs.Get(vacUser)

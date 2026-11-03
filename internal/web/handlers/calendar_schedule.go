@@ -102,6 +102,29 @@ func (s *CalDAVScheduler) Owns(userID, addr string) bool {
 func (s *CalDAVScheduler) Organise(userID string, before, after *bongov1.Event, skip map[string]bool) map[string]string {
 	email := s.email(userID)
 	plan := s.h.planAttendees(userID, email, before, after, skip)
+	return s.deliver(userID, email, plan)
+}
+
+// OrganiseOccurrence sends the iTIP message about one occurrence of a series
+// the user organises, after a saved change to its exceptions: a REQUEST with
+// that RECURRENCE-ID and the series UID when instance is not nil, a CANCEL
+// when it is nil. before is the series as stored earlier (nil for a create)
+// and after as saved; original is the occurrence as attendees last saw it (nil
+// when there was none) and instance as it is now. The recipients are those of
+// the occurrence, an override's own ATTENDEEs included. The rules, results and
+// skip are those of Organise.
+func (s *CalDAVScheduler) OrganiseOccurrence(userID string, before, after *bongov1.Event, rid string, original, instance *bongov1.Event, skip map[string]bool) map[string]string {
+	email := s.email(userID)
+	plan := s.h.planInstance(userID, email, &InstanceChange{
+		Scope: scopeThis, Guid: after.Guid, RecurrenceID: rid, Deleted: instance == nil,
+		Before: before, After: after, Original: original, Instance: instance,
+	}, skip)
+	return s.deliver(userID, email, plan)
+}
+
+// deliver sends plan in the user's locale and maps each address a message was
+// attempted for to its SCHEDULE-STATUS.
+func (s *CalDAVScheduler) deliver(userID, email string, plan []invitation) map[string]string {
 	sent, missed := s.h.deliverPlanIn(s.locale(userID), userID, email, plan)
 	out := make(map[string]string, len(sent)+len(missed))
 	for _, a := range sent {

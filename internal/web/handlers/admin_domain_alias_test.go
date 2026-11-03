@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -199,9 +198,8 @@ func TestDeleteDomain_Alias(t *testing.T) {
 	t.Run("target with aliases is refused and listed", func(t *testing.T) {
 		env := setup(t)
 		w := cascadeDeleteDomain(t, env, target)
-		loc, _ := url.QueryUnescape(w.Header().Get("Location"))
-		want := fmt.Sprintf(i18n.T("en", "admin.domainHasAliases"), target, "a.alias.test, b.alias.test")
-		if w.Code != http.StatusSeeOther || !strings.Contains(loc, want) {
+		loc := w.Header().Get("Location")
+		if want := "/admin/domains?flash=domain-has-aliases"; w.Code != http.StatusSeeOther || loc != want {
 			t.Fatalf("status %d location %q, want %q", w.Code, loc, want)
 		}
 		if !cascadeHas(env, "/system/domain/"+target) {
@@ -221,7 +219,7 @@ func TestDeleteDomain_Alias(t *testing.T) {
 			t.Fatal("sibling alias lost its alias_of")
 		}
 		cascadeDeleteDomain(t, env, "b.alias.test")
-		if w := cascadeDeleteDomain(t, env, target); !strings.Contains(w.Header().Get("Location"), "Domain+deleted") {
+		if w := cascadeDeleteDomain(t, env, target); !strings.Contains(w.Header().Get("Location"), "flash=domain-deleted") {
 			t.Fatalf("target not deleted: %q", w.Header().Get("Location"))
 		}
 	})

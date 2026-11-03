@@ -229,7 +229,7 @@ func TestSelfServe_RequestForTakenAddressQueuesNothing(t *testing.T) {
 			tt.seed(t, env)
 
 			w := env.requestVerificationHTTP(t, "userB", "b@example.com", claimAddr)
-			if loc := w.Header().Get("Location"); loc != "/settings/addresses?flash=Verification+code+sent" {
+			if loc := w.Header().Get("Location"); loc != "/settings/addresses?flash=verification-code-sent" {
 				t.Errorf("Location = %q, want the normal success redirect", loc)
 			}
 			if n := env.queued(t); n != 0 {
@@ -248,7 +248,7 @@ func TestSelfServe_CorrectCodeWritesRecordAndConsumesClaim(t *testing.T) {
 	code := env.extractCodeFromQueue(t)
 
 	w := env.submitCodeHTTP(t, "userA", "a@example.com", claimAddr, code)
-	if loc := w.Header().Get("Location"); loc != "/settings/addresses?flash=Address+verified" {
+	if loc := w.Header().Get("Location"); loc != "/settings/addresses?flash=address-verified" {
 		t.Fatalf("Location = %q", loc)
 	}
 	rec, ok, err := env.addresses.Get(claimAddr)
@@ -281,7 +281,7 @@ func TestSelfServe_SecondCorrectCodeFailsGenerically(t *testing.T) {
 		t.Fatal("codes collide, test cannot distinguish the users")
 	}
 
-	if w := env.submitCodeHTTP(t, "userA", "a@example.com", claimAddr, codeA); !strings.Contains(w.Header().Get("Location"), "flash=Address+verified") {
+	if w := env.submitCodeHTTP(t, "userA", "a@example.com", claimAddr, codeA); !strings.Contains(w.Header().Get("Location"), "flash=address-verified") {
 		t.Fatalf("A's submit Location = %q", w.Header().Get("Location"))
 	}
 	before := env.rawRecord(t, claimAddr)
@@ -407,7 +407,7 @@ func assertResetClaim(t *testing.T, env *verifyTestEnv) {
 		t.Error("claim no longer listed")
 	}
 	// A fresh code can be requested again.
-	if loc := env.requestVerificationHTTP(t, "userA", "a@example.com", claimAddr).Header().Get("Location"); !strings.Contains(loc, "flash=Verification+code+sent") {
+	if loc := env.requestVerificationHTTP(t, "userA", "a@example.com", claimAddr).Header().Get("Location"); !strings.Contains(loc, "flash=verification-code-sent") {
 		t.Errorf("re-request Location = %q", loc)
 	}
 }

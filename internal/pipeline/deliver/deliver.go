@@ -19,6 +19,7 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/imip"
 	bongomail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/mimesafe"
 	"github.com/bongo-project/bongo/internal/pipeline"
@@ -540,6 +541,14 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	var vacationBatch *vacationBatch
 	var vacationReplies []*vacationCandidate
 	var replyUsers []string
+	// The calendar part and its verified sender are found once, on the first
+	// recipient that needs them.
+	var booking struct {
+		looked bool
+		part   []byte
+		method string
+		sender string
+	}
 	for _, rcpt := range env.Recipients {
 		// An SRS address on a hosted domain is never resolved: no user owns it,
 		// and resolving would hand a bounce to a catch-all owner. It arrives
@@ -612,6 +621,28 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			p.logger.Info("deliver: skipping local delivery (forward_keep_copy=false)",
 				"recipient", rcpt, "user", userID, "id", env.Id)
 			continue
+		}
+
+		// A booking request or cancellation the resource has answered is not
+		// kept: it would only fill the resource's INBOX. Only a verified
+		// organiser's message is ever handled (the answerer refuses ""):
+		// everything else, plain mail included, is stored below. The answer is
+		// sent before the envelope is marked delivered, so a retry after a later
+		// recipient failed answers again (at-least-once).
+		if p.resourceBookings != nil && !env.DiscardNormal && !strings.EqualFold(targetMailbox, "Junk") {
+			if !booking.looked {
+				booking.looked = true
+				if part, ctMethod, ok := imip.FindPart(parsed); ok {
+					booking.part, booking.method = part, ctMethod
+					booking.sender = p.verifiedFrom(env, raw, dmarcResult)
+				}
+			}
+			if booking.sender != "" && p.resourceBookings.AnswerBooking(userID, booking.sender, booking.part, booking.method) {
+				p.logger.Info("deliver: booking request answered, not stored",
+					"recipient", rcpt, "user", userID, "id", env.Id)
+				p.reportDelivered(env, rcpt, messageID, spamScore, spamTag)
+				continue
+			}
 		}
 
 		guid := uuid.New().String()
@@ -727,7 +758,6 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	p.enqueueForwards(env, raw, gate.approved)
 	p.sendVacationReplies(env, vacationReplies)
 	p.applyCalendarReplies(env, parsed, raw, dmarcResult, replyUsers)
-	p.answerResourceBookings(env, parsed, raw, dmarcResult, replyUsers)
 	p.placeScheduleInbox(env, parsed, raw, dmarcResult, replyUsers)
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.

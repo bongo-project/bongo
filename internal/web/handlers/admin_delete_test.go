@@ -77,7 +77,7 @@ func TestDeleteUserRemovesProfileAndData(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	if loc := rec.Header().Get("HX-Redirect"); loc != "/admin/users?flash=User+deleted" {
+	if loc := rec.Header().Get("HX-Redirect"); loc != "/admin/users?flash=user-deleted" {
 		t.Errorf("HX-Redirect = %q, want the user-deleted redirect", loc)
 	}
 
@@ -106,7 +106,7 @@ func TestDeleteUserRefusesSelf(t *testing.T) {
 
 	rec := deleteUserRequest(t, h, adminID, adminID)
 
-	if loc := rec.Header().Get("HX-Redirect"); loc == "/admin/users?flash=User+deleted" {
+	if loc := rec.Header().Get("HX-Redirect"); loc == "/admin/users?flash=user-deleted" {
 		t.Fatal("self-delete was allowed")
 	}
 	if _, err := h.store.Get([]byte(fmt.Sprintf("/user/%s/profile", adminID))); err != nil {
@@ -123,7 +123,7 @@ func TestDeleteUserRefusesLastAdmin(t *testing.T) {
 
 	rec := deleteUserRequest(t, h, adminID, "another-admin-id")
 
-	if loc := rec.Header().Get("HX-Redirect"); loc == "/admin/users?flash=User+deleted" {
+	if loc := rec.Header().Get("HX-Redirect"); loc == "/admin/users?flash=user-deleted" {
 		t.Fatal("deleting the last admin was allowed")
 	}
 	if _, err := h.store.Get([]byte(fmt.Sprintf("/user/%s/profile", adminID))); err != nil {

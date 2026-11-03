@@ -168,30 +168,55 @@ func (h *CalendarHandler) deliverPlanIn(locale, userID, email string, plan []inv
 // series: the original with its new UNTIL and, for an edit, the new series. A
 // series with no attendees sends nothing.
 func (h *CalendarHandler) notifyInstance(r *http.Request, userID, email string, c *InstanceChange) (notReached []string) {
-	if h.invites == nil || c == nil || c.Before == nil {
+	if c == nil || c.Before == nil {
 		return nil
 	}
-	organiser := c.Before.Organizer
+	return h.deliverPlan(r, userID, email, h.planInstance(userID, email, c, nil))
+}
+
+// planInstance is the part of notifyInstance that decides what to send,
+// without sending it. CalDAV implicit scheduling plans one occurrence with it
+// too: a create has no Before (the organiser is then After's), and addresses
+// in skip (lower-cased) are sent nothing and take up none of the recipient
+// limit.
+func (h *CalendarHandler) planInstance(userID, email string, c *InstanceChange, skip map[string]bool) []invitation {
+	if h.invites == nil || c == nil || (c.Before == nil && c.After == nil) {
+		return nil
+	}
+	series := c.Before
+	if series == nil {
+		series = c.After
+	}
+	organiser := series.Organizer
 	if !icalevent.ValidAddress(organiser) || !h.maySendAs(userID, email, organiser) {
 		return nil
 	}
-	to := func(e *bongov1.Event) []string { return h.inviteRecipients(userID, email, organiser, e.Attendees, nil) }
+	to := func(e *bongov1.Event) []string {
+		return h.inviteRecipients(userID, email, organiser, e.Attendees, skip)
+	}
+	// The occurrence as the attendees last saw it.
+	original := func() (*bongov1.Event, bool) {
+		if c.Original != nil {
+			return proto.Clone(c.Original).(*bongov1.Event), true
+		}
+		if c.Before == nil {
+			return nil, false
+		}
+		return store.FindOccurrence(c.Before, c.RecurrenceID)
+	}
 
 	var plan []invitation
 	switch {
 	case c.Scope == scopeThis && !c.Deleted:
-		var orig *bongov1.Event
-		if o, ok := store.FindOccurrence(c.Before, c.RecurrenceID); ok {
-			orig = o
-		}
+		orig, _ := original()
 		if c.Instance != nil && !h.changeEntirelyPast(orig, c.Instance) {
 			plan = append(plan, invitation{method: imip.MethodRequest, updated: true, event: c.Instance, to: to(c.Instance),
 				recurrenceID: c.RecurrenceID, uid: seriesUID(c.After)})
 		}
 	case c.Scope == scopeThis:
-		if inst, ok := store.FindOccurrence(c.Before, c.RecurrenceID); ok && !h.changeEntirelyPast(inst, nil) {
+		if inst, ok := original(); ok && !h.changeEntirelyPast(inst, nil) {
 			// At least one above the SEQUENCE the attendee last saw.
-			inst.Sequence = max(c.After.Sequence, c.Before.Sequence+1)
+			inst.Sequence = max(c.After.Sequence, c.Before.Sequence+1, inst.Sequence+1)
 			plan = append(plan, invitation{method: imip.MethodCancel, event: inst, to: to(inst),
 				recurrenceID: c.RecurrenceID, uid: seriesUID(c.Before)})
 		}
@@ -215,7 +240,7 @@ func (h *CalendarHandler) notifyInstance(r *http.Request, userID, email string, 
 			plan = append(plan, invitation{method: imip.MethodRequest, event: c.NewSeries, to: to(c.NewSeries)})
 		}
 	}
-	return h.deliverPlan(r, userID, email, plan)
+	return plan
 }
 
 // seriesUID is the UID a series is known by outside: the one in its stored

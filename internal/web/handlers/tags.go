@@ -250,7 +250,7 @@ func (h *TagsHandler) ShowTagSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 	data := templates.TagSettingsData{
 		Tags:  items,
 		Email: email,

@@ -174,6 +174,35 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		}
 	}
 
+	// DELETE /calendar/{id} carries its token in the header only (the
+	// middleware reads the form of body-bearing methods), so it is outside the
+	// POST table above.
+	del := func(hdr string) (int, string) {
+		req, _ := http.NewRequest(http.MethodDelete, base+"/calendar/missing", nil)
+		if hdr != "" {
+			req.Header.Set("X-CSRF-Token", hdr)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("DELETE: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	for name, hdr := range map[string]string{"no token": "", "wrong token": wrong} {
+		t.Run("calendar delete/"+name, func(t *testing.T) {
+			if code, body := del(hdr); code != http.StatusForbidden || !strings.Contains(body, csrfBodyText) {
+				t.Errorf("status %d body %q, want 403 %q", code, body, csrfBodyText)
+			}
+		})
+	}
+	t.Run("calendar delete/valid token", func(t *testing.T) {
+		if code, body := del(token); code != http.StatusNotFound || strings.Contains(body, csrfBodyText) {
+			t.Errorf("status %d body %q, want 404 from the handler", code, body)
+		}
+	})
+
 	// adminH.SetResourceBookings: without it the bookings page answers 503.
 	t.Run("resource bookings wired", func(t *testing.T) {
 		id, err := auth.CreateResource(a, a.Metadata, "room1@localhost", "Room 1", auth.ResourceRoom, 4)

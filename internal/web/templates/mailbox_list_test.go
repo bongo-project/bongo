@@ -15,7 +15,7 @@ func init() { i18n.Init("en") }
 func renderRows(t *testing.T, msgs []MessageSummary, mailbox string) string {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := MessageRows(msgs, mailbox).Render(context.Background(), &buf); err != nil {
+	if err := MessageRows(msgs, mailbox, nil).Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render MessageRows: %v", err)
 	}
 	return buf.String()
@@ -24,7 +24,7 @@ func renderRows(t *testing.T, msgs []MessageSummary, mailbox string) string {
 func renderContent(t *testing.T, mailbox string, counts ListCounts, msgs []MessageSummary) string {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := MailboxContent(mailbox, counts, msgs, 1, 1, "", false, "", "").Render(context.Background(), &buf); err != nil {
+	if err := MailboxContent(mailbox, nil, counts, msgs, 1, 1, "", false, "", "").Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render MailboxContent: %v", err)
 	}
 	return buf.String()
@@ -233,7 +233,7 @@ func TestPaginationJoinsQueryBase(t *testing.T) {
 	tests := []struct{ base, want string }{
 		{"/search?q=abc", "/search?q=abc&page=2"},
 		{"/contacts", "/contacts?page=2"},
-		{"/mail/to-me?unread=1", "/mail/to-me?unread=1&page=2"},
+		{"/mail/view/to-me?unread=1", "/mail/view/to-me?unread=1&page=2"},
 	}
 	for _, tc := range tests {
 		var buf bytes.Buffer

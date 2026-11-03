@@ -40,12 +40,12 @@ type RulesHandler struct {
 func (h *RulesHandler) SetForwardVerifier(v *ForwardVerifier) { h.forwarder = v }
 
 // ensureForwardTarget records each forward action's external target as pending
-// and starts its verification. It reports the flash suffix to show and whether
+// and starts its verification. It reports the flash notes to show and whether
 // the request was handled (false means an error response was already written).
 // Every forward in the rule is checked, not just the first action. Addresses
 // were validated by parseRuleForm, so the invalid-address branch is a backstop.
-func (h *RulesHandler) ensureForwardTarget(w http.ResponseWriter, r *http.Request, userID, email string, rule *bongov1.FilterRule) (string, bool) {
-	var notes []string
+func (h *RulesHandler) ensureForwardTarget(w http.ResponseWriter, r *http.Request, userID, email string, rule *bongov1.FilterRule) ([]flashKey, bool) {
+	var notes []flashKey
 	seen := map[string]bool{}
 	for _, act := range rules.Actions(rule) {
 		if !strings.EqualFold(act.Type, "forward") || act.Target == "" {
@@ -58,28 +58,27 @@ func (h *RulesHandler) ensureForwardTarget(w http.ResponseWriter, r *http.Reques
 		seen[key] = true
 		if _, ok := parseForwardTarget(act.Target); !ok {
 			fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
-			return "", false
+			return nil, false
 		}
 		if h.forwarder == nil {
 			continue
 		}
 		if err := h.forwarder.Ensure(userID, email, act.Target); err != nil {
-			if msg, soft := forwardOutcomeMessage(r, err); soft {
-				notes = append(notes, msg)
+			if note, soft := forwardOutcomeFlash(err); soft {
+				notes = append(notes, note)
 				continue
 			}
 			fwdError(w, r, "settings.fwdErrStart", http.StatusInternalServerError)
-			return "", false
+			return nil, false
 		}
 		if h.forwarder.Pending(userID, act.Target) {
-			notes = append(notes, fwdText(r, "settings.fwdRuleVerify"))
+			notes = append(notes, flashFwdRuleVerify)
 		}
 	}
-	if len(notes) == 0 {
-		return "", true
-	}
-	// One flash is enough when several forwards need the same follow-up.
-	return ". " + strings.Join(slices.Compact(notes), ". "), true
+	// One note is enough when several forwards need the same follow-up. The
+	// banner carries the result and at most maxFlashKeys-1 notes.
+	notes = slices.Compact(notes)
+	return notes[:min(len(notes), maxFlashKeys-1)], true
 }
 
 // NewRulesHandler creates a RulesHandler.
@@ -101,7 +100,7 @@ func (h *RulesHandler) ListRules(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load rules", http.StatusInternalServerError)
 		return
 	}
-	flash := r.URL.Query().Get("flash")
+	flash := flashText(r)
 
 	infos := make([]templates.RuleInfo, len(ruleList))
 	for i, rule := range ruleList {
@@ -200,7 +199,7 @@ func (h *RulesHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule.Priority = maxPriority + 1
 
-	note, ok := h.ensureForwardTarget(w, r, userID, email, rule)
+	notes, ok := h.ensureForwardTarget(w, r, userID, email, rule)
 	if !ok {
 		return
 	}
@@ -209,7 +208,7 @@ func (h *RulesHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/rules?flash="+url.QueryEscape(fwdText(r, "rules.flashCreated")+note), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/rules", append([]flashKey{flashRuleCreated}, notes...)...), http.StatusSeeOther)
 }
 
 // EditRule renders the edit rule form.
@@ -255,7 +254,7 @@ func (h *RulesHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 	rule.CreatedAt = existing.CreatedAt
 	rule.UpdatedAt = time.Now().Unix()
 
-	note, ok := h.ensureForwardTarget(w, r, userID, email, rule)
+	notes, ok := h.ensureForwardTarget(w, r, userID, email, rule)
 	if !ok {
 		return
 	}
@@ -264,7 +263,7 @@ func (h *RulesHandler) UpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/rules?flash="+url.QueryEscape(fwdText(r, "rules.flashUpdated")+note), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/rules", append([]flashKey{flashRuleUpdated}, notes...)...), http.StatusSeeOther)
 }
 
 // DeleteRule removes a rule.
@@ -283,7 +282,7 @@ func (h *RulesHandler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/settings/rules?flash=Rule+deleted", http.StatusSeeOther)
+	http.Redirect(w, r, withFlash("/settings/rules", flashRuleDeleted), http.StatusSeeOther)
 }
 
 // ReorderRules updates rule priorities.

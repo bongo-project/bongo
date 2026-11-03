@@ -10,9 +10,9 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"context"
-	"strconv"
-	"strings"
 	"time"
+
+	"github.com/bongo-project/bongo/internal/i18n"
 )
 
 // SummaryRow is one line of a summary section. The handler builds it from
@@ -519,8 +519,7 @@ func summaryRowTitle(ctx context.Context, row SummaryRow) string {
 // summaryDate formats a row date as "Fri 3 May" with the weekday and month
 // names of the request's locale.
 func summaryDate(ctx context.Context, d time.Time) string {
-	day := strings.ToLower(d.Weekday().String()[:3])
-	return t(ctx, "calendar."+day) + " " + strconv.Itoa(d.Day()) + " " + t(ctx, "calendar.monthAbbr."+strconv.Itoa(int(d.Month())))
+	return i18n.FormatDate(localeFromCtx(ctx), d, false)
 }
 
 // summaryMoreText is the text of a section's link.

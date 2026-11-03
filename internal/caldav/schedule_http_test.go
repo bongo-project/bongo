@@ -149,7 +149,7 @@ func TestScheduleInboxCollection(t *testing.T) {
 
 	// GET serves the stored text.
 	code, got, hdr := e.do(schUser, "GET", href, "", nil)
-	if code != http.StatusOK || got != itemRequest || !strings.HasPrefix(hdr.Get("Content-Type"), "text/calendar") || hdr.Get("ETag") == "" {
+	if code != http.StatusOK || got != itemRequest || !strings.HasPrefix(hdr.Get("Content-Type"), "text/calendar") || !wireETag.MatchString(hdr.Get("ETag")) {
 		t.Errorf("GET = %d %q %v", code, got, hdr)
 	}
 	// calendar-multiget returns the data; an unknown href is a 404 response.

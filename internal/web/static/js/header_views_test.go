@@ -59,6 +59,21 @@ func TestHeaderViewActionsTargetTheRowsRealMailbox(t *testing.T) {
 	}
 }
 
+// A header view posts its bulk actions to the URL it names in data-bulk-url,
+// never to /mail/<view name>/bulk, which is a folder's route.
+func TestBulkActionUsesTheViewsBulkURL(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	if b := funcBody(t, js, "bulkURL"); !strings.Contains(b, "bulkUrl") {
+		t.Error("bulkURL must read data-bulk-url")
+	}
+	if n := strings.Count(js, "await fetch(bulkURL(mailbox), {"); n != 2 {
+		t.Errorf("both bulkAction copies must post to bulkURL(mailbox); found %d", n)
+	}
+	if strings.Contains(js, "await fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk'") {
+		t.Error("a bulkAction still builds the folder bulk URL by hand")
+	}
+}
+
 // A list reload must go through listReloadURL, or an action in the unread
 // To me view drops the filter.
 func TestListReloadsKeepTheListURL(t *testing.T) {
