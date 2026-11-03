@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -165,6 +166,9 @@ func runSendmail(t *testing.T, pool *x509.CertPool, stdin string, args ...string
 	return code, stderr.String()
 }
 
+// bccHeaderRE matches a Bcc header line at the start of a line.
+var bccHeaderRE = regexp.MustCompile(`(?im)^bcc:`)
+
 const simpleMsg = "To: bob@example.net\nSubject: hi\n\nbody\n"
 
 func TestSubmitDelivers(t *testing.T) {
@@ -185,7 +189,9 @@ func TestSubmitDelivers(t *testing.T) {
 			if strings.Join(got.rcpts, ",") != "bob@example.net,carol@example.net,dave@example.net" {
 				t.Errorf("rcpts = %v", got.rcpts)
 			}
-			if strings.Contains(strings.ToLower(got.data), "bcc") || strings.Contains(got.data, "dave") {
+			// Look for a Bcc header line, not the letters "bcc": the random hex
+			// Message-ID contains them now and then.
+			if bccHeaderRE.MatchString(got.data) || strings.Contains(got.data, "dave") {
 				t.Errorf("Bcc reached the server:\n%s", got.data)
 			}
 			// The server un-stuffs what the client stuffed. Stuffing twice
