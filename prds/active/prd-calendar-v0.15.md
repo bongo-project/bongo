@@ -768,6 +768,11 @@ and 8).
   local attendee's busy blocks, titled "Busy", for the event's day, subject
   to the same grants (and same-domain resources) as the free/busy lookup.
 
+- 2026-11-03 (operator): the CalDAV and CardDAV discovery fix (PR #146)
+  ships with v0.15.0, not as a v0.14.2. The Apple configuration profile also
+  sets up CalDAV and CardDAV (task 31.12). Infra adds redirects for the
+  well-known paths on the hosted domains' websites.
+
 ### 8.2 Candidates for the next release
 
 Audit corrections found while writing this PRD (2026-10-26):
