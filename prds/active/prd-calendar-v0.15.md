@@ -967,3 +967,26 @@ Found by the v0.15 verification (2026-11-03), accepted or recorded here
   `to_me`).
 - The CalDAV client fixtures in `internal/caldav/testdata` are hand-made
   approximations of Apple Calendar and Thunderbird traffic, not captures.
+
+Fixed after verification (Phase 31 batch A, 2026-11-03), with notes:
+
+- US-018: the relay sends SMTPUTF8 when the sender, a recipient or the
+  headers contain non-ASCII bytes and the remote advertises it. When the
+  remote does not advertise it, the message is sent without it and the
+  remote decides, as net/smtp did; RFC 6531 3.4 would have the relay bounce
+  instead. No IDN to A-label conversion is done.
+- US-019: IMAP APPEND and web import now store List-Id and Cc. The header
+  backfill repairs rows written before the fix by reading each row's blob
+  once per node, in batches of 50 with a 200 ms pause. A message appended
+  through an older node during a mixed-version window is marked complete
+  without List-Id or Cc and is not repaired: upgrade every node before
+  importing. Address headers are still split on every comma, so a quoted
+  display name with a comma yields fragments (the address is recovered).
+- US-008: a user whose only event calendars are subscriptions gets a
+  Personal calendar on first access, and ICS import never lands in a
+  subscription. A malformed nameless calendar part next to a named
+  invite.ics sibling lists two entries called invite.ics.
+- US-010: a cancelled or transparent master is dropped from the feed, but
+  its opaque overrides are still published (in busy mode as single busy
+  occurrences). A cancelled RANGE=THISANDFUTURE override excludes one
+  occurrence only. A proto-only cancelled event is published as busy.

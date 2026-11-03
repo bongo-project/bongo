@@ -16,15 +16,18 @@ import (
 // CalDAV-created events, a synthesised VEVENT for the rest, and each
 // VTIMEZONE the kept events reference, once, ahead of them.
 //
-// transform, when non-nil, is applied to every VEVENT before it is kept and
-// returns the component to write, or nil to leave the event out. Only the
-// zones the transformed VEVENTs still reference are written. The export and
+// transform, when non-nil, is applied to the VEVENTs of one stored object at a
+// time (document order; one synthesised VEVENT for an object with no raw) and
+// returns the components to write, in order. undecodable is true when the
+// object has raw iCalendar that failed to decode, so the VEVENT is synthesised
+// from the proto. Only the zones the transformed VEVENTs still reference are
+// written. The export and
 // the published feed share this path so the feed cannot drift from it.
 //
 // stamp supplies DTSTAMP for a synthesised VEVENT; nil means the current time.
 // The feed passes a stable value so its body, and so its ETag, does not change
 // between requests.
-func buildCalendarICS(events []*bongov1.Event, transform func(*ical.Component) *ical.Component, stamp func(*bongov1.Event) time.Time) *ical.Calendar {
+func buildCalendarICS(events []*bongov1.Event, transform func(vevents []*ical.Component, undecodable bool) []*ical.Component, stamp func(*bongov1.Event) time.Time) *ical.Calendar {
 	cal := ical.NewCalendar()
 	cal.Props.SetText(ical.PropVersion, "2.0")
 	cal.Props.SetText(ical.PropProductID, "-//Bongo//Calendar//EN")
@@ -41,6 +44,7 @@ func buildCalendarICS(events []*bongov1.Event, transform func(*ical.Component) *
 	}
 
 	for _, e := range events {
+		undecodable := false
 		if len(e.IcalRaw) > 0 {
 			dec := ical.NewDecoder(bytes.NewReader(e.IcalRaw))
 			if rawCal, err := dec.Decode(); err == nil {
@@ -53,15 +57,16 @@ func buildCalendarICS(events []*bongov1.Event, transform func(*ical.Component) *
 						defs[p.Value] = child
 					}
 				}
+				var objVevents []*ical.Component
 				for _, child := range rawCal.Children {
-					if child.Name != ical.CompEvent {
-						continue
+					if child.Name == ical.CompEvent {
+						objVevents = append(objVevents, child)
 					}
-					if transform != nil {
-						if child = transform(child); child == nil {
-							continue
-						}
-					}
+				}
+				if transform != nil {
+					objVevents = transform(objVevents, false)
+				}
+				for _, child := range objVevents {
 					vevents = append(vevents, child)
 					for _, tzid := range icalevent.ReferencedTZIDs(child) {
 						def, ok := defs[tzid]
@@ -82,6 +87,7 @@ func buildCalendarICS(events []*bongov1.Event, transform func(*ical.Component) *
 				}
 				continue
 			}
+			undecodable = true
 		}
 
 		loc := time.UTC
@@ -94,9 +100,11 @@ func buildCalendarICS(events []*bongov1.Event, transform func(*ical.Component) *
 		}
 		vevent := icalevent.SynthVEvent(e, loc, stampOf(e)).Component
 		if transform != nil {
-			if vevent = transform(vevent); vevent == nil {
+			out := transform([]*ical.Component{vevent}, undecodable)
+			if len(out) == 0 {
 				continue
 			}
+			vevent = out[0]
 		}
 		if zoned {
 			if _, dup := seen[loc.String()]; !dup {

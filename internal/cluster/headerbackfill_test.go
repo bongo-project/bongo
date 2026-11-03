@@ -14,7 +14,7 @@ import (
 )
 
 func storeHeaderValues(sender string) store.MailHeaderValues {
-	return store.MailHeaderValues{ToMe: true, SenderAddr: sender}
+	return store.MailHeaderValues{ToMe: true, SenderAddr: sender, Complete: true}
 }
 
 // seedHeaderMail stores n messages for userID with a Pebble MailMeta and a
@@ -343,7 +343,16 @@ func TestRebuildFillsHeaderColumns(t *testing.T) {
 	if g, _ := env.metadata.QueryByListID("u1", "l.example.org"); len(g) != 3 {
 		t.Fatalf("list = %v", g)
 	}
+	// A rebuild reads MailMeta only, so it cannot know whether Cc and List-Id
+	// were recorded: it leaves every row for the backfill to check against the
+	// blob. Marking them done would let a rebuild undo the repair.
+	if p := pendingHeaders(t, env, "u1"); len(p) != 3 {
+		t.Fatalf("pending after rebuild = %v, want all three left for the backfill", p)
+	}
+	if got := newTestHeaderBackfill(env, 10).RunPass(context.Background()); got != 3 {
+		t.Fatalf("backfill after rebuild filled %d, want 3", got)
+	}
 	if p := pendingHeaders(t, env, "u1"); len(p) != 0 {
-		t.Fatalf("pending after rebuild = %v", p)
+		t.Fatalf("pending after backfill = %v", p)
 	}
 }

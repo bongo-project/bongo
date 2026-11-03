@@ -790,7 +790,9 @@ func (h *CalendarHandler) restoreSeries(userID string, written, original *bongov
 // instance on, which is the whole series). existing is the event as loaded by
 // UpdateEvent. owner holds the data (the caller, or the owner of a calendar
 // shared with write access); userID is the caller, whose zone the form is read in.
-func (h *CalendarHandler) updateInstance(w http.ResponseWriter, r *http.Request, userID, owner, email string, existing *bongov1.Event) bool {
+// destCal is the calendar UpdateEvent resolved and authorised, in the owner's key
+// space; the form's own calendar_id may be a shared key and is never stored.
+func (h *CalendarHandler) updateInstance(w http.ResponseWriter, r *http.Request, userID, owner, email, destCal string, existing *bongov1.Event) bool {
 	rid := r.FormValue("occurrence")
 	if rid == "" {
 		return false
@@ -814,6 +816,7 @@ func (h *CalendarHandler) updateInstance(w http.ResponseWriter, r *http.Request,
 		eventFormError(w, r, err)
 		return true
 	}
+	form.CalendarId = destCal
 	in := instanceEdit{
 		userID: owner, email: email, existing: existing, form: form,
 		rid: canonical, slot: slot, zone: h.eventZoneName(userID, form.AllDay), now: time.Now(),

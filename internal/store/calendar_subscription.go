@@ -30,9 +30,9 @@ func IsSubscribed(cal *bongov1.Calendar) bool {
 }
 
 // CalendarIsSubscribed reports whether the user's calendar calID is a
-// subscription. An empty ID is the default calendar, which never is. A
-// missing calendar is not subscribed; a read error is returned so a caller
-// can refuse the write rather than guess.
+// subscription. An empty ID is the default calendar, which EnsureDefault never
+// picks from the subscriptions. A missing calendar is not subscribed; a read
+// error is returned so a caller can refuse the write rather than guess.
 func (s *CalendarStore) CalendarIsSubscribed(userID, calID string) (bool, error) {
 	if calID == "" {
 		return false, nil

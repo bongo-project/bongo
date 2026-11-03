@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -18,13 +19,13 @@ func TestStoredHeader(t *testing.T) {
 		{"plain", "list@example.org", "list@example.org"},
 		{"trimmed", "  list@example.org \t", "list@example.org"},
 		{"CRLF removed", "a@example.org\r\nBcc: b@example.org", "a@example.orgBcc: b@example.org"},
-		{"at the cap", strings.Repeat("a", maxStoredReplyHeaderBytes), strings.Repeat("a", maxStoredReplyHeaderBytes)},
-		{"over the cap dropped", strings.Repeat("a", maxStoredReplyHeaderBytes+1), ""},
+		{"at the cap", strings.Repeat("a", store.MaxStoredHeaderBytes), strings.Repeat("a", store.MaxStoredHeaderBytes)},
+		{"over the cap dropped", strings.Repeat("a", store.MaxStoredHeaderBytes+1), ""},
 		{"empty", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := storedHeader(tt.in); got != tt.want {
+			if got := store.StoredHeader(tt.in); got != tt.want {
 				t.Errorf("storedHeader = %q, want %q", got, tt.want)
 			}
 		})

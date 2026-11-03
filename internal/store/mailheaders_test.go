@@ -170,10 +170,12 @@ func TestHeaderColumnsSentinelAndIndexMailKeepsThem(t *testing.T) {
 	if err := idx.SetMailHeaders("g1", MailHeaderValues{SenderAddr: "a@x.test"}); err != nil {
 		t.Fatal(err)
 	}
-	if p, _ := idx.PendingHeaders("", 10); len(p) != 0 {
-		t.Fatalf("pending after SetMailHeaders = %v", p)
+	// Derived from a MailMeta that may lack Cc and List-Id: still pending for
+	// the backfill's blob check.
+	if p, _ := idx.PendingHeaders("", 10); !reflect.DeepEqual(p, []string{"g1"}) {
+		t.Fatalf("pending after an incomplete SetMailHeaders = %v, want g1", p)
 	}
-	if err := idx.SetMailHeaders("g1", MailHeaderValues{ToMe: true, SenderAddr: "a@x.test", ListID: "l.example.org", ListName: "L"}); err != nil {
+	if err := idx.SetMailHeaders("g1", MailHeaderValues{ToMe: true, SenderAddr: "a@x.test", ListID: "l.example.org", ListName: "L", Complete: true}); err != nil {
 		t.Fatal(err)
 	}
 	// IndexMail re-runs on every flag or tag PUT: it must not reset the columns.

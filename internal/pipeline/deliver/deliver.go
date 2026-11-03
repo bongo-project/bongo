@@ -409,29 +409,13 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		// decodes encoded-words itself and rejects a decoded name holding a
 		// comma.
 		if parsed.Root != nil {
-			replyToHdr = storedHeader(parsed.Root.Header.Get("Reply-To"))
+			replyToHdr = store.StoredHeader(parsed.Root.Header.Get("Reply-To"))
 		}
-		listID = storedHeader(parsed.GetHeader("List-Id"))
-		listPost = storedHeader(parsed.GetHeader("List-Post"))
+		toAddrs, ccAddrs, listID = store.MailAddressHeaders(parsed)
+		listPost = store.StoredHeader(parsed.GetHeader("List-Post"))
 
 		if fromHeader := parsed.GetHeader("From"); fromHeader != "" {
 			headerFrom = fromHeader
-		}
-		if toHeader := parsed.GetHeader("To"); toHeader != "" {
-			for _, addr := range strings.Split(toHeader, ",") {
-				addr = strings.TrimSpace(addr)
-				if addr != "" {
-					toAddrs = append(toAddrs, addr)
-				}
-			}
-		}
-		if ccHeader := parsed.GetHeader("Cc"); ccHeader != "" {
-			for _, addr := range strings.Split(ccHeader, ",") {
-				addr = strings.TrimSpace(addr)
-				if addr != "" {
-					ccAddrs = append(ccAddrs, addr)
-				}
-			}
 		}
 	}
 

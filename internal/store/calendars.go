@@ -57,8 +57,21 @@ func NewTasksCalendar() *bongov1.Calendar {
 	}
 }
 
+// DefaultEventCalendar returns the GUID of the first calendar in cals that
+// holds events and is not a read-only subscription, or "" when there is none.
+// The cards and forms that preselect a calendar use it so they agree with
+// EnsureDefault.
+func DefaultEventCalendar(cals []*bongov1.Calendar) string {
+	for _, c := range cals {
+		if CalendarAllows(c, ComponentEvent) && !IsSubscribed(c) {
+			return c.Guid
+		}
+	}
+	return ""
+}
+
 // EnsureDefault returns the GUID of the user's default event calendar: the
-// first calendar that holds events. A new user, and one whose calendars all
+// first calendar that holds events and is not a subscription. A new user, and one whose calendars all
 // hold tasks only, gets a Personal calendar created; a new user also gets the
 // Tasks calendar. A tasks-only calendar is never the default, or web and iMIP
 // events would be filed into a VTODO collection.
@@ -67,10 +80,8 @@ func (s *CalendarStore) EnsureDefault(userID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("listing calendars: %w", err)
 	}
-	for _, c := range calendars {
-		if CalendarAllows(c, ComponentEvent) {
-			return c.Guid, nil
-		}
+	if guid := DefaultEventCalendar(calendars); guid != "" {
+		return guid, nil
 	}
 
 	cal := &bongov1.Calendar{
@@ -83,6 +94,14 @@ func (s *CalendarStore) EnsureDefault(userID string) (string, error) {
 	if len(calendars) == 0 {
 		if _, err := s.Create(userID, NewTasksCalendar()); err != nil {
 			return "", fmt.Errorf("creating tasks calendar: %w", err)
+		}
+	}
+	// A "default" that exists but cannot be the default (tasks-only or a
+	// subscription) must not be overwritten by the blind PUT in Create.
+	for _, c := range calendars {
+		if c.Guid == cal.Guid {
+			cal.Guid = ""
+			break
 		}
 	}
 	guid, err := s.Create(userID, cal)

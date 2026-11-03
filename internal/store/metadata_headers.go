@@ -17,18 +17,22 @@ func (u *UserIndex) SetMailHeaders(guid string, v MailHeaderValues) error {
 	if v.ListID != "" {
 		listID, listName = v.ListID, v.ListName
 	}
+	var rev any
+	if v.Complete {
+		rev = 1
+	}
 	if _, err := u.db.Exec(
-		`UPDATE maildocument SET to_me = ?, sender_addr = ?, list_id = ?, list_name = ? WHERE guid = ?`,
-		toMe, v.SenderAddr, listID, listName, guid); err != nil {
+		`UPDATE maildocument SET to_me = ?, sender_addr = ?, list_id = ?, list_name = ?, headers_rev = ? WHERE guid = ?`,
+		toMe, v.SenderAddr, listID, listName, rev, guid); err != nil {
 		return fmt.Errorf("setting mail headers: %w", err)
 	}
 	return nil
 }
 
 // PendingHeaders returns up to limit guids whose header columns have not been
-// derived yet and which sort after afterGUID.
+// derived yet or were derived from a MailMeta that may lack Cc and List-Id and which sort after afterGUID.
 func (u *UserIndex) PendingHeaders(afterGUID string, limit int) ([]string, error) {
-	return u.queryGUIDs(`SELECT guid FROM maildocument WHERE to_me IS NULL AND guid > ? ORDER BY guid LIMIT ?`,
+	return u.queryGUIDs(`SELECT guid FROM maildocument WHERE (to_me IS NULL OR headers_rev IS NULL) AND guid > ? ORDER BY guid LIMIT ?`,
 		afterGUID, limit)
 }
 

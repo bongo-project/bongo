@@ -16,8 +16,18 @@ const maxParts = 200
 // inline text/calendar with a method parameter wins; an .ics attachment, or a
 // text/calendar without one, is the fallback.
 func FindPart(env *enmime.Envelope) (content []byte, ctMethod string, ok bool) {
-	if env == nil || env.Root == nil {
+	p, method := FindCalendarPart(env)
+	if p == nil {
 		return nil, "", false
+	}
+	return p.Content, method, true
+}
+
+// FindCalendarPart is FindPart returning the part itself. The method is empty
+// for a fallback part.
+func FindCalendarPart(env *enmime.Envelope) (*enmime.Part, string) {
+	if env == nil || env.Root == nil {
+		return nil, ""
 	}
 	var fallback *enmime.Part
 	stack := []*enmime.Part{env.Root}
@@ -35,16 +45,16 @@ func FindPart(env *enmime.Envelope) (content []byte, ctMethod string, ok bool) {
 		method := contentTypeMethod(p)
 		switch {
 		case ct == "text/calendar" && method != "":
-			return p.Content, method, true
+			return p, method
 		case fallback == nil && (ct == "text/calendar" || ct == "application/ics" ||
 			strings.HasSuffix(strings.ToLower(p.FileName), ".ics")):
 			fallback = p
 		}
 	}
 	if fallback != nil {
-		return fallback.Content, "", true
+		return fallback, ""
 	}
-	return nil, "", false
+	return nil, ""
 }
 
 // contentTypeMethod reads the method parameter of the part's own Content-Type

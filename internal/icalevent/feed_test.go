@@ -37,6 +37,34 @@ func TestParseFeed(t *testing.T) {
 	}
 }
 
+// A calendar with no VEVENT is a valid, empty feed: the source emptied it, and
+// the refresh must be able to say so. Non-calendar input stays an error.
+func TestParseFeedEmptyCalendar(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		hint time.Duration
+	}{
+		{"no children", vcal(""), 0},
+		{"only a todo", vcal("", "BEGIN:VTODO\r\nUID:t\r\nDTSTAMP:20260101T000000Z\r\nSUMMARY:x\r\nEND:VTODO\r\n"), 0},
+		{"refresh interval kept", vcal("REFRESH-INTERVAL;VALUE=DURATION:PT12H\r\n"), 12 * time.Hour},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := ParseFeed([]byte(tc.body), 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(f.Events) != 0 || f.Skipped != 0 {
+				t.Fatalf("events %d skipped %d", len(f.Events), f.Skipped)
+			}
+			if f.RefreshHint != tc.hint {
+				t.Fatalf("hint %v, want %v", f.RefreshHint, tc.hint)
+			}
+		})
+	}
+}
+
 func TestParseFeedFailures(t *testing.T) {
 	tests := []struct {
 		name string
@@ -46,10 +74,11 @@ func TestParseFeedFailures(t *testing.T) {
 	}{
 		{"empty body", "", 10, "no calendar"},
 		{"not a calendar", "hello world\r\n", 10, ""},
-		{"no events", vcal(""), 10, "no events"},
+		{"unclosed calendar", "BEGIN:VCALENDAR\r\n", 10, ""},
+		{"whitespace only", "\r\n\r\n", 10, "no calendar"},
 		{"truncated mid-event", vcal("", vevent("a", "")) + "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:x\r\nBEGIN:VEVENT\r\nUID:z\r\n", 10, ""},
 		{"over cap", vcal("", vevent("a", ""), vevent("b", ""), vevent("c", "")), 2, "too many"},
-		{"only uidless", vcal("", "BEGIN:VEVENT\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260301T100000Z\r\nSUMMARY:x\r\nEND:VEVENT\r\n"), 10, "no events"},
+		{"only uidless", vcal("", "BEGIN:VEVENT\r\nDTSTAMP:20260101T000000Z\r\nDTSTART:20260301T100000Z\r\nSUMMARY:x\r\nEND:VEVENT\r\n"), 10, "no events with a UID"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
