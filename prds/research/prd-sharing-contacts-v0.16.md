@@ -622,7 +622,7 @@ Other candidates:
 - Per-user `\Seen` on shared folders.
 - Version-aware rolling upgrades, before any multi-node deployment.
 
-Found after v0.15.1 (2026-11-04), from the website screenshots and production use:
+Found after v0.15.1 (2026-11-04), from the website screenshots and production use. All but the sidebar order were scoped into v0.15.2 (`prds/active/prd-ui-fixes-v0.15.2.md`) on 2026-11-04:
 
 - **Apple Reminders creates a list named `DEFAULT_TASK_CALENDAR_NAME`.** An
   account created before new users got the Tasks calendar has no VTODO

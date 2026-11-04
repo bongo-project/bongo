@@ -194,3 +194,16 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 ## Phase 32: Calendar fixes v0.15.1 — 26 tasks completed 2026-11-03 (see [TASKS-archive.md](TASKS-archive.md)). PRD [done/prd-calendar-fixes-v0.15.1.md](done/prd-calendar-fixes-v0.15.1.md).
 
 ## Phase 33: v0.15.1 verification gaps — 8 tasks completed 2026-11-03 (see [TASKS-archive.md](TASKS-archive.md)). Report in [verification.md](verification.md).
+
+## Phase 34: Web UI fixes v0.15.2
+
+PRD: [active/prd-ui-fixes-v0.15.2.md](active/prd-ui-fixes-v0.15.2.md)
+
+| ID | Task | Source | Status | Notes |
+|----|------|--------|--------|-------|
+| 34.1 | US-001: Calendar settings page is styled (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
+| 34.2 | US-002: Calendar sidebar is styled (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
+| 34.3 | US-003: Week and day views show the day (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
+| 34.4 | US-004: Admin header wordmark and footer (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
+| 34.5 | US-005: Every account has a Tasks list (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
+| 34.6 | US-006: The dev seed creates tasks (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
