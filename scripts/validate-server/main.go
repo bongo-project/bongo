@@ -2086,7 +2086,8 @@ func seedContactsAndEvents(baseURL string) {
 			totalEvents++
 		}
 
-		tasks := seedTasks(client, baseURL, seedTasksFor(today))
+		// Seeded users have no zone set, so their "today" is the UTC date.
+		tasks := seedTasks(client, baseURL, seedTasksFor(time.Now().UTC()))
 		totalTasks += tasks
 
 		fmt.Printf("  %s: %d contacts, %d events, %d tasks\n", u.email, len(u.contacts), len(u.events), tasks)
@@ -2148,6 +2149,12 @@ func taskGUIDBySummary(page, summary string) (string, bool) {
 	return "", false
 }
 
+// taskCreated reports whether POST /tasks succeeded. A rejected session also
+// answers 303, to the login page.
+func taskCreated(status int, location string) bool {
+	return status == http.StatusSeeOther && !strings.HasPrefix(location, "/login")
+}
+
 // seedTasks creates the tasks for one logged-in user and completes those
 // marked complete. It returns how many were created (303 answers).
 func seedTasks(client *http.Client, baseURL string, tasks []seedTask) int {
@@ -2158,10 +2165,10 @@ func seedTasks(client *http.Client, baseURL string, tasks []seedTask) int {
 			fmt.Fprintf(os.Stderr, "  create task %q failed: %v\n", t.summary, err)
 			continue
 		}
-		status := resp.StatusCode
+		status, location := resp.StatusCode, resp.Header.Get("Location")
 		closeHTTPBody(resp)
-		if status != http.StatusSeeOther {
-			fmt.Fprintf(os.Stderr, "  create task %q: status %d\n", t.summary, status)
+		if !taskCreated(status, location) {
+			fmt.Fprintf(os.Stderr, "  create task %q: status %d, location %q\n", t.summary, status, location)
 			continue
 		}
 		created++

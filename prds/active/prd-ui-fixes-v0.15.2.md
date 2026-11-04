@@ -211,3 +211,29 @@ Found while building v0.15.2 (2026-11-04):
   those states of the settings page are not screenshotted.
 - An older account holding 4 event calendars and no Tasks loses a slot when
   Tasks is back-filled: its next create answers 507.
+
+Found by verification (2026-11-04), not fixed in this release:
+
+- From the month view the Week switcher linked to ISO week 44 when today was in
+  week 45. Not investigated.
+- `/calendar/search` renders `CalendarSidebar(nil)`: no calendar rows, filter
+  or settings link on that page.
+- The contacts import has the same no-JS gap the calendar import had: its
+  submit is visually hidden.
+- These pages do not reach `EnsureDefault`, so they do not back-fill Tasks:
+  `/tasks`, calendar search, export, the mini calendar, free/busy,
+  `/calendar/shares`, the new-event form. `docs/caldav-carddav.md` lists the
+  pages that do.
+- An events calendar at GUID `tasks` with no VTODO calendar blocks the
+  back-fill, so that user has no Tasks list.
+- A client that sends MKCALENDAR for a list without listing first, on an
+  account with Personal only, ends up with Tasks and that list. If it sends the
+  placeholder, both are named "Tasks".
+- On a node that cannot write, a user without Tasks logs one warning per
+  calendar read, with no rate limit.
+- `make seed` is not idempotent and exits 0 when seeding fails.
+- `make ui-shots` captures the viewport only, so the lower part of long pages
+  is not in the screenshots, and it has no dark mobile variant.
+- `message.templ` has a Load remote images button with no class.
+- No test exercises the calendar show/hide filter in a browser, or column
+  alignment in the week view; both were checked by hand.

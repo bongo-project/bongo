@@ -34,6 +34,25 @@ func withFlash(path string, keys ...flashKey) string {
 	return appendParams(path, strings.Join(parts, "&"))
 }
 
+// carryFlash copies the request's allow-listed flash keys onto a redirect, for a
+// page that redirects before anything renders. Anything else is dropped.
+func carryFlash(path string, r *http.Request) string {
+	vals := r.URL.Query()["flash"]
+	if len(vals) > maxFlashKeys {
+		return path
+	}
+	var keys []flashKey
+	for _, v := range vals {
+		if _, ok := flashMessages[v]; ok {
+			keys = append(keys, flashKey{v})
+		}
+	}
+	if len(keys) == 0 {
+		return path
+	}
+	return withFlash(path, keys...)
+}
+
 // flashText returns the translated banner for the request's flash keys, or ""
 // when there are none, too many, or any is not in the allow-list. Several keys
 // read as sentences: a part not ending in punctuation gets a full stop.

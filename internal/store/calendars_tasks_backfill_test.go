@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,5 +98,48 @@ func TestEnsureDefaultBackfillFailure(t *testing.T) {
 	}
 	if guid, err := cs.EnsureDefault("new"); err == nil {
 		t.Errorf("user with no default: EnsureDefault = %q, want an error", guid)
+	}
+}
+
+// tasksRefusingApplier refuses only the Tasks calendar write.
+type tasksRefusingApplier struct {
+	RaftApplier
+	writes int
+}
+
+func (a *tasksRefusingApplier) ApplyCommand(cmd *bongov1.RaftCommand, d time.Duration) error {
+	a.writes++
+	if strings.HasSuffix(string(cmd.Key), "/calendar/"+TasksCalendarGUID) {
+		return errors.New("not leader")
+	}
+	return a.RaftApplier.ApplyCommand(cmd, d)
+}
+
+// A user with no default still fails when only the Tasks write is refused, so
+// a new account is not left without Tasks and told all is well.
+func TestEnsureDefaultNewUserTasksFailureIsReturned(t *testing.T) {
+	cs := newCalendarTestEnv(t)
+	cs.applier = &tasksRefusingApplier{RaftApplier: cs.applier}
+	if guid, err := cs.EnsureDefault("new"); err == nil {
+		t.Errorf("EnsureDefault = %q, want the Tasks write error", guid)
+	}
+}
+
+// Once Tasks exists a repeat call writes nothing, so a rename survives.
+func TestEnsureDefaultRepeatCallWritesNothing(t *testing.T) {
+	cs := newCalendarTestEnv(t)
+	if err := cs.Update("u", "default", &bongov1.Calendar{Guid: "default", Name: "Personal"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.EnsureDefault("u"); err != nil {
+		t.Fatal(err)
+	}
+	counter := &tasksRefusingApplier{RaftApplier: cs.applier}
+	cs.applier = counter
+	if _, err := cs.EnsureDefault("u"); err != nil {
+		t.Fatal(err)
+	}
+	if counter.writes != 0 {
+		t.Errorf("repeat call made %d writes", counter.writes)
 	}
 }

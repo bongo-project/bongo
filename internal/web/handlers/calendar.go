@@ -178,6 +178,7 @@ func (h *CalendarHandler) CalendarIndex(w http.ResponseWriter, r *http.Request) 
 	if shown, more := parseInviteWarning(r.URL.Query()); len(shown) > 0 {
 		path = appendParams(path, encodeInviteWarning(shown, more))
 	}
+	path = carryFlash(path, r)
 	http.Redirect(w, r, path, http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
@@ -324,16 +325,17 @@ func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
 	events = h.hideDeclined(userID, email, events)
 	r, events, _ = h.withShared(r, userID, events, calColorMap, date.Unix(), dayEnd.Unix())
 
-	col := buildDayColumn(date, events, calColorMap, now)
+	shown := dayNoon(year, time.Month(month), day, now.Location())
+	col := buildDayColumn(shown, events, calColorMap, now)
 
 	flash := flashText(r)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.DayViewGrid(date, col, calendars, calColorMap)).ServeHTTP(w, r)
+		templ.Handler(templates.DayViewGrid(shown, col, calendars, calColorMap)).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.DayViewPage(date, col, calendars, calColorMap, email, flash)).ServeHTTP(w, r)
+	templ.Handler(templates.DayViewPage(shown, col, calendars, calColorMap, email, flash)).ServeHTTP(w, r)
 }
 
 // agendaRangeDays is the fixed agenda length. It is not a request parameter:
@@ -2060,6 +2062,13 @@ func isoWeekMonday(year, week int, loc *time.Location) time.Time {
 }
 
 // buildWeekColumns builds 7 DayColumn structs for week view.
+// dayNoon returns noon on a calendar day. A day shown to a user is held at noon,
+// not midnight: where the clocks change at midnight (Havana, Santiago) local
+// midnight does not exist and time.Date lands on the previous day.
+func dayNoon(year int, month time.Month, day int, loc *time.Location) time.Time {
+	return time.Date(year, month, day, 12, 0, 0, 0, loc)
+}
+
 func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap map[string]string, now time.Time) []templates.DayColumn {
 	loc := weekStart.Location()
 	todayDate := now.In(loc).Format("2006-01-02")
@@ -2073,7 +2082,7 @@ func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap 
 
 	days := make([]templates.DayColumn, 7)
 	for i := 0; i < 7; i++ {
-		d := weekStart.AddDate(0, 0, i)
+		d := dayNoon(weekStart.Year(), weekStart.Month(), weekStart.Day()+i, loc)
 		key := d.Format("2006-01-02")
 		dayEvents := eventsByDate[key]
 
