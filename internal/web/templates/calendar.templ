@@ -128,7 +128,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 					<span>{ t(ctx, "calendar.importIcs") }</span>
 					<input type="file" name="ics" accept=".ics" class="sr-only" aria-label={ t(ctx, "calendar.selectIcs") }/>
 				</label>
-				<button type="submit" class="sr-only">{ t(ctx, "calendar.importIcs") }</button>
+				<noscript><button type="submit" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.importIcs") }</button></noscript>
 			</form>
 			<a href="/calendar/shares" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.sharesTitle") }</a>
 			<form action="/calendar/search" method="get" class="calendar-sidebar-form">
@@ -438,7 +438,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 				}
 				<div class="u-flex u-gap-05">
 					if !eventFormReadOnly(ctx) {
-						<button type="submit">
+						<button type="submit" class="btn-primary">
 							if isNew {
 								{ t(ctx, "calendar.createEvent") }
 							} else {
@@ -450,7 +450,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 					if !isNew && !eventFormReadOnly(ctx) {
 						<button
 							type="button"
-							class="outline contrast"
+							class="btn-danger"
 							hx-delete={ eventDeleteURL(ctx, event) }
 							if occurrenceFromCtx(ctx) != nil {
 								hx-include="#occurrence-scope"
@@ -829,7 +829,7 @@ templ CalendarListPanel(calendars []*bongov1.Calendar) {
 		}
 		<ul class="nav-list">
 			<li class="nav-item">
-				<a href="/calendar/settings" class="calendar-settings-link">
+				<a href="/calendar/settings">
 					<span class="nav-icon" aria-hidden="true">@Icon("settings", "")</span>
 					<span>{ t(ctx, "calendar.settings") }</span>
 				</a>

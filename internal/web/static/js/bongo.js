@@ -2652,8 +2652,8 @@ function initContactsPage() {
 
 var pendingContactReveal = null;
 
-// Picking a vCard or ICS file submits the import form; the submit button stays in
-// the markup (visually hidden) so the form still works without JS.
+// Picking a vCard or ICS file submits the import form. Without JS, the contacts
+// form keeps a visually hidden submit and the calendar form shows one in <noscript>.
 document.addEventListener('change', function(e) {
   var input = e.target;
   if (!input || !input.matches || !input.matches('.contacts-head input[name="vcf"], .calendar-sidebar-form input[name="ics"]')) return;

@@ -128,9 +128,9 @@ with the `supported-calendar-component` precondition.
 
 The Tasks calendar (`tasks`) is not created with the account. Bongo creates
 it for any account with no calendar that holds tasks (a subscribed calendar
-does not count), the next time the account uses calendars: any calendar page
-or action in the web interface, a CalDAV listing of calendars, a CalDAV `PUT`,
-or an `MKCALENDAR` or extended `MKCOL`. A first use by an account with no
+does not count), the next time the account opens a month, week, day, agenda or settings page in
+the web interface, saves an event there, or sends a CalDAV listing of
+calendars, a `PUT`, an `MKCALENDAR` or an extended `MKCOL`. A first use by an account with no
 calendar at all also creates Personal; Personal and Tasks are made first, then
 any requested calendar. Saving a task in the web interface when no calendar
 holds tasks also creates Tasks. Bongo creates it outside the limit on calendars

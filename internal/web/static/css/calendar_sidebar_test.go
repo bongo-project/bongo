@@ -59,3 +59,11 @@ func TestCalendarImportAutoSubmitSelector(t *testing.T) {
 		t.Error("bongo.js lost the contacts vCard auto-submit")
 	}
 }
+
+// The event form's controls must take the theme's colours, not the browser's.
+func TestEventFormControlsUseThemeColours(t *testing.T) {
+	css := readStatic(t, "bongo.css")
+	if !regexp.MustCompile(`\.event-form select \{[^}]*background: var\(--surface-1\);[^}]*color: var\(--text-primary\)`).MatchString(css) {
+		t.Error(".event-form controls do not set the theme background and text colour")
+	}
+}

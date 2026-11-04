@@ -207,3 +207,17 @@ PRD: [active/prd-ui-fixes-v0.15.2.md](active/prd-ui-fixes-v0.15.2.md)
 | 34.4 | US-004: Admin header wordmark and footer (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | Wordmark readable on the admin topbar; footer, sidebar footer and back link restyled. Checked in ui-shots. |
 | 34.5 | US-005: Every account has a Tasks list (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | `EnsureDefault` back-fills Tasks for any user with no VTODO calendar (subscriptions excluded), outside the cap; failure is best effort for a user with a default. MKCALENDAR stores the placeholder as "Tasks". Six mutants plus the failure-path mutant red. Worker session died; finished and reviewed by hand. |
 | 34.6 | US-006: The dev seed creates tasks (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | `make seed` creates five tasks per user through POST /tasks, one completed. |
+
+## Phase 35: v0.15.2 verification gaps
+
+Report in [verification.md](verification.md).
+
+| ID | Task | Source | Status | Notes |
+|----|------|--------|--------|-------|
+| 35.1 | Share rows: columns line up, no overlap at 390 px, `/calendar/shares` not broken by the new grid | [verification.md](verification.md) | DONE (2026-11-04) | Flex base rule; fixed grid tracks scoped to `.calendar-settings-card`; the name takes its own row on mobile. Measured in a browser at 390 and 1440 px with German strings. |
+| 35.2 | FR-1: event form, Delete and Accept use shared buttons; `/calendar/shares` has a page head and cards | [verification.md](verification.md) | DONE (2026-11-04) | `TestCalendarFormsHaveStyledSubmits`. ui-shots gains shares, new event and tasks routes. Event form controls take the theme colours (they were white in dark mode); `TestEventFormControlsUseThemeColours`. |
+| 35.3 | Import works without JS and shows its result | [verification.md](verification.md) | DONE (2026-11-04) | `<noscript>` submit replaces the invisible one; `CalendarIndex` carries allow-listed flash keys through its redirect (`carryFlash`). Both flash mutants red. |
+| 35.4 | Day headers correct where clocks change at midnight; today's tint uses a defined token | [verification.md](verification.md) | DONE (2026-11-04) | `dayNoon`; `TestWeekColumnsMidnightDST` red on Havana and Santiago without it. `--accent-bg-subtle` removed from the token allow-list. |
+| 35.5 | Test gaps: web back-fill, settings page shape, sidebar classes, Tasks write failure, repeat call | [verification.md](verification.md) | DONE (2026-11-04) | `TestCalendarPagesBackfillTasks`, `TestCalendarSettingsUsesSharedStyles`, `TestEnsureDefaultNewUserTasksFailureIsReturned`, `TestEnsureDefaultRepeatCallWritesNothing`; class scan now covers the sidebar. |
+| 35.6 | Seed: tasks dated in UTC; a redirect to login is not counted as created. Docs: which pages back-fill. Sidebar tool buttons padded. | [verification.md](verification.md) | DONE (2026-11-04) | `taskCreated`. |
+

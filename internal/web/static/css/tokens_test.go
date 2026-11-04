@@ -39,7 +39,6 @@ func TestBongoCSSVarsResolve(t *testing.T) {
 		"--form-element-background-color": true,
 		"--border-light":                  true,
 		"--status-red":                    true,
-		"--accent-bg-subtle":              true,
 	}
 	for n := range allowUndefined {
 		if defined[n] {

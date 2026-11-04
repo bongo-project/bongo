@@ -388,7 +388,8 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   margin-top: 0.25rem;
 }
 
-.sidebar-group-calendar-tools {
+/* Two classes: .sidebar-group, later in this file, sets padding: 0. */
+.sidebar-group.sidebar-group-calendar-tools {
   padding: 4px 12px;
 }
 
@@ -4215,20 +4216,30 @@ html[data-theme="auto"]:not([data-accent]) {
 .share-link-status:empty { display: none; }
 .share-list { list-style: none; margin: 0 0 1rem; padding: 0; }
 .share-item {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center;
-  column-gap: .75rem; row-gap: .4rem; padding: .6rem 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; padding: .6rem 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 .share-item:last-child { border-bottom: 0; }
-.share-target { overflow-wrap: anywhere; font-weight: 600; color: var(--text-primary); }
+.share-target { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; font-weight: 600; color: var(--text-primary); }
 .share-state { font-size: .8rem; color: var(--text-muted); }
-.share-item .share-level-form,
-.share-item .share-remove-form { margin: 0; }
+.share-item form { margin: 0; }
 .share-item .form-input { width: auto; min-height: 0; padding: .35rem .5rem; }
+/* Fixed tracks: each row is its own grid, so auto tracks would not line up, and
+   a grantee with no level form must keep state and Remove in their columns. */
+.calendar-settings-card .share-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) 6.5rem 15rem 7rem;
+}
+.calendar-settings-card .share-state { grid-column: 2; margin: 0; }
+.calendar-settings-card .share-level-form { grid-column: 3; }
+.calendar-settings-card .share-remove-form { grid-column: 4; justify-self: end; }
 @media (max-width: 768px) {
-  .share-item { grid-template-columns: minmax(0, 1fr) auto; }
-  .share-item .share-level-form { grid-column: 1; }
-  .share-item .share-remove-form { grid-column: 2; }
+  /* The name takes its own row, so a row's buttons stay together. */
+  .share-target { flex-basis: 100%; }
+}
+@media (max-width: 1100px) {
+  .calendar-settings-card .share-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .calendar-settings-card .share-level-form { grid-column: 1 / -1; flex-wrap: wrap; }
+  .calendar-settings-card .share-remove-form { grid-column: 1 / -1; justify-self: start; }
 }
 
 /* ComponentLib switch: a real checkbox, visually hidden but focusable, inside a label. */
@@ -4850,7 +4861,7 @@ select.settings-select {
 .day-cell.today,
 .all-day-cell.today,
 .day-column.today {
-  background: var(--accent-bg-subtle);
+  background: var(--accent-subtle);
 }
 .mini-calendar {
   background: var(--surface-1);
@@ -4858,6 +4869,7 @@ select.settings-select {
   padding: 10px;
 }
 /* The card takes the page surface, not the sidebar's, so its heading must too. */
+.mini-calendar-nav { display: flex; align-items: center; justify-content: space-between; }
 .mini-calendar .mini-cal-title,
 .mini-calendar .mini-cal-nav { color: var(--text-primary); }
 .mini-cal-grid {
@@ -4964,7 +4976,7 @@ select.settings-select {
 .cal-wrap .all-day-header { border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-bottom-width: 1px; }
 .cal-wrap .day-header-row { border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-bottom-width: 1px; }
 .cal-wrap .day-header-row + .all-day-header { border-radius: 0; border-top-width: 0; }
-.cal-wrap .day-header-cell.today { background: var(--accent-bg-subtle); }
+.cal-wrap .day-header-cell.today { background: var(--accent-subtle); }
 .cal-wrap .day-header-cell.today .day-header-num { color: var(--accent-accessible); font-weight: 700; }
 .cal-wrap .day-header-row + .week-grid, .cal-wrap .day-header-row + .day-grid,
 .cal-wrap .all-day-header + .week-grid, .cal-wrap .all-day-header + .day-grid { border-top-left-radius: 0; border-top-right-radius: 0; box-shadow: none; }
@@ -5027,6 +5039,17 @@ select.settings-select {
   border: 2px solid var(--border-default);
   border-radius: var(--radius-sm);
 }
+/* Without these the controls keep the browser's white in dark mode. */
+.event-form input[type="text"],
+.event-form input[type="date"],
+.event-form input[type="time"],
+.event-form input[type="number"],
+.event-form textarea,
+.event-form select {
+  box-sizing: border-box; padding: 8px 10px;
+  background: var(--surface-1); color: var(--text-primary);
+}
+.event-form .attendee-autocomplete input { width: 100%; }
 .event-form input[type="text"]:focus,
 .event-form input[type="date"]:focus,
 .event-form input[type="time"]:focus,

@@ -48,10 +48,10 @@ func TestCalendarSidebarStyleHooks(t *testing.T) {
 				t.Error("file input has no aria-label")
 			}
 		}
-		if hasClass(n, "calendar-settings-link") {
+		if n.Type == html.ElementNode && n.Data == "a" && attrMap(n)["href"] == "/calendar/settings" {
 			settingsLinks++
 			if !ancestorHasClass(n, "nav-item") {
-				t.Error("calendar-settings-link is not inside .nav-item")
+				t.Error("the settings link is not inside .nav-item")
 			}
 		}
 		if hasClass(n, "cal-color-dot") {
@@ -71,5 +71,19 @@ func TestCalendarSidebarStyleHooks(t *testing.T) {
 	}
 	if strings.Contains(out, "calendar-sidebar-file") || strings.Contains(out, `class="import-form`) {
 		t.Error("old file class or the mobile-hidden import-form class is used")
+	}
+}
+
+// Without JS the file input is the only visible control, so the form needs a
+// submit a mouse can reach.
+func TestCalendarImportSubmitsWithoutJS(t *testing.T) {
+	out := renderToString(t, CalendarSidebar(nil))
+	i := strings.Index(out, `action="/calendar/import"`)
+	if i < 0 {
+		t.Fatal("no import form")
+	}
+	form, _, _ := strings.Cut(out[i:], "</form>")
+	if !strings.Contains(form, `<noscript><button type="submit" class="tool-btn calendar-sidebar-btn">`) {
+		t.Errorf("no visible submit for no-JS users: %s", form)
 	}
 }

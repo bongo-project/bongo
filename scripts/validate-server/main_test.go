@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"testing"
 	"time"
 )
@@ -111,5 +112,23 @@ func TestTaskGUIDBySummary(t *testing.T) {
 				t.Errorf("got %q,%v want %q,%v", got, ok, tt.want, tt.ok)
 			}
 		})
+	}
+}
+
+func TestTaskCreated(t *testing.T) {
+	tests := []struct {
+		status   int
+		location string
+		want     bool
+	}{
+		{http.StatusSeeOther, "/tasks", true},
+		{http.StatusSeeOther, "/login", false},
+		{http.StatusSeeOther, "/login?next=%2Ftasks", false},
+		{http.StatusBadRequest, "", false},
+	}
+	for _, tc := range tests {
+		if got := taskCreated(tc.status, tc.location); got != tc.want {
+			t.Errorf("taskCreated(%d, %q) = %v", tc.status, tc.location, got)
+		}
 	}
 }

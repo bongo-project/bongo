@@ -127,3 +127,20 @@ PASS 13 (US-001, 003, 006, 008, 009, 013, 014, 015, 017, 020, 021, 023, 024), PA
 - An attendee removed from one override's attendee list gets no CANCEL for that occurrence (same class as the US-012 note in 8.2).
 
 All of the above fixed in Phase 33 at the operator's request (2026-11-03).
+
+## v0.15.2 web UI fixes (2026-11-04)
+
+Verified against `main` at `0989607` (PR #161): one combined lens per story, two for US-005, and a completeness critic.
+
+| Story | Result | Gaps |
+|-------|--------|------|
+| US-001 settings page | PARTIAL | Share rows misaligned, overlap at 390 px in de and fr; markup untested; sidebar classes not scanned |
+| US-002 sidebar | PARTIAL | Import not submittable by mouse without JS; no result shown after import |
+| US-003 day header | PARTIAL | Wrong date in midnight-DST zones; undefined token for today's tint |
+| US-004 admin | PARTIAL | Implementation correct; tests check only that the wordmark colour differs from the header, and that the rules exist. Recorded, not changed. |
+| US-005 Tasks list | PARTIAL | Web wiring untested; docs overclaimed |
+| US-006 seed | PARTIAL | Dates in host zone, not UTC; a login redirect counted as created |
+| Critic | FR-1 false | Event form and Accept kept browser buttons; new `.share-item` grid broke `/calendar/shares` at 390 px |
+
+All fixed in Phase 35, except the items in section 8.2 of the PRD.
+

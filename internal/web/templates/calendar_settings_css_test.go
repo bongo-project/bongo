@@ -5,9 +5,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-var classAttr = regexp.MustCompile(`class="([^"]*)"`)
+var classAttr = regexp.MustCompile(`\sclass="([^"]*)"`)
 
 // calendarSettingsFixture reaches every branch of the settings page: the new
 // form, an owned card with grants (pending and addressable), a published
@@ -34,11 +36,12 @@ func calendarSettingsFixture() []CalendarSettings {
 }
 
 func TestCalendarSettingsClassesHaveCSSRules(t *testing.T) {
-	out := renderToString(t, CalendarSettingsPage(calendarSettingsFixture(), nil, "a@b.c"))
-	start := strings.Index(out, "<main")
+	cals := []*bongov1.Calendar{{Guid: "cal1", Name: "Personal"}}
+	out := renderToString(t, CalendarSettingsPage(calendarSettingsFixture(), cals, "a@b.c"))
+	start := strings.Index(out, `<aside class="sidebar"`)
 	end := strings.Index(out, "</main>")
 	if start < 0 || end < start {
-		t.Fatal("no <main> in the rendered page")
+		t.Fatal("no sidebar and <main> in the rendered page")
 	}
 	main := out[start:end]
 
@@ -51,7 +54,9 @@ func TestCalendarSettingsClassesHaveCSSRules(t *testing.T) {
 	if len(classes) < 20 {
 		t.Fatalf("only %d classes collected; the scan is not looking at the page", len(classes))
 	}
-	for _, want := range []string{"calendar-new-card", "share-item", "calendar-subscription", "publish-link", "form-error", "share-state", "form-check"} {
+	// calendar-list-panel only anchors tests and Alpine; it needs no rule.
+	delete(classes, "calendar-list-panel")
+	for _, want := range []string{"mini-calendar-nav", "calendar-new-card", "share-item", "calendar-subscription", "publish-link", "form-error", "share-state", "form-check"} {
 		if !classes[want] {
 			t.Errorf("fixture did not reach class %q", want)
 		}
@@ -70,5 +75,54 @@ func TestCalendarSettingsClassesHaveCSSRules(t *testing.T) {
 		if !re.MatchString(css.String()) {
 			t.Errorf("class %q is used on /calendar/settings but has no CSS rule", cls)
 		}
+	}
+}
+
+// The page keeps the v0.13 shape: a page head, a padded card each, shared input
+// styles and a styled button on every submit.
+func TestCalendarSettingsUsesSharedStyles(t *testing.T) {
+	out := renderToString(t, CalendarSettingsPage(calendarSettingsFixture(), nil, "a@b.c"))
+	main := out[strings.Index(out, "<main"):strings.Index(out, "</main>")]
+	if !strings.Contains(main, `class="page-head"`) || !strings.Contains(main, "<h1") {
+		t.Error("no page head with an h1")
+	}
+	cards := strings.Count(main, `<section class="card`)
+	if pads := strings.Count(main, `class="settings-card-pad"`); cards < 3 || pads != cards {
+		t.Errorf("%d cards, %d padded", cards, pads)
+	}
+	for _, tag := range regexp.MustCompile(`(?s)<(?:input|select)\b[^>]*>`).FindAllString(main, -1) {
+		if strings.Contains(tag, `type="hidden"`) || strings.Contains(tag, `type="checkbox"`) {
+			continue
+		}
+		if !strings.Contains(tag, "form-input") {
+			t.Errorf("control without form-input: %s", tag)
+		}
+	}
+	buttons := regexp.MustCompile(`(?s)<button\b[^>]*>`).FindAllString(main, -1)
+	if len(buttons) == 0 {
+		t.Fatal("no buttons rendered")
+	}
+	for _, b := range buttons {
+		if !regexp.MustCompile(`class="[^"]*(btn-primary|btn-secondary|btn-danger|tool-btn)`).MatchString(b) {
+			t.Errorf("button with no shared style: %s", b)
+		}
+	}
+}
+
+// FR-1: the calendar pages outside settings keep no unstyled submit either.
+func TestCalendarFormsHaveStyledSubmits(t *testing.T) {
+	out := renderToString(t, CalendarSharesPage([]PendingShare{{Owner: "o", OwnerLabel: "o@b.c", Calendar: "c", CalendarName: "Work", Level: "read"}}, nil, nil, "a@b.c"))
+	if !strings.Contains(out, `class="page-head"`) {
+		t.Error("shares page has no page head")
+	}
+	if !regexp.MustCompile(`<button type="submit" class="btn-primary">`).MatchString(out) {
+		t.Error("Accept is not a primary button")
+	}
+	src, err := os.ReadFile("calendar.templ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(src), `<button type="submit">`) {
+		t.Error("calendar.templ has a submit button with no class")
 	}
 }
