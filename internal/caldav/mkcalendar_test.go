@@ -20,9 +20,10 @@ const (
 )
 
 type mkEnv struct {
-	t    *testing.T
-	cals *store.CalendarStore
-	srv  *httptest.Server
+	t     *testing.T
+	cals  *store.CalendarStore
+	tasks *store.TaskStore
+	srv   *httptest.Server
 }
 
 func newMkEnv(t *testing.T, withTasks bool) *mkEnv {
@@ -36,15 +37,16 @@ func newMkEnv(t *testing.T, withTasks bool) *mkEnv {
 	cals := store.NewCalendarStore(ps, app)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	b := NewBackend(store.NewEventStore(ps, app), cals, logger)
+	tasks := store.NewTaskStore(ps, app)
 	if withTasks {
-		b.SetTaskStore(store.NewTaskStore(ps, app))
+		b.SetTaskStore(tasks)
 	}
 	h := MkcalendarHandler(PrivilegeFilter(&caldav.Handler{Backend: b, Prefix: "/caldav"}, b.ReadOnlyShare, logger), b, logger)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.ServeHTTP(w, r.WithContext(WithUserID(r.Context(), r.Header.Get("X-Test-User"))))
 	}))
 	t.Cleanup(srv.Close)
-	return &mkEnv{t: t, cals: cals, srv: srv}
+	return &mkEnv{t: t, cals: cals, tasks: tasks, srv: srv}
 }
 
 func (e *mkEnv) do(user, method, path, body string) (int, string, http.Header) {

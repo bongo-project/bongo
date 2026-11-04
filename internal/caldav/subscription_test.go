@@ -35,6 +35,11 @@ func subEnv(t *testing.T) *shEnv {
 	if _, err := e.events.Create(shOwner, &bongov1.Event{Guid: subGUID, CalendarId: subCalID, Title: "From the feed", StartTime: 1792058400, EndTime: 1792062000}); err != nil {
 		t.Fatal(err)
 	}
+	// A user without a calendar for tasks gets one written on the first
+	// request (EnsureDefault); that write is not what these tests count.
+	if err := e.cals.Update(shOwner, store.TasksCalendarGUID, store.NewTasksCalendar()); err != nil {
+		t.Fatal(err)
+	}
 	e.app.writes = 0
 	return e
 }

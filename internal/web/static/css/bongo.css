@@ -402,11 +402,9 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   margin-top: 0.5rem;
 }
 
-.calendar-sidebar-file {
-  font-size: 0.75rem;
-  padding: 0.2rem;
-  margin-bottom: 0.25rem;
-  color: var(--sidebar-text);
+label.calendar-sidebar-btn:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .calendar-sidebar-search {
@@ -438,9 +436,33 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 .calendar-list-label {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
+  padding: 6px 12px;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.88rem;
+  color: var(--sidebar-text);
+}
+
+.calendar-list-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.calendar-list-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-color-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-color: var(--sidebar-muted);
 }
 
 .admin-inline-form {
@@ -760,6 +782,8 @@ html[data-theme="dark"][data-accent="bongo"] {
 .admin-layout .hamburger { color: #94a3b8; }
 .admin-layout .hamburger:hover { background: rgba(255,255,255,0.06); }
 .admin-layout .brand { color: #e2e8f0; }
+/* .brand .wordmark sets its own colour, so the parent's does not reach it */
+.admin-layout .brand .wordmark { color: #e2e8f0; }
 .admin-layout .topbar-btn { color: #94a3b8; }
 .admin-layout .topbar-btn:hover { background: rgba(255,255,255,0.06); }
 .admin-layout .topbar-link { font-size: 0.82rem; color: #64748b; }
@@ -2355,16 +2379,6 @@ a.admin-nav-item.active, .admin-nav-item.active {
 }
 .new-event-btn:hover { background: var(--bongo-blue-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(81,127,175,0.4); }
 
-/* Calendar checkbox list in sidebar */
-.cal-list { padding: 4px 12px; }
-.cal-list-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 5px 0; cursor: pointer;
-}
-.cal-list-item input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--bongo-blue); }
-.cal-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.cal-list-label { font-size: 0.85rem; color: var(--sidebar-text); }
-
 /* Calendar toolbar */
 .cal-toolbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -2493,6 +2507,22 @@ a.admin-nav-item.active, .admin-nav-item.active {
   min-height: 28px; background: var(--bg-subtle);
 }
 .time-gutter-header { width: 56px; flex-shrink: 0; }
+
+/* Week & Day view: weekday and day-number header row */
+.day-header-row {
+  display: flex; background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}
+.day-header-cell {
+  flex: 1; min-width: 0; border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 4px 2px; gap: 1px; line-height: 1.2;
+  color: var(--text-secondary); text-decoration: none;
+  white-space: nowrap; overflow: hidden;
+}
+.day-header-cell:hover { background: var(--surface-2); }
+.day-header-weekday { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .03em; }
+.day-header-num { font-size: 1.1rem; font-weight: 600; color: var(--text-primary); }
 .all-day-cell {
   flex: 1; padding: 3px 4px; border-left: 1px solid var(--border);
   display: flex; flex-wrap: wrap; gap: 2px; overflow: hidden;
@@ -2691,6 +2721,31 @@ a.admin-nav-item.active, .admin-nav-item.active {
 /* ============================================
    19. ADMIN LAYOUT (shared)
    ============================================ */
+.admin-sidebar-footer {
+  margin-top: auto;
+  padding: 12px 8px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.admin-back-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: .8rem;
+  color: var(--sidebar-text);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.admin-back-link:hover { color: var(--sidebar-bright); background: var(--sidebar-hover); }
+.admin-footer {
+  padding: 12px 24px;
+  text-align: center;
+  font-size: .78rem;
+  color: var(--text-muted);
+  background: var(--surface-0);
+  border-top: 1px solid var(--border-subtle);
+}
+
 .admin-scroll { flex: 1; min-width: 0; overflow-y: auto; padding: 24px; }
 .admin-title { font-size: 1.3rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
 .admin-subtitle { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 20px; }
@@ -4110,6 +4165,72 @@ html[data-theme="auto"]:not([data-accent]) {
 .settings-card-pad .tfa-status { padding: .85rem 1rem; }
 .settings-card-pad .tfa-status-text .u-mb-12px { margin-bottom: .5rem; }
 
+/* Calendar settings (US-001): cards of stacked forms on the Security grid. */
+.calendar-settings-card h4,
+.calendar-new-card h4,
+.calendar-subscribe-card h4 { margin: 1.25rem 0 .5rem; font-size: 1rem; color: var(--text-primary); }
+.calendar-new-card h4,
+.calendar-subscribe-card h4 { margin-top: 0; }
+.calendar-settings-card .meta,
+.calendar-new-card .meta,
+.calendar-subscribe-card .meta { color: var(--text-muted); font-size: .82rem; margin: 0 0 .5rem; }
+.calendar-settings-card .form-error { color: var(--error); }
+.calendar-settings-form,
+.calendar-new-form,
+.calendar-subscribe-form,
+.share-add-form,
+.share-link-form,
+.publish-detail-form,
+.publish-password-form { display: flex; flex-direction: column; align-items: flex-start; gap: .75rem; margin-bottom: .75rem; }
+.calendar-settings-form .form-group,
+.calendar-new-form .form-group,
+.calendar-subscribe-form .form-group,
+.share-add-form .form-group,
+.share-link-form .form-group,
+.publish-detail-form .form-group,
+.publish-password-form .form-group,
+.calendar-publish > .form-group { width: 100%; margin-bottom: .5rem; }
+.settings-card-pad input[type="color"].form-input { width: 3.5rem; height: 2.5rem; padding: .2rem; cursor: pointer; }
+.calendar-new-form .form-check { margin: .25rem 0; }
+.publish-link { font-family: var(--font-mono, ui-monospace, monospace); font-size: .82rem; }
+.calendar-subscription,
+.calendar-publish { margin-bottom: .75rem; }
+.calendar-unsubscribe-form,
+.publish-regenerate-form,
+.publish-unpublish-form,
+.publish-password-remove-form,
+.share-level-form,
+.share-remove-form { display: flex; align-items: center; gap: .5rem; margin: 0 .5rem .5rem 0; }
+.publish-regenerate-form,
+.publish-unpublish-form,
+.publish-password-remove-form { display: inline-flex; }
+.calendar-delete-btn { margin: .25rem 0; }
+.calendar-new-status,
+.calendar-subscribe-status,
+.calendar-delete-status,
+.share-link-status { font-size: .85rem; color: var(--text-secondary); }
+.calendar-new-status:empty,
+.calendar-subscribe-status:empty,
+.calendar-delete-status:empty,
+.share-link-status:empty { display: none; }
+.share-list { list-style: none; margin: 0 0 1rem; padding: 0; }
+.share-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center;
+  column-gap: .75rem; row-gap: .4rem; padding: .6rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.share-item:last-child { border-bottom: 0; }
+.share-target { overflow-wrap: anywhere; font-weight: 600; color: var(--text-primary); }
+.share-state { font-size: .8rem; color: var(--text-muted); }
+.share-item .share-level-form,
+.share-item .share-remove-form { margin: 0; }
+.share-item .form-input { width: auto; min-height: 0; padding: .35rem .5rem; }
+@media (max-width: 768px) {
+  .share-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .share-item .share-level-form { grid-column: 1; }
+  .share-item .share-remove-form { grid-column: 2; }
+}
+
 /* ComponentLib switch: a real checkbox, visually hidden but focusable, inside a label. */
 .toggle { width: 40px; height: 22px; display: inline-block; }
 .toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
@@ -4703,9 +4824,9 @@ select.settings-select {
 .calendar-grid,
 .week-grid,
 .day-grid,
+.day-header-row,
 .all-day-header,
 .mini-calendar,
-.calendar-list-panel,
 .event-form {
   border: 2px solid var(--border-default);
 }
@@ -4713,6 +4834,7 @@ select.settings-select {
 .day-cell,
 .all-day-cell,
 .day-column,
+.day-header-cell,
 .hour-row,
 .hour-label,
 .calendar-list-item {
@@ -4735,6 +4857,9 @@ select.settings-select {
   border-radius: var(--radius-md);
   padding: 10px;
 }
+/* The card takes the page surface, not the sidebar's, so its heading must too. */
+.mini-calendar .mini-cal-title,
+.mini-calendar .mini-cal-nav { color: var(--text-primary); }
 .mini-cal-grid {
   gap: 2px;
 }
@@ -4837,6 +4962,11 @@ select.settings-select {
 }
 .cal-wrap .week-grid, .cal-wrap .day-grid { border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); background: var(--surface-1); }
 .cal-wrap .all-day-header { border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-bottom-width: 1px; }
+.cal-wrap .day-header-row { border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-bottom-width: 1px; }
+.cal-wrap .day-header-row + .all-day-header { border-radius: 0; border-top-width: 0; }
+.cal-wrap .day-header-cell.today { background: var(--accent-bg-subtle); }
+.cal-wrap .day-header-cell.today .day-header-num { color: var(--accent-accessible); font-weight: 700; }
+.cal-wrap .day-header-row + .week-grid, .cal-wrap .day-header-row + .day-grid,
 .cal-wrap .all-day-header + .week-grid, .cal-wrap .all-day-header + .day-grid { border-top-left-radius: 0; border-top-right-radius: 0; box-shadow: none; }
 
 /* Agenda */
@@ -4880,6 +5010,8 @@ select.settings-select {
   .cal-head .view-switcher.seg { order: 3; width: 100%; justify-content: space-between; }
   .cal-head .view-switcher.seg a[role="button"] { flex: 1; text-align: center; padding: 5px 6px; }
   .cal-wrap { padding: .75rem 1rem 1rem; }
+  .day-header-weekday { font-size: 0.62rem; letter-spacing: 0; }
+  .day-header-num { font-size: 0.95rem; }
   .cal-toolbar .calendar-month-title { font-size: 1.05rem; margin: 0 .25rem; flex-basis: 100%; order: 4; }
   .cal-toolbar.calendar-toolbar { flex-wrap: wrap; }
   .agenda-item { grid-template-columns: 4rem 4px minmax(0, 1fr); padding: .6rem .85rem; gap: .5rem; }
@@ -4891,8 +5023,7 @@ select.settings-select {
 .event-form input[type="number"],
 .event-form textarea,
 .event-form select,
-.calendar-sidebar-search,
-.calendar-sidebar-file {
+.calendar-sidebar-search {
   border: 2px solid var(--border-default);
   border-radius: var(--radius-sm);
 }

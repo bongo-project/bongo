@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	htmlpkg "html"
 	"io"
 	"mime/multipart"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2052,6 +2054,7 @@ func seedContactsAndEvents(baseURL string) {
 
 	totalContacts := 0
 	totalEvents := 0
+	totalTasks := 0
 
 	for _, u := range users {
 		client := loginWebClient(baseURL, u.email, u.password)
@@ -2083,8 +2086,122 @@ func seedContactsAndEvents(baseURL string) {
 			totalEvents++
 		}
 
-		fmt.Printf("  %s: %d contacts, %d events\n", u.email, len(u.contacts), len(u.events))
+		tasks := seedTasks(client, baseURL, seedTasksFor(today))
+		totalTasks += tasks
+
+		fmt.Printf("  %s: %d contacts, %d events, %d tasks\n", u.email, len(u.contacts), len(u.events), tasks)
 	}
 
-	fmt.Printf("  total: %d contacts, %d events\n", totalContacts, totalEvents)
+	fmt.Printf("  total: %d contacts, %d events, %d tasks\n", totalContacts, totalEvents, totalTasks)
+}
+
+// seedTask is one task the dev seed creates through POST /tasks.
+type seedTask struct {
+	summary, description string
+	priority             int // 0 means none, 1 highest, 9 lowest
+	dueDate, dueTime     string
+	complete             bool
+}
+
+// seedTasksFor returns the tasks each seeded user gets, dated relative to
+// today. Overdue and today are date only: a timed task today may already be
+// past and would show as overdue. Summaries are unique so the GUID lookup
+// is unambiguous. The completed task is never overdue, so it is dated
+// yesterday without counting as the overdue example.
+func seedTasksFor(today time.Time) []seedTask {
+	const dayFmt = "2006-01-02"
+	return []seedTask{
+		{"Renew TLS certificates", "Expired two days ago", 1, today.AddDate(0, 0, -2).Format(dayFmt), "", false},
+		{"Send weekly status report", "Due by end of day", 5, today.Format(dayFmt), "", false},
+		{"Prepare quarterly review slides", "Draft before the review meeting", 9, today.AddDate(0, 0, 5).Format(dayFmt), "14:00", false},
+		{"Tidy the shared drive", "No deadline", 0, "", "", false},
+		{"Archive last year's invoices", "Already done", 5, today.AddDate(0, 0, -1).Format(dayFmt), "", true},
+	}
+}
+
+// taskForm builds the POST /tasks form; due_date and due_time are sent only
+// when set.
+func taskForm(t seedTask) url.Values {
+	f := url.Values{}
+	f.Set("summary", t.summary)
+	f.Set("description", t.description)
+	f.Set("priority", strconv.Itoa(t.priority))
+	if t.dueDate != "" {
+		f.Set("due_date", t.dueDate)
+	}
+	if t.dueTime != "" {
+		f.Set("due_time", t.dueTime)
+	}
+	return f
+}
+
+var taskLinkRe = regexp.MustCompile(`href="/tasks/([a-f0-9]+)"[^>]*>([^<]*)</a>`)
+
+// taskGUIDBySummary finds the GUID of the first task row in the /tasks page
+// whose title equals summary.
+func taskGUIDBySummary(page, summary string) (string, bool) {
+	for _, m := range taskLinkRe.FindAllStringSubmatch(page, -1) {
+		if htmlpkg.UnescapeString(m[2]) == summary {
+			return m[1], true
+		}
+	}
+	return "", false
+}
+
+// seedTasks creates the tasks for one logged-in user and completes those
+// marked complete. It returns how many were created (303 answers).
+func seedTasks(client *http.Client, baseURL string, tasks []seedTask) int {
+	created := 0
+	for _, t := range tasks {
+		resp, err := client.PostForm(baseURL+"/tasks", taskForm(t))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  create task %q failed: %v\n", t.summary, err)
+			continue
+		}
+		status := resp.StatusCode
+		closeHTTPBody(resp)
+		if status != http.StatusSeeOther {
+			fmt.Fprintf(os.Stderr, "  create task %q: status %d\n", t.summary, status)
+			continue
+		}
+		created++
+	}
+
+	var page string
+	for _, t := range tasks {
+		if !t.complete {
+			continue
+		}
+		if page == "" {
+			resp, err := client.Get(baseURL + "/tasks")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  list tasks failed: %v\n", err)
+				return created
+			}
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+			status := resp.StatusCode
+			closeHTTPBody(resp)
+			if err != nil || status != http.StatusOK {
+				fmt.Fprintf(os.Stderr, "  list tasks: status %d: %v\n", status, err)
+				return created
+			}
+			page = string(body)
+		}
+		guid, ok := taskGUIDBySummary(page, t.summary)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "  task %q not found on /tasks\n", t.summary)
+			continue
+		}
+		resp, err := client.PostForm(baseURL+"/tasks/"+url.PathEscape(guid)+"/complete", url.Values{})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  complete task %q failed: %v\n", t.summary, err)
+			continue
+		}
+		status := resp.StatusCode
+		closeHTTPBody(resp)
+		if status != http.StatusSeeOther {
+			fmt.Fprintf(os.Stderr, "  complete task %q: status %d\n", t.summary, status)
+		}
+	}
+	return created
 }

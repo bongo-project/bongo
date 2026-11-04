@@ -131,7 +131,8 @@ func TestEventReschedule(t *testing.T) {
 	_, baseURL, client, cancel := startDragonflyAgent(t)
 	defer cancel()
 
-	now := time.Now()
+	// The page renders in the user's zone, UTC by default, not the host's.
+	now := time.Now().UTC()
 	startDate := now.Format("2006-01-02")
 
 	// Create an event at 10:00.

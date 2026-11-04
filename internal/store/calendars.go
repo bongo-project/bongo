@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -67,13 +68,14 @@ const defaultCalendarColor = "#4A90D9"
 // never two. It sorts after "default" and after every generated hex ID.
 const TasksCalendarGUID = "tasks"
 
-const tasksCalendarName = "Tasks"
+// TasksCalendarName is the display name of the Tasks calendar.
+const TasksCalendarName = "Tasks"
 
 // NewTasksCalendar returns the VTODO-only Tasks calendar.
 func NewTasksCalendar() *bongov1.Calendar {
 	return &bongov1.Calendar{
 		Guid:       TasksCalendarGUID,
-		Name:       tasksCalendarName,
+		Name:       TasksCalendarName,
 		Color:      defaultCalendarColor,
 		Components: []string{ComponentTodo},
 	}
@@ -92,17 +94,55 @@ func DefaultEventCalendar(cals []*bongov1.Calendar) string {
 	return ""
 }
 
+// HasTaskCalendar reports whether cals holds a calendar that takes tasks and
+// is not a read-only subscription.
+func HasTaskCalendar(cals []*bongov1.Calendar) bool {
+	for _, c := range cals {
+		if CalendarAllows(c, ComponentTodo) && !IsSubscribed(c) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasCalendarGUID(cals []*bongov1.Calendar, guid string) bool {
+	for _, c := range cals {
+		if c.Guid == guid {
+			return true
+		}
+	}
+	return false
+}
+
 // EnsureDefault returns the GUID of the user's default event calendar: the
-// first calendar that holds events and is not a subscription. A new user, and one whose calendars all
-// hold tasks only, gets a Personal calendar created; a new user also gets the
-// Tasks calendar. A tasks-only calendar is never the default, or web and iMIP
-// events would be filed into a VTODO collection.
+// first calendar that holds events and is not a subscription. A user whose
+// calendars all hold tasks only gets a Personal calendar created. Every call
+// also back-fills the Tasks calendar for a user with no calendar that takes
+// tasks (new and existing accounts alike). That write is exempt from the
+// calendar cap, and a calendar already at the Tasks GUID is never replaced.
+// A tasks-only calendar is never the default, or web and iMIP events would be
+// filed into a VTODO collection.
 func (s *CalendarStore) EnsureDefault(userID string) (string, error) {
 	calendars, err := s.List(userID)
 	if err != nil {
 		return "", fmt.Errorf("listing calendars: %w", err)
 	}
-	if guid := DefaultEventCalendar(calendars); guid != "" {
+	guid := DefaultEventCalendar(calendars)
+	// Tasks first: a failure between the two writes leaves a user with Tasks
+	// only, and the next call then creates Personal. The check precedes the
+	// early return so a user with only Personal gets Tasks too.
+	if !HasTaskCalendar(calendars) && !hasCalendarGUID(calendars, TasksCalendarGUID) {
+		if _, err := s.Create(userID, NewTasksCalendar()); err != nil {
+			if guid == "" {
+				return "", fmt.Errorf("creating tasks calendar: %w", err)
+			}
+			// Best effort for a user who already has a default: this runs on
+			// read paths, which must keep working on a node that cannot write
+			// (a follower, or no leader). The next call tries again.
+			slog.Warn("calendars: back-filling tasks calendar failed", "user", userID, "error", err)
+		}
+	}
+	if guid != "" {
 		return guid, nil
 	}
 
@@ -111,22 +151,12 @@ func (s *CalendarStore) EnsureDefault(userID string) (string, error) {
 		Name:  defaultCalendarName,
 		Color: defaultCalendarColor,
 	}
-	// Tasks first: a failure between the two writes leaves a user with Tasks
-	// only, and the next call then creates Personal.
-	if len(calendars) == 0 {
-		if _, err := s.Create(userID, NewTasksCalendar()); err != nil {
-			return "", fmt.Errorf("creating tasks calendar: %w", err)
-		}
-	}
 	// A "default" that exists but cannot be the default (tasks-only or a
 	// subscription) must not be overwritten by the blind PUT in Create.
-	for _, c := range calendars {
-		if c.Guid == cal.Guid {
-			cal.Guid = ""
-			break
-		}
+	if hasCalendarGUID(calendars, cal.Guid) {
+		cal.Guid = ""
 	}
-	guid, err := s.Create(userID, cal)
+	guid, err = s.Create(userID, cal)
 	if err != nil {
 		return "", fmt.Errorf("creating default calendar: %w", err)
 	}

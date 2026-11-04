@@ -140,6 +140,7 @@
   "calendar.endBeforeStart": "El evento debe terminar después de comenzar.",
   "calendar.exportIcs": "Exportar .ics",
   "calendar.importIcs": "Importar .ics",
+  "calendar.selectIcs": "Seleccionar archivo ICS para importar",
   "calendar.searchEvents": "Buscar eventos...",
   "calendar.noResults": "Sin resultados",
   "calendar.noEventsMatched": "Ningún evento coincide con su búsqueda.",

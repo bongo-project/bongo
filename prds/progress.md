@@ -1703,3 +1703,10 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 - v0.15.1 tagged at dacb283 after green main CI; release binaries and image published (manifest list sha256:669cdad9...); deploy handoff sent to InfraWork.
 - Phases 32 (26 tasks) and 33 (8 tasks) archived; the v0.15.1 PRD moved to prds/done/.
 - Next: bongo-project.org refresh (separate repo, branch site-refresh-2026, local preview before any push); the operator's client checks after the v0.15.1 deploy.
+
+## 2026-11-04: Phase 34 (v0.15.2) implemented
+
+All six stories merged on norman/phase-34-ui-fixes. Workflow wf_8ba74fa9-b26 stopped when the session closed; 34.5 was finished and reviewed by hand. Review fixes applied.
+
+PATTERN: tooling - use root-level `templ generate`; `-path` rewrites the FileName header in every *_templ.go.
+PATTERN: testing - integration tests that compare rendered times must use the user's zone (UTC by default), not the host's; CI hides this.

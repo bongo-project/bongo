@@ -16,55 +16,55 @@ templ CalendarPublishSection(p PublishSettings) {
 	<div class="calendar-publish">
 		<form hx-post={ "/calendar/" + p.Calendar + "/publish" } hx-swap="none" class="publish-detail-form">
 			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-			<label>
-				{ t(ctx, "calendar.publishDetail") }
-				<select name="detail">
+			<div class="form-group">
+				<label class="form-label" for={ "pub-detail-" + p.Calendar }>{ t(ctx, "calendar.publishDetail") }</label>
+				<select class="form-input" id={ "pub-detail-" + p.Calendar } name="detail">
 					@levelOption("full", publishDetailValue(p.Busy), t(ctx, "calendar.publishDetailFull"))
 					@levelOption("busy", publishDetailValue(p.Busy), t(ctx, "calendar.publishDetailBusy"))
 				</select>
-			</label>
+			</div>
 			if p.Published {
-				<button type="submit" class="tool-btn">{ t(ctx, "common.save") }</button>
+				<button type="submit" class="btn-secondary">{ t(ctx, "common.save") }</button>
 			} else {
-				<button type="submit">{ t(ctx, "calendar.publishEnable") }</button>
+				<button type="submit" class="btn-primary">{ t(ctx, "calendar.publishEnable") }</button>
 			}
 		</form>
 		if p.Published {
 			<p class="meta">{ t(ctx, "calendar.publishLinkNote") }</p>
-			<label>
-				{ t(ctx, "calendar.publishHTTPSLink") }
-				<input type="text" readonly value={ p.HTTPSLink } class="publish-link" autocomplete="off"/>
-			</label>
-			<label>
-				{ t(ctx, "calendar.publishWebcalLink") }
-				<input type="text" readonly value={ p.WebcalLink } class="publish-link" autocomplete="off"/>
-			</label>
+			<div class="form-group">
+				<label class="form-label" for={ "pub-https-" + p.Calendar }>{ t(ctx, "calendar.publishHTTPSLink") }</label>
+				<input type="text" readonly value={ p.HTTPSLink } id={ "pub-https-" + p.Calendar } class="form-input publish-link" autocomplete="off"/>
+			</div>
+			<div class="form-group">
+				<label class="form-label" for={ "pub-webcal-" + p.Calendar }>{ t(ctx, "calendar.publishWebcalLink") }</label>
+				<input type="text" readonly value={ p.WebcalLink } id={ "pub-webcal-" + p.Calendar } class="form-input publish-link" autocomplete="off"/>
+			</div>
 			<form hx-post={ "/calendar/" + p.Calendar + "/publish/regenerate" } hx-swap="none" class="publish-regenerate-form">
 				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-				<button type="submit" class="tool-btn">{ t(ctx, "calendar.publishRegenerate") }</button>
+				<button type="submit" class="btn-secondary">{ t(ctx, "calendar.publishRegenerate") }</button>
 			</form>
 			<form hx-post={ "/calendar/" + p.Calendar + "/unpublish" } hx-swap="none" class="publish-unpublish-form">
 				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-				<button type="submit" class="tool-btn">{ t(ctx, "calendar.publishUnpublish") }</button>
+				<button type="submit" class="btn-danger">{ t(ctx, "calendar.publishUnpublish") }</button>
 			</form>
 			<form hx-post={ "/calendar/" + p.Calendar + "/publish/password" } hx-swap="none" class="publish-password-form">
 				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-				<label>
-					{ t(ctx, "calendar.publishPassword") }
-					<input type="password" name="password" minlength="8" maxlength="72" autocomplete="new-password"/>
-				</label>
+				<div class="form-group">
+					<label class="form-label" for={ "pub-pw-" + p.Calendar }>{ t(ctx, "calendar.publishPassword") }</label>
+					<input class="form-input" id={ "pub-pw-" + p.Calendar } type="password" name="password" minlength="8" maxlength="72" autocomplete="new-password"/>
+				</div>
 				if p.HasPassword {
 					<p class="meta">{ t(ctx, "calendar.publishPasswordSet") }</p>
 				} else {
 					<p class="meta">{ t(ctx, "calendar.publishPasswordHint") }</p>
 				}
-				<button type="submit" class="tool-btn">{ t(ctx, "common.save") }</button>
+				<button type="submit" class="btn-secondary">{ t(ctx, "common.save") }</button>
 			</form>
 			if p.HasPassword {
 				<form hx-post={ "/calendar/" + p.Calendar + "/publish/password" } hx-swap="none" class="publish-password-remove-form">
 					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 					<input type="hidden" name="remove_password" value="1"/>
-					<button type="submit" class="tool-btn">{ t(ctx, "calendar.publishPasswordRemove") }</button>
+					<button type="submit" class="btn-secondary">{ t(ctx, "calendar.publishPasswordRemove") }</button>
 				</form>
 			}
 		}

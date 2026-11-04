@@ -3,21 +3,23 @@ package templates
 // calendarSubscribeForm is the form that subscribes to an external ICS feed.
 templ calendarSubscribeForm() {
 	<section class="card calendar-subscribe-card" id="calendar-subscribe">
-		<h4>{ t(ctx, "calendar.subscribe") }</h4>
-		<p class="meta">{ t(ctx, "calendar.subscribeHelp") }</p>
-		<form hx-post="/calendar/subscribe" hx-target="find .calendar-subscribe-status" hx-swap="innerHTML" class="calendar-subscribe-form">
-			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-			<label>
-				{ t(ctx, "calendar.subscribeUrl") }
-				<input type="text" name="url" required autocomplete="off" spellcheck="false" placeholder="https://example.com/calendar.ics"/>
-			</label>
-			<label>
-				{ t(ctx, "calendar.name") }
-				<input type="text" name="name" maxlength="100"/>
-			</label>
-			<button type="submit">{ t(ctx, "calendar.subscribeAdd") }</button>
-			<div class="calendar-subscribe-status" data-form-status aria-live="polite"></div>
-		</form>
+		<div class="settings-card-pad">
+			<h4>{ t(ctx, "calendar.subscribe") }</h4>
+			<p class="meta">{ t(ctx, "calendar.subscribeHelp") }</p>
+			<form hx-post="/calendar/subscribe" hx-target="find .calendar-subscribe-status" hx-swap="innerHTML" class="calendar-subscribe-form">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				<div class="form-group">
+					<label class="form-label" for="cal-sub-url">{ t(ctx, "calendar.subscribeUrl") }</label>
+					<input class="form-input" id="cal-sub-url" type="text" name="url" required autocomplete="off" spellcheck="false" placeholder="https://example.com/calendar.ics"/>
+				</div>
+				<div class="form-group">
+					<label class="form-label" for="cal-sub-name">{ t(ctx, "calendar.name") }</label>
+					<input class="form-input" id="cal-sub-name" type="text" name="name" maxlength="100"/>
+				</div>
+				<button type="submit" class="btn-primary">{ t(ctx, "calendar.subscribeAdd") }</button>
+				<div class="calendar-subscribe-status" data-form-status aria-live="polite"></div>
+			</form>
+		</div>
 	</section>
 }
 
@@ -40,7 +42,7 @@ templ calendarSubscriptionInfo(card CalendarSettings) {
 		}
 		<form hx-post={ "/calendar/" + card.Calendar + "/unsubscribe" } hx-swap="none" hx-confirm={ t(ctx, "calendar.unsubscribeConfirm") } class="calendar-unsubscribe-form">
 			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-			<button type="submit" class="tool-btn">{ t(ctx, "calendar.unsubscribe") }</button>
+			<button type="submit" class="btn-danger">{ t(ctx, "calendar.unsubscribe") }</button>
 		</form>
 	</div>
 }
