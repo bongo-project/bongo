@@ -646,3 +646,8 @@ Found after v0.15.1 (2026-11-04), from the website screenshots and production us
   `components.templ`; nothing is sortable. Candidate: let a user reorder the
   sidebar, or at least move the header views (To me, From my contacts,
   Mailing lists) above the folders, stored in the user's preferences.
+- **Calendar settings page (`/calendar/settings`) is unstyled.** Its classes
+  (`calendar-settings-card`, `calendar-settings-form`, `share-add-form` and the
+  new-calendar and subscribe forms) have no rules in `bongo.css`, so inputs,
+  selects, colour pickers and buttons render with browser defaults, labels
+  run inline, and the cards have no spacing.
