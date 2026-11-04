@@ -237,3 +237,5 @@ Found by verification (2026-11-04), not fixed in this release:
 - `message.templ` has a Load remote images button with no class.
 - No test exercises the calendar show/hide filter in a browser, or column
   alignment in the week view; both were checked by hand.
+- The event form keeps the older toolbar and heading, not `.page-head`, and its
+  date and time picker icons are dark on dark in the dark theme.
