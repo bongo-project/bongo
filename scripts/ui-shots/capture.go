@@ -59,6 +59,7 @@ func routeSpecs(now time.Time) []routeSpec {
 		{name: "settings", path: "/settings"},
 		{name: "security", path: "/settings/security"},
 		{name: "tags", path: "/settings/tags"},
+		{name: "calendar-settings", path: "/calendar/settings"},
 		{name: "admin-dashboard", path: "/admin"},
 		{name: "admin-users", path: "/admin/users"},
 		{name: "admin-domains", path: "/admin/domains"},

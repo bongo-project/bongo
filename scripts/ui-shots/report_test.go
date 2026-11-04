@@ -163,7 +163,7 @@ func TestCheckOutDir(t *testing.T) {
 
 func TestRoutesCoverRequiredScreens(t *testing.T) {
 	want := []string{"login", "inbox", "message", "compose", "calendar-month", "calendar-week",
-		"calendar-day", "calendar-agenda", "contacts", "junk", "rules", "settings", "security", "tags",
+		"calendar-day", "calendar-agenda", "contacts", "junk", "rules", "settings", "security", "tags", "calendar-settings",
 		"admin-dashboard", "admin-users", "admin-domains"}
 	have := map[string]bool{}
 	for _, r := range routeNames() {

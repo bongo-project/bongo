@@ -49,8 +49,8 @@ func (a *Agent) setMarker(key []byte) error {
 // user, guid and calendar only, never the summary or description, and deletes
 // nothing.
 //
-// Existing users are not given a Tasks calendar here; a new account gets one
-// from EnsureDefault.
+// No Tasks calendar is created here; EnsureDefault back-fills it for any user
+// without one.
 //
 // It writes only when isLeader reports true, checked before anything is read.
 // It reports whether the job is finished (marked). It returns false on a

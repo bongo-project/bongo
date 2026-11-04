@@ -2652,11 +2652,11 @@ function initContactsPage() {
 
 var pendingContactReveal = null;
 
-// Picking a vCard file submits the import form; the submit button stays in
+// Picking a vCard or ICS file submits the import form; the submit button stays in
 // the markup (visually hidden) so the form still works without JS.
 document.addEventListener('change', function(e) {
   var input = e.target;
-  if (!input || !input.matches || !input.matches('.contacts-head input[name="vcf"]')) return;
+  if (!input || !input.matches || !input.matches('.contacts-head input[name="vcf"], .calendar-sidebar-form input[name="ics"]')) return;
   if (!input.files || input.files.length === 0 || !input.form) return;
   if (input.form.requestSubmit) input.form.requestSubmit();
 });

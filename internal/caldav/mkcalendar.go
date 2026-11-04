@@ -38,7 +38,10 @@ var (
 const (
 	maxMkcalendarBody = 64 << 10
 	maxCalendarName   = 255
-	maxCalendarDesc   = 4096
+	// appleDefaultTaskName is the untranslated placeholder Apple Reminders
+	// sends as the display name of its default list.
+	appleDefaultTaskName = "DEFAULT_TASK_CALENDAR_NAME"
+	maxCalendarDesc      = 4096
 )
 
 // calendarSegmentRE is the one rule for a client-chosen calendar ID. The
@@ -134,6 +137,9 @@ func (b *Backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 	name := cleanText(calendar.Name, maxCalendarName)
 	if name == "" {
 		name = seg
+	}
+	if name == appleDefaultTaskName {
+		name = store.TasksCalendarName
 	}
 
 	// A first-ever write must not leave the user with this calendar alone.

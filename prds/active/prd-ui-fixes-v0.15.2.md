@@ -179,8 +179,35 @@ Acceptance criteria:
 
 ### 8.1 Decisions
 
+- Secondary submits on the settings page (share level Save, Send link,
+  Regenerate, publish Save, Save password) use `.btn-secondary`, not primary
+  as US-001 worded it. One primary action per form reads correctly.
+- A failed Tasks back-fill for a user who already has a default calendar is
+  logged and not returned: `EnsureDefault` runs on read paths, which must keep
+  working on a node that cannot write.
+- The mini-calendar month title was white on a white card in the light theme.
+  Fixed under US-002, though not listed in it, as a calendar sidebar defect.
+- `TestEventReschedule` assumed a UTC host and failed on `main` in any other
+  zone. Fixed here: the gate could not pass on the operator's machine.
 - Back-filling the Tasks calendar is exempt from the 5-calendar cap
   (operator rule: at most 5 calendars on every create path a user starts;
   this one is started by the server).
 
 ### 8.2 Candidates for the next release
+
+Found while building v0.15.2 (2026-11-04):
+
+- **"Enable notifications" is unreadable in dark mode:** the prompt's text is
+  dark on a dark card, on every page.
+- Unpublish (now a danger button) has no confirmation step.
+- `TasksHandler.targetCalendar` is still a blind `Create`: a user with an
+  events calendar at GUID `tasks` and no VTODO calendar would have it
+  overwritten by saving a web task. `/tasks` does not call `EnsureDefault`.
+- The sidebar link to `/calendar/settings` sits in `CalendarListPanel`, which
+  renders only when the user has a calendar.
+- The day-view toolbar title and `monthName()` are English only.
+- `.settings-card-pad` is defined twice in `bongo.css`.
+- `make ui-shots` seeds no shares, published calendars or subscriptions, so
+  those states of the settings page are not screenshotted.
+- An older account holding 4 event calendars and no Tasks loses a slot when
+  Tasks is back-filled: its next create answers 507.

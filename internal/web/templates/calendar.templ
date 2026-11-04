@@ -124,8 +124,11 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 			<a href="/calendar/export" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.exportIcs") }</a>
 			<form method="post" action="/calendar/import" enctype="multipart/form-data" class="calendar-sidebar-form">
 				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-				<input type="file" name="ics" accept=".ics" class="calendar-sidebar-file"/>
-				<button type="submit" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.importIcs") }</button>
+				<label class="tool-btn calendar-sidebar-btn">
+					<span>{ t(ctx, "calendar.importIcs") }</span>
+					<input type="file" name="ics" accept=".ics" class="sr-only" aria-label={ t(ctx, "calendar.selectIcs") }/>
+				</label>
+				<button type="submit" class="sr-only">{ t(ctx, "calendar.importIcs") }</button>
 			</form>
 			<a href="/calendar/shares" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.sharesTitle") }</a>
 			<form action="/calendar/search" method="get" class="calendar-sidebar-form">
@@ -482,6 +485,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 	@CalendarHeader("week", weekHeaderDate(ctx, days))
 	<div class="cal-wrap">
 	@CalendarToolbar(weekPath(prevWeekYear(year, week), prevWeekNum(year, week)), weekPath(nextWeekYear(year, week), nextWeekNum(year, week)), todayWeekPath(ctx), t(ctx, "calendar.week") + " " + fmt.Sprint(week) + ", " + fmt.Sprint(year))
+	@CalendarDayHeader(days)
 	<div class="all-day-header">
 		<div class="time-gutter-header"></div>
 		for _, day := range days {
@@ -556,10 +560,35 @@ templ DayViewPage(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 	}
 }
 
+// CalendarDayHeader is the weekday and day-number row above the all-day strip
+// in the week and day views. Its gutter and cells mirror the hour grid so the
+// columns line up.
+templ CalendarDayHeader(days []DayColumn) {
+	<div class="day-header-row">
+		<div class="time-gutter-header"></div>
+		for _, d := range days {
+			<a
+				href={ templ.SafeURL(dayPath(d.Date)) }
+				hx-get={ dayPath(d.Date) }
+				hx-target="#main-content"
+				hx-push-url="true"
+				class={ "day-header-cell", templ.KV("today", d.IsToday) }
+				if d.IsToday {
+					aria-current="date"
+				}
+			>
+				<span class="day-header-weekday">{ t(ctx, weekdayKey(d.Date.Weekday())) }</span>
+				<span class="day-header-num">{ fmt.Sprint(d.Date.Day()) }</span>
+			</a>
+		}
+	</div>
+}
+
 templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, calColors map[string]string) {
 	@CalendarHeader("day", date)
 	<div class="cal-wrap">
 	@CalendarToolbar(prevDayPath(date), nextDayPath(date), todayDayPath(ctx), date.Format("Monday, January 2, 2006"))
+	@CalendarDayHeader([]DayColumn{col})
 	if len(col.AllDay) > 0 {
 		<div class="all-day-header day-view-allday">
 			<div class="time-gutter-header"></div>
@@ -774,10 +803,9 @@ templ CalendarListPanel(calendars []*bongov1.Calendar) {
 						data-calendar={ cal.Guid }
 						x-bind:checked="isShown($el.dataset.calendar)"
 						x-on:change="toggle($el.dataset.calendar, $el.checked)"
-						class="u-width-auto u-m0"
 					/>
 					<span class={ "cal-color-dot", CalendarColourClass(cal.Color) }></span>
-					{ cal.Name }
+					<span class="calendar-list-name">{ cal.Name }</span>
 				</label>
 			</div>
 		}
@@ -792,15 +820,21 @@ templ CalendarListPanel(calendars []*bongov1.Calendar) {
 							data-calendar={ sc.Key }
 							x-bind:checked="isShown($el.dataset.calendar)"
 							x-on:change="toggle($el.dataset.calendar, $el.checked)"
-							class="u-width-auto u-m0"
 						/>
 						<span class={ "cal-color-dot", CalendarColourClass(sc.Colour) }></span>
-						{ sharedCalendarLabel(ctx, sc.Key) }
+						<span class="calendar-list-name">{ sharedCalendarLabel(ctx, sc.Key) }</span>
 					</label>
 				</div>
 			}
 		}
-		<a href="/calendar/settings" class="calendar-settings-link">{ t(ctx, "calendar.settings") }</a>
+		<ul class="nav-list">
+			<li class="nav-item">
+				<a href="/calendar/settings" class="calendar-settings-link">
+					<span class="nav-icon" aria-hidden="true">@Icon("settings", "")</span>
+					<span>{ t(ctx, "calendar.settings") }</span>
+				</a>
+			</li>
+		</ul>
 	</div>
 }
 
@@ -810,105 +844,112 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 			@CalendarSidebar(calendars)
 		</aside>
 		<main class="content" id="main-content">
-			<div class="toolbar">
-				<a href="/calendar" class="tool-btn">&larr; { t(ctx, "calendar.backToCalendar") }</a>
-			</div>
-			<h3>{ t(ctx, "calendar.settings") }</h3>
-			if len(calendars) < store.MaxCalendarsPerUser {
-				@calendarNewForm()
-			}
-			@calendarSubscribeForm()
-			for _, card := range cards {
-				<section class="card calendar-settings-card" id={ "calendar-settings-" + card.Calendar }>
-					<form hx-put={ "/calendar/" + card.Calendar } hx-swap="none" class="calendar-settings-form">
-						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-						<label>
-							{ t(ctx, "calendar.name") }
-							<input type="text" name="name" value={ card.Name } required/>
-						</label>
-						<label>
-							{ t(ctx, "calendar.colour") }
-							<input type="color" name="color" value={ settingsColour(card.Colour) }/>
-						</label>
-						<button type="submit">{ t(ctx, "common.save") }</button>
-					</form>
-					if card.Subscription != nil {
-						@calendarSubscriptionInfo(card)
+			<div class="settings-scroll">
+				<div class="settings-container">
+					<div class="page-head">
+						<h1>{ t(ctx, "calendar.settings") }</h1>
+						<span class="spacer"></span>
+						<a href="/calendar" class="btn-secondary">&larr; { t(ctx, "calendar.backToCalendar") }</a>
+					</div>
+					if len(calendars) < store.MaxCalendarsPerUser {
+						@calendarNewForm()
 					}
-					if card.CanDelete {
-						<button
-							type="button"
-							class="tool-btn calendar-delete-btn"
-							hx-delete={ "/calendar/" + card.Calendar }
-							hx-target="next .calendar-delete-status"
-							hx-swap="innerHTML"
-							hx-confirm={ t(ctx, "calendar.deleteConfirm") }
-						>
-							{ t(ctx, "calendar.delete") }
-						</button>
-						<div class="calendar-delete-status" data-form-status aria-live="polite"></div>
-					}
-					if card.CanShare {
-						<h4>{ t(ctx, "calendar.sharing") }</h4>
-						if len(card.Grants) == 0 {
-							<p class="meta">{ t(ctx, "calendar.sharingNone") }</p>
-						}
-						<ul class="share-list">
-							for _, g := range card.Grants {
-								<li class="share-item">
-									<span class="share-target">{ g.Label }</span>
-									<span class="share-state meta">{ shareStateLabel(ctx, g.State) }</span>
-									if g.Label != g.Grantee {
-										<form hx-post={ "/calendar/" + card.Calendar + "/share" } hx-swap="none" class="share-level-form">
-											<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-											<input type="hidden" name="share_with" value={ g.Label }/>
-											<select name="level" aria-label={ t(ctx, "calendar.shareLevel") }>
-												@levelOption("freebusy", g.Level, t(ctx, "calendar.levelFreebusy"))
-												@levelOption("read", g.Level, t(ctx, "calendar.levelRead"))
-												@levelOption("write", g.Level, t(ctx, "calendar.levelWrite"))
+					@calendarSubscribeForm()
+					for _, card := range cards {
+						<section class="card calendar-settings-card" id={ "calendar-settings-" + card.Calendar }>
+							<div class="settings-card-pad">
+								<form hx-put={ "/calendar/" + card.Calendar } hx-swap="none" class="calendar-settings-form">
+									<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+									<div class="form-group">
+										<label class="form-label" for={ "cal-name-" + card.Calendar }>{ t(ctx, "calendar.name") }</label>
+										<input class="form-input" id={ "cal-name-" + card.Calendar } type="text" name="name" value={ card.Name } required/>
+									</div>
+									<div class="form-group">
+										<label class="form-label" for={ "cal-colour-" + card.Calendar }>{ t(ctx, "calendar.colour") }</label>
+										<input class="form-input" id={ "cal-colour-" + card.Calendar } type="color" name="color" value={ settingsColour(card.Colour) }/>
+									</div>
+									<button type="submit" class="btn-primary">{ t(ctx, "common.save") }</button>
+								</form>
+								if card.Subscription != nil {
+									@calendarSubscriptionInfo(card)
+								}
+								if card.CanDelete {
+									<button
+										type="button"
+										class="btn-danger calendar-delete-btn"
+										hx-delete={ "/calendar/" + card.Calendar }
+										hx-target="next .calendar-delete-status"
+										hx-swap="innerHTML"
+										hx-confirm={ t(ctx, "calendar.deleteConfirm") }
+									>
+										{ t(ctx, "calendar.delete") }
+									</button>
+									<div class="calendar-delete-status" data-form-status aria-live="polite"></div>
+								}
+								if card.CanShare {
+									<h4>{ t(ctx, "calendar.sharing") }</h4>
+									if len(card.Grants) == 0 {
+										<p class="meta">{ t(ctx, "calendar.sharingNone") }</p>
+									}
+									<ul class="share-list">
+										for _, g := range card.Grants {
+											<li class="share-item">
+												<span class="share-target">{ g.Label }</span>
+												<span class="share-state meta">{ shareStateLabel(ctx, g.State) }</span>
+												if g.Label != g.Grantee {
+													<form hx-post={ "/calendar/" + card.Calendar + "/share" } hx-swap="none" class="share-level-form">
+														<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+														<input type="hidden" name="share_with" value={ g.Label }/>
+														<select class="form-input" name="level" aria-label={ t(ctx, "calendar.shareLevel") }>
+															@levelOption("freebusy", g.Level, t(ctx, "calendar.levelFreebusy"))
+															@levelOption("read", g.Level, t(ctx, "calendar.levelRead"))
+															@levelOption("write", g.Level, t(ctx, "calendar.levelWrite"))
+														</select>
+														<button type="submit" class="btn-secondary">{ t(ctx, "common.save") }</button>
+													</form>
+												}
+												<form hx-post={ "/calendar/" + card.Calendar + "/unshare" } hx-swap="none" class="share-remove-form">
+													<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+													<input type="hidden" name="share_with" value={ g.Grantee }/>
+													<button type="submit" class="btn-secondary">{ t(ctx, "calendar.shareRemove") }</button>
+												</form>
+											</li>
+										}
+									</ul>
+									<form hx-post={ "/calendar/" + card.Calendar + "/share" } hx-swap="none" class="share-add-form">
+										<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+										<div class="form-group">
+											<label class="form-label" for={ "share-addr-" + card.Calendar }>{ t(ctx, "calendar.shareAddress") }</label>
+											<input class="form-input" id={ "share-addr-" + card.Calendar } type="email" name="share_with" required autocomplete="off"/>
+										</div>
+										<div class="form-group">
+											<label class="form-label" for={ "share-level-" + card.Calendar }>{ t(ctx, "calendar.shareLevel") }</label>
+											<select class="form-input" id={ "share-level-" + card.Calendar } name="level">
+												@levelOption("freebusy", "freebusy", t(ctx, "calendar.levelFreebusy"))
+												@levelOption("read", "freebusy", t(ctx, "calendar.levelRead"))
+												@levelOption("write", "freebusy", t(ctx, "calendar.levelWrite"))
 											</select>
-											<button type="submit" class="tool-btn">{ t(ctx, "common.save") }</button>
+										</div>
+										<button type="submit" class="btn-primary">{ t(ctx, "calendar.shareAdd") }</button>
+									</form>
+									if card.Publish.Published {
+										<form hx-post={ "/calendar/" + card.Calendar + "/publish/send" } hx-target="find .share-link-status" hx-swap="innerHTML" class="share-link-form">
+											<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+											<div class="form-group">
+												<label class="form-label" for={ "send-addr-" + card.Calendar }>{ t(ctx, "calendar.shareAddress") }</label>
+												<input class="form-input" id={ "send-addr-" + card.Calendar } type="email" name="send_to" required autocomplete="off"/>
+											</div>
+											<button type="submit" class="btn-secondary">{ t(ctx, "calendar.publicLinkSend") }</button>
+											<div class="share-link-status" data-form-status aria-live="polite"></div>
 										</form>
 									}
-									<form hx-post={ "/calendar/" + card.Calendar + "/unshare" } hx-swap="none" class="share-remove-form">
-										<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-										<input type="hidden" name="share_with" value={ g.Grantee }/>
-										<button type="submit" class="tool-btn">{ t(ctx, "calendar.shareRemove") }</button>
-									</form>
-								</li>
-							}
-						</ul>
-						<form hx-post={ "/calendar/" + card.Calendar + "/share" } hx-swap="none" class="share-add-form">
-							<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-							<label>
-								{ t(ctx, "calendar.shareAddress") }
-								<input type="email" name="share_with" required autocomplete="off"/>
-							</label>
-							<label>
-								{ t(ctx, "calendar.shareLevel") }
-								<select name="level">
-									@levelOption("freebusy", "freebusy", t(ctx, "calendar.levelFreebusy"))
-									@levelOption("read", "freebusy", t(ctx, "calendar.levelRead"))
-									@levelOption("write", "freebusy", t(ctx, "calendar.levelWrite"))
-								</select>
-							</label>
-							<button type="submit">{ t(ctx, "calendar.shareAdd") }</button>
-						</form>
-						if card.Publish.Published {
-							<form hx-post={ "/calendar/" + card.Calendar + "/publish/send" } hx-target="find .share-link-status" hx-swap="innerHTML" class="share-link-form">
-								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-								<label>
-									{ t(ctx, "calendar.shareAddress") }
-									<input type="email" name="send_to" required autocomplete="off"/>
-								</label>
-								<button type="submit" class="tool-btn">{ t(ctx, "calendar.publicLinkSend") }</button>
-								<div class="share-link-status" data-form-status aria-live="polite"></div>
-							</form>
-						}
+								}
+								@CalendarPublishSection(card.Publish)
+							</div>
+						</section>
 					}
-					@CalendarPublishSection(card.Publish)
-				</section>
-			}
+				</div>
+			</div>
 		</main>
 	}
 }
@@ -917,27 +958,28 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 // the user owns store.MaxCalendarsPerUser calendars.
 templ calendarNewForm() {
 	<section class="card calendar-new-card" id="calendar-new">
-		<h4>{ t(ctx, "calendar.newTitle") }</h4>
-		<form hx-post="/calendar" hx-target="find .calendar-new-status" hx-swap="innerHTML" class="calendar-new-form">
-			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
-			<label>
-				{ t(ctx, "calendar.name") }
-				<input type="text" name="name" maxlength="255" required/>
-			</label>
-			<label>
-				{ t(ctx, "calendar.colour") }
-				<input type="color" name="color" value="#4A90D9"/>
-			</label>
-			<label>
-				<input type="checkbox" name="holds_tasks" value="1"/>
-				{ t(ctx, "calendar.holdsTasks") }
-			</label>
-			<button type="submit">{ t(ctx, "calendar.newAdd") }</button>
-			<div class="calendar-new-status" data-form-status aria-live="polite"></div>
-		</form>
+		<div class="settings-card-pad">
+			<h4>{ t(ctx, "calendar.newTitle") }</h4>
+			<form hx-post="/calendar" hx-target="find .calendar-new-status" hx-swap="innerHTML" class="calendar-new-form">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				<div class="form-group">
+					<label class="form-label" for="cal-new-name">{ t(ctx, "calendar.name") }</label>
+					<input class="form-input" id="cal-new-name" type="text" name="name" maxlength="255" required/>
+				</div>
+				<div class="form-group">
+					<label class="form-label" for="cal-new-colour">{ t(ctx, "calendar.colour") }</label>
+					<input class="form-input" id="cal-new-colour" type="color" name="color" value="#4A90D9"/>
+				</div>
+				<label class="form-check">
+					<input type="checkbox" name="holds_tasks" value="1"/>
+					{ t(ctx, "calendar.holdsTasks") }
+				</label>
+				<button type="submit" class="btn-primary">{ t(ctx, "calendar.newAdd") }</button>
+				<div class="calendar-new-status" data-form-status aria-live="polite"></div>
+			</form>
+		</div>
 	</section>
 }
-
 templ levelOption(level, current, label string) {
 	<option value={ level } if level == current { selected }>{ label }</option>
 }
@@ -1230,6 +1272,14 @@ func nextWeekNum(year, week int) int {
 		return 1
 	}
 	return week + 1
+}
+
+func dayPath(d time.Time) string {
+	return fmt.Sprintf("/calendar/day/%d/%d/%d", d.Year(), int(d.Month()), d.Day())
+}
+
+func weekdayKey(w time.Weekday) string {
+	return [...]string{"calendar.sun", "calendar.mon", "calendar.tue", "calendar.wed", "calendar.thu", "calendar.fri", "calendar.sat"}[w]
 }
 
 func prevDayPath(date time.Time) string {

@@ -201,9 +201,9 @@ PRD: [active/prd-ui-fixes-v0.15.2.md](active/prd-ui-fixes-v0.15.2.md)
 
 | ID | Task | Source | Status | Notes |
 |----|------|--------|--------|-------|
-| 34.1 | US-001: Calendar settings page is styled (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
-| 34.2 | US-002: Calendar sidebar is styled (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
-| 34.3 | US-003: Week and day views show the day (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
-| 34.4 | US-004: Admin header wordmark and footer (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
-| 34.5 | US-005: Every account has a Tasks list (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
-| 34.6 | US-006: The dev seed creates tasks (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | TODO | |
+| 34.1 | US-001: Calendar settings page is styled (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | `.page-head`, padded cards with the two-column grid, shared inputs and buttons across the settings, new, subscribe, share and publish forms; test that every class on the page has a CSS rule. Secondary submits use `.btn-secondary` (see 8.1). Checked in ui-shots: light, dark, 390 px. |
+| 34.2 | US-002: Calendar sidebar is styled (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | Accent checkboxes, sized colour dots, nav-style settings link, Import as one button that submits on choosing a file; dead `.cal-list*` rules removed. Also the mini-calendar title, unreadable in the light theme. |
+| 34.3 | US-003: Week and day views show the day (Phase A) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | `CalendarDayHeader` in week and day views: localised weekday, day number, today highlighted, link to the day. Test asserts each weekday beside its date (swap mutant red). |
+| 34.4 | US-004: Admin header wordmark and footer (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | Wordmark readable on the admin topbar; footer, sidebar footer and back link restyled. Checked in ui-shots. |
+| 34.5 | US-005: Every account has a Tasks list (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | `EnsureDefault` back-fills Tasks for any user with no VTODO calendar (subscriptions excluded), outside the cap; failure is best effort for a user with a default. MKCALENDAR stores the placeholder as "Tasks". Six mutants plus the failure-path mutant red. Worker session died; finished and reviewed by hand. |
+| 34.6 | US-006: The dev seed creates tasks (Phase B) | [prd-ui-fixes-v0.15.2.md](prds/active/prd-ui-fixes-v0.15.2.md) | DONE (2026-11-04) | `make seed` creates five tasks per user through POST /tasks, one completed. |
