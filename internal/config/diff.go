@@ -80,7 +80,7 @@ var noopKeys = []string{
 // RESTART keys. storage.blob_gc is restart permanently (operator decision).
 // pipeline.quarantine_retention, pipeline.error_retention and
 // storage.pebble.cache_size are being wired at startup, so they are restart
-// even though docs/config-reload.md sections 4.1 and 4.2 still say NO-OP.
+// even though docs/design/config-reload.md sections 4.1 and 4.2 still say NO-OP.
 var restartKeys = []string{
 	"server.role", "server.name", "server.trusted_proxies", "server.bind_addr", "server.advertise_addr", "server.control_addr", "server.agents",
 	"cluster.bind_addr", "cluster.join", "cluster.raft.port", "cluster.raft.snapshot_threshold",

@@ -19,7 +19,7 @@ import (
 )
 
 // Reloader re-reads the config file and applies the keys a running server can
-// take without a restart (see docs/config-reload.md). It never mutates the
+// take without a restart (see docs/config-reload.md; design in docs/design/config-reload.md). It never mutates the
 // running *config.Config: it keeps its own baseline, prepares every new value
 // before publishing any, and publishes through the holders the consumers
 // already read (LevelVar, trusted networks, SpamThresholdHolder, ClamAV
