@@ -621,3 +621,33 @@ Other candidates:
 - A full mailing-list server (the rest of B10).
 - Per-user `\Seen` on shared folders.
 - Version-aware rolling upgrades, before any multi-node deployment.
+
+Found after v0.15.1 (2026-11-04), from the website screenshots and production use:
+
+- **Apple Reminders creates a list named `DEFAULT_TASK_CALENDAR_NAME`.** An
+  account created before new users got the Tasks calendar has no VTODO
+  collection. `EnsureDefault` creates Tasks only for a user with no calendars,
+  and the web `/tasks` fallback only when a task is saved. Since v0.15.1
+  supports MKCALENDAR, Reminders creates its own default list and sends its
+  untranslated placeholder as the display name (a known Apple behaviour on
+  CalDAV servers). Candidate fix: give every user without a VTODO calendar the
+  Tasks calendar (on login or first CalDAV discovery), and have MKCALENDAR
+  store the display name `DEFAULT_TASK_CALENDAR_NAME` as "Tasks". Workaround
+  today: rename the list in Reminders or in the web calendar settings.
+- **Calendar sidebar is largely unstyled:** the calendar list shows bare
+  checkboxes, "Calendar settings" is loose text, and the import control is the
+  browser's raw "Choose File" input.
+- **Week view day-header row is empty.**
+- **Admin "Bongo mail" wordmark is invisible on the dark header**, and the
+  admin footer is unstyled.
+- **The dev seed creates no tasks**, so screenshots and manual checks of
+  `/tasks` start empty.
+- **Sidebar order is fixed.** The mail sidebar order is set in
+  `components.templ`; nothing is sortable. Candidate: let a user reorder the
+  sidebar, or at least move the header views (To me, From my contacts,
+  Mailing lists) above the folders, stored in the user's preferences.
+- **Calendar settings page (`/calendar/settings`) is unstyled.** Its classes
+  (`calendar-settings-card`, `calendar-settings-form`, `share-add-form` and the
+  new-calendar and subscribe forms) have no rules in `bongo.css`, so inputs,
+  selects, colour pickers and buttons render with browser defaults, labels
+  run inline, and the cards have no spacing.
