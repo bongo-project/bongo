@@ -1703,3 +1703,23 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 - v0.15.1 tagged at dacb283 after green main CI; release binaries and image published (manifest list sha256:669cdad9...); deploy handoff sent to InfraWork.
 - Phases 32 (26 tasks) and 33 (8 tasks) archived; the v0.15.1 PRD moved to prds/done/.
 - Next: bongo-project.org refresh (separate repo, branch site-refresh-2026, local preview before any push); the operator's client checks after the v0.15.1 deploy.
+
+## 2026-11-04: Phase 34 (v0.15.2) paused mid-workflow
+
+Workflow run wf_8ba74fa9-b26 was implementing Phase 34 when the session had to
+close. Nothing is merged. Uncommitted work sits in these worktrees (export each
+with `git -C $W add -A; git -C $W diff --cached --binary HEAD`, then
+`git apply --3way --index` on branch norman/phase-34-ui-fixes):
+
+| Task | Worktree | State at pause |
+|------|----------|----------------|
+| 34.1 settings page | .claude/worktrees/wf_8ba74fa9-b26-12 | implemented, advisor review running |
+| 34.2 sidebar | .claude/worktrees/wf_8ba74fa9-b26-9 | DONE, review MINOR |
+| 34.3 day header | .claude/worktrees/wf_8ba74fa9-b26-10 | DONE, review MINOR |
+| 34.4 admin wordmark | .claude/worktrees/wf_8ba74fa9-b26-8 | DONE, review MINOR |
+| 34.5 Tasks back-fill | .claude/worktrees/wf_8ba74fa9-b26-11 | worker still running; treat as unfinished, re-review before use |
+| 34.6 seed tasks | .claude/worktrees/wf_8ba74fa9-b26-7 | DONE, review MINOR |
+
+34.1, 34.2, 34.3 and 34.4 all edit bongo.css (and 34.1-34.3 calendar.templ):
+apply one at a time, resolve conflicts, then `make generate`. Then run the full
+gate (make test-all, lint, gosec), open the PR, verify, and ask before tagging.
