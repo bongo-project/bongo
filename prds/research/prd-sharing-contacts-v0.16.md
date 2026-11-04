@@ -642,3 +642,7 @@ Found after v0.15.1 (2026-11-04), from the website screenshots and production us
   admin footer is unstyled.
 - **The dev seed creates no tasks**, so screenshots and manual checks of
   `/tasks` start empty.
+- **Sidebar order is fixed.** The mail sidebar order is set in
+  `components.templ`; nothing is sortable. Candidate: let a user reorder the
+  sidebar, or at least move the header views (To me, From my contacts,
+  Mailing lists) above the folders, stored in the user's preferences.
