@@ -90,7 +90,7 @@ The invariant sweep then ran against `eefd2e9`. Five read-only agents enumerated
 
 **Date:** 2026-11-03
 **Commit verified:** `ba7a047` (main after Phase 32)
-**PRD:** [active/prd-calendar-fixes-v0.15.1.md](active/prd-calendar-fixes-v0.15.1.md)
+**PRD:** [done/prd-calendar-fixes-v0.15.1.md](done/prd-calendar-fixes-v0.15.1.md)
 **Rigor:** adversarial. Two read-only verifiers per story (implementation and edge cases; whether the tests would go red), then a completeness critic.
 **Scale:** 53 agents, 811 tool calls, 8 minutes.
 

@@ -1698,3 +1698,8 @@ PATTERN: [testing] Do not search a message for a short substring when it carries
 - Gate green: make test-all, make lint, gosec.
 - PATTERN: workflow - a docs-only task cannot satisfy the tests-first evidence rule; review its diff by hand rather than re-running it.
 - PATTERN: caldav - an ETag computed from a synthesised object must not include anything stamped with time.Now (DTSTAMP); stamp with the record's modification time.
+
+## 2026-11-04: v0.15.1 released; Phases 32 and 33 closed
+- v0.15.1 tagged at dacb283 after green main CI; release binaries and image published (manifest list sha256:669cdad9...); deploy handoff sent to InfraWork.
+- Phases 32 (26 tasks) and 33 (8 tasks) archived; the v0.15.1 PRD moved to prds/done/.
+- Next: bongo-project.org refresh (separate repo, branch site-refresh-2026, local preview before any push); the operator's client checks after the v0.15.1 deploy.
