@@ -221,6 +221,16 @@ the one response allowed by FR-2. It is never stored, cached or logged.
 **FR-14** A QR link is a bearer credential until it is used. It is single use,
 expires after 5 minutes, and is stored only as a hash.
 
+**FR-15** The change-password form offers "Also revoke my app passwords", ticked
+by default. If the password changes but a revoke fails, the user is told, not
+shown plain success.
+
+**FR-16** Creating an app password, by any route, requires the account password
+through the existing re-authentication check.
+
+**FR-17** A user holds at most 10 app passwords. Create refuses the 11th with a
+message to revoke one first. Every create route goes through this check.
+
 ## 5. Non-Goals
 
 - OAuth, XOAUTH2 or any token-based scheme in this PRD. Section 8.2 records why
@@ -330,12 +340,17 @@ sessions are not cookie-based.
 8. (planning, 2026-11-05) bcrypt cost on the protocol path: each app password
    carries a short public lookup ID, so an attempt compares one hash. There is no
    cache, so revocation needs no invalidation.
-9. (planning, 2026-11-05, not yet confirmed by the operator) A session the
+9. (operator, 2026-11-05) A session the
    require_2fa policy is holding for enrolment cannot create an app password.
    Require2FA exempts everything under /settings/security, so without this a
    password-only session could mint a credential that outlasts enrolment. Listing
    and revoking stay available. Decision 6 still applies when no policy holds the
    session.
+10. (operator, 2026-11-05) Changing the account password offers "Also revoke my
+    app passwords", ticked by default (FR-15).
+11. (operator, 2026-11-05) Creating an app password asks for the account password
+    again, through the existing re-authentication check (FR-16).
+12. (operator, 2026-11-05) At most 10 app passwords per user (FR-17).
 
 ### 8.2 Candidates for a later release
 
@@ -360,9 +375,6 @@ stay needed for every other client either way.
 
 Found while building the credential record and protocol login (2026-11-05):
 
-- Changing the account password does not revoke app passwords, so a reset after
-  a compromise leaves them working. Needs a decision before v0.15.3 is signed off.
-- There is no cap on app passwords per user. Decide with the settings UI.
 - Open IMAP and POP3 sessions survive a revocation; the next login fails.
 - On a follower, last_used_at and the first-use log line are never written,
   because the touch is not forwarded to the leader. One-node production is not
@@ -374,10 +386,6 @@ Found while building the credential record and protocol login (2026-11-05):
 
 Found while building the settings UI and admin revoke (2026-11-05):
 
-- Creating an app password needs no re-authentication, so a hijacked web session
-  can mint one that outlives logout, a password change and the end of the
-  session. Decide together with the password change question above. Nothing
-  throttles create either; a cap would limit it.
 - The 2FA recovery codes page has the exposure the create response had: htmx can
   write it to localStorage history. Add `hx-history="false"` there.
 - `AdminHandler.hxRedirect` on delete-user sets HX-Redirect on a 303, which htmx
@@ -385,5 +393,6 @@ Found while building the settings UI and admin revoke (2026-11-05):
 - Labels accept bidi format characters. They show only to the owner and in logs.
 - After a create, the address bar shows a POST-only URL, so reloading by address
   gives a 405. This follows from showing the password in the POST response.
-- The deslop duplicate check did not run for this batch or for the 36.1 and 36.2
-  work if its worker hit the same error: the deslop LSP is not running.
+- A deslop CLI scan of the phase's Go changes found one true new copy, now the
+  shared `redirectAfterAction`. The other production groups are existing store
+  and route patterns. 34 new test-only groups were not reviewed.

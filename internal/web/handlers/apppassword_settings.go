@@ -123,11 +123,17 @@ func (h *SecurityHandler) RevokeAppPassword(w http.ResponseWriter, r *http.Reque
 		http.Error(w, i18n.T(locale, "security.appPasswordRevokeFailed"), http.StatusInternalServerError)
 		return
 	}
-	target := withFlash(securityPath, flashAppPasswordRevoked)
+	redirectAfterAction(w, r, withFlash(securityPath, flashAppPasswordRevoked))
+}
+
+// redirectAfterAction sends a browser on to target. htmx needs a 200 with
+// HX-Redirect: on a 303 the XHR follows the redirect and the header is never
+// seen. target must be a fixed same-origin path.
+func redirectAfterAction(w http.ResponseWriter, r *http.Request, target string) {
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", target)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther) // #nosec G710 -- callers pass fixed same-origin paths
 }

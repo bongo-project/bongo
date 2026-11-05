@@ -630,13 +630,7 @@ func (h *AdminHandler) RevokeAllAppPasswords(w http.ResponseWriter, r *http.Requ
 	}
 	h.logger.Info("admin: app passwords revoked", "admin_id", adminID, "user_id", userID, "count", n)
 
-	target := withFlash("/admin/users/"+url.PathEscape(userID), flashAppPasswordsRevokedAll)
-	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", target)
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	http.Redirect(w, r, target, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+	redirectAfterAction(w, r, withFlash("/admin/users/"+url.PathEscape(userID), flashAppPasswordsRevokedAll))
 }
 
 // countAdmins returns the number of users whose profile has the admin flag set.
