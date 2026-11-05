@@ -96,6 +96,71 @@ that I can tell a live device from a forgotten one.
 - [ ] Last-used is coarse (date, not timestamp) so the list is not a precise
       activity log of the user's devices.
 
+### US-006: Add an Apple device with one profile
+**Description:** As a user of an iPhone, iPad or Mac, I want to set up Mail,
+Calendar, Contacts and Reminders in one step so that I never see or type a
+password.
+
+**Acceptance Criteria:**
+- [ ] Add a device, with Apple chosen and a label given, creates an app password
+      and returns a `.mobileconfig` holding the mail, CalDAV and CardDAV accounts
+      of the signed-in user, with that app password in each.
+- [ ] The response is sent with `Cache-Control: no-store`. The profile is built
+      in the response and is not stored; a second download is not possible.
+- [ ] The public `/.well-known/mobileconfig` is unchanged and contains no
+      password.
+- [ ] Manual check on an iPhone and a Mac: after installing the profile, Mail,
+      Calendar, Contacts and Reminders all connect with no password prompt.
+- [ ] The new device appears in the list from US-005 under its label, and
+      revoking it stops all of those accounts.
+
+### US-007: Hand a profile to a phone by QR code
+**Description:** As a user at a desktop browser, I want to scan a code with my
+phone so that I do not have to sign in to the web UI on the phone.
+
+**Acceptance Criteria:**
+- [ ] Add a device shows a QR code holding a one-time link. The link holds a
+      random token, never the app password.
+- [ ] Opening the link creates the app password and returns the profile from
+      US-006. The phone needs no session.
+- [ ] A second fetch of the link, a fetch after 5 minutes, and a fetch of an
+      unknown token all return the same response, and create nothing.
+- [ ] Only a hash of the token is stored, through Raft, so a link works once
+      across all nodes. The token is not written to any log, including request
+      logs.
+- [ ] The page shows a warning that anyone who scans the code first gets the
+      credential. It updates to show when the link has been used.
+- [ ] Fetches of the link are throttled per IP like a failed login.
+
+### US-008: Add any other client
+**Description:** As a user of Thunderbird, Outlook or another client, I want the
+password and the server settings together so that setup is one paste.
+
+**Acceptance Criteria:**
+- [ ] Add a device, with Other chosen, shows the app password once, with the
+      user name, IMAP, SMTP, CalDAV and CardDAV settings beside it.
+- [ ] The settings come from the same values as the autoconfig handlers, and a
+      test asserts they match.
+- [ ] Each value has a copy button.
+
+### US-009: Require app passwords for an account
+**Description:** As a user with 2FA, I want a per-account switch that stops my
+account password working in mail clients, turned on at a point when my clients
+will not break.
+
+**Acceptance Criteria:**
+- [ ] With the switch on, the account password fails on IMAP, POP3, SMTP
+      submission, CalDAV and CardDAV, and an app password succeeds.
+- [ ] With the switch off, both succeed.
+- [ ] 2FA enrolment after this release goes on to Add a device, and turns the
+      switch on when the user finishes that step.
+- [ ] An account that had 2FA before this release keeps the switch off, and
+      Security settings shows a notice offering to turn it on. Nothing changes
+      on upgrade.
+- [ ] Turning the switch off requires the same re-authentication as a 2FA change.
+- [ ] The switch cannot be turned on by an app password, and is not offered to an
+      account without 2FA.
+
 ## 4. Functional Requirements
 
 **FR-1** App passwords are generated from `crypto/rand`, at least 20 characters
@@ -116,9 +181,9 @@ accepts either the account password or a valid app password, subject to FR-7.
 password. An app password must fail there exactly as a wrong password does,
 including timing.
 
-**FR-7** When a user has 2FA enabled, the account password alone MUST NOT
-authenticate a protocol client. This is the requirement that makes the feature
-worth building; see Open Question 1 for the migration concern.
+**FR-7** When an account has the switch from US-009 on, the account password
+MUST NOT authenticate a protocol client. This is the requirement that makes the
+feature worth building. See decision 1 in section 8.1.
 
 **FR-8** A failed app-password attempt is subject to the same per-IP throttling
 as a failed account-password attempt, and must not be a cheaper oracle for
@@ -133,9 +198,20 @@ credential id. The plaintext and the hash are never logged.
 **FR-11** Deleting a user removes their app passwords with the rest of their
 data.
 
+**FR-12** Add a device is the main way to create an app password. It offers
+Apple (US-006, US-007) and Other (US-008). The plain create form from US-001 is
+the same path as Other.
+
+**FR-13** A personal profile holds the plaintext app password, so it counts as
+the one response allowed by FR-2. It is never stored, cached or logged.
+
+**FR-14** A QR link is a bearer credential until it is used. It is single use,
+expires after 5 minutes, and is stored only as a hash.
+
 ## 5. Non-Goals
 
-- OAuth, XOAUTH2 or any token-based scheme.
+- OAuth, XOAUTH2 or any token-based scheme in this PRD. Section 8.2 records why
+  and what would change that.
 - Per-protocol scoping (a credential valid for IMAP but not CalDAV). See Open
   Question 4.
 - Admin-issued credentials on a user's behalf.
@@ -186,7 +262,10 @@ sessions are not cookie-based.
 
 - A user with 2FA enabled can complete first-time setup of a mail client and a
   CalDAV client using only app passwords.
-- The account password fails on every protocol endpoint for a 2FA-enabled user.
+- The account password fails on every protocol endpoint for an account with the
+  switch on.
+- An iPhone is set up for mail, calendars, contacts and reminders by scanning one
+  QR code and installing one profile, with no password typed.
 - An app password fails at `/login` and at the re-authentication prompt.
 - Median IMAP LOGIN latency does not regress measurably against the current
   account-password path.
@@ -194,12 +273,7 @@ sessions are not cookie-based.
 
 ## 8. Open Questions
 
-1. **Does FR-7 apply immediately or behind a setting?** Enforcing it on upgrade
-   breaks every configured client belonging to a 2FA user the moment they
-   deploy — including, on this deployment, the operator's own. A per-user opt-in
-   ("require app passwords for mail clients"), defaulting off and prompted at
-   2FA enrolment, avoids a silent breakage but leaves the gap open for anyone
-   who does not opt in.
+1. Resolved: see decision 1 in section 8.1.
 
 2. **Should users without 2FA also be able to create app passwords?**
    Recommended yes: they are useful for anyone who does not want their real
@@ -216,3 +290,39 @@ sessions are not cookie-based.
 5. **What is the display format?** Google uses 16 lowercase letters in four
    groups. Something similar is easy to transcribe and hard to typo; worth
    confirming before it appears in the UI.
+
+6. **Should the personal profile be signed?** Unsigned, Apple shows "Not
+   verified" on install. It still installs. Signing with the server's TLS
+   certificate may remove the warning; this has not been tested. Test it before
+   US-006 is planned.
+
+### 8.1 Decisions
+
+1. (operator, 2026-11-05) FR-7 is a per-account switch, not enforced on upgrade.
+   It turns on at the end of 2FA enrolment, after the user has added their
+   devices. Accounts with 2FA from before this release turn it on themselves
+   (US-009).
+2. (operator, 2026-11-05) Setup goes through Add a device: a personal Apple
+   profile, a QR code to hand it to a phone, and password with settings for other
+   clients (US-006 to US-008).
+
+### 8.2 Candidates for a later release
+
+OAuth for mail clients, checked 2026-11-05:
+
+- Thunderbird 155 and 156 (September 2026) added custom OAuth configuration for
+  IMAP, POP3 and SMTP, per release coverage not yet checked against Mozilla's
+  notes. It is configured per client: no evidence was found of dynamic client
+  registration, so a user cannot simply point it at a self-hosted server.
+  Mozilla bug 1602166 asks for that.
+- `draft-ietf-mailmaint-oauth-public`, the spec for this, expired on 12 February
+  2026 in the revision found.
+- Apple documents OAuth configuration for Exchange accounts only. No Apple
+  documentation for OAuth on a custom IMAP server was found.
+- No evidence was found of OAuth for CalDAV or CardDAV in Apple clients,
+  Thunderbird or DAVx5 on a custom server.
+
+Bongo would need an OAuth authorisation server, XOAUTH2 or OAUTHBEARER in SMTP
+and IMAP, and a client that can use them. Revisit when Apple supports OAuth on a
+custom server, or when Thunderbird can register itself with one. App passwords
+stay needed for every other client either way.
