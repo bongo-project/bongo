@@ -186,6 +186,7 @@ with fixes and repeat runs.
 |---|---|---|
 | Seed | Hours to 1 day | Load the data set |
 | Ramp, mail only | 2 to 4 hours | Find the message rate limit |
+| Ramp, scanning off | 2 to 4 hours | Show how much of the limit is scanning work that remote agents could take (section 6.5) |
 | Ramp, mixed traffic | 2 to 4 hours | Find the limit with clients connected |
 | Connection test | 2 hours | Find the limit on open IMAP connections |
 | Soak | 24 to 72 hours | Run at 70 to 80% of the limit |
@@ -211,8 +212,7 @@ From reading the code. None is measured.
 
 ### 6.3 Traffic model
 
-A worked example, to be replaced by the agreed target (Open Question 2):
-100,000 users receiving 50 messages a day is 5 million a day, or about 58 a second
+The target is 100,000 users (decision 2). 100,000 users receiving 50 messages a day is 5 million a day, or about 58 a second
 on average. With a peak of 3 to 5 times the average, about 200 to 300 a second.
 
 ### 6.4 Safety
@@ -220,6 +220,16 @@ on average. With a peak of 3 to 5 times the average, about 200 to 300 a second.
 The machines run only test data, on throwaway domains. No DNS record points real
 mail at them. Live DNSBL lookups are off, so third-party services are not flooded.
 Machines are removed after the run.
+
+### 6.5 Remote agents
+
+The `agent` role is meant to run SMTP, antispam and antivirus work on other
+machines. It is incomplete (`prds/research/prd-remote-agents.md`). Agents would
+move scanning and parsing off the server, but each delivered message would still
+be written through the Raft leader. If the limit is CPU spent on scanning, agents
+raise it. If the limit is disk sync on the leader, they do not. The ramp with
+scanning off separates the two: a large rise in the limit points to agents being
+worthwhile.
 
 ## 7. Success Metrics
 
@@ -232,8 +242,7 @@ Machines are removed after the run.
 
 1. **What is the budget?** It sets machine size, disk type and soak length. A
    24 hour soak is the minimum useful run.
-2. **What is the target?** For example 100,000 or 1,000,000 users. It sets the
-   data set size, and the seed time.
+2. Resolved: see decision 2 in section 8.1.
 3. **What happens if one node is not enough?** Going past one machine needs users
    split across separate clusters, with a routing layer in front. The operator
    raised bringing back an NMAP-style protocol between front ends and stores. It
@@ -245,5 +254,6 @@ Machines are removed after the run.
 ### 8.1 Decisions
 
 1. (operator, 2026-11-05) Scoped after v0.17.0.
+2. (operator, 2026-11-05) The first target is 100,000 users.
 
 ### 8.2 Candidates for the next release
