@@ -201,15 +201,15 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 
 ## Phase 36: App passwords v0.15.3
 
-PRD: [backlog/prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md)
+PRD: [active/prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md)
 
 | ID | Task | Source | Status | Notes |
 |----|------|--------|--------|-------|
-| 36.1 | Credential record: FR-1 to FR-4, FR-9, FR-11; lookup ID (decision 8) | [prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md) | TODO | Needs: none |
-| 36.2 | US-002, US-003: protocol login path; web login and re-authentication refuse app passwords; audit every call site | [prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.1 |
-| 36.3 | US-001, US-004, US-005: create, revoke and last used in Security settings | [prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.2 |
-| 36.4 | US-008: Add a device, Other clients, with server settings | [prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.3 |
-| 36.5 | US-006: personal Apple profile; test signing first (open question 6) | [prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.4 |
-| 36.6 | US-007: one-time QR link | [prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.5 |
-| 36.7 | US-009: per-account switch and the 2FA enrolment flow | [prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.2, 36.4 |
-| 36.8 | US-010: admin revokes all of a user's app passwords | [prd-app-passwords-v0.15.3.md](backlog/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.3 |
+| 36.1 | Credential record: FR-1 to FR-4, FR-9, FR-11; lookup ID (decision 8) | [prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md) | ACTIVE | Needs: none |
+| 36.2 | US-002, US-003: protocol login path; web login and re-authentication refuse app passwords; audit every call site | [prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md) | ACTIVE | Needs: 36.1 |
+| 36.3 | US-001, US-004, US-005: create, revoke and last used in Security settings | [prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.2 |
+| 36.4 | US-008: Add a device, Other clients, with server settings | [prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.3 |
+| 36.5 | US-006: personal Apple profile; test signing first (open question 6) | [prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.4 |
+| 36.6 | US-007: one-time QR link | [prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.5 |
+| 36.7 | US-009: per-account switch and the 2FA enrolment flow | [prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.2, 36.4 |
+| 36.8 | US-010: admin revokes all of a user's app passwords | [prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md) | TODO | Needs: 36.3 |
