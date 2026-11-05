@@ -506,7 +506,7 @@ func TestIdleDeliveredExistsIsNotRepeatedByPoll(t *testing.T) {
 	}
 }
 
-func (a stubAuthenticator) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+func (a stubAuthenticator) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error) {
 	id, err := a.Authenticate(username, password)
 	if err != nil {
 		return "", nil, err

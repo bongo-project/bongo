@@ -36,7 +36,7 @@ type popMsg struct {
 // authenticator is what POP3 needs of the auth backend: credentials checked
 // with the profile they were checked against, and the live account state.
 type authenticator interface {
-	AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error)
+	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error)
 	AccountState(userID string) (auth.AccountState, error)
 }
 
@@ -320,7 +320,7 @@ func (s *session) handlePass(args string) {
 		return
 	}
 
-	userID, profile, err := s.auth.AuthenticateProfile(s.username, args)
+	userID, profile, err := s.auth.AuthenticateProtocol(s.username, args)
 	if err != nil {
 		s.logger.Warn("pop3: auth failed", "username", s.username, "ip", ip)
 		if s.authLimiter != nil {

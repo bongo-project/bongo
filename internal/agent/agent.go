@@ -104,24 +104,25 @@ type Agent struct {
 	// reloader is set by EnableReload; nil means reload is not configured.
 	reloader *Reloader
 
-	Store       *store.PebbleStore
-	Blobs       *store.BlobStore
-	Metadata    *store.MetadataManager
-	Search      *store.SearchManager
-	Auth        *auth.LocalAuth
-	Raft        *cluster.RaftNode
-	Gossip      *cluster.GossipNode
-	SMTP        *bongosmtp.Server
-	IMAP        *bongoimap.Server
-	POP3        *bongopop3.Server
-	Notifier    *bongoimap.Notifier
-	Mailboxes   *store.MailboxStore
-	Preferences *store.PreferenceStore
-	Threads     *store.ThreadStore
-	Rules       *rules.RuleStore
-	Contacts    *store.ContactStore
-	Events      *store.EventStore
-	Tasks       *store.TaskStore
+	Store        *store.PebbleStore
+	Blobs        *store.BlobStore
+	Metadata     *store.MetadataManager
+	Search       *store.SearchManager
+	Auth         *auth.LocalAuth
+	AppPasswords *auth.AppPasswords
+	Raft         *cluster.RaftNode
+	Gossip       *cluster.GossipNode
+	SMTP         *bongosmtp.Server
+	IMAP         *bongoimap.Server
+	POP3         *bongopop3.Server
+	Notifier     *bongoimap.Notifier
+	Mailboxes    *store.MailboxStore
+	Preferences  *store.PreferenceStore
+	Threads      *store.ThreadStore
+	Rules        *rules.RuleStore
+	Contacts     *store.ContactStore
+	Events       *store.EventStore
+	Tasks        *store.TaskStore
 	// ScheduleInbox holds the iTIP messages CalDAV clients find in their
 	// scheduling inbox (RFC 6638).
 	ScheduleInbox *store.ScheduleInboxStore
@@ -528,6 +529,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		// is what lets a client idling on one node learn about a change made
 		// through another.
 		a.Preferences = store.NewPreferenceStore(pebbleStore, a)
+		// App passwords need the Raft applier, which is why they are wired
+		// here and not next to NewLocalAuth.
+		a.AppPasswords = auth.NewAppPasswords(store.NewAppPasswordStore(pebbleStore, a), logger)
+		a.AppPasswords.SetBenignTouchError(func(err error) bool { return errors.Is(err, cluster.ErrNotLeader) })
+		a.Auth.SetAppPasswords(a.AppPasswords)
 		a.Rules = rules.NewRuleStore(pebbleStore, a)
 		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)
 		a.Contacts = store.NewContactStore(pebbleStore, a)
@@ -4991,7 +4997,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 		return "", false
 	}
 
-	userID, err := authn.Authenticate(username, password)
+	userID, _, err := authn.AuthenticateProtocol(username, password)
 	if err != nil {
 		if limiter.Fail(ip, username) {
 			logger.Warn("dav: basic auth locked out after repeated failures", "ip", ip)

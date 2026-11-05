@@ -351,3 +351,17 @@ Bongo would need an OAuth authorisation server, XOAUTH2 or OAUTHBEARER in SMTP
 and IMAP, and a client that can use them. Revisit when Apple supports OAuth on a
 custom server, or when Thunderbird can register itself with one. App passwords
 stay needed for every other client either way.
+
+Found while building the credential record and protocol login (2026-11-05):
+
+- Changing the account password does not revoke app passwords, so a reset after
+  a compromise leaves them working. Needs a decision before v0.15.3 is signed off.
+- There is no cap on app passwords per user. Decide with the settings UI.
+- Open IMAP and POP3 sessions survive a revocation; the next login fails.
+- On a follower, last_used_at and the first-use log line are never written,
+  because the touch is not forwarded to the leader. One-node production is not
+  affected. Fix before multi-node clusters.
+- Lockout after wrong app passwords is tested for IMAP and SMTP, not POP3 or DAV
+  Basic. Both call the same failure path.
+- `apppassword.pb.go` was generated with protoc-gen-go v1.36.12; the other files
+  are v1.36.11.

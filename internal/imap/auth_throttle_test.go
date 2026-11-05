@@ -75,7 +75,7 @@ func TestLoginOwnSuccessForgivesOwnFailures(t *testing.T) {
 	}
 }
 
-func (p *perUserAuth) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+func (p *perUserAuth) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error) {
 	id, err := p.Authenticate(username, password)
 	if err != nil {
 		return "", nil, err

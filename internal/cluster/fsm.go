@@ -414,6 +414,17 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 		return nil
 	}
 
+	// The last-used touch of an app password is conditional here so it can
+	// never bring back a record a revoke or user delete just removed. The day
+	// is in the payload; the FSM does not read the clock.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsAppPasswordSyntheticCommand(cmd.Key) {
+		if err := store.ApplyAppPasswordTouch(f.store, cmd); err != nil {
+			f.logger.Error("fsm: app password synthetic command failed", "error", err)
+			return err
+		}
+		return nil
+	}
+
 	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:

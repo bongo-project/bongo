@@ -238,7 +238,7 @@ var idleRecheckInterval = 30 * time.Second
 // profile snapshot they were checked against, so the session epoch comes from
 // that profile and not from a later re-read.
 type profileAuthenticator interface {
-	AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error)
+	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error)
 }
 
 var _ profileAuthenticator = (*auth.LocalAuth)(nil)
@@ -317,7 +317,7 @@ func (s *session) Login(username, password string) error {
 		return errAuthRateLimited
 	}
 
-	userID, profile, err := s.auth.AuthenticateProfile(username, password)
+	userID, profile, err := s.auth.AuthenticateProtocol(username, password)
 	if err != nil {
 		s.logger.Warn("imap: login failed", "username", username, "ip", s.remoteIP)
 		if s.authLimiter.Fail(ip, username) {

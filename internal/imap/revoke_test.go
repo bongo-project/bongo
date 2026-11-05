@@ -509,7 +509,7 @@ func TestRevokedIMAPIdleEntryCheckIsPrompt(t *testing.T) {
 	}
 }
 
-func (e errState) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+func (e errState) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error) {
 	id, err := e.Authenticate(username, password)
 	if err != nil {
 		return "", nil, err

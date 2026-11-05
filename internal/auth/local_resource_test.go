@@ -14,7 +14,7 @@ import (
 // A resource is refused by the one credential check every protocol uses, with
 // the error of a wrong password, even when the stored password is presented.
 // The cases feed the same LocalAuth the way each protocol does: web login and
-// IMAP/POP3/SMTP AUTH call AuthenticateProfile, CalDAV Basic calls Authenticate.
+// IMAP/POP3/SMTP AUTH and CalDAV Basic call AuthenticateProtocol.
 func TestAuthenticateRefusesResource(t *testing.T) {
 	const (
 		email    = "room1@example.com"

@@ -1710,3 +1710,9 @@ All six stories merged on norman/phase-34-ui-fixes. Workflow wf_8ba74fa9-b26 sto
 
 PATTERN: tooling - use root-level `templ generate`; `-path` rewrites the FileName header in every *_templ.go.
 PATTERN: testing - integration tests that compare rendered times must use the user's zone (UTC by default), not the host's; CI hides this.
+
+## 2026-11-05: Phase 36 batch 1 (36.1, 36.2) implemented
+
+Workflow wf_866bdf9d-62b, review MINOR with 11 of 11 mutants killed. `LocalAuth.AuthenticateProtocol` is the only method that accepts app passwords and costs one bcrypt comparison on every branch. last_used_at is a conditional FSM command so it cannot resurrect a revoked record. Follow-ups are in PRD section 8.2. For 36.3: Revoke returns ErrInvalidAppPasswordID for a malformed id, and US-004 needs the handler to answer that the same as success. Paused here at the user's request; next batch is 36.3 + 36.8.
+
+PATTERN: security - a read-modify-write Put from a login path can undo a revoke's Delete; make such writes conditional in the FSM.

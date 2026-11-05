@@ -405,7 +405,7 @@ func (s *Session) addExternal(to string, d RcptDSN) {
 // snapshot they were checked against, so the session epoch comes from that
 // profile and not from a later re-read.
 type profileAuthenticator interface {
-	AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error)
+	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error)
 }
 
 var _ profileAuthenticator = (*auth.LocalAuth)(nil)
@@ -462,7 +462,7 @@ func (s *Session) AuthPlain(username, password string) error {
 		return &gosmtp.SMTPError{Code: 454, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many authentication failures; try again later"}
 	}
 
-	userID, profile, err := s.backend.auth.AuthenticateProfile(username, password)
+	userID, profile, err := s.backend.auth.AuthenticateProtocol(username, password)
 	if err != nil {
 		s.authFailures++
 		s.backend.authFail.Fail(ip, username)
