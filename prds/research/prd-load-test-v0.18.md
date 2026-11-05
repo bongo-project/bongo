@@ -235,9 +235,10 @@ Machines are removed after the run.
 2. **What is the target?** For example 100,000 or 1,000,000 users. It sets the
    data set size, and the seed time.
 3. **What happens if one node is not enough?** Going past one machine needs users
-   split across separate clusters, or another write path. The operator mentioned
-   a further option, recorded here once clarified. This is a design decision for
-   after the result, and outside this PRD.
+   split across separate clusters, with a routing layer in front. The operator
+   raised bringing back an NMAP-style protocol between front ends and stores. It
+   would not add capacity alone, but it is one possible shape for that routing
+   layer. This is a design decision for after the result, and outside this PRD.
 4. **Is a realistic message size distribution available?** Production has too
    little traffic to give one. Use a published mix or a stated assumption.
 
