@@ -19,4 +19,8 @@ message UserProfile {
   string kind = 12;                    // "" for a person, "resource" for a bookable room or equipment; fixed at creation
   int64 capacity = 13;                 // seats of a resource; informational
   string resource_type = 14;           // "room" or "equipment" when kind is "resource"
+  // When set (and totp_enabled), the account password is refused on IMAP, POP3,
+  // SMTP submission, CalDAV and CardDAV; only app passwords work there. An
+  // earlier binary keeps the field as an unknown field but does not enforce it.
+  bool require_app_passwords = 15;
 }

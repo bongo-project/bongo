@@ -151,8 +151,7 @@ func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bo
 		return "", nil, ErrBadCredentials
 	}
 
-	// The one place the credential kind is known. A per-account switch that
-	// refuses the account password on the protocol path belongs here.
+	// The one place the credential kind is known.
 	var used *bongov1.AppPassword
 	id, secret, shaped := ParseAppPassword(password)
 	if shaped && a.apps != nil {
@@ -173,6 +172,15 @@ func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bo
 			}
 		}
 	} else if compareHash(profile.PasswordHash, []byte(password)) != nil {
+		return "", nil, ErrBadCredentials
+	}
+
+	// The per-account switch: with it on, only an app password passes. It runs
+	// after every compare, so the refusal costs the same one bcrypt comparison
+	// and returns the same error as a wrong password. It also needs TOTP, so a
+	// flag left behind by a node that cleared 2FA (an earlier binary does not
+	// know the field) cannot lock the account out of its mail clients.
+	if used == nil && profileEnforcesAppPasswords(&profile) {
 		return "", nil, ErrBadCredentials
 	}
 
@@ -249,11 +257,25 @@ func (a *LocalAuth) AccountState(userID string) (AccountState, error) {
 	}, nil
 }
 
+// profileEnforcesAppPasswords reports whether the account password is refused
+// on the protocol path.
+func profileEnforcesAppPasswords(p *bongov1.UserProfile) bool {
+	return p.RequireAppPasswords && p.TotpEnabled
+}
+
 // ProtocolEpoch is the session epoch for IMAP, POP3 and SMTP: it fingerprints
-// the password hash only. TOTP state and the web session generation are
-// deliberately excluded, so a web logout or a 2FA toggle does not end mail
-// client sessions. Login paths take it from the profile their password was
+// the password hash and whether app passwords are enforced. TOTP state and the
+// web session generation are deliberately excluded, so a web logout or a 2FA
+// toggle that leaves enforcement unchanged does not end mail client sessions.
+// Enforcement is included so that turning it on ends sessions opened with the
+// account password. Anything that flips it ends sessions too: turning it on or
+// off, and removing 2FA while it is on. App password clients reconnect once on
+// those paths. Login paths take it from the profile their password was
 // verified against; AccountState computes the same value for later checks.
 func ProtocolEpoch(p *bongov1.UserProfile) string {
-	return security.SessionEpoch(p.PasswordHash, nil, false, 0)
+	material := p.PasswordHash
+	if profileEnforcesAppPasswords(p) {
+		material = append(append([]byte{}, p.PasswordHash...), "require-app-passwords"...)
+	}
+	return security.SessionEpoch(material, nil, false, 0)
 }

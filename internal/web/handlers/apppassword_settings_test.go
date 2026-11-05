@@ -28,6 +28,9 @@ func (k psKeys) GetKey(key []byte) ([]byte, error) { return k.ps.Get(key) }
 type flakyRecords struct {
 	auth.AppPasswordRecords
 	failPut, failList, failDelete bool
+	// failListOn fails only the nth List call (1-based), so a test can let
+	// Create's own count succeed and break the page that follows it.
+	failListOn, listCalls int
 }
 
 var errInjected = errors.New("injected failure")
@@ -40,7 +43,8 @@ func (f *flakyRecords) Put(u string, r *bongov1.AppPassword) error {
 }
 
 func (f *flakyRecords) List(u string) ([]*bongov1.AppPassword, error) {
-	if f.failList {
+	f.listCalls++
+	if f.failList || (f.failListOn != 0 && f.listCalls == f.failListOn) {
 		return nil, errInjected
 	}
 	return f.AppPasswordRecords.List(u)
@@ -85,15 +89,58 @@ func newSecEnv(t *testing.T) *secEnv {
 	return &secEnv{h: h, apps: apps, recs: recs, flaky: flaky, ps: ps, logs: logs}
 }
 
+// secPassword is every test account's password.
+const secPassword = "right"
+
+var secHash = func() []byte {
+	h, err := bcrypt.GenerateFromPassword([]byte(secPassword), bcrypt.MinCost)
+	if err != nil {
+		panic(err)
+	}
+	return h
+}()
+
+// putProfile stores an account whose password is secPassword. With totp it is
+// enrolled and holds recovery codes, which putProfileCodes returns.
 func putProfile(t *testing.T, ps *store.PebbleStore, id string, totp bool) {
 	t.Helper()
-	raw, err := proto.Marshal(&bongov1.UserProfile{Email: id + "@example.com", TotpEnabled: totp})
+	putProfileCodes(t, ps, id, totp)
+}
+
+func putProfileCodes(t *testing.T, ps *store.PebbleStore, id string, totp bool) []string {
+	t.Helper()
+	p := &bongov1.UserProfile{Email: id + "@example.com", PasswordHash: secHash, TotpEnabled: totp}
+	var plain []string
+	if totp {
+		var hashed []string
+		var err error
+		plain, hashed, err = auth.GenerateRecoveryCodes(12)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.TotpSecret, p.RecoveryCodes = reauthTOTPSecret, hashed
+	}
+	raw, err := proto.Marshal(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := ps.Set([]byte("/user/"+id+"/profile"), raw); err != nil {
 		t.Fatal(err)
 	}
+	return plain
+}
+
+func (e *secEnv) profile(t *testing.T, id string) *bongov1.UserProfile {
+	t.Helper()
+	raw, err := e.ps.Get([]byte("/user/" + id + "/profile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p bongov1.UserProfile
+	if err := proto.Unmarshal(raw, &p); err != nil {
+		t.Fatal(err)
+	}
+	return &p
 }
 
 func (e *secEnv) do(t *testing.T, fn http.HandlerFunc, user, method, path string, form url.Values, hx bool) *httptest.ResponseRecorder {
@@ -118,7 +165,7 @@ func (e *secEnv) do(t *testing.T, fn http.HandlerFunc, user, method, path string
 }
 
 func (e *secEnv) create(t *testing.T, user, label string) *httptest.ResponseRecorder {
-	return e.do(t, e.h.CreateAppPassword, user, http.MethodPost, "/settings/security/app-passwords", url.Values{"label": {label}}, false)
+	return e.do(t, e.h.CreateAppPassword, user, http.MethodPost, "/settings/security/app-passwords", url.Values{"label": {label}, "password": {secPassword}}, false)
 }
 
 func (e *secEnv) revoke(t *testing.T, user, id string, hx bool) *httptest.ResponseRecorder {
@@ -230,13 +277,27 @@ func TestCreateAppPasswordFailures(t *testing.T) {
 	}
 	e.flaky.failPut = false
 
-	// The list failing after a good create must not hide the only copy.
+	// Create counts the existing credentials first; if it cannot, it refuses
+	// rather than ignore the limit.
 	e.flaky.failList = true
+	if w := e.create(t, secUserA, "x"); w.Code != http.StatusInternalServerError || strings.Contains(w.Body.String(), "app-password-new") {
+		t.Errorf("list failure in Create: status %d", w.Code)
+	}
+	e.flaky.failList = false
+	if e.count(t, secUserA) != 0 {
+		t.Fatal("refused create stored a credential")
+	}
+
+	// The list failing on the page after a good create must not hide the only
+	// copy.
+	e.flaky.listCalls, e.flaky.failListOn = 0, 2
 	w := e.create(t, secUserA, "x")
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}
 	plaintextIn(t, w.Body.String())
+	e.flaky.failListOn = 0
+	e.flaky.failList = true
 
 	// A failing list on GET is an error state, not "no app passwords".
 	g := e.get(t, secUserA)
@@ -352,7 +413,7 @@ func TestCreateAppPasswordRefusedWhileHeldFor2FA(t *testing.T) {
 		middleware.Require2FA(psKeys{e.ps})(fn).ServeHTTP(w, r)
 		return w
 	}
-	label := url.Values{"label": {"x"}}
+	label := url.Values{"label": {"x"}, "password": {secPassword}}
 
 	// Policy off, no TOTP: allowed.
 	if w := run(secUserA, e.h.CreateAppPassword, http.MethodPost, label); w.Code != http.StatusOK {
@@ -385,7 +446,8 @@ func TestCreateAppPasswordRefusedWhileHeldFor2FA(t *testing.T) {
 	}
 
 	// Control: the same user, enrolled, is allowed.
-	putProfile(t, e.ps, secUserB, true)
+	codes := putProfileCodes(t, e.ps, secUserB, true)
+	label.Set("totp_code", codes[0])
 	if w := run(secUserB, e.h.CreateAppPassword, http.MethodPost, label); w.Code != http.StatusOK || e.count(t, secUserB) != 1 {
 		t.Errorf("enrolled: status %d, count %d", w.Code, e.count(t, secUserB))
 	}

@@ -22,6 +22,16 @@ import (
 // MaxAppPasswordLabelLen is the longest label, in characters.
 const MaxAppPasswordLabelLen = 64
 
+// MaxAppPasswordsPerUser is the most credentials one user may hold. Every
+// create route goes through AppPasswords.Create, so none can skip it. The
+// number is written into the security.appPasswordLimit message in every
+// locale (messages take no parameters), so change both together.
+const MaxAppPasswordsPerUser = 10
+
+// ErrAppPasswordLimit is returned by Create when the user already holds
+// MaxAppPasswordsPerUser credentials.
+var ErrAppPasswordLimit = errors.New("app password limit reached")
+
 // ErrInvalidAppPasswordLabel is returned for an empty, over-long or
 // control-character label. The label is user input that reaches logs.
 var ErrInvalidAppPasswordLabel = errors.New("invalid app password label")
@@ -185,6 +195,19 @@ func (p *AppPasswords) Create(userID, label string) (string, AppPasswordInfo, er
 	label, err := validateAppPasswordLabel(label)
 	if err != nil {
 		return "", AppPasswordInfo{}, err
+	}
+
+	// The cap is checked before any hash is generated, so a refused create
+	// spends no bcrypt. The count is check-then-act: two concurrent creates
+	// can each see 9 and both succeed, so a racing pair can leave a user at 11.
+	// That overshoot is accepted; closing it would need a composite Raft
+	// command, which a node on an earlier binary would store as a literal key.
+	existing, err := p.records.List(userID)
+	if err != nil {
+		return "", AppPasswordInfo{}, fmt.Errorf("counting app passwords: %w", err)
+	}
+	if len(existing) >= MaxAppPasswordsPerUser {
+		return "", AppPasswordInfo{}, ErrAppPasswordLimit
 	}
 
 	// The collision check is check-then-act: two concurrent creates for one

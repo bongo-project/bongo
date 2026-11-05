@@ -20,6 +20,50 @@ type AppPasswordView struct {
 	Plaintext  string
 	// Error is a translated failure shown in the card as an error banner.
 	Error string
+	// FlashLevel is the banner level: "error", "warning" or "success".
+	FlashLevel string
+	// TotpEnabled asks for a second factor on the create form.
+	TotpEnabled bool
+	// RequireAppPasswords is true when the account password is refused in
+	// mail clients (the switch is on and 2FA is on).
+	RequireAppPasswords bool
+	// Count is the number of app passwords the user holds.
+	Count int
+}
+
+// DeviceChoice is one thing the Add a device page can set up.
+type DeviceChoice struct {
+	Key   string
+	Title string
+	Help  string
+}
+
+// SettingRow is one server setting; Value is what the copy button copies.
+type SettingRow struct {
+	Label string
+	Value string
+}
+
+// SettingGroup is a titled set of rows, such as the IMAP settings.
+type SettingGroup struct {
+	Title string
+	Rows  []SettingRow
+}
+
+// DeviceView is the Add a device page. Plaintext and Groups are set only on
+// the response to a create, which is the one place the password is shown.
+type DeviceView struct {
+	// Setup is true when the page is the last step of 2FA enrolment.
+	Setup       bool
+	Choices     []DeviceChoice
+	TotpEnabled bool
+	Flash       string
+	FlashLevel  string
+	Error       string
+	Plaintext   string
+	Groups      []SettingGroup
+	// Count is the number of app passwords the user holds, counting a new one.
+	Count int
 }
 
 templ SecuritySettings(totpEnabled bool, email string, flash string, apps AppPasswordView) {
@@ -40,8 +84,9 @@ templ SecuritySettings(totpEnabled bool, email string, flash string, apps AppPas
 				<div class="settings-container">
 					if require2FAFromCtx(ctx) {
 						@FlashMessage(t(ctx, "security.require2FABanner"), "warning")
-					} else if flash != "" {
-						@FlashMessage(flash, "success")
+					}
+					if flash != "" {
+						@FlashMessage(flash, flashLevelOr(apps.FlashLevel))
 					}
 					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "settings.security") }</h2>
 					<div class="settings-card u-mb-24px">
@@ -67,11 +112,23 @@ templ SecuritySettings(totpEnabled bool, email string, flash string, apps AppPas
 										<input type="text" name="totp_code" id="change_totp_code" class="form-input" autocomplete="one-time-code" required/>
 									</div>
 								}
+								if apps.Available {
+									<div class="form-group u-mb-16px">
+										<label class="form-check">
+											<input type="checkbox" name="revoke_app_passwords" value="1" checked/>
+											{ t(ctx, "security.revokeAppPasswordsOption") }
+										</label>
+										<small class="u-text-muted u-font-078">{ t(ctx, "security.revokeAppPasswordsHelp") }</small>
+									</div>
+								}
 								<button type="submit" class="btn-primary">{ t(ctx, "settings.changePassword") }</button>
 							</form>
 						</div>
 					</div>
 					if apps.Available {
+						if totpEnabled {
+							@requireAppPasswordsCard(apps)
+						}
 						@appPasswordsCard(apps)
 					}
 					<div class="settings-card">
@@ -88,6 +145,9 @@ templ SecuritySettings(totpEnabled bool, email string, flash string, apps AppPas
 								</div>
 								<details>
 									<summary>{ t(ctx, "security.disableTwoFactor") }</summary>
+									if apps.RequireAppPasswords {
+										<p class="u-text-muted u-mt-1">{ t(ctx, "security.disableTwoFactorMailWarning") }</p>
+									}
 									<form method="post" action="/settings/security/totp/disable" class="u-mt-1">
 										<div class="form-group u-mb-12px">
 											<label class="form-label" for="disable_password">{ t(ctx, "security.enterPasswordToDisable") }</label>
@@ -191,8 +251,63 @@ templ appPasswordsCard(apps AppPasswordView) {
 						<label class="form-label" for="app_password_label">{ t(ctx, "security.appPasswordLabelPrompt") }</label>
 						<input type="text" name="label" id="app_password_label" class="form-input" required maxlength="64" autocomplete="off"/>
 					</div>
-					<button type="submit" class="btn-primary">{ t(ctx, "security.appPasswordCreate") }</button>
+					@reauthFields("app_password", apps.TotpEnabled)
+					<div class="u-flex u-gap-075 u-items-center">
+						<button type="submit" class="btn-primary">{ t(ctx, "security.appPasswordCreate") }</button>
+						<a href="/settings/security/devices">{ t(ctx, "security.appPasswordAddDevice") }</a>
+					</div>
 				</form>
+			}
+		</div>
+	</div>
+}
+
+// reauthFields asks for the account password and, with 2FA, a code. prefix
+// keeps the element ids unique when a page holds several such forms.
+templ reauthFields(prefix string, totp bool) {
+	<div class="form-group u-mb-12px">
+		<label class="form-label" for={ prefix + "_password" }>{ t(ctx, "security.appPasswordAccountPassword") }</label>
+		<input type="password" name="password" id={ prefix + "_password" } class="form-input" required autocomplete="current-password"/>
+	</div>
+	if totp {
+		<div class="form-group u-mb-12px">
+			<label class="form-label" for={ prefix + "_totp_code" }>{ t(ctx, "security.reauthCode") }</label>
+			<input type="text" name="totp_code" id={ prefix + "_totp_code" } class="form-input" autocomplete="one-time-code" required/>
+		</div>
+	}
+}
+
+// requireAppPasswordsCard is the per-account switch: a notice offering to turn
+// it on, or the state with a way to turn it off. It is shown only with 2FA.
+templ requireAppPasswordsCard(apps AppPasswordView) {
+	<div class="settings-card u-mb-24px">
+		<div class="settings-card-pad">
+			<h3 class="settings-section-title">{ t(ctx, "security.requireTitle") }</h3>
+			if apps.RequireAppPasswords {
+				<div class="u-mb-12px">
+					<span class="badge badge-active">{ t(ctx, "common.active") }</span>
+				</div>
+				<p>{ t(ctx, "security.requireOn") }</p>
+				<details>
+					<summary>{ t(ctx, "security.requireTurnOff") }</summary>
+					<form method="post" action="/settings/security/require-app-passwords/off" class="u-mt-1">
+						<p class="u-text-muted">{ t(ctx, "security.requireTurnOffHelp") }</p>
+						@reauthFields("require_off", true)
+						<button type="submit" class="btn-secondary">{ t(ctx, "security.requireTurnOff") }</button>
+					</form>
+				</details>
+			} else {
+				<p>{ t(ctx, "security.requireOffNotice") }</p>
+				if !require2FAFromCtx(ctx) {
+					if apps.Count > 0 {
+						<form method="post" action="/settings/security/require-app-passwords/on">
+							<button type="submit" class="btn-primary">{ t(ctx, "security.requireTurnOn") }</button>
+						</form>
+					} else {
+						<p class="u-text-muted">{ t(ctx, "security.requireNeedDevice") }</p>
+						<a href="/settings/security/devices">{ t(ctx, "security.appPasswordAddDevice") }</a>
+					}
+				}
 			}
 		</div>
 	</div>
@@ -245,7 +360,7 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 	}
 }
 
-templ TOTPRecoveryCodes(codes []string) {
+templ TOTPRecoveryCodes(codes []string, continueHref string) {
 	@LayoutWithContent(t(ctx, "security.recoveryCodes"), "") {
 		<aside class="sidebar" id="sidebar">
 			<nav>
@@ -274,7 +389,7 @@ templ TOTPRecoveryCodes(codes []string) {
 										<div class="recovery-code">{ code }</div>
 									}
 								</div>
-								<a href="/settings/security" class="btn-primary u-inline-block u-text-center u-text-decoration-none">{ t(ctx, "security.savedCodes") }</a>
+								<a href={ templ.SafeURL(continueHref) } class="btn-primary u-inline-block u-text-center u-text-decoration-none">{ t(ctx, "security.savedCodes") }</a>
 							</fieldset>
 						</div>
 					</div>
@@ -282,4 +397,123 @@ templ TOTPRecoveryCodes(codes []string) {
 			</div>
 		</main>
 	}
+}
+
+// AddDevice is the Add a device page: a list of things to set up, and for a
+// create the password shown once beside the server settings.
+templ AddDevice(email string, v DeviceView) {
+	@LayoutWithContent(t(ctx, "security.appPasswordAddDevice"), email) {
+		<aside class="sidebar" id="sidebar">
+			<nav>
+				<ul class="nav-list">
+					<li><a href="/settings/security">{ t(ctx, "nav.security") }</a></li>
+				</ul>
+			</nav>
+		</aside>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					if v.Flash != "" {
+						@FlashMessage(v.Flash, flashLevelOr(v.FlashLevel))
+					}
+					if v.Error != "" {
+						@FlashMessage(v.Error, "error")
+					}
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "security.appPasswordAddDevice") }</h2>
+					if v.Setup {
+						<p>{ t(ctx, "security.setupIntro") }</p>
+					}
+					if v.Plaintext != "" {
+						@deviceReveal(v)
+					} else {
+						<p class="u-text-muted">{ t(ctx, "security.addDeviceIntro") }</p>
+						for _, choice := range v.Choices {
+							<div class="settings-card u-mb-24px">
+								<div class="settings-card-pad">
+									<h3 class="settings-section-title">{ choice.Title }</h3>
+									<p class="u-text-muted">{ choice.Help }</p>
+									<form method="post" action="/settings/security/devices">
+										<input type="hidden" name="kind" value={ choice.Key }/>
+										if v.Setup {
+											<input type="hidden" name="setup" value="1"/>
+										}
+										<div class="form-group u-mb-12px">
+											<label class="form-label" for={ "device_label_" + choice.Key }>{ t(ctx, "security.appPasswordLabelPrompt") }</label>
+											<input type="text" name="label" id={ "device_label_" + choice.Key } class="form-input" required maxlength="64" autocomplete="off"/>
+										</div>
+										@reauthFields("device_"+choice.Key, v.TotpEnabled)
+										if v.TotpEnabled {
+											<p class="u-text-muted u-font-078">{ t(ctx, "security.deviceCodeWait") }</p>
+										}
+										<button type="submit" class="btn-primary">{ t(ctx, "security.appPasswordCreate") }</button>
+									</form>
+								</div>
+							</div>
+						}
+					}
+					if v.Setup {
+						<div class="settings-card">
+							<div class="settings-card-pad">
+								if v.Count > 0 {
+									<form method="post" action="/settings/security/require-app-passwords/on" class="u-mb-12px">
+										<input type="hidden" name="setup" value="1"/>
+										<button type="submit" class="btn-primary">{ t(ctx, "security.setupFinish") }</button>
+									</form>
+								} else {
+									<p class="u-text-muted">{ t(ctx, "security.setupNeedOne") }</p>
+								}
+								<a href="/settings/security">{ t(ctx, "security.setupSkip") }</a>
+							</div>
+						</div>
+					}
+				</div>
+			</div>
+		</main>
+	}
+}
+
+// deviceReveal shows the new password once, then each server setting with its
+// own copy button. bongo.js copies the element just before the button, so a
+// value must sit directly before its button.
+templ deviceReveal(v DeviceView) {
+	<div class="flash flash-warning u-mb-15" hx-history="false">
+		<div class="flash-icon" aria-hidden="true">@Icon("alert", "")</div>
+		<div class="flash-content">
+			<strong>{ t(ctx, "security.appPasswordShownOnce") }</strong> { t(ctx, "security.appPasswordShownOnceHelp") }
+		</div>
+	</div>
+	<div class="settings-card u-mb-24px" hx-history="false">
+		<div class="settings-card-pad">
+			<h3 class="settings-section-title">{ t(ctx, "security.deviceSettings") }</h3>
+			<p class="u-mb-12px u-text-muted">{ t(ctx, "security.appPasswordCredential") }</p>
+			<div class="manual-key" id="app-password-new">
+				<span>{ v.Plaintext }</span>
+				@copyButton()
+			</div>
+			for _, group := range v.Groups {
+				<h4 class="u-mt-2 u-mb-12px">{ group.Title }</h4>
+				for _, row := range group.Rows {
+					<p class="u-mb-12px u-text-muted u-font-078">{ row.Label }</p>
+					<div class="manual-key">
+						<span>{ row.Value }</span>
+						@copyButton()
+					</div>
+				}
+			}
+		</div>
+	</div>
+	if v.Setup {
+		<p class="u-mb-12px"><a href="/settings/security/devices?setup=1" class="btn-secondary u-text-decoration-none">{ t(ctx, "security.deviceAnother") }</a></p>
+	} else {
+		<div class="u-flex u-gap-075 u-items-center">
+			<a href="/settings/security/devices" class="btn-secondary u-text-decoration-none">{ t(ctx, "security.deviceAnother") }</a>
+			<a href="/settings/security" class="btn-primary u-text-decoration-none">{ t(ctx, "security.deviceDone") }</a>
+		</div>
+	}
+}
+
+templ copyButton() {
+	<button type="button" class="btn-copy" data-copy-previous="true" title={ t(ctx, "common.copy") } aria-label={ t(ctx, "common.copy") }>
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+	</button>
 }

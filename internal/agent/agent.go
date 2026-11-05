@@ -1398,6 +1398,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.AppPasswords != nil {
 			securityH.SetAppPasswords(a.AppPasswords)
 		}
+		securityH.SetClientSettings(autoconfigH.ClientSettings)
 		r.Get("/settings/security", securityH.SecuritySettings)
 		r.Post("/settings/security/totp/setup", securityH.SetupTOTP)
 		r.Post("/settings/security/totp/confirm", securityH.ConfirmTOTP)
@@ -1405,6 +1406,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/settings/security/password", securityH.ChangePassword)
 		r.Post("/settings/security/app-passwords", securityH.CreateAppPassword)
 		r.Post("/settings/security/app-passwords/revoke", securityH.RevokeAppPassword)
+		r.Get("/settings/security/devices", securityH.AddDevice)
+		r.Post("/settings/security/devices", securityH.CreateDevice)
+		r.Post("/settings/security/require-app-passwords/on", securityH.RequireAppPasswordsOn)
+		r.Post("/settings/security/require-app-passwords/off", securityH.RequireAppPasswordsOff)
 
 		var mailH *handlers.MailHandler
 		if a.Mailboxes != nil {

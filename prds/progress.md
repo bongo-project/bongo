@@ -1724,3 +1724,10 @@ Workflow wf_f60aef0c-fef, review MINOR. Security page card (create, list, revoke
 PATTERN: tooling - workflow worktrees start at main; a stacked batch must `git merge --ff-only` the phase branch first.
 PATTERN: security - htmx history writes pages to localStorage; no-store does not stop it. Use hx-history="false" on a page that shows a secret.
 PATTERN: ui - HX-Redirect on a 303 is never seen, because XHR follows the redirect; return 200 with HX-Redirect for htmx.
+
+## 2026-11-05: Phase 36 batch 3 (36.4, 36.7, 36.9) implemented
+
+Workflow wf_9a6e4454-6b2, first review REJECT, one fix round, then MINOR with 17 of 17 mutants killed. Re-authentication and the cap of 10 sit on the one create path (`createCredential`, `AppPasswords.Create`). Change password has the revoke box. Add a device has Other, with settings from `ClientSettings`, which the autoconfig documents also use. The switch is `require_app_passwords`, enforced in `AuthenticateProtocol` with 2FA on. Decisions 13 to 18 are in the PRD. My review change: the "add your devices again" banner is a warning, not a success.
+
+PATTERN: security - anything that changes the session epoch must reissue the calling device's cookie, or a multi-step flow signs its own user out at the next click.
+PATTERN: ui - flashes on the Security page need a level; `flashLevel` maps the key to error, warning or success.

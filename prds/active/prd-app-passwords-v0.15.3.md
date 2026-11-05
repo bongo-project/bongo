@@ -351,6 +351,25 @@ sessions are not cookie-based.
 11. (operator, 2026-11-05) Creating an app password asks for the account password
     again, through the existing re-authentication check (FR-16).
 12. (operator, 2026-11-05) At most 10 app passwords per user (FR-17).
+13. (planning, 2026-11-05) Removing 2FA clears the switch in the same write, and
+    enforcement needs the switch and 2FA together, so a flag left by an earlier
+    binary cannot lock anyone out. The disable form warns first and the banner
+    confirms it. App passwords are kept.
+14. (planning, 2026-11-05) The switch cannot turn on with no app passwords. Finish
+    and the notice both refuse, and Skip for now leaves it off.
+15. (planning, 2026-11-05) Turning the switch on needs the session and CSRF but no
+    re-authentication, because it only tightens the account. A stolen session can
+    therefore break the user's clients until they turn it off with password and
+    code.
+16. (planning, 2026-11-05) FR-16 stays strict during enrolment. The code used to
+    confirm 2FA cannot be reused, so the first create can mean waiting up to 30
+    seconds for the next code. The page says so.
+17. (planning, 2026-11-05) Enforcement is part of `ProtocolEpoch`, so turning the
+    switch on ends IMAP and POP3 sessions opened with the account password.
+    App-password clients reconnect once. Web sessions are not affected.
+18. (planning, 2026-11-05) ConfirmTOTP and DisableTOTP reissue the calling device's
+    cookie, as ChangePassword does. Without this the epoch change signed the device
+    out before Add a device.
 
 ### 8.2 Candidates for a later release
 
@@ -396,3 +415,18 @@ Found while building the settings UI and admin revoke (2026-11-05):
 - A deslop CLI scan of the phase's Go changes found one true new copy, now the
   shared `redirectAfterAction`. The other production groups are existing store
   and route patterns. 34 new test-only groups were not reviewed.
+
+Found while building Add a device and the switch (2026-11-05):
+
+- The switch is tested at `AuthenticateProtocol`, not per protocol. A live run
+  confirmed all five. Add per-protocol rows for US-009's first criterion.
+- `TestSwitchSurvivesProfileWrites` covers the Security writers only. A code audit
+  found the admin and login writers save a loaded profile, so the field survives.
+- `profile.pb.go` moved to protoc-gen-go v1.36.12 as well.
+- A client still sending the account password after switch-on counts as a failed
+  login, so it can trip the per-IP limiter for others on the same IP. The enrolment
+  copy tells users to replace old clients first.
+- Reaching `/settings/security/devices` by address after a create in setup mode
+  drops Finish and Skip. Add another device keeps them.
+- Copy buttons need `navigator.clipboard`, which plain HTTP off localhost lacks.
+  This is existing bongo.js behaviour.
