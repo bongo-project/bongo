@@ -1,4 +1,4 @@
-# PRD: App Passwords
+# PRD: App passwords v0.15.3
 
 ## 1. Introduction / Overview
 
@@ -161,6 +161,19 @@ will not break.
 - [ ] The switch cannot be turned on by an app password, and is not offered to an
       account without 2FA.
 
+### US-010: An admin revokes a user's app passwords
+**Description:** As an admin responding to an incident, I want to revoke all of a
+user's app passwords so that I do not have to disable the account.
+
+**Acceptance Criteria:**
+- [ ] The admin user page has a Revoke all app passwords action, behind the
+      existing admin checks and CSRF protection. A domain admin can use it only
+      for users in their domains.
+- [ ] After it, every app password of that user fails on the next attempt, and
+      the account password and web sessions are unchanged.
+- [ ] The action is logged with the admin, the user and the count. No credential
+      or hash is logged.
+
 ## 4. Functional Requirements
 
 **FR-1** App passwords are generated from `crypto/rand`, at least 20 characters
@@ -305,6 +318,18 @@ sessions are not cookie-based.
 2. (operator, 2026-11-05) Setup goes through Add a device: a personal Apple
    profile, a QR code to hand it to a phone, and password with settings for other
    clients (US-006 to US-008).
+3. (operator, 2026-11-05) Ships as v0.15.3, ahead of v0.16.0.
+4. (operator, 2026-11-05) Open question 3: an admin can revoke all of a user's
+   app passwords, in one logged action on the admin user page. This is US-010.
+5. (operator, 2026-11-05) Open question 4: no per-protocol scoping. A scope field
+   can be added later, with existing records meaning all protocols.
+6. (planning, 2026-11-05) Open question 2: users without 2FA can create app
+   passwords.
+7. (planning, 2026-11-05) Open question 5: four groups of lowercase letters,
+   at least 20 letters in total.
+8. (planning, 2026-11-05) bcrypt cost on the protocol path: each app password
+   carries a short public lookup ID, so an attempt compares one hash. There is no
+   cache, so revocation needs no invalidation.
 
 ### 8.2 Candidates for a later release
 
