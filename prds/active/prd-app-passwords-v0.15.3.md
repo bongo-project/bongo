@@ -330,6 +330,12 @@ sessions are not cookie-based.
 8. (planning, 2026-11-05) bcrypt cost on the protocol path: each app password
    carries a short public lookup ID, so an attempt compares one hash. There is no
    cache, so revocation needs no invalidation.
+9. (planning, 2026-11-05, not yet confirmed by the operator) A session the
+   require_2fa policy is holding for enrolment cannot create an app password.
+   Require2FA exempts everything under /settings/security, so without this a
+   password-only session could mint a credential that outlasts enrolment. Listing
+   and revoking stay available. Decision 6 still applies when no policy holds the
+   session.
 
 ### 8.2 Candidates for a later release
 
@@ -365,3 +371,19 @@ Found while building the credential record and protocol login (2026-11-05):
   Basic. Both call the same failure path.
 - `apppassword.pb.go` was generated with protoc-gen-go v1.36.12; the other files
   are v1.36.11.
+
+Found while building the settings UI and admin revoke (2026-11-05):
+
+- Creating an app password needs no re-authentication, so a hijacked web session
+  can mint one that outlives logout, a password change and the end of the
+  session. Decide together with the password change question above. Nothing
+  throttles create either; a cap would limit it.
+- The 2FA recovery codes page has the exposure the create response had: htmx can
+  write it to localStorage history. Add `hx-history="false"` there.
+- `AdminHandler.hxRedirect` on delete-user sets HX-Redirect on a 303, which htmx
+  does not act on. Not reproduced.
+- Labels accept bidi format characters. They show only to the owner and in logs.
+- After a create, the address bar shows a POST-only URL, so reloading by address
+  gives a 405. This follows from showing the password in the POST response.
+- The deslop duplicate check did not run for this batch or for the 36.1 and 36.2
+  work if its worker hit the same error: the deslop LSP is not running.

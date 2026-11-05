@@ -21,7 +21,7 @@ func settingsPages(t *testing.T) map[string]string {
 	return map[string]string{
 		"tags":     renderToString(t, TagSettingsPage(TagSettingsData{Email: "a@b.c"})),
 		"settings": renderToString(t, SettingsPage(prefs, "a@b.c", "", ForwardView{})),
-		"security": renderToString(t, SecuritySettings(false, "a@b.c", "")),
+		"security": renderToString(t, SecuritySettings(false, "a@b.c", "", AppPasswordView{})),
 	}
 }
 

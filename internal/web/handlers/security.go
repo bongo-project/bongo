@@ -43,6 +43,7 @@ type SecurityHandler struct {
 	sessionSecret []byte
 	tlsEnabled    bool
 	limiter       ReauthLimiter
+	appPasswords  *auth.AppPasswords // nil on a node without the service
 }
 
 // NewSecurityHandler creates a SecurityHandler.
@@ -80,7 +81,7 @@ func (h *SecurityHandler) SecuritySettings(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	templ.Handler(templates.SecuritySettings(totpEnabled, email, flash)).ServeHTTP(w, r)
+	templ.Handler(templates.SecuritySettings(totpEnabled, email, flash, h.appPasswordView(r, userID, "", ""))).ServeHTTP(w, r)
 }
 
 // SetupTOTP generates a new TOTP key and renders the setup page.

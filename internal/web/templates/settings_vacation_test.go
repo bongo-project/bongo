@@ -15,7 +15,9 @@ func TestSettingsSidebarsLinkToVacation(t *testing.T) {
 		"settings": func(b *bytes.Buffer) error {
 			return SettingsPage(store.DefaultPreferences(), "u@example.com", "", ForwardView{}).Render(ctx, b)
 		},
-		"security": func(b *bytes.Buffer) error { return SecuritySettings(false, "u@example.com", "").Render(ctx, b) },
+		"security": func(b *bytes.Buffer) error {
+			return SecuritySettings(false, "u@example.com", "", AppPasswordView{}).Render(ctx, b)
+		},
 		"vacation": func(b *bytes.Buffer) error {
 			return VacationPage(VacationView{Interval: 7}, "u@example.com").Render(ctx, b)
 		},

@@ -72,6 +72,9 @@ type AdminUserInfo struct {
 	Kind         string
 	ResourceType string
 	Capacity     int64
+	// AppPasswordsAvailable is false when the node has no app password
+	// service, so the page offers no action that would fail.
+	AppPasswordsAvailable bool
 }
 
 // DNSCheckRow holds one DNS verification row for the domain detail page.
@@ -480,6 +483,12 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/reset-password", user.UserID)) }>
 								<button type="submit" class="btn-outline">{ t(ctx, "admin.resetPassword") }</button>
 							</form>
+							if user.AppPasswordsAvailable {
+								<form hx-post={ fmt.Sprintf("/admin/users/%s/app-passwords/revoke", user.UserID) } hx-confirm={ t(ctx, "admin.confirmRevokeAppPasswords") } hx-target="next .app-passwords-status" hx-swap="innerHTML">
+									<button type="submit" class="btn-outline">{ t(ctx, "admin.revokeAppPasswords") }</button>
+								</form>
+								<div class="app-passwords-status" data-form-status aria-live="polite"></div>
+							}
 						}
 						<button
 							type="button"

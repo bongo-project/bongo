@@ -177,6 +177,8 @@ var (
 	flashSecurityInvalidPassword     = flashKey{"security-invalid-password"}
 	flashSecurityInvalidAuthCode     = flashKey{"security-invalid-auth-code"}
 	flashRuleDeleted                 = flashKey{"rule-deleted"}
+	flashAppPasswordRevoked          = flashKey{"app-password-revoked"}
+	flashAppPasswordsRevokedAll      = flashKey{"app-passwords-revoked-all"}
 )
 
 var flashMessages = map[string]string{
@@ -276,4 +278,6 @@ var flashMessages = map[string]string{
 	flashSecurityInvalidPassword.id:     "flash.securityInvalidPassword",
 	flashSecurityInvalidAuthCode.id:     "flash.securityInvalidAuthCode",
 	flashRuleDeleted.id:                 "flash.ruleDeleted",
+	flashAppPasswordRevoked.id:          "flash.appPasswordRevoked",
+	flashAppPasswordsRevokedAll.id:      "flash.appPasswordsRevokedAll",
 }

@@ -1280,6 +1280,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		// immediately after key generation (registry was created above).
 		adminH.SetDKIMRegistry(a.DKIMRegistry)
 		adminH.SetSearchManager(a.Search)
+		if a.AppPasswords != nil {
+			adminH.SetAppPasswords(a.AppPasswords)
+		}
 
 		// Wire the catch-all store so SetCatchAll/ClearCatchAll can persist
 		// per-domain catch-all configuration via Raft. The resolver reads
@@ -1329,6 +1332,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/users/{userID}", adminH.UpdateUser)
 		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
 		r.Post("/admin/users/{userID}/reset-password", adminH.ResetPassword)
+		r.Post("/admin/users/{userID}/app-passwords/revoke", adminH.RevokeAllAppPasswords)
 		r.Get("/admin/users/{userID}/bookings", adminH.ResourceBookings)
 		r.Post("/admin/users/{userID}/bookings/{guid}/cancel", adminH.CancelResourceBooking)
 		r.Post("/admin/users/{userID}/delete", adminH.DeleteUser)
@@ -1391,11 +1395,16 @@ func (a *Agent) Run(ctx context.Context) error {
 		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
 		securityH.SetTLSEnabled(tlsEnabled)
 		securityH.SetRateLimiter(loginRL)
+		if a.AppPasswords != nil {
+			securityH.SetAppPasswords(a.AppPasswords)
+		}
 		r.Get("/settings/security", securityH.SecuritySettings)
 		r.Post("/settings/security/totp/setup", securityH.SetupTOTP)
 		r.Post("/settings/security/totp/confirm", securityH.ConfirmTOTP)
 		r.Post("/settings/security/totp/disable", securityH.DisableTOTP)
 		r.Post("/settings/security/password", securityH.ChangePassword)
+		r.Post("/settings/security/app-passwords", securityH.CreateAppPassword)
+		r.Post("/settings/security/app-passwords/revoke", securityH.RevokeAppPassword)
 
 		var mailH *handlers.MailHandler
 		if a.Mailboxes != nil {

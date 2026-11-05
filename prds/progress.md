@@ -1716,3 +1716,11 @@ PATTERN: testing - integration tests that compare rendered times must use the us
 Workflow wf_866bdf9d-62b, review MINOR with 11 of 11 mutants killed. `LocalAuth.AuthenticateProtocol` is the only method that accepts app passwords and costs one bcrypt comparison on every branch. last_used_at is a conditional FSM command so it cannot resurrect a revoked record. Follow-ups are in PRD section 8.2. For 36.3: Revoke returns ErrInvalidAppPasswordID for a malformed id, and US-004 needs the handler to answer that the same as success. Paused here at the user's request; next batch is 36.3 + 36.8.
 
 PATTERN: security - a read-modify-write Put from a login path can undo a revoke's Delete; make such writes conditional in the FSM.
+
+## 2026-11-05: Phase 36 batch 2 (36.3, 36.8) implemented
+
+Workflow wf_f60aef0c-fef, review MINOR. Security page card (create, list, revoke) and admin Revoke all. Advisor added two requirements: hx-history="false" on the reveal, and no create for a session held by the 2FA policy (PRD decision 9, awaiting the operator). Review fixes applied by hand: status row layout, hyphen wrapping for the one-time password, `count` in the failure log, B's credential verified with bcrypt, banner assertion.
+
+PATTERN: tooling - workflow worktrees start at main; a stacked batch must `git merge --ff-only` the phase branch first.
+PATTERN: security - htmx history writes pages to localStorage; no-store does not stop it. Use hx-history="false" on a page that shows a secret.
+PATTERN: ui - HX-Redirect on a 303 is never seen, because XHR follows the redirect; return 200 with HX-Redirect for htmx.

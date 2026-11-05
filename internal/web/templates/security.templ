@@ -1,6 +1,28 @@
 package templates
 
-templ SecuritySettings(totpEnabled bool, email string, flash string) {
+// AppPasswordRow is one credential in the Security page list. Dates are
+// formatted by the handler, as dates only; LastUsed is empty for never.
+type AppPasswordRow struct {
+	ID       string
+	Masked   string
+	Label    string
+	Created  string
+	LastUsed string
+}
+
+// AppPasswordView is the App passwords card. Plaintext is set only on the
+// response to a create, which is the one place it is ever shown.
+type AppPasswordView struct {
+	// Available is false when the node has no app password service.
+	Available  bool
+	Rows       []AppPasswordRow
+	ListFailed bool
+	Plaintext  string
+	// Error is a translated failure shown in the card as an error banner.
+	Error string
+}
+
+templ SecuritySettings(totpEnabled bool, email string, flash string, apps AppPasswordView) {
 	@LayoutWithContent(t(ctx, "settings.security"), email) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
@@ -49,6 +71,9 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 							</form>
 						</div>
 					</div>
+					if apps.Available {
+						@appPasswordsCard(apps)
+					}
 					<div class="settings-card">
 						<div class="settings-card-pad">
 							<h3 class="settings-section-title">{ t(ctx, "settings.twoFactorAuth") }</h3>
@@ -94,6 +119,83 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 			</div>
 		</main>
 	}
+}
+
+templ appPasswordsCard(apps AppPasswordView) {
+	<div class="settings-card u-mb-24px">
+		<div class="settings-card-pad">
+			<h3 class="settings-section-title">{ t(ctx, "security.appPasswords") }</h3>
+			<p class="u-text-muted">{ t(ctx, "security.appPasswordsHelp") }</p>
+			if apps.Error != "" {
+				@FlashMessage(apps.Error, "error")
+			}
+			if apps.Plaintext != "" {
+				<div class="flash flash-warning u-mb-15" hx-history="false">
+					<div class="flash-icon" aria-hidden="true">@Icon("alert", "")</div>
+					<div class="flash-content">
+						<strong>{ t(ctx, "security.appPasswordShownOnce") }</strong> { t(ctx, "security.appPasswordShownOnceHelp") }
+					</div>
+				</div>
+				<div class="manual-key" id="app-password-new">
+					<span>{ apps.Plaintext }</span>
+					<button type="button" class="btn-copy" data-copy-previous="true" title={ t(ctx, "common.copy") } aria-label={ t(ctx, "common.copy") }>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+					</button>
+				</div>
+			}
+			if apps.ListFailed {
+				@FlashMessage(t(ctx, "security.appPasswordsListFailed"), "error")
+			} else if len(apps.Rows) == 0 {
+				<p class="u-text-muted">{ t(ctx, "security.appPasswordsNone") }</p>
+			} else {
+				<div class="table-scroll u-mb-1">
+					<table class="admin-table data-table" aria-label={ t(ctx, "security.appPasswords") }>
+						<thead>
+							<tr>
+								<th>{ t(ctx, "security.appPasswordLabel") }</th>
+								<th>{ t(ctx, "security.appPasswordCredential") }</th>
+								<th>{ t(ctx, "security.appPasswordCreated") }</th>
+								<th>{ t(ctx, "security.appPasswordLastUsed") }</th>
+								<th></th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, row := range apps.Rows {
+								<tr>
+									<td class="app-password-label">{ row.Label }</td>
+									<td><code>{ row.Masked }</code></td>
+									<td>{ row.Created }</td>
+									<td>
+										if row.LastUsed == "" {
+											{ t(ctx, "security.appPasswordNever") }
+										} else {
+											{ row.LastUsed }
+										}
+									</td>
+									<td>
+										<form hx-post="/settings/security/app-passwords/revoke" hx-confirm={ t(ctx, "security.appPasswordRevokeConfirm") } hx-target="next .app-password-status" hx-swap="innerHTML">
+											<input type="hidden" name="id" value={ row.ID }/>
+											<button type="submit" class="btn-danger">{ t(ctx, "security.appPasswordRevoke") }</button>
+										</form>
+										<div class="app-password-status" data-form-status aria-live="polite"></div>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+			if !require2FAFromCtx(ctx) {
+				<form method="post" action="/settings/security/app-passwords">
+					<div class="form-group u-mb-12px">
+						<label class="form-label" for="app_password_label">{ t(ctx, "security.appPasswordLabelPrompt") }</label>
+						<input type="text" name="label" id="app_password_label" class="form-input" required maxlength="64" autocomplete="off"/>
+					</div>
+					<button type="submit" class="btn-primary">{ t(ctx, "security.appPasswordCreate") }</button>
+				</form>
+			}
+		</div>
+	</div>
 }
 
 templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {

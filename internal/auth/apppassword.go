@@ -84,6 +84,17 @@ func FormatAppPassword(canonical string) string {
 	return b.String()
 }
 
+// MaskAppPassword renders the one part of a credential that is public, the
+// lookup id, in the shape of a full app password with the secret groups hidden.
+// It is what the list shows after the plaintext is gone.
+func MaskAppPassword(id string) string {
+	groups := []string{id}
+	for range appPasswordGroups - 1 {
+		groups = append(groups, strings.Repeat("*", appPasswordGroupLen))
+	}
+	return strings.Join(groups, "-")
+}
+
 // ParseAppPassword reads a typed app password. It accepts hyphens, spaces or no
 // separator and folds ASCII case (phones auto-capitalise), and returns the
 // public lookup id and the 18-letter secret. ok is false unless the input is
@@ -251,6 +262,29 @@ func (p *AppPasswords) Revoke(userID, id string) error {
 		p.logger.Info("app password revoked", "user_id", userID, "label", label, "lookup", id)
 	}
 	return nil
+}
+
+// RevokeAll deletes every credential of userID and returns how many it
+// deleted. It is one plain Delete per credential, not a composite command, so
+// it is not atomic: it stops at the first failure and returns the count so far
+// with the error. Credentials already deleted stay deleted, the rest still
+// work, and running it again finishes the job because Revoke is idempotent. A
+// credential created after the List below survives; closing that gap would
+// need a composite Raft command, which a node on an earlier binary would store
+// as a literal key.
+func (p *AppPasswords) RevokeAll(userID string) (int, error) {
+	infos, err := p.List(userID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, info := range infos {
+		if err := p.Revoke(userID, info.ID); err != nil {
+			return n, fmt.Errorf("revoking app password %s after %d: %w", info.ID, n, err)
+		}
+		n++
+	}
+	return n, nil
 }
 
 // recordUse notes a successful authentication with rec. last_used_at is date
