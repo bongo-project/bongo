@@ -32,6 +32,8 @@ Three facts shape the design:
 - Give a number of users one node supports, under a stated traffic model.
 - Give evidence for the decision on write scaling (Open Question 3).
 - Find how many accounts one node holds, and what breaks first as the count rises.
+- Find how many messages and how much stored mail one node holds, and what slows
+  down or breaks first as they grow.
 - Produce numbers that can be published and repeated by a reader.
 
 ## 3. User Stories
@@ -212,6 +214,7 @@ with fixes and repeat runs.
 | Ramp, mixed traffic | 2 to 4 hours | Find the limit with clients connected |
 | Connection test | 2 hours | Find the limit on open IMAP connections |
 | Account scale | 4 to 8 hours | Raise the account count past the target at a fixed active share, until something breaks |
+| Storage scale | 1 to 3 days | Raise the message count in steps of 10 times. At each step record the background job times in section 6.2, disk used and index size |
 | Soak | 24 to 72 hours | Run at 70 to 80% of the limit |
 | Failure | 1 to 2 hours | Restart under load, near-full disk, queue backlog |
 
@@ -232,6 +235,17 @@ From reading the code. None is measured.
 - **Memory.** The compose template limits the container to 512 MB.
 - **Connections.** Open file limits and per-connection memory at tens of thousands
   of IMAP connections.
+- **Blob files.** Each unique message is one file, in 256 directories (`hash[:2]`).
+  100 million blobs is about 390,000 files a directory. Inode limits and directory
+  performance depend on the file system, so record it.
+- **Blob garbage collection.** Mark-and-sweep walks every reference and every blob,
+  so its time grows with the store. If one pass takes longer than the 15 minute
+  orphan sweep interval, or its memory grows with the blob count, it becomes a limit
+  of its own. `BlobStore.List` returns every hash at once.
+- **Raft snapshots.** A snapshot tars the whole Pebble checkpoint (`fsmSnapshot.Persist`),
+  so its time and temporary disk use grow with metadata.
+- **Index rebuild.** SQLite and Bleve are rebuilt from Pebble and blobs. Rebuild and
+  backup times decide how large a store can be recovered in acceptable time.
 
 ### 6.3 Traffic model
 
@@ -242,6 +256,23 @@ Users per node depends on this model, so results are given for three profiles:
 light (10 messages a day), the 50 a day above, and heavy (200 a day). The share of
 accounts active at once is stated with each. The first value to try is 10%, to be
 corrected if evidence for another value is found.
+
+### 6.3.1 Storage scale
+
+Two limits are measured separately, because they cost very different amounts.
+
+- **Message count** stresses metadata, indexes and the background jobs. It can run
+  with small messages, so 100 million messages needs terabytes less disk than a
+  realistic mix. This is the cheap test, and it is expected to break first.
+- **Bytes stored** is a run at realistic message sizes, as far as the budget allows.
+  100 million messages at 50 KB is about 5 TB. A pool larger than the disk rented is
+  not claimed: the result states the largest size actually tested.
+
+Blobs are content-addressed, so repeated bodies do not add storage. The report states
+the unique blob count and the deduplication share beside the message count.
+
+Seeding through SMTP or Raft at 200 messages a second takes about 6 days for 100
+million messages, so seeding needs a faster route (Open Question 5).
 
 ### 6.4 Safety
 
@@ -279,6 +310,10 @@ worthwhile.
 4. **Is a realistic message size distribution available?** Production has too
    little traffic to give one. Use a published mix or a stated assumption.
 
+5. **How is a large store seeded?** A bulk loader that writes Pebble and blobs
+   directly on a stopped server would be much faster than SMTP, but it needs a check
+   that the result matches a store filled normally. Decide at import.
+
 ### 8.1 Decisions
 
 1. (operator, 2026-11-05) Scoped after v0.17.0.
@@ -289,5 +324,7 @@ worthwhile.
    publish new numbers.
 4. (operator, 2026-11-06) The numbers are published on the website and on social
    media (US-010).
+5. (operator, 2026-11-06) The test also finds how much storage and how many messages
+   one node holds (section 6.3.1).
 
 ### 8.2 Candidates for the next release
