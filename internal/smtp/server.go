@@ -319,11 +319,14 @@ type Session struct {
 	authed        bool
 	userID        string
 	epoch         string // credential fingerprint recorded at AUTH
-	submission    bool
-	remoteIP      net.IP
-	spfResult     string
-	authFailures  int   // failed AUTH attempts on this connection
-	declaredSize  int64 // MAIL FROM SIZE parameter (RFC 1870); 0 when absent
+	// appPassword is the lookup id of the app password that opened the
+	// session, or "" for the account password. Reset() must not clear it.
+	appPassword  string
+	submission   bool
+	remoteIP     net.IP
+	spfResult    string
+	authFailures int   // failed AUTH attempts on this connection
+	declaredSize int64 // MAIL FROM SIZE parameter (RFC 1870); 0 when absent
 
 	// DSN parameters (RFC 3461) of the current transaction. localDSN and
 	// externalDSN line up index for index with localRcpts and externalRcpts;
@@ -405,7 +408,7 @@ func (s *Session) addExternal(to string, d RcptDSN) {
 // snapshot they were checked against, so the session epoch comes from that
 // profile and not from a later re-read.
 type profileAuthenticator interface {
-	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error)
+	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error)
 }
 
 var _ profileAuthenticator = (*auth.LocalAuth)(nil)
@@ -413,7 +416,7 @@ var _ profileAuthenticator = (*auth.LocalAuth)(nil)
 // accountStateReader is implemented by authenticators that can report the live
 // standing of an account (auth.LocalAuth).
 type accountStateReader interface {
-	AccountState(userID string) (auth.AccountState, error)
+	AccountState(userID, appPasswordID string) (auth.AccountState, error)
 }
 
 func (s *Session) accountReader() accountStateReader {
@@ -422,7 +425,8 @@ func (s *Session) accountReader() accountStateReader {
 }
 
 // checkAccountLive rejects further mail on an authenticated session whose
-// account was disabled or deleted, or had its password reset, since AUTH, so a
+// account was disabled or deleted, had its password reset, or lost the app
+// password that opened the session (one more local read), since AUTH, so a
 // submission connection held open cannot keep relaying. The check fails closed:
 // a missing profile is a permanent 535, a store read error a temporary 451 so
 // the client retries once the store recovers (AUTH also fails closed on any
@@ -433,7 +437,7 @@ func (s *Session) checkAccountLive(cmd string) error {
 	if reader == nil {
 		return nil
 	}
-	st, err := reader.AccountState(s.userID)
+	st, err := reader.AccountState(s.userID, s.appPassword)
 	if err != nil {
 		s.logger.Warn("smtp: account state check failed, refusing command", "command", cmd, "user", s.userID, "error", err)
 		return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Temporary local error, please try again later"}
@@ -442,7 +446,7 @@ func (s *Session) checkAccountLive(cmd string) error {
 		return nil
 	}
 	s.logger.Info("smtp: rejecting command, account no longer valid", "command", cmd, "user", s.userID,
-		"missing", st.Missing, "disabled", st.Disabled)
+		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked)
 	return &gosmtp.SMTPError{Code: 535, EnhancedCode: gosmtp.EnhancedCode{5, 7, 8}, Message: "Account no longer available"}
 }
 
@@ -462,7 +466,7 @@ func (s *Session) AuthPlain(username, password string) error {
 		return &gosmtp.SMTPError{Code: 454, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many authentication failures; try again later"}
 	}
 
-	userID, profile, err := s.backend.auth.AuthenticateProtocol(username, password)
+	userID, profile, appPassword, err := s.backend.auth.AuthenticateProtocol(username, password)
 	if err != nil {
 		s.authFailures++
 		s.backend.authFail.Fail(ip, username)
@@ -486,6 +490,7 @@ func (s *Session) AuthPlain(username, password string) error {
 		return errAuthBadCredentials
 	}
 	s.epoch = auth.ProtocolEpoch(profile)
+	s.appPassword = appPassword
 
 	s.authed = true
 	s.userID = userID
@@ -645,7 +650,7 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		return dsnErr
 	}
 	// Re-check revocation: a transaction started before a disable must not
-	// keep adding recipients. Cheap: one Pebble read, no bcrypt.
+	// keep adding recipients. Cheap: local Pebble reads, no bcrypt.
 	if s.submission && s.authed {
 		if err := s.checkAccountLive("RCPT"); err != nil {
 			return err

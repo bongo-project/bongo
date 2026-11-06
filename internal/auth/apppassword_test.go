@@ -146,7 +146,7 @@ func (e *appEnv) attempt(email, password string) (string, int, error) {
 	e.hashMu.Lock()
 	e.hashes = nil
 	e.hashMu.Unlock()
-	id, _, err := e.la.AuthenticateProtocol(email, password)
+	id, _, _, err := e.la.AuthenticateProtocol(email, password)
 	return id, int(e.compare.Load()), err
 }
 
@@ -198,6 +198,12 @@ func TestCreateListRevoke(t *testing.T) {
 	if info.Label != "iPhone" || info.ID != pw[:6] {
 		t.Errorf("info = %+v", info)
 	}
+	// The injected clock, not time.Now: a record stamped with the wall clock
+	// would pass every other assertion here.
+	wantCreated := time.Date(2026, 11, 5, 14, 30, 0, 0, time.UTC)
+	if !info.CreatedAt.Equal(wantCreated) {
+		t.Errorf("info.CreatedAt = %v, want %v", info.CreatedAt, wantCreated)
+	}
 
 	// Stored record: bcrypt of the secret, never the plaintext.
 	rec, ok, err := e.recs.Get("u1", info.ID)
@@ -219,10 +225,16 @@ func TestCreateListRevoke(t *testing.T) {
 	if rec.LastUsedAt != 0 {
 		t.Errorf("new record last_used_at = %d", rec.LastUsedAt)
 	}
+	if rec.CreatedAt != wantCreated.Unix() {
+		t.Errorf("stored created_at = %d, want %d", rec.CreatedAt, wantCreated.Unix())
+	}
 
 	list, err := e.apps.List("u1")
 	if err != nil || len(list) != 1 || list[0].ID != info.ID || !list[0].LastUsedAt.IsZero() {
 		t.Fatalf("List = %+v %v", list, err)
+	}
+	if !list[0].CreatedAt.Equal(wantCreated) {
+		t.Errorf("List CreatedAt = %v, want %v", list[0].CreatedAt, wantCreated)
 	}
 
 	if err := e.apps.Revoke("u1", info.ID); err != nil {
@@ -319,6 +331,8 @@ func TestAuthenticateProtocolCostsOneComparison(t *testing.T) {
 	e.mutateProfile(t, "u3", func(p *bongov1.UserProfile) { p.Disabled = true })
 	e.user(t, "res", "room@example.com", "room-pw")
 	e.mutateProfile(t, "res", func(p *bongov1.UserProfile) { p.Kind = ResourceKind })
+	// A live user who never created an app password: no record under any id.
+	e.user(t, "bare", "bare@example.com", "bare-pw")
 
 	good := e.create(t, "u1", "phone")
 	e.create(t, "u1", "laptop")
@@ -345,7 +359,9 @@ func TestAuthenticateProtocolCostsOneComparison(t *testing.T) {
 		{"unknown user plain password", "nobody@example.com", "x", ""},
 		{"account password", "alice@example.com", "account-pw", "u1"},
 		{"wrong plain password", "alice@example.com", "nope", ""},
-		{"user without app passwords, shaped", "dis@example.com", noRecord, ""},
+		{"disabled user with a record, shaped no record", "dis@example.com", noRecord, ""},
+		{"user with no records at all, shaped", "bare@example.com", noRecord, ""},
+		{"user with no records at all, account password", "bare@example.com", "bare-pw", "bare"},
 		{"disabled user, valid app password", "dis@example.com", disGood, ""},
 		{"disabled user, account password", "dis@example.com", "dis-pw", ""},
 		{"resource, valid app password", "room@example.com", resGood, ""},
@@ -429,7 +445,7 @@ func TestAppPasswordRefusedOnRestrictiveMethods(t *testing.T) {
 		t.Errorf("account password refused: %v", err)
 	}
 	// And the protocol method accepts what they refuse.
-	if _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
+	if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
 		t.Errorf("protocol method refused the app password: %v", err)
 	}
 	e.apps.Wait()
@@ -441,7 +457,7 @@ func TestRevokedAppPasswordFailsNextAttempt(t *testing.T) {
 	keep := e.create(t, "u1", "keep")
 	drop := e.create(t, "u1", "drop")
 	for _, p := range []string{keep, drop} {
-		if _, _, err := e.la.AuthenticateProtocol("a@example.com", p); err != nil {
+		if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", p); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -452,7 +468,7 @@ func TestRevokedAppPasswordFailsNextAttempt(t *testing.T) {
 	if _, n, err := e.attempt("a@example.com", drop); !errors.Is(err, ErrBadCredentials) || n != 1 {
 		t.Errorf("revoked credential: n=%d err=%v", n, err)
 	}
-	if _, _, err := e.la.AuthenticateProtocol("a@example.com", keep); err != nil {
+	if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", keep); err != nil {
 		t.Errorf("other credential disturbed: %v", err)
 	}
 	e.apps.Wait()
@@ -511,10 +527,10 @@ func mustMarshal(t *testing.T, m proto.Message) []byte {
 func TestWithoutAppPasswordsAccountPasswordOnly(t *testing.T) {
 	la, mm, kv := setupTestAuth(t)
 	createTestUser(t, kv, mm, "u1", "a@example.com", "pw")
-	if _, _, err := la.AuthenticateProtocol("a@example.com", "pw"); err != nil {
+	if _, _, _, err := la.AuthenticateProtocol("a@example.com", "pw"); err != nil {
 		t.Errorf("account password: %v", err)
 	}
-	if _, _, err := la.AuthenticateProtocol("a@example.com", "aaaaaa-aaaaaa-aaaaaa-aaaaaa"); !errors.Is(err, ErrBadCredentials) {
+	if _, _, _, err := la.AuthenticateProtocol("a@example.com", "aaaaaa-aaaaaa-aaaaaa-aaaaaa"); !errors.Is(err, ErrBadCredentials) {
 		t.Errorf("shaped password: %v", err)
 	}
 }
@@ -522,11 +538,13 @@ func TestWithoutAppPasswordsAccountPasswordOnly(t *testing.T) {
 func TestLastUsedWrittenOncePerDay(t *testing.T) {
 	e := newAppEnv(t)
 	e.user(t, "u1", "a@example.com", "pw")
-	pw := e.create(t, "u1", "phone")
+	// A label that appears nowhere else, so the first-use line is the only
+	// place it can be found next to the message.
+	pw := e.create(t, "u1", "first-use-probe")
 	id := pw[:6]
 	login := func() {
 		t.Helper()
-		if _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
+		if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
 			t.Fatal(err)
 		}
 		e.apps.Wait()
@@ -554,8 +572,17 @@ func TestLastUsedWrittenOncePerDay(t *testing.T) {
 	if n := strings.Count(e.logs.String(), "app password first used"); n != 1 {
 		t.Errorf("first use logged %d times", n)
 	}
-	if !strings.Contains(e.logs.String(), "lookup="+id) {
-		t.Error("first use log lacks the lookup id")
+	var firstUse string
+	for _, line := range strings.Split(e.logs.String(), "\n") {
+		if strings.Contains(line, "app password first used") {
+			firstUse = line
+		}
+	}
+	if !strings.Contains(firstUse, "lookup="+id) {
+		t.Errorf("first use log lacks the lookup id: %q", firstUse)
+	}
+	if !strings.Contains(firstUse, "label=first-use-probe") {
+		t.Errorf("first use log lacks the label: %q", firstUse)
 	}
 	_, secret, _ := ParseAppPassword(pw)
 	assertNoSecrets(t, e.logs.String(), pw, secret, rec.PasswordHash)
@@ -572,7 +599,7 @@ func TestConcurrentLoginsIssueOneTouch(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
+			if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -609,7 +636,7 @@ func TestFailedTouchDoesNotFailLoginAndIsLogged(t *testing.T) {
 			if tt.benign {
 				e.apps.SetBenignTouchError(func(err error) bool { return errors.Is(err, notLeader) })
 			}
-			if _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
+			if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
 				t.Fatalf("login failed because of the touch: %v", err)
 			}
 			e.apps.Wait()
@@ -645,7 +672,7 @@ func TestRefusedAccountsDoNotTouch(t *testing.T) {
 	e.mutateProfile(t, "d", func(p *bongov1.UserProfile) { p.Disabled = true })
 	e.mutateProfile(t, "r", func(p *bongov1.UserProfile) { p.Kind = ResourceKind })
 	for email, pw := range map[string]string{"d@example.com": dPW, "r@example.com": rPW} {
-		if _, _, err := e.la.AuthenticateProtocol(email, pw); !errors.Is(err, ErrBadCredentials) {
+		if _, _, _, err := e.la.AuthenticateProtocol(email, pw); !errors.Is(err, ErrBadCredentials) {
 			t.Errorf("%s: %v", email, err)
 		}
 	}

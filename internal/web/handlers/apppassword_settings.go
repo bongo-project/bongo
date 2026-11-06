@@ -172,6 +172,15 @@ func (h *SecurityHandler) createWith(w http.ResponseWriter, r *http.Request, bac
 	}
 
 	defer lockUser(userID)()
+
+	// reauthenticate answers a throttled client with bare text. Say it as a
+	// translated message on the page the route renders instead. Nothing is
+	// spent or counted: this returns before the re-authentication and the mint.
+	if h.limiter != nil && h.limiter.IsLimited(middleware.ClientIP(r)) {
+		w.Header().Set("Retry-After", strconv.Itoa(int(h.limiter.Window().Seconds())))
+		return credentialResult{Status: http.StatusTooManyRequests, ErrText: i18n.T(locale, "security.deviceThrottled")}
+	}
+
 	profile, ok := h.reauthenticate(w, r, userID, email, r.FormValue("password"), back)
 	if !ok {
 		return credentialResult{Done: true}
@@ -240,11 +249,13 @@ const (
 func (h *SecurityHandler) deviceView(r *http.Request, userID string, setup bool) templates.DeviceView {
 	locale := middleware.LocaleFromContext(r.Context())
 	view := templates.DeviceView{
-		Setup:   setup,
 		Choices: h.deviceChoices(locale),
 	}
 	apps := h.appPasswordView(r, userID, "", "")
 	view.TotpEnabled = apps.TotpEnabled
+	// Setup is the last step of 2FA enrolment: without 2FA there is nothing to
+	// finish, and the switch it offers cannot be turned on.
+	view.Setup = setup && apps.TotpEnabled
 	view.Count = apps.Count
 	return view
 }
@@ -309,18 +320,10 @@ func (h *SecurityHandler) CreateDevice(w http.ResponseWriter, r *http.Request) {
 		back = devicesSetupPath
 	}
 
-	// reauthenticate answers a throttled client with plain text. For a form
-	// that would leave the user on a bare error, so say it on the page. A held
-	// session is sent to the Security page first, as createCredential does.
+	// A held session is sent to the Security page, as createWith does, before
+	// createDeviceLink can answer it with a 400 when no link store is wired.
 	if middleware.Require2FAFromContext(r.Context()) {
 		http.Redirect(w, r, securityPath, http.StatusSeeOther)
-		return
-	}
-	if h.limiter != nil && h.limiter.IsLimited(middleware.ClientIP(r)) {
-		w.Header().Set("Retry-After", strconv.Itoa(int(h.limiter.Window().Seconds())))
-		view := h.deviceView(r, userID, setup)
-		view.Error = i18n.T(locale, "security.deviceThrottled")
-		templ.Handler(templates.AddDevice(email, view), templ.WithStatus(http.StatusTooManyRequests)).ServeHTTP(w, r)
 		return
 	}
 

@@ -45,7 +45,7 @@ func (e *adminAppEnv) revokeAll(t *testing.T, targetID string, asDomainAdmin boo
 
 func (e *adminAppEnv) works(t *testing.T, email, pw string) bool {
 	t.Helper()
-	_, _, err := e.la.AuthenticateProtocol(email, pw)
+	_, _, _, err := e.la.AuthenticateProtocol(email, pw)
 	e.apps.Wait()
 	return err == nil
 }

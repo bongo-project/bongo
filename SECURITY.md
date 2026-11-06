@@ -78,6 +78,15 @@ request. The per-user lock that serialises this is per node; two nodes (or a
 follower that has not applied the previous write) can race inside a few
 milliseconds. DAV Basic Auth and protocol logins do not use TOTP.
 
+App passwords are per-device credentials for IMAP, POP3, SMTP submission and
+CalDAV/CardDAV. They never sign in to the web interface. An account with
+two-factor authentication can turn on "Require app passwords", after which
+those protocols refuse the account password. Revoking an app password ends the
+IMAP, POP3 and SMTP sessions it opened on their next command; CalDAV and
+CardDAV check the credential on every request. A follower reads locally, so it
+can accept a revoked app password until it applies the delete, and for as long
+as a partition lasts.
+
 **Forwarded client IPs are trusted only from configured proxies.** PROXY protocol
 headers and `X-Forwarded-For` / `X-Forwarded-Proto` are honoured only from the
 addresses in `server.trusted_proxies`. Nothing is trusted by default, loopback and

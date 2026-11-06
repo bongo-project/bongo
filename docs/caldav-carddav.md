@@ -11,15 +11,33 @@ check a connection that fails.
 |-------|-------|
 | Server | The mail host name, for example `mail.example.com` |
 | User name | The full email address, for example `alice@example.com`. The local part alone is refused. |
-| Password | The account password |
+| Password | An app password, or the account password while "Require app passwords" is off |
 | CalDAV path | `/caldav/` |
 | CardDAV path | `/carddav/` |
 | Port and security | 443 with TLS |
 
-Clients authenticate with HTTP Basic auth over TLS. Two-factor authentication
-does not apply to CalDAV and CardDAV: the account password alone signs in
-(see `SECURITY.md`). Repeated failed logins from one address are throttled;
-the server answers `429 Too Many Requests` until the lockout expires.
+Clients authenticate with HTTP Basic auth over TLS. Basic auth carries one
+secret, so a second factor cannot be entered and two-factor authentication
+does not apply to CalDAV and CardDAV (see `SECURITY.md`).
+
+An app password works in any client. Create one under Settings, Security, Add
+a device. Choosing Other shows the password once, beside the server settings
+to enter with it. Each device gets its own password, and revoking one signs
+out only that device. App passwords work on CalDAV, CardDAV, IMAP, POP3 and
+SMTP submission, and never for the web login. Accounts without two-factor
+authentication can create app passwords too.
+
+The account password signs in to these protocols until "Require app
+passwords" is turned on. The switch needs two-factor authentication and at
+least one app password. It is offered at the end of enrolment and on the
+Security page. While it is on, the account password is refused on CalDAV,
+CardDAV, IMAP, POP3 and SMTP submission. Turning it off needs the account
+password and a code. Removing two-factor authentication turns it off and
+keeps the app passwords.
+
+Repeated failed logins from one address are throttled; the server answers
+`429 Too Many Requests` until the lockout expires. A refused account password
+counts as a failure.
 
 A disabled account and a resource account (room or equipment) cannot sign
 in. Both get the same `401` as a wrong password.
@@ -71,7 +89,8 @@ calendar user address set, and the client lists the collections itself.
 1. System Settings, Internet Accounts, Add Other Account, then CalDAV
    account (or CardDAV account for Contacts).
 2. Account type: Manual.
-3. User name: the full email address. Password: the account password.
+3. User name: the full email address. Password: an app password, or the
+   account password while app passwords are not required.
    Server address: the mail host name.
 4. If setup fails at "Verifying", choose Advanced and set the server path
    to `/caldav/` (or `/carddav/`), port 443, Use SSL on.
@@ -80,12 +99,13 @@ calendar user address set, and the client lists the collections itself.
 
 Settings, Calendar (or Contacts), Accounts, Add Account, Other, Add CalDAV
 Account (or Add CardDAV Account). Enter the mail host name, the full email
-address and the password. If verification fails, open Advanced Settings and
+address and an app password (or the account password while app passwords
+are not required). If verification fails, open Advanced Settings and
 set the account URL to `https://mail.example.com/caldav/` (or `/carddav/`).
 
 The configuration profile at `https://mail.example.com/.well-known/mobileconfig`
 sets up the mail, CalDAV and CardDAV accounts. That public profile contains
-no password, so the device asks for it.
+no password, so the device asks for an app password.
 
 To skip the prompts, sign in and use Settings, Security, Add a device, Apple.
 After you confirm your password (and a code, with two-factor authentication)
@@ -120,11 +140,14 @@ subscribe to each.
 Contacts: New Address Book, CardDAV, location
 `https://mail.example.com/carddav/`.
 
+For both, Thunderbird asks for a password: enter an app password.
+
 ### Android with DAVx5
 
 Add an account with "Login with URL and user name". Base URL
 `https://mail.example.com/`, user name the full email address. DAVx5 finds
-both CalDAV and CardDAV from the base URL. On versions up to 0.14.1 use
+both CalDAV and CardDAV from the base URL. The password is an app
+password. On versions up to 0.14.1 use
 `https://mail.example.com/caldav/` as the base URL, and add a second account
 with `https://mail.example.com/carddav/` for contacts. Tasks sync to tasks.org or
 OpenTasks when one of them is installed.
@@ -248,9 +271,11 @@ What a failure means:
   the client.
 - `404` on the email domain's well-known path: the website has no redirect.
   Add the redirect or the DNS records, or enter the mail host in the client.
-- `401` at sign-in: wrong password, the local part used instead of the full
+- `401` at sign-in: wrong password, the account password used while app
+  passwords are required, the local part used instead of the full
   address, a disabled account, or a resource account.
-- `429`: too many failed attempts from this address. Wait and try again
-  with the correct password.
+- `429`: too many failed attempts from this address. A client left on the
+  account password after app passwords became required reaches this too.
+  Wait and try again with the correct password.
 - A certificate error: the client refuses the connection. The mail host
   needs a valid certificate for its name.

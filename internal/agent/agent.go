@@ -5039,7 +5039,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 		return "", false
 	}
 
-	userID, _, err := authn.AuthenticateProtocol(username, password)
+	userID, _, _, err := authn.AuthenticateProtocol(username, password)
 	if err != nil {
 		if limiter.Fail(ip, username) {
 			logger.Warn("dav: basic auth locked out after repeated failures", "ip", ip)

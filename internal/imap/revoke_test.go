@@ -114,7 +114,7 @@ func newRevokeSession(t *testing.T, e *revokeEnv) *session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := e.auth.AccountState(userID)
+	st, err := e.auth.AccountState(userID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,11 +199,11 @@ type flakyState struct {
 	fail atomic.Bool
 }
 
-func (f *flakyState) AccountState(userID string) (auth.AccountState, error) {
+func (f *flakyState) AccountState(userID, appPasswordID string) (auth.AccountState, error) {
 	if f.fail.Load() {
 		return auth.AccountState{}, errors.New("pebble unavailable")
 	}
-	return f.LocalAuth.AccountState(userID)
+	return f.LocalAuth.AccountState(userID, appPasswordID)
 }
 
 // Through a real client: while the store errors every authenticated command
@@ -326,7 +326,7 @@ func TestIMAPIdleDuringStoreErrorRefused(t *testing.T) {
 type errState struct{}
 
 func (errState) Authenticate(string, string) (string, error) { return "", errors.New("n/a") }
-func (errState) AccountState(string) (auth.AccountState, error) {
+func (errState) AccountState(string, string) (auth.AccountState, error) {
 	return auth.AccountState{}, errors.New("pebble unavailable")
 }
 
@@ -509,12 +509,12 @@ func TestRevokedIMAPIdleEntryCheckIsPrompt(t *testing.T) {
 	}
 }
 
-func (e errState) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error) {
+func (e errState) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error) {
 	id, err := e.Authenticate(username, password)
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
-	return id, &bongov1.UserProfile{}, nil
+	return id, &bongov1.UserProfile{}, "", nil
 }
 
 // Every authenticated method must answer a store error with the temporary

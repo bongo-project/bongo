@@ -310,8 +310,10 @@ func TestQRRouteMakesALinkNotACredential(t *testing.T) {
 	if rec.Label != "Lance iPhone" || rec.Host != "mail.example.com" || rec.UsedAt != 0 {
 		t.Errorf("ticket = %v", rec)
 	}
-	if got := rec.ExpiresAt - rec.CreatedAt; got != int64(store.AppPasswordTicketTTL.Seconds()) {
-		t.Errorf("lifetime = %ds", got)
+	// A literal, not the constant: comparing with the constant passes for any
+	// value the constant takes. The lifetime is five minutes by decision.
+	if got := rec.ExpiresAt - rec.CreatedAt; got != 300 {
+		t.Errorf("lifetime = %ds, want 300", got)
 	}
 
 	// The token is nowhere in the store: only its hash is.
@@ -454,7 +456,7 @@ func TestRedeemCreatesTheCredentialOnce(t *testing.T) {
 	if len(pws) != 4 {
 		t.Fatalf("%d password keys", len(pws))
 	}
-	if id, _, err := e.la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err != nil || id != secUserA {
+	if id, _, _, err := e.la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err != nil || id != secUserA {
 		t.Fatalf("the profile password does not authenticate: %v", err)
 	}
 	e.apps.Wait()

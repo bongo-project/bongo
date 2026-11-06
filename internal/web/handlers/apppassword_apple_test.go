@@ -107,7 +107,7 @@ func TestAddDeviceApple(t *testing.T) {
 	}
 
 	// The value works as a protocol login, and stops when revoked.
-	if id, _, err := la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err != nil || id != secUserA {
+	if id, _, _, err := la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err != nil || id != secUserA {
 		t.Fatalf("the profile password does not authenticate: %v", err)
 	}
 	e.apps.Wait()
@@ -135,7 +135,7 @@ func TestAddDeviceApple(t *testing.T) {
 	if err := e.apps.Revoke(secUserA, infos[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err == nil {
+	if _, _, _, err := la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err == nil {
 		t.Error("a revoked profile password still authenticates")
 	}
 }
@@ -225,6 +225,9 @@ func TestAppleRefusals(t *testing.T) {
 				before := e.count(t, secUserA)
 				if setup {
 					form.Set("setup", "1")
+					// Setup mode belongs to 2FA enrolment: a plain account gets
+					// the normal page, so the retention checks need 2FA.
+					form.Set("totp_code", e.enrol(t, secUserA)[0])
 				}
 				w := e.post(t, e.h.CreateDevice, secUserA, devicesURL, form)
 				if w.Code != c.code {

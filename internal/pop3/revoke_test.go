@@ -234,7 +234,7 @@ func TestPOP3QuitDoesNotApplyDeletionsForRevokedAccount(t *testing.T) {
 // store outage after PASS succeeded.
 type flakyState struct{ *auth.LocalAuth }
 
-func (flakyState) AccountState(string) (auth.AccountState, error) {
+func (flakyState) AccountState(string, string) (auth.AccountState, error) {
 	return auth.AccountState{}, errors.New("pebble unavailable")
 }
 

@@ -85,7 +85,7 @@ func TestLoginRefusesAppPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Control: the protocol method accepts it, so the web refusal is real.
-	if _, _, err := la.AuthenticateProtocol("bob@example.com", appPW); err != nil {
+	if _, _, _, err := la.AuthenticateProtocol("bob@example.com", appPW); err != nil {
 		t.Fatalf("control: protocol login refused: %v", err)
 	}
 	apps.Wait()
@@ -181,7 +181,7 @@ func TestReauthRefusesAppPassword(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if id, _, err := la.AuthenticateProtocol(reauthEmail, appPW); err != nil || id != reauthUserID {
+			if id, _, _, err := la.AuthenticateProtocol(reauthEmail, appPW); err != nil || id != reauthUserID {
 				t.Fatalf("control: protocol login = %q, %v", id, err)
 			}
 			apps.Wait()

@@ -208,7 +208,7 @@ func TestSMTPRcptRefusedAfterRevocation(t *testing.T) {
 // store outage after AUTH succeeded.
 type flakyState struct{ *auth.LocalAuth }
 
-func (flakyState) AccountState(string) (auth.AccountState, error) {
+func (flakyState) AccountState(string, string) (auth.AccountState, error) {
 	return auth.AccountState{}, errors.New("pebble unavailable")
 }
 

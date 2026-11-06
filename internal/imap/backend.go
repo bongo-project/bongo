@@ -66,7 +66,10 @@ type session struct {
 	userID string
 	// epoch is the account's credential fingerprint recorded at LOGIN; a
 	// mismatch later means the password was reset.
-	epoch           string
+	epoch string
+	// appPassword is the lookup id of the app password that opened the
+	// session, or "" for the account password. Revoking it ends the session.
+	appPassword     string
 	selectedMailbox string
 	readOnly        bool
 
@@ -238,7 +241,7 @@ var idleRecheckInterval = 30 * time.Second
 // profile snapshot they were checked against, so the session epoch comes from
 // that profile and not from a later re-read.
 type profileAuthenticator interface {
-	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error)
+	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error)
 }
 
 var _ profileAuthenticator = (*auth.LocalAuth)(nil)
@@ -247,7 +250,7 @@ var _ profileAuthenticator = (*auth.LocalAuth)(nil)
 // standing of an account (auth.LocalAuth). Authenticators without it get no
 // per-command check.
 type accountStateReader interface {
-	AccountState(userID string) (auth.AccountState, error)
+	AccountState(userID, appPasswordID string) (auth.AccountState, error)
 }
 
 func (s *session) accountReader() accountStateReader {
@@ -275,7 +278,8 @@ var errAccountStateUnavailable = &imap.Error{
 // its password was reset since LOGIN. It must run at the start of every
 // authenticated command: go-imap calls Poll only after a command has already
 // succeeded, so Poll alone would let the first command after revocation
-// return data. The cost is one Pebble Get per command (never per message).
+// return data. The cost is one Pebble Get per command (never per message), plus one more
+// for the record when the session was opened with an app password.
 //
 // The check fails closed. A missing or revoked profile refuses the command and
 // ends the session; a store read error refuses the command with a temporary
@@ -289,7 +293,7 @@ func (s *session) checkAccount() error {
 	if reader == nil || s.userID == "" {
 		return nil
 	}
-	st, err := reader.AccountState(s.userID)
+	st, err := reader.AccountState(s.userID, s.appPassword)
 	if err != nil {
 		s.logger.Warn("imap: account state check failed, refusing command", "user", s.userID, "error", err)
 		return errAccountStateUnavailable
@@ -298,7 +302,7 @@ func (s *session) checkAccount() error {
 		return nil
 	}
 	s.logger.Info("imap: closing session, account no longer valid", "user", s.userID,
-		"missing", st.Missing, "disabled", st.Disabled)
+		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked)
 	if s.conn != nil {
 		_ = s.conn.Bye("Account no longer available")
 	}
@@ -317,7 +321,7 @@ func (s *session) Login(username, password string) error {
 		return errAuthRateLimited
 	}
 
-	userID, profile, err := s.auth.AuthenticateProtocol(username, password)
+	userID, profile, appPassword, err := s.auth.AuthenticateProtocol(username, password)
 	if err != nil {
 		s.logger.Warn("imap: login failed", "username", username, "ip", s.remoteIP)
 		if s.authLimiter.Fail(ip, username) {
@@ -333,6 +337,7 @@ func (s *session) Login(username, password string) error {
 		return imapserver.ErrAuthFailed
 	}
 	s.epoch = auth.ProtocolEpoch(profile)
+	s.appPassword = appPassword
 	s.userID = userID
 	s.authLimiter.Succeed(ip, username)
 	s.logger.Debug("imap: login succeeded", "username", username, "user_id", userID)

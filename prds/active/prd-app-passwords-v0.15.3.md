@@ -507,3 +507,16 @@ Found by verification (2026-11-06):
 - Decision 13 has a mixed-version exception. If 2FA is disabled and re-enrolled on
   an earlier binary, the flag survives as an unknown field and an upgraded node
   enforces it. Reasoned from the code, not run. The off route recovers it.
+- `AuthenticateProfile` returns a wrapped error after no bcrypt compare on a corrupt
+  profile, unlike `AuthenticateProtocol`. Only stored corruption reaches it.
+- `reauthenticate` still returns a bare English 429 for change password, disable
+  2FA and switch-off. A concurrent failure from one IP can also reach it on create.
+- `AccountState` treats a found record with an empty hash as live, while
+  `AuthenticateProtocol` refuses it. Create cannot produce one.
+- A session in IDLE notices a revoke on the 30-second recheck. SMTP refuses the
+  command but keeps the connection open, as for a disabled account.
+- `flaggedAppAuth` is repeated in the IMAP and SMTP tests, and `flaggedPOP3` is a
+  close copy. `find-similar` was not run on them or on `authtest`, because the MCP
+  LSP was unavailable.
+- `go test -race ./internal/web/handlers/` can pass the default 10 minute timeout
+  on a loaded machine. It holds 1166 tests.

@@ -136,11 +136,18 @@ func (a *LocalAuth) AuthenticateProfile(username, password string) (string, *bon
 // credential of user A cannot authenticate user B. Accepted edge: an account
 // password that parses as an app password and whose first group equals one of
 // that user's lookup ids is judged as an app password and fails.
-func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, error) {
+//
+// The third result is the lookup id of the app password that opened the
+// session, or "" for the account password. A session keeps it and passes it to
+// AccountState, so revoking that credential ends the session. A revoked lookup
+// id can in theory be reissued to the same user (1 in 23^6 per create); the
+// old session would then count as live. It stays the same user, so this is
+// accepted rather than compared by hash.
+func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error) {
 	userID, err := a.lookupUserID(username)
 	if err != nil {
 		_ = compareHash(dummyBcryptHash, []byte(password))
-		return "", nil, ErrBadCredentials
+		return "", nil, "", ErrBadCredentials
 	}
 	data, err := a.store.Get([]byte(fmt.Sprintf("/user/%s/profile", userID)))
 	var profile bongov1.UserProfile
@@ -149,7 +156,7 @@ func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bo
 	}
 	if err != nil {
 		_ = compareHash(dummyBcryptHash, []byte(password))
-		return "", nil, ErrBadCredentials
+		return "", nil, "", ErrBadCredentials
 	}
 
 	// The one place the credential kind is known.
@@ -161,19 +168,19 @@ func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bo
 		case rerr != nil || (found && len(rec.PasswordHash) == 0):
 			a.apps.logger.Warn("app password record unreadable", "user_id", userID, "lookup", id)
 			_ = compareHash(dummyBcryptHash, []byte(password))
-			return "", nil, ErrBadCredentials
+			return "", nil, "", ErrBadCredentials
 		case found:
 			if compareHash(rec.PasswordHash, []byte(secret)) != nil {
-				return "", nil, ErrBadCredentials
+				return "", nil, "", ErrBadCredentials
 			}
 			used = rec
 		default:
 			if compareHash(profile.PasswordHash, []byte(password)) != nil {
-				return "", nil, ErrBadCredentials
+				return "", nil, "", ErrBadCredentials
 			}
 		}
 	} else if compareHash(profile.PasswordHash, []byte(password)) != nil {
-		return "", nil, ErrBadCredentials
+		return "", nil, "", ErrBadCredentials
 	}
 
 	// The per-account switch: with it on, only an app password passes. It runs
@@ -182,16 +189,23 @@ func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bo
 	// flag left behind by a node that cleared 2FA (an earlier binary does not
 	// know the field) cannot lock the account out of its mail clients.
 	if used == nil && profileEnforcesAppPasswords(&profile) {
-		return "", nil, ErrBadCredentials
+		return "", nil, "", ErrBadCredentials
 	}
 
 	if err := CheckStanding(&profile); err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
+	// The id is returned only when a record actually authenticated. The parsed
+	// id is also set when an account password merely has the app password
+	// shape, and binding that session to a record that does not exist would
+	// end it on its next command. It is the key the record was found under,
+	// not rec.Id, so it can never be empty here.
+	appPasswordID := ""
 	if used != nil {
 		a.apps.recordUse(userID, used)
+		appPasswordID = id
 	}
-	return userID, &profile, nil
+	return userID, &profile, appPasswordID, nil
 }
 
 func (a *LocalAuth) lookupUserID(username string) (string, error) {
@@ -228,19 +242,27 @@ type AccountState struct {
 	// Unlike the web session epoch it ignores TOTP state, so turning 2FA on or
 	// off does not drop mail clients that never use TOTP.
 	Epoch string
+	// AppPasswordRevoked is true when the session was opened with an app
+	// password whose record no longer exists. Negative so the zero value of
+	// the struct stays live.
+	AppPasswordRevoked bool
 }
 
 // Live reports whether a session that recorded epoch at login may continue.
 // A missing profile is never live (fail closed).
 func (st AccountState) Live(epoch string) bool {
-	return !st.Missing && !st.Disabled && st.Epoch == epoch
+	return !st.Missing && !st.Disabled && !st.AppPasswordRevoked && st.Epoch == epoch
 }
 
 // AccountState reads the current state of userID: one Pebble Get and a
 // protobuf unmarshal, no bcrypt, so it is cheap enough to run per command.
+// A session opened with an app password passes its lookup id and costs one
+// more local Pebble Get for the record; a session opened with the account
+// password passes "" and does no extra read. A missing record reports
+// AppPasswordRevoked; a read error is returned like a profile read error.
 // A genuinely absent profile is reported as Missing; any other store failure is
 // returned as an error so the caller can choose its own failure policy.
-func (a *LocalAuth) AccountState(userID string) (AccountState, error) {
+func (a *LocalAuth) AccountState(userID, appPasswordID string) (AccountState, error) {
 	data, err := a.store.Get([]byte(fmt.Sprintf("/user/%s/profile", userID)))
 	if errors.Is(err, store.ErrNotFound) {
 		return AccountState{Missing: true}, nil
@@ -252,10 +274,23 @@ func (a *LocalAuth) AccountState(userID string) (AccountState, error) {
 	if err := proto.Unmarshal(data, &profile); err != nil {
 		return AccountState{}, fmt.Errorf("parsing profile: %w", err)
 	}
-	return AccountState{
+	st := AccountState{
 		Disabled: profile.Disabled,
 		Epoch:    ProtocolEpoch(&profile),
-	}, nil
+	}
+	if appPasswordID != "" {
+		if a.apps == nil {
+			// Fail closed: a session bound to a credential we cannot look up.
+			st.AppPasswordRevoked = true
+			return st, nil
+		}
+		_, found, err := a.apps.records.Get(userID, appPasswordID)
+		if err != nil {
+			return AccountState{}, fmt.Errorf("reading app password: %w", err)
+		}
+		st.AppPasswordRevoked = !found
+	}
+	return st, nil
 }
 
 // profileEnforcesAppPasswords reports whether the account password is refused

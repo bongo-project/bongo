@@ -104,8 +104,8 @@ func TestRequireAppPasswordsSwitch(t *testing.T) {
 	}
 
 	// The refusal is the same error value a wrong password gets.
-	_, _, refused := e.la.AuthenticateProtocol("alice@example.com", "account-pw")
-	_, _, wrong := e.la.AuthenticateProtocol("alice@example.com", "nope")
+	_, _, _, refused := e.la.AuthenticateProtocol("alice@example.com", "account-pw")
+	_, _, _, wrong := e.la.AuthenticateProtocol("alice@example.com", "nope")
 	if refused != wrong {
 		t.Errorf("refusal %v differs from wrong password %v", refused, wrong)
 	}
