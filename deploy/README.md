@@ -229,23 +229,21 @@ docker compose logs -f bongo        # watch startup
 docker compose restart bongo
 ```
 
-> **Image source:** CI publishing is currently **disabled**, so
-> `ghcr.io/bongo-project/bongo` images are built and pushed by hand. From the repo
-> root, for version `X.Y.Z`:
+> **Image source:** pushing a version tag publishes `ghcr.io/bongo-project/bongo:X.Y.Z`
+> through `.github/workflows/publish-image.yml`. Set the `image:` pin in
+> `docker-compose.yml` to the version you want. If the package is private, pulling
+> needs `docker login ghcr.io` with a GitHub personal access token that has
+> `read:packages`.
+>
+> To build an image by hand, from the repo root:
 >
 > ```bash
 > docker build -f deploy/Dockerfile \
 >   --build-arg VERSION=X.Y.Z \
 >   --build-arg COMMIT=$(git rev-parse --short HEAD) \
 >   --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
->   -t ghcr.io/bongo-project/bongo:X.Y.Z -t ghcr.io/bongo-project/bongo:latest .
-> docker push ghcr.io/bongo-project/bongo:X.Y.Z
-> docker push ghcr.io/bongo-project/bongo:latest
+>   -t ghcr.io/bongo-project/bongo:X.Y.Z .
 > ```
->
-> Then bump the `image:` pin in `docker-compose.yml` to `X.Y.Z`. Pushing (and,
-> if the package is private, pulling) needs `docker login ghcr.io` with a GitHub
-> personal access token that has `write:packages` / `read:packages`.
 
 Confirm Traefik picked up the routers (its dashboard is on `:8080`), and that
 `certs-dumper` wrote the cert:

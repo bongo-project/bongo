@@ -67,6 +67,20 @@ go test -race ./internal/cluster/...
 
 Two binaries: `bongo` (the server) and `bongo-import` (mail import from mbox/maildir/eml/IMAP/Thunderbird).
 
+## Release Checklist
+
+1. In the release PR, bump the image in `deploy/docker-compose.yml` and
+   `TestComposeImageTag` in `internal/depfloor/depfloor_test.go` to the new version,
+   together.
+2. Merge the PR and wait for `main` CI to go green.
+3. Tag with an annotated tag once the operator approves. The tag message becomes the
+   release notes. The push runs "Release binaries" and "Publish image".
+4. Take the image digest from the "exporting manifest list sha256" line of the
+   publish log, and hand the digest, notes and checklist to the InfraWork session.
+   Production deploys need the operator's go there.
+5. Sync the website (`scripts/sync_docs.py`, `scripts/sync_releases.py`,
+   `latest_release` in `_config.yml`). Publishing it needs the operator's go.
+
 ## Architecture Overview
 
 ### Three-Tier Storage
