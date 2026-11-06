@@ -128,6 +128,29 @@ a rebuild so that I can tell a setting from a design limit.
 - [ ] Metrics exist for: open user databases and evictions, search index backlog,
       queue depth, and Raft apply time. A test asserts each is exported.
 
+### US-011: See inside the server
+**Description:** As the operator, I want metrics for each suspected limit so that a
+run names the component that failed, not only the symptom.
+
+Today `/metrics` covers SMTP, the queue, antispam, dedup and vacation replies. There
+is nothing for Raft, Pebble, blobs, background jobs, the indexer, IMAP, POP3 or DAV,
+and no profiling endpoint.
+
+**Acceptance Criteria:**
+- [ ] Metrics exist for each suspected limit in section 6.2: Raft apply time and
+      commit lag, Pebble compaction and write stalls, disk sync time, open user
+      databases and evictions, indexer backlog, blob count and bytes, garbage
+      collection and snapshot duration, connections and command time per protocol.
+- [ ] A dry run before the first real run shows each metric moving under load.
+- [ ] CPU and heap profiling is available on a private listener only, and is off
+      by default.
+- [ ] Measuring does not change the result: a run with profiling off is the one
+      published.
+- [ ] Metric labels hold no user names or addresses, so cardinality stays bounded
+      at 100,000 accounts and nothing personal is exposed.
+- [ ] Log volume at the test's log level is measured, and logging on a per-message
+      path is shown not to be the limit.
+
 ### Phase C: The test
 
 ### US-008: Runbook and test config
