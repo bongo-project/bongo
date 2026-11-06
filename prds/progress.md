@@ -1745,3 +1745,10 @@ Workflow wf_436dc512-981, review MINOR, 21 worker mutants killed. The QR link is
 
 PATTERN: testing - a test on the test's own router proves nothing about production wiring; use the real agent for route registration, throttles and setter wiring.
 PATTERN: cluster - a conditional FSM command that the caller must learn the result of returns a sentinel through ApplyCommand and logs no error for it.
+
+## 2026-11-06: Phase 36 verification and batch 6 (36.10 to 36.12)
+
+`norman verify` (wf_7f7f4b20-658, adversarial): no FAIL, most PARTIALs were test gaps. Operator scoped in ending sessions on revoke, the docs and UI items and every test gap; the guess limit reset and swapped-fields log line went to 8.2 (decision 21). Workflow wf_1407d242-419, review MINOR on all three. `AuthenticateProtocol` returns the app password lookup ID and `AccountState` checks the record. Device checks run on production (decision 22, row 36.13). Report in verification.md. My review changes: sendmail docs, CLAUDE.md mixed-version note, the intro string in the 2FA control.
+
+PATTERN: security - a Limiter.Succeed on any credential forgives failures of a different credential; ask which secret a success actually proved.
+PATTERN: testing - a negative field name (AppPasswordRevoked) keeps the zero value of a state struct live, so fakes need no change; changing the method signature makes every override fail to compile instead of silently bypassing it.

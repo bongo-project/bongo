@@ -99,7 +99,7 @@ func TestDockerBuilderMatchesGoDirective(t *testing.T) {
 // TestComposeImageTag keeps the deploy template on the release it ships with.
 func TestComposeImageTag(t *testing.T) {
 	compose := readRepoFile(t, "deploy/docker-compose.yml")
-	if !strings.Contains(compose, "image: ghcr.io/bongo-project/bongo:0.15.2\n") {
-		t.Error("deploy/docker-compose.yml does not use ghcr.io/bongo-project/bongo:0.15.2")
+	if !strings.Contains(compose, "image: ghcr.io/bongo-project/bongo:0.15.3\n") {
+		t.Error("deploy/docker-compose.yml does not use ghcr.io/bongo-project/bongo:0.15.3")
 	}
 }
