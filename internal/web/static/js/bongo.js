@@ -329,6 +329,11 @@ document.addEventListener('alpine:init', () => {
     idle: true,
     done: false,
     submit(event) {
+      // The QR button navigates to a page, not a download: leave the form and
+      // any banner alone, or the panel would claim a download that never starts.
+      if (event.submitter && event.submitter.hasAttribute('data-device-qr')) {
+        return;
+      }
       const form = event.target;
       // Hide now; clear the secrets after the browser has serialised the
       // form, which happens once this handler returns.

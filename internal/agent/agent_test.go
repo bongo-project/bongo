@@ -650,6 +650,67 @@ func TestSweepSendLogsRemovesOnlyExpiredEntries(t *testing.T) {
 	}
 }
 
+// A device link is consumed once through the real Raft FSM (the refusal comes
+// back through cluster.ApplyCommand's wrapping), and the sweep removes a record
+// only once it is an hour past its expiry.
+func TestDeviceLinksConsumeOnceAndSweep(t *testing.T) {
+	a := blobGCLeaderTestAgentWithLogger(t, testLogger())
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if a.DeviceLinks == nil {
+		t.Fatal("the agent has no device link store")
+	}
+	uid, err := auth.CreateUser(a, a.Metadata, "devlink@localhost", "Devlink", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	now := time.Date(2030, 5, 6, 13, 7, 41, 0, time.UTC)
+	put := func(expires time.Time) string {
+		_, hash, err := store.NewDeviceToken()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := a.DeviceLinks.Put(uid, hash, &bongov1.AppPasswordTicket{Label: "x", Host: "h", ExpiresAt: expires.Unix()}); err != nil {
+			t.Fatal(err)
+		}
+		return hash
+	}
+
+	live := put(now.Add(5 * time.Minute))
+	if err := a.DeviceLinks.Consume(uid, live, now); err != nil {
+		t.Fatalf("first consume: %v", err)
+	}
+	if err := a.DeviceLinks.Consume(uid, live, now); !errors.Is(err, store.ErrTicketRefused) {
+		t.Fatalf("second consume = %v, want ErrTicketRefused through Raft", err)
+	}
+
+	// Either side of the grace by a second.
+	old := put(now.Add(-store.AppPasswordTicketSweepGrace - time.Second))
+	fresh := put(now.Add(-store.AppPasswordTicketSweepGrace + time.Second))
+	if got := a.sweepDeviceLinks(now, store.AppPasswordTicketSweepGrace); got != 1 {
+		t.Fatalf("deleted = %d, want 1", got)
+	}
+	if _, found, _ := a.DeviceLinks.Get(uid, old); found {
+		t.Error("an expired record survived the sweep")
+	}
+	for name, h := range map[string]string{"fresh": fresh, "used": live} {
+		if _, found, _ := a.DeviceLinks.Get(uid, h); !found {
+			t.Errorf("the %s record was swept", name)
+		}
+	}
+
+	// Revoke all does not move the session epoch, so the agent must wire the
+	// link store into it or a pending link would outlive an incident response.
+	pending := put(now.Add(5 * time.Minute))
+	if _, err := a.AppPasswords.RevokeAll(uid); err != nil {
+		t.Fatalf("RevokeAll: %v", err)
+	}
+	if _, found, _ := a.DeviceLinks.Get(uid, pending); found {
+		t.Error("RevokeAll left a pending link")
+	}
+}
+
 func TestSweepVacationSentRemovesOnlyExpiredEntries(t *testing.T) {
 	a := blobGCLeaderTestAgentWithLogger(t, testLogger())
 	for i := 0; i < 100 && !a.IsLeader(); i++ {

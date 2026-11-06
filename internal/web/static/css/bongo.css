@@ -3741,6 +3741,11 @@ html[data-theme="auto"]:not([data-accent]) {
   font-size: 14px; text-align: center; color: var(--text); word-break: break-all;
   user-select: all; cursor: text; max-width: 400px; letter-spacing: 2px;
 }
+/* The device-link QR code: sharp edges at any size, never wider than the card. */
+.device-qr {
+  display: block; width: 240px; max-width: 100%; height: auto; margin: 16px 0;
+  background: #fff; padding: 8px; border-radius: var(--radius); image-rendering: pixelated;
+}
 .btn-copy {
   position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
   background: transparent; border: 1px solid var(--border); border-radius: var(--radius);

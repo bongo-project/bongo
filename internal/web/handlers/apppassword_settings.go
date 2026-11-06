@@ -14,6 +14,7 @@ import (
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 const (
@@ -102,7 +103,19 @@ type credentialResult struct {
 	ErrText  string
 	Status   int
 	Done     bool
+
+	// LinkDataURI and LinkHash are set instead of Plaintext by the QR route:
+	// the page shows the code and the credential does not exist yet. The hash
+	// names the link record for the status poll and is not a credential.
+	LinkDataURI string
+	LinkHash    string
 }
+
+// credentialMint is the step that differs between create routes. It runs after
+// re-authentication, under the user lock, and returns either a refusal (ErrText
+// and Status set, nothing created) or a result plus an undo for the case where
+// recording the spent second factor then fails.
+type credentialMint func(userID, locale string, profile *bongov1.UserProfile) (res credentialResult, undo func())
 
 // createCredential is the one create path: the plain form on the App passwords
 // card and Add a device both end here, so the re-authentication, the limit and
@@ -115,6 +128,36 @@ type credentialResult struct {
 // fails the new credential is revoked, because a code that was not recorded
 // stays replayable and the user was not told the create worked.
 func (h *SecurityHandler) createCredential(w http.ResponseWriter, r *http.Request, back string) credentialResult {
+	return h.createWith(w, r, back, h.mintAppPassword(r.FormValue("label")))
+}
+
+// mintAppPassword is the credentialMint that creates the app password itself.
+func (h *SecurityHandler) mintAppPassword(label string) credentialMint {
+	return func(userID, locale string, _ *bongov1.UserProfile) (credentialResult, func()) {
+		plaintext, info, err := h.appPasswords.Create(userID, label)
+		switch {
+		case errors.Is(err, auth.ErrInvalidAppPasswordLabel):
+			return credentialResult{Status: http.StatusBadRequest, ErrText: i18n.T(locale, "security.appPasswordLabelInvalid")}, nil
+		case errors.Is(err, auth.ErrAppPasswordLimit):
+			return credentialResult{Status: http.StatusConflict, ErrText: i18n.T(locale, "security.appPasswordLimit")}, nil
+		case err != nil:
+			slog.Error("app passwords: create failed", "user_id", userID, "error", err)
+			return credentialResult{Status: http.StatusInternalServerError, ErrText: i18n.T(locale, "security.appPasswordCreateFailed")}, nil
+		}
+		undo := func() {
+			if rerr := h.appPasswords.Revoke(userID, info.ID); rerr != nil {
+				slog.Error("app passwords: revoking the unrecorded credential failed",
+					"user_id", userID, "lookup", info.ID, "error", rerr)
+			}
+		}
+		return credentialResult{Plaintext: plaintext, LookupID: info.ID}, undo
+	}
+}
+
+// createWith is createCredential with the mint step supplied, so the hold
+// check, the lock, the re-authentication, the second-factor write and the
+// throttle bookkeeping stay on one path for every route.
+func (h *SecurityHandler) createWith(w http.ResponseWriter, r *http.Request, back string, mint credentialMint) credentialResult {
 	userID, email := middleware.UserFromContext(r.Context())
 	locale := middleware.LocaleFromContext(r.Context())
 
@@ -134,32 +177,24 @@ func (h *SecurityHandler) createCredential(w http.ResponseWriter, r *http.Reques
 		return credentialResult{Done: true}
 	}
 
-	plaintext, info, err := h.appPasswords.Create(userID, r.FormValue("label"))
-	switch {
-	case errors.Is(err, auth.ErrInvalidAppPasswordLabel):
-		return credentialResult{Status: http.StatusBadRequest, ErrText: i18n.T(locale, "security.appPasswordLabelInvalid")}
-	case errors.Is(err, auth.ErrAppPasswordLimit):
-		return credentialResult{Status: http.StatusConflict, ErrText: i18n.T(locale, "security.appPasswordLimit")}
-	case err != nil:
-		slog.Error("app passwords: create failed", "user_id", userID, "error", err)
-		return credentialResult{Status: http.StatusInternalServerError, ErrText: i18n.T(locale, "security.appPasswordCreateFailed")}
+	res, undo := mint(userID, locale, profile)
+	if res.ErrText != "" {
+		return res
 	}
 
 	// Only a 2FA account has anything to record: reauthenticate changed the
 	// profile only by consuming a code.
 	if profile.TotpEnabled {
 		if err := h.saveProfile(userID, profile); err != nil {
-			slog.Error("app passwords: recording the second factor failed, revoking the new credential",
-				"user_id", userID, "lookup", info.ID, "error", err)
-			if rerr := h.appPasswords.Revoke(userID, info.ID); rerr != nil {
-				slog.Error("app passwords: revoking the unrecorded credential failed",
-					"user_id", userID, "lookup", info.ID, "error", rerr)
-			}
+			slog.Error("app passwords: recording the second factor failed, undoing the new credential",
+				"user_id", userID, "error", err)
+			undo()
 			return credentialResult{Status: http.StatusInternalServerError, ErrText: i18n.T(locale, "security.appPasswordCreateFailed")}
 		}
 	}
 	h.succeed(r, email)
-	return credentialResult{Plaintext: plaintext, LookupID: info.ID, Status: http.StatusOK}
+	res.Status = http.StatusOK
+	return res
 }
 
 // CreateAppPassword makes a credential and renders its plaintext in this one
@@ -286,6 +321,11 @@ func (h *SecurityHandler) CreateDevice(w http.ResponseWriter, r *http.Request) {
 		view := h.deviceView(r, userID, setup)
 		view.Error = i18n.T(locale, "security.deviceThrottled")
 		templ.Handler(templates.AddDevice(email, view), templ.WithStatus(http.StatusTooManyRequests)).ServeHTTP(w, r)
+		return
+	}
+
+	if kind == deviceKindApple && r.FormValue("route") == "qr" {
+		h.createDeviceLink(w, r, back, setup, settings.Host)
 		return
 	}
 

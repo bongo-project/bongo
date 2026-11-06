@@ -129,8 +129,16 @@ type ClientSettings struct {
 // ClientSettings returns the settings for the request's host. Only IMAP over
 // implicit TLS is advertised, as in every document.
 func (h *AutoconfigHandler) ClientSettings(r *http.Request) ClientSettings {
+	return h.SettingsForHost(h.host(r))
+}
+
+// SettingsForHost returns the settings for an already-resolved host name, with
+// the ports from configuration. A device link stores the host resolved on the
+// desktop and rebuilds the rest here, so the request that redeems the link
+// (an unauthenticated phone) never chooses the host a profile advertises.
+func (h *AutoconfigHandler) SettingsForHost(host string) ClientSettings {
 	s := ClientSettings{
-		Host:    h.host(r),
+		Host:    host,
 		IMAP:    MailEndpoint{Port: h.imapsPort, Security: securitySSL},
 		CalDAV:  DAVEndpoint{Port: davHTTPSPort, Path: caldavPath},
 		CardDAV: DAVEndpoint{Port: davHTTPSPort, Path: carddavPath},

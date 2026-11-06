@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
@@ -31,6 +32,8 @@ type flakyRecords struct {
 	// failListOn fails only the nth List call (1-based), so a test can let
 	// Create's own count succeed and break the page that follows it.
 	failListOn, listCalls int
+	// mu guards listCalls, which concurrent requests bump.
+	mu sync.Mutex
 }
 
 var errInjected = errors.New("injected failure")
@@ -43,8 +46,11 @@ func (f *flakyRecords) Put(u string, r *bongov1.AppPassword) error {
 }
 
 func (f *flakyRecords) List(u string) ([]*bongov1.AppPassword, error) {
+	f.mu.Lock()
 	f.listCalls++
-	if f.failList || (f.failListOn != 0 && f.listCalls == f.failListOn) {
+	n := f.listCalls
+	f.mu.Unlock()
+	if f.failList || (f.failListOn != 0 && n == f.failListOn) {
 		return nil, errInjected
 	}
 	return f.AppPasswordRecords.List(u)

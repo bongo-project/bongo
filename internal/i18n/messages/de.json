@@ -1255,5 +1255,15 @@
   "security.requireOn": "Mail-Programme benötigen App-Passwörter. Das Kontopasswort wird dort abgelehnt.",
   "security.requireTurnOff": "Kontopasswort in Mail-Programmen erlauben",
   "security.requireTurnOffHelp": "Geben Sie zur Bestätigung Ihr Passwort und einen Authentifizierungscode ein.",
-  "security.disableTwoFactorMailWarning": "Wenn Sie die Zwei-Faktor-Authentifizierung ausschalten, funktioniert Ihr Kontopasswort in Mail-Programmen wieder. Ihre App-Passwörter funktionieren weiter."
+  "security.disableTwoFactorMailWarning": "Wenn Sie die Zwei-Faktor-Authentifizierung ausschalten, funktioniert Ihr Kontopasswort in Mail-Programmen wieder. Ihre App-Passwörter funktionieren weiter.",
+  "security.deviceQRButton": "Stattdessen einen QR-Code anzeigen",
+  "security.deviceQRTitle": "Mit Ihrem iPhone oder iPad scannen",
+  "security.deviceQRIntro": "Richten Sie die Kamera auf den Code und tippen Sie auf den angezeigten Link. Das Öffnen des Links erstellt das App-Passwort und sendet das Profil an dieses Gerät.",
+  "security.deviceQRWarningTitle": "Wer diesen Code zuerst scannt, erhält die Zugangsdaten.",
+  "security.deviceQRWarning": "Zeigen Sie ihn nur Ihrem eigenen Gerät und öffnen Sie den Link in Safari. Der Code funktioniert einmal und läuft nach 5 Minuten ab.",
+  "security.deviceQRAlt": "QR-Code für einen einmaligen Link zu Ihrem Geräteprofil",
+  "security.deviceQRPending": "Warten darauf, dass der Link geöffnet wird.",
+  "security.deviceQRUsed": "Der Link wurde geöffnet.",
+  "security.deviceQRExpired": "Dieser Code ist abgelaufen oder kann nicht mehr verwendet werden.",
+  "security.deviceQRNew": "Neuen Code erstellen"
 }

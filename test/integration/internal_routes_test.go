@@ -13,6 +13,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/security"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 )
 
 const internalRoutesSecret = "internal-routes-test-secret-0123456789"
@@ -202,5 +203,39 @@ func TestInternalRoutesRejectCrossSigned(t *testing.T) {
 	}
 	if got := status(http.MethodGet, "/internal/cluster/members", security.SignInternalRequest); got != http.StatusOK {
 		t.Errorf("control-plane-signed GET members = %d, want 200", got)
+	}
+}
+
+// The QR link's route is production wiring a handler test cannot see: it must
+// sit outside the session group, set no cookie, and be throttled per IP. A
+// request needs no session to get an answer, and the sixth refusal is a 429.
+func TestDeviceLinkRouteIsPublicAndThrottled(t *testing.T) {
+	ag := startInternalRoutesAgent(t, "dev")
+	client := &http.Client{
+		Timeout:       5 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	// A well-formed token that was never issued.
+	url := ag.webURL + "/device-link/no-such-user/" + strings.Repeat("a", 43)
+	fetch := func() *http.Response {
+		t.Helper()
+		resp, err := client.Get(url)
+		if err != nil {
+			t.Fatalf("GET: %v", err)
+		}
+		_ = resp.Body.Close()
+		return resp
+	}
+	for i := range middleware.DefaultMaxAttempts {
+		resp := fetch()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("fetch %d: status = %d, want 404 with no session", i, resp.StatusCode)
+		}
+		if got := resp.Header.Values("Set-Cookie"); len(got) != 0 {
+			t.Errorf("fetch %d set a cookie: %q", i, got)
+		}
+	}
+	if resp := fetch(); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status after the limit = %d, want 429", resp.StatusCode)
 	}
 }

@@ -1255,5 +1255,15 @@
   "security.requireOn": "Mail clients need app passwords. The account password is refused in them.",
   "security.requireTurnOff": "Allow the account password in mail clients",
   "security.requireTurnOffHelp": "Enter your password and an authentication code to confirm.",
-  "security.disableTwoFactorMailWarning": "Turning off two-factor authentication also lets your account password work in mail clients again. Your app passwords keep working."
+  "security.disableTwoFactorMailWarning": "Turning off two-factor authentication also lets your account password work in mail clients again. Your app passwords keep working.",
+  "security.deviceQRButton": "Show a QR code instead",
+  "security.deviceQRTitle": "Scan with your iPhone or iPad",
+  "security.deviceQRIntro": "Point the camera at the code and tap the link that appears. Opening the link creates the app password and sends the profile to that device.",
+  "security.deviceQRWarningTitle": "Anyone who scans this code first gets the credential.",
+  "security.deviceQRWarning": "Show it only to your own device, and open the link in Safari. The code works once and stops working after 5 minutes.",
+  "security.deviceQRAlt": "QR code for a one-time link to your device profile",
+  "security.deviceQRPending": "Waiting for the link to be opened.",
+  "security.deviceQRUsed": "The link was opened.",
+  "security.deviceQRExpired": "This code has expired or can no longer be used.",
+  "security.deviceQRNew": "Make a new code"
 }

@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,10 +15,21 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// pebbleApplier writes straight to Pebble for a test.
+// pebbleApplier writes straight to Pebble for a test. Applies are serialised
+// as Raft's single goroutine does: a conditional command is a read then a
+// write, and unserialised it would let two winners through where Raft cannot.
 type pebbleApplier struct{ ps *store.PebbleStore }
 
+var applyMu sync.Mutex
+
 func (a pebbleApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	applyMu.Lock()
+	defer applyMu.Unlock()
+	// Dispatch the device link consume as the FSM does; stored literally the
+	// second fetch would succeed.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsAppPasswordTicketCommand(cmd.Key) {
+		return store.ApplyAppPasswordTicketConsume(a.ps, cmd)
+	}
 	// Dispatch the touch as the FSM does; stored literally it would leave a
 	// stray key and hide any negative test about it.
 	if cmd.Op == bongov1.Op_OP_PUT && store.IsAppPasswordSyntheticCommand(cmd.Key) {

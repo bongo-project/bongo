@@ -110,6 +110,7 @@ type Agent struct {
 	Search       *store.SearchManager
 	Auth         *auth.LocalAuth
 	AppPasswords *auth.AppPasswords
+	DeviceLinks  *store.DeviceLinkStore // one-time links behind the Add a device QR code
 	Raft         *cluster.RaftNode
 	Gossip       *cluster.GossipNode
 	SMTP         *bongosmtp.Server
@@ -534,6 +535,8 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		a.AppPasswords = auth.NewAppPasswords(store.NewAppPasswordStore(pebbleStore, a), logger)
 		a.AppPasswords.SetBenignTouchError(func(err error) bool { return errors.Is(err, cluster.ErrNotLeader) })
 		a.Auth.SetAppPasswords(a.AppPasswords)
+		a.DeviceLinks = store.NewDeviceLinkStore(pebbleStore, a)
+		a.AppPasswords.SetDeviceLinks(a.DeviceLinks)
 		a.Rules = rules.NewRuleStore(pebbleStore, a)
 		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)
 		a.Contacts = store.NewContactStore(pebbleStore, a)
@@ -1221,6 +1224,18 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	// Apple profile (iOS/macOS Mail): downloadable, unsigned .mobileconfig.
 	r.Get("/.well-known/mobileconfig", autoconfigH.AppleMobileconfig)
+	// The QR link of Add a device. Registered on the root router, outside the
+	// session and CSRF groups, on purpose: the phone has no session, the route
+	// reads and sets no cookie (so CSRF has nothing to protect), and the
+	// one-time token in the path is the credential. It has its own throttle,
+	// with the login limits and the login's client IP, so stale rescans do not
+	// count against web login for a household behind one address. GET only: a
+	// HEAD gets the router's 405 and consumes nothing.
+	if a.AppPasswords != nil && a.DeviceLinks != nil {
+		deviceLinkRL := middleware.NewLoginRateLimiter(middleware.DefaultMaxAttempts, middleware.DefaultWindow)
+		deviceLinkH := handlers.NewDeviceLinkHandler(a.DeviceLinks, a.AppPasswords, a, autoconfigH.SettingsForHost, deviceLinkRL)
+		r.With(deviceLinkRL.LoginRateLimit()).Get("/device-link/{user}/{token}", deviceLinkH.Redeem)
+	}
 
 	// The root redirect to the user's start page is in the protected group below.
 
@@ -1399,6 +1414,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			securityH.SetAppPasswords(a.AppPasswords)
 		}
 		securityH.SetClientSettings(autoconfigH.ClientSettings)
+		if a.DeviceLinks != nil {
+			securityH.SetDeviceLinks(a.DeviceLinks)
+		}
 		r.Get("/settings/security", securityH.SecuritySettings)
 		r.Post("/settings/security/totp/setup", securityH.SetupTOTP)
 		r.Post("/settings/security/totp/confirm", securityH.ConfirmTOTP)
@@ -1408,6 +1426,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/settings/security/app-passwords/revoke", securityH.RevokeAppPassword)
 		r.Get("/settings/security/devices", securityH.AddDevice)
 		r.Post("/settings/security/devices", securityH.CreateDevice)
+		r.Get("/settings/security/devices/link", securityH.DeviceLinkStatus)
 		r.Post("/settings/security/require-app-passwords/on", securityH.RequireAppPasswordsOn)
 		r.Post("/settings/security/require-app-passwords/off", securityH.RequireAppPasswordsOff)
 
@@ -2554,6 +2573,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 			a.sweepSendLogs(time.Now(), store.SendLogTTL)
 			a.sweepVacationSent(time.Now(), store.VacationSentTTL)
 			a.sweepReminderSent(time.Now(), store.ReminderSentTTL)
+			a.sweepDeviceLinks(time.Now(), store.AppPasswordTicketSweepGrace)
 			prevGrants = a.sweepOrphanedGrants(prevGrants)
 		}
 	}
@@ -3234,6 +3254,14 @@ func (a *Agent) sweepVacationSent(now time.Time, ttl time.Duration) int {
 // older than ttl and returns how many it removed. Leader-only.
 func (a *Agent) sweepReminderSent(now time.Time, ttl time.Duration) int {
 	return a.sweepAgedUserKeys(now, ttl, "reminder sent", store.ReminderSentPrefix, store.DecodeReminderSent)
+}
+
+// sweepDeviceLinks deletes device link records (store.DeviceLinkPrefix) more
+// than ttl past their expiry and returns how many it removed. The grace keeps a
+// used or expired state readable by a desktop tab that was in the background.
+// Leader-only. A delete racing a consume is safe: an absent record is refused.
+func (a *Agent) sweepDeviceLinks(now time.Time, ttl time.Duration) int {
+	return a.sweepAgedUserKeys(now, ttl, "device link", store.DeviceLinkPrefix, store.DecodeDeviceLinkExpiry)
 }
 
 // sweepAgedUserKeys deletes, through Raft, every key under each user's prefix

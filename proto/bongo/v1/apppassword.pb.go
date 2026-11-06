@@ -106,6 +106,101 @@ func (x *AppPassword) GetPasswordHash() []byte {
 	return nil
 }
 
+// AppPasswordTicket is a one-time link that hands a phone a profile, stored at
+// /user/{user_id}/devicelink/{hex(sha256(token))}. Only the hash of the token
+// is in the key; the token itself is never stored or sent through Raft.
+type AppPasswordTicket struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// label is the name the user gave the device, checked when the link was made.
+	Label string `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
+	// host is the server host name the profile advertises, resolved from the
+	// desktop request. The phone's own request never chooses it.
+	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	// epoch is the account's session epoch (security.SessionEpoch) when the link
+	// was made. A password change moves it; a revoke-all does not, so RevokeAll deletes links itself.
+	Epoch string `protobuf:"bytes,3,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	// created_at and expires_at are unix seconds.
+	CreatedAt int64 `protobuf:"varint,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ExpiresAt int64 `protobuf:"varint,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// used_at is unix seconds of the redemption; zero means unused. The record
+	// stays after use so the desktop can tell used from expired.
+	UsedAt        int64 `protobuf:"varint,6,opt,name=used_at,json=usedAt,proto3" json:"used_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AppPasswordTicket) Reset() {
+	*x = AppPasswordTicket{}
+	mi := &file_proto_bongo_v1_apppassword_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppPasswordTicket) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppPasswordTicket) ProtoMessage() {}
+
+func (x *AppPasswordTicket) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bongo_v1_apppassword_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppPasswordTicket.ProtoReflect.Descriptor instead.
+func (*AppPasswordTicket) Descriptor() ([]byte, []int) {
+	return file_proto_bongo_v1_apppassword_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *AppPasswordTicket) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *AppPasswordTicket) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *AppPasswordTicket) GetEpoch() string {
+	if x != nil {
+		return x.Epoch
+	}
+	return ""
+}
+
+func (x *AppPasswordTicket) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+func (x *AppPasswordTicket) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+func (x *AppPasswordTicket) GetUsedAt() int64 {
+	if x != nil {
+		return x.UsedAt
+	}
+	return 0
+}
+
 var File_proto_bongo_v1_apppassword_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_apppassword_proto_rawDesc = "" +
@@ -118,7 +213,16 @@ const file_proto_bongo_v1_apppassword_proto_rawDesc = "" +
 	"created_at\x18\x03 \x01(\x03R\tcreatedAt\x12 \n" +
 	"\flast_used_at\x18\x04 \x01(\x03R\n" +
 	"lastUsedAt\x12#\n" +
-	"\rpassword_hash\x18\x05 \x01(\fR\fpasswordHashB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"\rpassword_hash\x18\x05 \x01(\fR\fpasswordHash\"\xaa\x01\n" +
+	"\x11AppPasswordTicket\x12\x14\n" +
+	"\x05label\x18\x01 \x01(\tR\x05label\x12\x12\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\x12\x14\n" +
+	"\x05epoch\x18\x03 \x01(\tR\x05epoch\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\x03R\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x05 \x01(\x03R\texpiresAt\x12\x17\n" +
+	"\aused_at\x18\x06 \x01(\x03R\x06usedAtB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_apppassword_proto_rawDescOnce sync.Once
@@ -132,9 +236,10 @@ func file_proto_bongo_v1_apppassword_proto_rawDescGZIP() []byte {
 	return file_proto_bongo_v1_apppassword_proto_rawDescData
 }
 
-var file_proto_bongo_v1_apppassword_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_proto_bongo_v1_apppassword_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_proto_bongo_v1_apppassword_proto_goTypes = []any{
-	(*AppPassword)(nil), // 0: bongo.v1.AppPassword
+	(*AppPassword)(nil),       // 0: bongo.v1.AppPassword
+	(*AppPasswordTicket)(nil), // 1: bongo.v1.AppPasswordTicket
 }
 var file_proto_bongo_v1_apppassword_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -155,7 +260,7 @@ func file_proto_bongo_v1_apppassword_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bongo_v1_apppassword_proto_rawDesc), len(file_proto_bongo_v1_apppassword_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

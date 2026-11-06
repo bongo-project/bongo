@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -64,6 +65,60 @@ func TestRevokeAll(t *testing.T) {
 	}
 	if n, err := e.apps.RevokeAll("u1"); err != nil || n != 0 {
 		t.Errorf("repeat RevokeAll = %d, %v", n, err)
+	}
+}
+
+type fakeLinks struct {
+	deleted []string
+	err     error
+}
+
+func (f *fakeLinks) DeleteAll(userID string) error {
+	f.deleted = append(f.deleted, userID)
+	return f.err
+}
+
+// Revoke all does not move the session epoch, so a pending device link must go
+// with the credentials; if the links cannot be removed nothing is revoked.
+func TestRevokeAllDeletesDeviceLinksFirst(t *testing.T) {
+	e := newAppEnv(t)
+	e.user(t, "u1", "a@example.com", "pw")
+	e.create(t, "u1", "a")
+	links := &fakeLinks{}
+	e.apps.SetDeviceLinks(links)
+
+	if n, err := e.apps.RevokeAll("u1"); err != nil || n != 1 {
+		t.Fatalf("RevokeAll = %d, %v", n, err)
+	}
+	if len(links.deleted) != 1 || links.deleted[0] != "u1" {
+		t.Errorf("device links deleted for %v, want [u1]", links.deleted)
+	}
+
+	e.create(t, "u1", "b")
+	links.err = errors.New("raft timeout")
+	n, err := e.apps.RevokeAll("u1")
+	if err == nil || n != 0 {
+		t.Fatalf("RevokeAll with a failing link delete = %d, %v; want 0 and an error", n, err)
+	}
+	if list, _ := e.apps.List("u1"); len(list) != 1 {
+		t.Errorf("%d credentials left, want the 1 that was not touched", len(list))
+	}
+}
+
+func TestAtLimit(t *testing.T) {
+	e := newAppEnv(t)
+	e.user(t, "u1", "a@example.com", "pw")
+	for i := range MaxAppPasswordsPerUser {
+		if at, err := e.apps.AtLimit("u1"); err != nil || at {
+			t.Fatalf("at %d credentials: AtLimit = %v, %v", i, at, err)
+		}
+		e.create(t, "u1", fmt.Sprintf("d%d", i))
+	}
+	if at, err := e.apps.AtLimit("u1"); err != nil || !at {
+		t.Errorf("at the cap: AtLimit = %v, %v", at, err)
+	}
+	if at, _ := e.apps.AtLimit("u2"); at {
+		t.Error("another user reported at the cap")
 	}
 }
 

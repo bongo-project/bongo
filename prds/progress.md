@@ -1738,3 +1738,10 @@ Workflow wf_a9ffee53-884, review MINOR. Add a device has an Apple choice that do
 
 PATTERN: testing - a test applier that stands in for the FSM must serialise applies, or conditional commands race in ways production cannot.
 PATTERN: testing - a refusal test should assert the user-visible message as well as status and headers.
+
+## 2026-11-06: Phase 36 batch 5 (36.6) implemented
+
+Workflow wf_436dc512-981, review MINOR, 21 worker mutants killed. The QR link is `/device-link/{user}/{token}` on the root router, with its own throttle. The token's hash keys `/user/{id}/devicelink/{hash}`, and the conditional `/__apppassword_ticket__/` command spends a link once. Redemption re-checks standing, epoch, the 2FA policy and the cap before consuming, and every refusal is one fixed 404. RevokeAll deletes pending links because it does not move the epoch. My review changes: the handler test that could not fail is replaced by an integration test of the real route, RevokeAll wiring is tested on a real agent (both mutants red), the epoch comment is corrected, `IsValidHash` replaces a copy, and the used state no longer claims the profile arrived.
+
+PATTERN: testing - a test on the test's own router proves nothing about production wiring; use the real agent for route registration, throttles and setter wiring.
+PATTERN: cluster - a conditional FSM command that the caller must learn the result of returns a sentinel through ApplyCommand and logs no error for it.

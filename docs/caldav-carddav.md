@@ -96,6 +96,20 @@ delete the file from Downloads after installing, because it holds the app
 password. It cannot be downloaded again: if you tap Ignore, revoke the entry
 and add the device again.
 
+To set up an iPhone or iPad from a desktop browser without signing in on the
+phone, choose "Show a QR code instead" on the same form. Bongo checks your
+password (and code) and the label, then shows a QR code that holds a one-time
+link. Scan it with the camera and tap the link, in Safari. Opening the link
+creates the app password and downloads the profile, with no sign-in on the
+phone. The code works once and stops working after 5 minutes, and the page
+tells you when it has been used. Anyone who scans the code first gets the
+credential, so show it only to your own device. Opening the link creates the
+app password at that moment, so tapping Ignore on the profile prompt leaves a
+device in the list to revoke. The link is stored only as a hash. Bongo does not
+log it, but a reverse proxy in front of Bongo may log the request path, which
+holds the token: the exposure is limited to a link that is used once and dies
+after 5 minutes.
+
 ### Thunderbird
 
 Calendar: New Calendar, On the Network, user name the full email address,

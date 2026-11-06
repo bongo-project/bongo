@@ -146,6 +146,13 @@ func randomLetters(n int) (string, error) {
 	return string(out), nil
 }
 
+// ValidateAppPasswordLabel trims a label and refuses an empty, over-long or
+// control-character one. It is exported so a route that defers Create (the QR
+// link) can refuse a bad label on the desktop instead of burning a link.
+func ValidateAppPasswordLabel(label string) (string, error) {
+	return validateAppPasswordLabel(label)
+}
+
 func validateAppPasswordLabel(label string) (string, error) {
 	label = strings.TrimSpace(label)
 	if label == "" || !utf8.ValidString(label) || utf8.RuneCountInString(label) > MaxAppPasswordLabelLen {
@@ -164,6 +171,7 @@ func validateAppPasswordLabel(label string) (string, error) {
 // revocation takes effect on the next attempt.
 type AppPasswords struct {
 	records AppPasswordRecords
+	links   DeviceLinkRecords // nil when the node has no device links
 	logger  *slog.Logger
 	now     func() time.Time
 	// benignTouchErr marks a failed touch that is expected, such as the
@@ -249,6 +257,26 @@ func (p *AppPasswords) Create(userID, label string) (string, AppPasswordInfo, er
 	return FormatAppPassword(id + secret), infoOf(rec), nil
 }
 
+// AtLimit reports whether the user already holds MaxAppPasswordsPerUser
+// credentials. It is advisory: Create is the authoritative check.
+func (p *AppPasswords) AtLimit(userID string) (bool, error) {
+	existing, err := p.records.List(userID)
+	if err != nil {
+		return false, fmt.Errorf("counting app passwords: %w", err)
+	}
+	return len(existing) >= MaxAppPasswordsPerUser, nil
+}
+
+// DeviceLinkRecords is the part of the device link store the service needs: to
+// delete a user's pending links when it revokes everything.
+type DeviceLinkRecords interface {
+	DeleteAll(userID string) error
+}
+
+// SetDeviceLinks wires the device link store. With none set RevokeAll has no
+// links to remove.
+func (p *AppPasswords) SetDeviceLinks(l DeviceLinkRecords) { p.links = l }
+
 // List returns the user's credentials without their hashes.
 func (p *AppPasswords) List(userID string) ([]AppPasswordInfo, error) {
 	recs, err := p.records.List(userID)
@@ -295,7 +323,18 @@ func (p *AppPasswords) Revoke(userID, id string) error {
 // credential created after the List below survives; closing that gap would
 // need a composite Raft command, which a node on an earlier binary would store
 // as a literal key.
+//
+// The user's pending device links go first. Revoking everything does not move
+// the session epoch, so a link made before an incident would otherwise still
+// mint a credential afterwards. A failure there stops the revoke with the same
+// contract: no credential has been deleted, some links may be, and running it
+// again finishes the job.
 func (p *AppPasswords) RevokeAll(userID string) (int, error) {
+	if p.links != nil {
+		if err := p.links.DeleteAll(userID); err != nil {
+			return 0, fmt.Errorf("revoking device links: %w", err)
+		}
+	}
 	infos, err := p.List(userID)
 	if err != nil {
 		return 0, err

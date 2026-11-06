@@ -453,3 +453,19 @@ Found while building the Apple profile (2026-11-06):
   pre-check and `reauthenticate`. Neither should occur in practice.
 - The Apple password key names come from memory and an unsigned mailcow example,
   not from Apple's reference. The device check settles it.
+
+Found while building the QR link (2026-11-06):
+
+- There is no follower forwarding, so a link opened on a follower is refused
+  unspent. "Works once across all nodes" means at most once, not on every node.
+  One-node production is not affected.
+- A reverse proxy may log the link's path. Bongo logs no request paths and
+  production has no proxy.
+- A plain-HTTP deployment gets an http link, so the token travels in clear.
+- Whether iOS prefetches or fetches the link twice could not be established. If
+  the device check shows it, the fallback is a landing page with a tap that POSTs.
+- A redemption in flight during Revoke all can leave a credential. This is the
+  same gap Revoke all already has.
+- After a link is used or expires, the QR image and warning stay on the page.
+- `~/go/bin/protoc-gen-go` is an old generator. The worker built the current one
+  from the module cache; update the installed plugin.

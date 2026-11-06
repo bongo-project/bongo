@@ -1255,5 +1255,15 @@
   "security.requireOn": "Les clients de messagerie exigent des mots de passe d'application. Le mot de passe du compte y est refusé.",
   "security.requireTurnOff": "Autoriser le mot de passe du compte dans les clients de messagerie",
   "security.requireTurnOffHelp": "Saisissez votre mot de passe et un code d'authentification pour confirmer.",
-  "security.disableTwoFactorMailWarning": "Désactiver l'authentification à deux facteurs permet aussi à votre mot de passe de compte de fonctionner de nouveau dans les clients de messagerie. Vos mots de passe d'application continuent de fonctionner."
+  "security.disableTwoFactorMailWarning": "Désactiver l'authentification à deux facteurs permet aussi à votre mot de passe de compte de fonctionner de nouveau dans les clients de messagerie. Vos mots de passe d'application continuent de fonctionner.",
+  "security.deviceQRButton": "Afficher plutôt un code QR",
+  "security.deviceQRTitle": "Scannez avec votre iPhone ou iPad",
+  "security.deviceQRIntro": "Pointez l'appareil photo vers le code et touchez le lien qui s'affiche. L'ouverture du lien crée le mot de passe d'application et envoie le profil à cet appareil.",
+  "security.deviceQRWarningTitle": "Quiconque scanne ce code en premier obtient l'identifiant.",
+  "security.deviceQRWarning": "Ne le montrez qu'à votre propre appareil et ouvrez le lien dans Safari. Le code ne fonctionne qu'une fois et cesse de fonctionner après 5 minutes.",
+  "security.deviceQRAlt": "Code QR d'un lien à usage unique vers le profil de votre appareil",
+  "security.deviceQRPending": "En attente de l'ouverture du lien.",
+  "security.deviceQRUsed": "Le lien a été ouvert.",
+  "security.deviceQRExpired": "Ce code a expiré ou ne peut plus être utilisé.",
+  "security.deviceQRNew": "Créer un nouveau code"
 }

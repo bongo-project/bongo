@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"image/png"
 	"log/slog"
 	"net/http"
@@ -48,6 +49,12 @@ type SecurityHandler struct {
 	// clientSettings supplies the server settings shown on Add a device; nil
 	// shows the password and user name only.
 	clientSettings func(*http.Request) ClientSettings
+	// deviceLinks holds the one-time links behind the QR route; nil on a node
+	// without them, which makes the form refuse that route.
+	deviceLinks *store.DeviceLinkStore
+	// qrEncode turns a link into the PNG data URI shown on the page. It is a
+	// field so a test can capture the encoded string; nil uses encodeQRDataURI.
+	qrEncode func(link string) (string, error)
 }
 
 // NewSecurityHandler creates a SecurityHandler.
@@ -105,12 +112,11 @@ func (h *SecurityHandler) SetupTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var pngBuf bytes.Buffer
-	if err := png.Encode(&pngBuf, img); err != nil {
+	qrBase64, err := pngBase64(img)
+	if err != nil {
 		http.Error(w, "Failed to encode QR code", http.StatusInternalServerError)
 		return
 	}
-	qrBase64 := base64.StdEncoding.EncodeToString(pngBuf.Bytes())
 
 	// Store pending secret in a signed cookie (10 min TTL).
 	h.setTOTPPendingCookie(w, key.Secret())
@@ -119,6 +125,16 @@ func (h *SecurityHandler) SetupTOTP(w http.ResponseWriter, r *http.Request) {
 	errMsg := r.URL.Query().Get("error")
 
 	templ.Handler(templates.TOTPSetup(qrBase64, manualKey, errMsg)).ServeHTTP(w, r)
+}
+
+// pngBase64 encodes an image as base64 PNG, the form both QR pages embed in a
+// data: URI (the CSP allows data: images).
+func pngBase64(img image.Image) (string, error) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return "", fmt.Errorf("encoding png: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 // ConfirmTOTP verifies a TOTP code and enables 2FA for the user.

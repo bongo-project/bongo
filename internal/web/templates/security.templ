@@ -1,5 +1,7 @@
 package templates
 
+import "net/url"
+
 // AppPasswordRow is one credential in the Security page list. Dates are
 // formatted by the handler, as dates only; LastUsed is empty for never.
 type AppPasswordRow struct {
@@ -64,6 +66,32 @@ type DeviceView struct {
 	Groups      []SettingGroup
 	// Count is the number of app passwords the user holds, counting a new one.
 	Count int
+	// QR is set on the response to a QR create: the page shows the code and no
+	// credential, and polls the link's state.
+	QR *DeviceQR
+}
+
+// DeviceQR is the QR view of Add a device. Hash identifies the link record for
+// the status poll; it is not a credential, and the token that is one appears
+// only inside the image.
+type DeviceQR struct {
+	DataURI string
+	Hash    string
+}
+
+// Link states shown by the status fragment.
+const (
+	DeviceLinkPending = "pending"
+	DeviceLinkUsed    = "used"
+	DeviceLinkExpired = "expired"
+)
+
+func deviceLinkStatusURL(hash string, setup bool) string {
+	u := "/settings/security/devices/link?id=" + url.QueryEscape(hash)
+	if setup {
+		u += "&setup=1"
+	}
+	return u
 }
 
 templ SecuritySettings(totpEnabled bool, email string, flash string, apps AppPasswordView) {
@@ -423,7 +451,9 @@ templ AddDevice(email string, v DeviceView) {
 					if v.Setup {
 						<p>{ t(ctx, "security.setupIntro") }</p>
 					}
-					if v.Plaintext != "" {
+					if v.QR != nil {
+						@deviceQR(v)
+					} else if v.Plaintext != "" {
 						@deviceReveal(v)
 					} else {
 						<p class="u-text-muted">{ t(ctx, "security.addDeviceIntro") }</p>
@@ -441,7 +471,7 @@ templ AddDevice(email string, v DeviceView) {
 							</div>
 						}
 					}
-					if v.Setup {
+					if v.Setup && v.QR == nil {
 						<div class="settings-card">
 							<div class="settings-card-pad">
 								if v.Count > 0 {
@@ -477,8 +507,64 @@ templ deviceForm(choice DeviceChoice, v DeviceView) {
 		if v.TotpEnabled {
 			<p class="u-text-muted u-font-078">{ t(ctx, "security.deviceCodeWait") }</p>
 		}
-		<button type="submit" class="btn-primary">{ t(ctx, "security.appPasswordCreate") }</button>
+		<div class="u-flex u-gap-075 u-items-center">
+			<button type="submit" class="btn-primary">{ t(ctx, "security.appPasswordCreate") }</button>
+			if choice.Key == "apple" {
+				<button type="submit" name="route" value="qr" class="btn-secondary" data-device-qr>{ t(ctx, "security.deviceQRButton") }</button>
+			}
+		</div>
 	</form>
+}
+
+// deviceQR is the QR view. It holds a bearer link inside the image until the
+// link is used, so the page must not be cached or replayed from history.
+templ deviceQR(v DeviceView) {
+	<div hx-history="false">
+		<div class="flash flash-warning u-mb-15">
+			<div class="flash-icon" aria-hidden="true">@Icon("alert", "")</div>
+			<div class="flash-content">
+				<strong>{ t(ctx, "security.deviceQRWarningTitle") }</strong> { t(ctx, "security.deviceQRWarning") }
+			</div>
+		</div>
+		<div class="settings-card u-mb-24px">
+			<div class="settings-card-pad">
+				<h3 class="settings-section-title">{ t(ctx, "security.deviceQRTitle") }</h3>
+				<p class="u-text-muted">{ t(ctx, "security.deviceQRIntro") }</p>
+				<img class="device-qr" src={ v.QR.DataURI } alt={ t(ctx, "security.deviceQRAlt") } width="240" height="240"/>
+				@DeviceLinkStatus(DeviceLinkPending, v.QR.Hash, v.Setup)
+			</div>
+		</div>
+	</div>
+}
+
+// DeviceLinkStatus is the polled fragment under the QR code. Only a pending
+// link keeps polling; a used or expired one has no trigger, so polling stops.
+// It names no device, address or time.
+templ DeviceLinkStatus(state, hash string, setup bool) {
+	switch state {
+		case DeviceLinkUsed:
+			<div id="device-link-status" role="status">
+				<p><strong>{ t(ctx, "security.deviceQRUsed") }</strong></p>
+				if setup {
+					<a href="/settings/security/devices?setup=1" class="btn-primary u-text-decoration-none">{ t(ctx, "security.appleContinue") }</a>
+				} else {
+					<a href="/settings/security" class="btn-primary u-text-decoration-none">{ t(ctx, "security.appleContinue") }</a>
+				}
+			</div>
+		case DeviceLinkExpired:
+			<div id="device-link-status" role="status">
+				<p>{ t(ctx, "security.deviceQRExpired") }</p>
+				if setup {
+					<a href="/settings/security/devices?setup=1" class="btn-secondary u-text-decoration-none">{ t(ctx, "security.deviceQRNew") }</a>
+				} else {
+					<a href="/settings/security/devices" class="btn-secondary u-text-decoration-none">{ t(ctx, "security.deviceQRNew") }</a>
+				}
+			</div>
+		default:
+			<div id="device-link-status" role="status" hx-get={ deviceLinkStatusURL(hash, setup) } hx-trigger="every 3s" hx-swap="outerHTML">
+				<p class="u-text-muted">{ t(ctx, "security.deviceQRPending") }</p>
+			</div>
+	}
 }
 
 // appleDeviceCard is the Apple choice. The install guidance is static so it

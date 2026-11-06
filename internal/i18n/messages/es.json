@@ -1255,5 +1255,15 @@
   "security.requireOn": "Los clientes de correo necesitan contraseñas de aplicación. La contraseña de la cuenta se rechaza en ellos.",
   "security.requireTurnOff": "Permitir la contraseña de la cuenta en los clientes de correo",
   "security.requireTurnOffHelp": "Introduzca su contraseña y un código de autenticación para confirmar.",
-  "security.disableTwoFactorMailWarning": "Al desactivar la autenticación de dos factores, su contraseña de la cuenta volverá a funcionar en los clientes de correo. Sus contraseñas de aplicación siguen funcionando."
+  "security.disableTwoFactorMailWarning": "Al desactivar la autenticación de dos factores, su contraseña de la cuenta volverá a funcionar en los clientes de correo. Sus contraseñas de aplicación siguen funcionando.",
+  "security.deviceQRButton": "Mostrar un código QR en su lugar",
+  "security.deviceQRTitle": "Escanee con su iPhone o iPad",
+  "security.deviceQRIntro": "Apunte la cámara al código y toque el enlace que aparece. Al abrir el enlace se crea la contraseña de aplicación y se envía el perfil a ese dispositivo.",
+  "security.deviceQRWarningTitle": "Quien escanee este código primero obtiene la credencial.",
+  "security.deviceQRWarning": "Muéstrelo solo a su propio dispositivo y abra el enlace en Safari. El código funciona una sola vez y deja de funcionar a los 5 minutos.",
+  "security.deviceQRAlt": "Código QR de un enlace de un solo uso al perfil de su dispositivo",
+  "security.deviceQRPending": "Esperando a que se abra el enlace.",
+  "security.deviceQRUsed": "Se abrió el enlace.",
+  "security.deviceQRExpired": "Este código ha caducado o ya no se puede usar.",
+  "security.deviceQRNew": "Crear un código nuevo"
 }
