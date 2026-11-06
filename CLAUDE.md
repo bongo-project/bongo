@@ -67,6 +67,20 @@ go test -race ./internal/cluster/...
 
 Two binaries: `bongo` (the server) and `bongo-import` (mail import from mbox/maildir/eml/IMAP/Thunderbird).
 
+## Release Checklist
+
+1. In the release PR, bump the image in `deploy/docker-compose.yml` and
+   `TestComposeImageTag` in `internal/depfloor/depfloor_test.go` to the new version,
+   together.
+2. Merge the PR and wait for `main` CI to go green.
+3. Tag with an annotated tag once the operator approves. The tag message becomes the
+   release notes. The push runs "Release binaries" and "Publish image".
+4. Take the image digest from the "exporting manifest list sha256" line of the
+   publish log, and hand the digest, notes and checklist to the InfraWork session.
+   Production deploys need the operator's go there.
+5. Sync the website (`scripts/sync_docs.py`, `scripts/sync_releases.py`,
+   `latest_release` in `_config.yml`). Publishing it needs the operator's go.
+
 ## Architecture Overview
 
 ### Three-Tier Storage
@@ -106,7 +120,7 @@ Auth with a lockout limiter instead of cookies.
 
 ### Key Architectural Patterns
 
-**RaftApplier interface**: All writes go through Raft consensus. Handlers never write to Pebble directly — they call `ApplyCommand()` which serializes a `RaftCommand` protobuf (PUT/DELETE) through the Raft log. The FSM applies committed entries to Pebble. Multi-key operations travel as composite commands under synthetic key prefixes (`/__mailbox_{append,copy,delete,deliver,expunge,move,rename,subscribe}__/`, `/__queue_move__/`, `/__bayes_train__/`, `/__acl__/`) that the FSM expands.
+**RaftApplier interface**: All writes go through Raft consensus. Handlers never write to Pebble directly — they call `ApplyCommand()` which serializes a `RaftCommand` protobuf (PUT/DELETE) through the Raft log. The FSM applies committed entries to Pebble. Multi-key operations travel as composite commands under synthetic key prefixes (`/__mailbox_{append,copy,delete,deliver,expunge,move,rename,subscribe}__/`, `/__queue_move__/`, `/__bayes_train__/`, `/__acl__/`, `/__apppassword_touch__/`, `/__apppassword_ticket__/`) that the FSM expands.
 
 **Handler dependency injection via setters**: Handlers receive stores via `SetXXX()` methods, enabling nil-check graceful degradation on edge nodes:
 ```go
@@ -164,6 +178,8 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /aclrev/u:{grantee_id}/{kind}/{owner_id}/{resource_id} → empty reverse marker; only ever written and deleted together with its forward key
 /user/{user_id}/fwdtarget/{address}  → verified forwarding target
 /user/{user_id}/fwdverify/{address}  → pending forwarding verification
+/user/{user_id}/apppassword/{id}     → AppPassword protobuf: per-device protocol credential (label, created_at, last_used_at as 00:00 UTC of the last day used, bcrypt hash of the 18-letter secret). The id is the public 6-letter lookup group of the 24-letter password, so an attempt compares one hash. Accepted by IMAP, POP3, SMTP submission and CalDAV/CardDAV only (`LocalAuth.AuthenticateProtocol`); web login and re-authentication never see it. Removed with the rest of /user/{id}/ on user deletion
+/user/{user_id}/devicelink/{hex(sha256(token))} → AppPasswordTicket protobuf: the one-time link behind the Add a device QR code (label, the mail host resolved on the desktop, the session epoch at creation, created_at, expires_at 5 minutes on, used_at). Only the hash of the 32-byte token is stored or sent through Raft, never the token. The record stays after use (used_at set) so the desktop can show used versus expired; a leader sweep deletes it an hour after expiry, and Revoke all and user deletion remove it. `appPasswordPrefix` ends in `apppassword/`, so listing app passwords never sees it
 /user/{user_id}/vacation/sent/{hex(sha256(lower(sender)))} → 8-byte BE unix seconds of the last vacation reply to that sender (not a protobuf); leader sweep after 30 days; deleted on disable
 /user/{user_id}/remindersent/{pathescape(event_guid)}/{occurrence_unix} → 8-byte BE unix seconds when sent (not a protobuf); written before the email reminder is enqueued (delivery is at-most-once); leader sweep after 2 days
 /queue/pending/{unix_ts}-{id}        → queued outbound message (zero-padded ts)
@@ -282,6 +298,10 @@ through `internal/netx`, whose dialer refuses non-public addresses on every conn
 - **Grants are one composite Raft command (`/__acl__/`, `internal/store/aclcommand.go`).** An older-binary node applies it as a literal key and holds no grants, so replicas diverge for as long as the cluster runs mixed versions. Upgrade every node before anyone shares a calendar, and before the leader runs the `calendar-grants-v1` migration (it writes `/__acl__/` commands too). Production runs one node. The accept op also refuses a pending grant older than `store.PendingGrantTTL` (30 days, judged from the stored `updated_at` and the command's `at`, never the clock), so a node on an earlier binary would accept what an upgraded one refuses; upgrade every node together. Expired pending grants are never deleted and sit outside the 50-grant cap. Never write `/acl/` or `/aclrev/` keys any other way, and give every test applier that can see a grant an `IsACLSyntheticCommand` dispatch, or the command is stored as a literal key and negative tests pass vacuously.
 
 - **Bayes training is one composite Raft command** (`/__bayes_train__/{user}`, `internal/store/bayescommand.go`) counted inside the FSM, capped at 1024 tokens. An older-binary node applies it as a literal key and counts nothing, so replicas diverge for as long as the cluster runs mixed versions. Upgrade every node before anyone trains; counts trained during a mixed window are not recoverable by replay.
+
+- **App password last-used is a conditional composite command** (`/__apppassword_touch__/`, `internal/store/apppasswordcommand.go`), never a Put of the whole record: a read-modify-write Put from the login path could land after a revoke's Delete and bring a revoked credential back with a working hash. The FSM does nothing when the record is absent or already at that day. Create and revoke stay plain Put and Delete. An older-binary node stores the touch as a literal key and its last_used_at lags; authentication is unaffected, but upgrade every node together. Credentials are verified only through `LocalAuth.AuthenticateProtocol`, which costs exactly one bcrypt comparison on every branch and holds the per-account switch (`UserProfile.require_app_passwords`, enforced only with `totp_enabled`, and part of `ProtocolEpoch`, so turning it on ends sessions opened with the account password); `Authenticate` and `AuthenticateProfile` stay account-password-only. `AuthenticateProtocol` also returns the lookup ID of the app password used, "" for the account password; a session keeps it and passes it to `AccountState`, so a revoke ends that session on its next command, or within the 30-second recheck in IDLE. A node on an earlier binary ignores `require_app_passwords` and has no `AuthenticateProtocol`, so while a cluster runs mixed versions it accepts the account password with the switch on and refuses app passwords; a flag can also survive a 2FA re-enrolment there and be enforced after the upgrade (the off route recovers it). Give any test applier that sees a real protocol login an `IsAppPasswordSyntheticCommand` dispatch, or the touch is stored literally and negative tests pass vacuously.
+
+- **The device link is redeemed by a conditional composite command** (`/__apppassword_ticket__/consume`, `internal/store/apppasswordticket.go`), so a QR link works exactly once across nodes and under concurrent fetches. The FSM refuses (returns `store.ErrTicketRefused`, writes nothing, logs no error) when the record is absent, already used, or `at >= expires_at`; the caller tells winner from loser with `errors.Is`. `at` is in the payload: the FSM never reads the clock. An older-binary node stores the consume as a literal key and leaves the ticket unused, so replicas diverge for as long as the cluster runs mixed versions: upgrade every node together. There is no follower forwarding, so a link opened on a follower is refused unspent; it works only when the request reaches the leader (at-most-once, not available everywhere). Redemption (`internal/web/handlers/apppassword_link.go`) re-checks at open time what can change after the link was made: account disabled, deleted or a resource, password or session epoch moved, `require_2fa` started, cap reached; those pre-checks write nothing. Consume comes before `AppPasswords.Create`, so delivery is at-most-once. The route is on the root router outside session and CSRF because it reads and sets no cookie and the token is the credential; it has its own per-IP throttle (login limits, `middleware.ClientIP`), and every refusal is one fixed 404 with `Referrer-Policy: no-referrer`. The profile host comes from the ticket, never from the phone's `Host`. Never log the token or the path. Give any test applier that sees a redemption an `IsAppPasswordTicketCommand` dispatch and serialise applies as the FSM does, or the second fetch succeeds and concurrency tests pass vacuously.
 
 - **Never expose `/internal/*` routes on the public web router without real protection.**
   Naming a route "internal" is not a security boundary. Internal control-plane endpoints must either live on a private listener, require explicit auth, or both.

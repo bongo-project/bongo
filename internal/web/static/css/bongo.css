@@ -3741,6 +3741,11 @@ html[data-theme="auto"]:not([data-accent]) {
   font-size: 14px; text-align: center; color: var(--text); word-break: break-all;
   user-select: all; cursor: text; max-width: 400px; letter-spacing: 2px;
 }
+/* The device-link QR code: sharp edges at any size, never wider than the card. */
+.device-qr {
+  display: block; width: 240px; max-width: 100%; height: auto; margin: 16px 0;
+  background: #fff; padding: 8px; border-radius: var(--radius); image-rendering: pixelated;
+}
 .btn-copy {
   position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
   background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
@@ -5141,3 +5146,10 @@ a.admin-nav-item.active,
 .summary-row-when { grid-column: 2; grid-row: 1; font-size: .8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .summary-empty, .summary-error { margin: 0; padding: 1.25rem 1rem; color: var(--text-muted); }
 .summary-error { color: var(--danger, var(--text-muted)); }
+
+/* A 64-character label with no spaces must wrap, not widen the table. */
+.app-password-label { overflow-wrap: anywhere; min-width: 8rem; }
+/* Break the one-time password at its hyphens, so a group stays whole for typing. */
+#app-password-new { word-break: normal; }
+/* A failure message takes its own row in the admin Actions card. */
+.app-passwords-status { flex-basis: 100%; }

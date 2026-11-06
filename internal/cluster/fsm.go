@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -409,6 +410,32 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 	if cmd.Op == bongov1.Op_OP_PUT && store.IsACLSyntheticCommand(cmd.Key) {
 		if err := store.ApplyACLCommand(f.store, cmd); err != nil {
 			f.logger.Error("fsm: acl synthetic command failed", "error", err)
+			return err
+		}
+		return nil
+	}
+
+	// The last-used touch of an app password is conditional here so it can
+	// never bring back a record a revoke or user delete just removed. The day
+	// is in the payload; the FSM does not read the clock.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsAppPasswordSyntheticCommand(cmd.Key) {
+		if err := store.ApplyAppPasswordTouch(f.store, cmd); err != nil {
+			f.logger.Error("fsm: app password synthetic command failed", "error", err)
+			return err
+		}
+		return nil
+	}
+
+	// A device link is consumed conditionally here, so it works once across
+	// every node. A refusal (absent, used or expired) is the normal losing
+	// outcome of a second fetch, not a failure: it is returned to the caller,
+	// which tells the two apart with errors.Is, and it is not logged as an
+	// error. The time is in the payload; the FSM does not read the clock.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsAppPasswordTicketCommand(cmd.Key) {
+		if err := store.ApplyAppPasswordTicketConsume(f.store, cmd); err != nil {
+			if !errors.Is(err, store.ErrTicketRefused) {
+				f.logger.Error("fsm: device link command failed", "error", err)
+			}
 			return err
 		}
 		return nil

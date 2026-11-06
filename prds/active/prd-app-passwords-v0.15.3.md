@@ -221,6 +221,16 @@ the one response allowed by FR-2. It is never stored, cached or logged.
 **FR-14** A QR link is a bearer credential until it is used. It is single use,
 expires after 5 minutes, and is stored only as a hash.
 
+**FR-15** The change-password form offers "Also revoke my app passwords", ticked
+by default. If the password changes but a revoke fails, the user is told, not
+shown plain success.
+
+**FR-16** Creating an app password, by any route, requires the account password
+through the existing re-authentication check.
+
+**FR-17** A user holds at most 10 app passwords. Create refuses the 11th with a
+message to revoke one first. Every create route goes through this check.
+
 ## 5. Non-Goals
 
 - OAuth, XOAUTH2 or any token-based scheme in this PRD. Section 8.2 records why
@@ -304,8 +314,8 @@ sessions are not cookie-based.
    groups. Something similar is easy to transcribe and hard to typo; worth
    confirming before it appears in the UI.
 
-6. **Should the personal profile be signed?** Unsigned, Apple shows "Not
-   verified" on install. It still installs. Signing with the server's TLS
+6. Resolved: see decision 19 in section 8.1. **Should the personal profile be
+   signed?** Unsigned, Apple shows "Not verified" on install. It still installs. Signing with the server's TLS
    certificate may remove the warning; this has not been tested. Test it before
    US-006 is planned.
 
@@ -330,6 +340,48 @@ sessions are not cookie-based.
 8. (planning, 2026-11-05) bcrypt cost on the protocol path: each app password
    carries a short public lookup ID, so an attempt compares one hash. There is no
    cache, so revocation needs no invalidation.
+9. (operator, 2026-11-05) A session the
+   require_2fa policy is holding for enrolment cannot create an app password.
+   Require2FA exempts everything under /settings/security, so without this a
+   password-only session could mint a credential that outlasts enrolment. Listing
+   and revoking stay available. Decision 6 still applies when no policy holds the
+   session.
+10. (operator, 2026-11-05) Changing the account password offers "Also revoke my
+    app passwords", ticked by default (FR-15).
+11. (operator, 2026-11-05) Creating an app password asks for the account password
+    again, through the existing re-authentication check (FR-16).
+12. (operator, 2026-11-05) At most 10 app passwords per user (FR-17).
+13. (planning, 2026-11-05) Removing 2FA clears the switch in the same write, and
+    enforcement needs the switch and 2FA together, so a flag left by an earlier
+    binary cannot lock anyone out. The disable form warns first and the banner
+    confirms it. App passwords are kept.
+14. (operator, 2026-11-06) The switch cannot turn on with no app passwords. Finish
+    and the notice both refuse, and Skip for now leaves it off.
+15. (operator, 2026-11-06) Turning the switch on needs the session and CSRF but no
+    re-authentication, because it only tightens the account. A stolen session can
+    therefore break the user's clients until they turn it off with password and
+    code.
+16. (operator, 2026-11-06) FR-16 stays strict during enrolment. The code used to
+    confirm 2FA cannot be reused, so the first create can mean waiting up to 30
+    seconds for the next code. The page says so.
+17. (operator, 2026-11-06) Enforcement is part of `ProtocolEpoch`, so turning the
+    switch on ends IMAP and POP3 sessions opened with the account password.
+    App-password clients reconnect once. Web sessions are not affected.
+18. (planning, 2026-11-05) ConfirmTOTP and DisableTOTP reissue the calling device's
+    cookie, as ChangePassword does. Without this the epoch change signed the device
+    out before Add a device.
+19. (operator, 2026-11-06) Open question 6: the personal profile stays unsigned
+    in v0.15.3 and the page explains Not Verified. Look again only if the device
+    check shows unsigned profiles being blocked. Findings are in section 8.2.
+20. (operator, 2026-11-06, after verification) Revoking an app password ends the
+    IMAP, POP3 and SMTP sessions it opened, on their next command, as a disabled
+    account already does. This covers single revoke, Revoke all and the revoke on
+    password change. It replaces the earlier acceptance that such sessions survive.
+21. (operator, 2026-11-06, after verification) The two findings below stay out of
+    v0.15.3: the guess limit reset and the swapped-fields log line. See section 8.2.
+22. (operator, 2026-11-06) The device checks run on production after deployment,
+    because there is no test server. They do not gate the tag. US-006 and US-007
+    stay open until they pass.
 
 ### 8.2 Candidates for a later release
 
@@ -351,3 +403,120 @@ Bongo would need an OAuth authorisation server, XOAUTH2 or OAUTHBEARER in SMTP
 and IMAP, and a client that can use them. Revisit when Apple supports OAuth on a
 custom server, or when Thunderbird can register itself with one. App passwords
 stay needed for every other client either way.
+
+Found while building the credential record and protocol login (2026-11-05):
+
+- On a follower, last_used_at and the first-use log line are never written,
+  because the touch is not forwarded to the leader. One-node production is not
+  affected. Fix before multi-node clusters.
+- Lockout after wrong app passwords is tested for IMAP and SMTP, not POP3 or DAV
+  Basic. Both call the same failure path.
+- `apppassword.pb.go` was generated with protoc-gen-go v1.36.12; the other files
+  are v1.36.11.
+
+Found while building the settings UI and admin revoke (2026-11-05):
+
+- The 2FA recovery codes page has the exposure the create response had: htmx can
+  write it to localStorage history. Add `hx-history="false"` there.
+- `AdminHandler.hxRedirect` on delete-user sets HX-Redirect on a 303, which htmx
+  does not act on. Not reproduced.
+- Labels accept bidi format characters. They show only to the owner and in logs.
+- After a create, the address bar shows a POST-only URL, so reloading by address
+  gives a 405. This follows from showing the password in the POST response.
+- A deslop CLI scan of the phase's Go changes found one true new copy, now the
+  shared `redirectAfterAction`. The other production groups are existing store
+  and route patterns. 34 new test-only groups were not reviewed.
+
+Found while building Add a device and the switch (2026-11-05):
+
+- The switch is tested at `AuthenticateProtocol`, not per protocol. A live run
+  confirmed all five. Add per-protocol rows for US-009's first criterion.
+- `TestSwitchSurvivesProfileWrites` covers the Security writers only. A code audit
+  found the admin and login writers save a loaded profile, so the field survives.
+- `profile.pb.go` moved to protoc-gen-go v1.36.12 as well.
+- A client still sending the account password after switch-on counts as a failed
+  login, so it can trip the per-IP limiter for others on the same IP. The enrolment
+  copy tells users to replace old clients first.
+- Reaching `/settings/security/devices` by address after a create in setup mode
+  drops Finish and Skip. Add another device keeps them.
+- Copy buttons need `navigator.clipboard`, which plain HTTP off localhost lacks.
+  This is existing bongo.js behaviour.
+
+Found while building the Apple profile (2026-11-06):
+
+- Signing, per the advisor: Go's standard library has no CMS and go.mod has none,
+  so it needs a new dependency. `web.tls` is loaded once at startup and handlers
+  cannot reach the key. Bongo holds the key only when it terminates HTTPS itself.
+  Whether Verified shows for Bongo's real certificate cannot be proved without
+  that certificate and a real device. Community reports differ. Signing adds no
+  confidentiality.
+- POST as the route for a profile on iOS Safari is unproven. If the device check
+  fails, the POST re-authenticates and writes a one-time hashed ticket, then
+  redirects to a GET that creates the credential and returns the profile.
+- A failure after Create, or Ignore at the Safari prompt, leaves a working
+  credential with no file. It counts towards the cap until revoked.
+- A credential with no file also makes Finish available in setup mode.
+- Two refusals are plain text, not the Add a device page: Apple with no SMTP
+  endpoint or no domain in the address, and a throttle that lands between the
+  pre-check and `reauthenticate`. Neither should occur in practice.
+- The Apple password key names come from memory and an unsigned mailcow example,
+  not from Apple's reference. The device check settles it.
+
+Found while building the QR link (2026-11-06):
+
+- There is no follower forwarding, so a link opened on a follower is refused
+  unspent. "Works once across all nodes" means at most once, not on every node.
+  One-node production is not affected.
+- A reverse proxy may log the link's path. Bongo logs no request paths and
+  production has no proxy.
+- A plain-HTTP deployment gets an http link, so the token travels in clear.
+- Whether iOS prefetches or fetches the link twice could not be established. If
+  the device check shows it, the fallback is a landing page with a tap that POSTs.
+- A redemption in flight during Revoke all can leave a credential. This is the
+  same gap Revoke all already has.
+- After a link is used or expires, the QR image and warning stay on the page.
+- `~/go/bin/protoc-gen-go` is an old generator. The worker built the current one
+  from the module cache; update the installed plugin.
+
+Found by verification (2026-11-06):
+
+- A leaked app password lifts the guess limit on the same account's password.
+  `Limiter.Succeed` forgives the (IP, account) failures after any success, so four
+  guesses and one app password login can repeat without limit: 400 wrong guesses
+  from one IP were not throttled, then the right password was accepted. It needs
+  a leaked app password and the switch off. Fix: an app password success forgives
+  nothing, or only failures of that credential. Deferred by decision 21.
+- A client with the user name and password fields swapped logs the app password
+  in plain text: IMAP, POP3 and SMTP log the user name at Warn on failure, and the
+  line reaches `/admin/logs`. Account passwords have the same exposure. This is
+  against FR-2's metric of no plaintext in any log. Fix: do not log a user name
+  that `ParseAppPassword` accepts. Deferred by decision 21.
+- First use is logged twice when two logins read the record before the touch
+  applies, as an Apple profile connecting Mail, Calendar and Contacts will. The
+  FSM makes the second touch a no-op, so only the log is wrong.
+- Revoking the last app password with the switch on leaves no working credential
+  in mail clients. Decision 14 refuses that state at turn-on only.
+- Add a device always shows CalDAV and CardDAV on port 443, matching the public
+  profile. A deployment on another HTTPS port gets the wrong value.
+- A follower reads the record locally, so it can accept a revoked credential
+  until it applies the Delete, and for as long as a partition lasts. One-node
+  production is not affected.
+- Two nodes racing a create can reach 11 credentials; `lockUser` is per node. A
+  credential created after Revoke all has listed the records survives it. One-node
+  production is not affected by the first.
+- Decision 13 has a mixed-version exception. If 2FA is disabled and re-enrolled on
+  an earlier binary, the flag survives as an unknown field and an upgraded node
+  enforces it. Reasoned from the code, not run. The off route recovers it.
+- `AuthenticateProfile` returns a wrapped error after no bcrypt compare on a corrupt
+  profile, unlike `AuthenticateProtocol`. Only stored corruption reaches it.
+- `reauthenticate` still returns a bare English 429 for change password, disable
+  2FA and switch-off. A concurrent failure from one IP can also reach it on create.
+- `AccountState` treats a found record with an empty hash as live, while
+  `AuthenticateProtocol` refuses it. Create cannot produce one.
+- A session in IDLE notices a revoke on the 30-second recheck. SMTP refuses the
+  command but keeps the connection open, as for a disabled account.
+- `flaggedAppAuth` is repeated in the IMAP and SMTP tests, and `flaggedPOP3` is a
+  close copy. `find-similar` was not run on them or on `authtest`, because the MCP
+  LSP was unavailable.
+- `go test -race ./internal/web/handlers/` can pass the default 10 minute timeout
+  on a loaded machine. It holds 1166 tests.

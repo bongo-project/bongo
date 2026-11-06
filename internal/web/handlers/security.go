@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"image/png"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -43,6 +45,16 @@ type SecurityHandler struct {
 	sessionSecret []byte
 	tlsEnabled    bool
 	limiter       ReauthLimiter
+	appPasswords  *auth.AppPasswords // nil on a node without the service
+	// clientSettings supplies the server settings shown on Add a device; nil
+	// shows the password and user name only.
+	clientSettings func(*http.Request) ClientSettings
+	// deviceLinks holds the one-time links behind the QR route; nil on a node
+	// without them, which makes the form refuse that route.
+	deviceLinks *store.DeviceLinkStore
+	// qrEncode turns a link into the PNG data URI shown on the page. It is a
+	// field so a test can capture the encoded string; nil uses encodeQRDataURI.
+	qrEncode func(link string) (string, error)
 }
 
 // NewSecurityHandler creates a SecurityHandler.
@@ -70,17 +82,10 @@ func (h *SecurityHandler) SetTLSEnabled(enabled bool) {
 // SecuritySettings renders the security settings page.
 func (h *SecurityHandler) SecuritySettings(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
-	flash := flashText(r)
+	view := h.appPasswordView(r, userID, "", "")
+	view.FlashLevel = flashLevel(r)
 
-	var totpEnabled bool
-	if h.profiles != nil {
-		profile, err := h.loadProfile(userID)
-		if err == nil {
-			totpEnabled = profile.TotpEnabled
-		}
-	}
-
-	templ.Handler(templates.SecuritySettings(totpEnabled, email, flash)).ServeHTTP(w, r)
+	templ.Handler(templates.SecuritySettings(view.TotpEnabled, email, flashText(r), view)).ServeHTTP(w, r)
 }
 
 // SetupTOTP generates a new TOTP key and renders the setup page.
@@ -107,12 +112,11 @@ func (h *SecurityHandler) SetupTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var pngBuf bytes.Buffer
-	if err := png.Encode(&pngBuf, img); err != nil {
+	qrBase64, err := pngBase64(img)
+	if err != nil {
 		http.Error(w, "Failed to encode QR code", http.StatusInternalServerError)
 		return
 	}
-	qrBase64 := base64.StdEncoding.EncodeToString(pngBuf.Bytes())
 
 	// Store pending secret in a signed cookie (10 min TTL).
 	h.setTOTPPendingCookie(w, key.Secret())
@@ -121,6 +125,16 @@ func (h *SecurityHandler) SetupTOTP(w http.ResponseWriter, r *http.Request) {
 	errMsg := r.URL.Query().Get("error")
 
 	templ.Handler(templates.TOTPSetup(qrBase64, manualKey, errMsg)).ServeHTTP(w, r)
+}
+
+// pngBase64 encodes an image as base64 PNG, the form both QR pages embed in a
+// data: URI (the CSP allows data: images).
+func pngBase64(img image.Image) (string, error) {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return "", fmt.Errorf("encoding png: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
 // ConfirmTOTP verifies a TOTP code and enables 2FA for the user.
@@ -178,6 +192,9 @@ func (h *SecurityHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	profile.RecoveryCodes = hashedCodes
+	// A switch left over from an earlier enrolment must not come back on its
+	// own; it is turned on at the end of Add a device.
+	profile.RequireAppPasswords = false
 
 	// Save profile via Raft.
 	if err := h.saveProfile(userID, profile); err != nil {
@@ -188,8 +205,18 @@ func (h *SecurityHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
 	// Clear pending cookie.
 	h.clearTOTPPendingCookie(w)
 
-	// Render recovery codes page.
-	templ.Handler(templates.TOTPRecoveryCodes(plaintextCodes)).ServeHTTP(w, r)
+	// The secret and enabled flag are part of the session epoch, so without a
+	// fresh cookie the very next click would sign this device out and the
+	// enrolment could never reach Add a device.
+	h.reissueSessionCookie(w, r, userID, profile)
+
+	// Continue to Add a device when the service is there, so the clients are
+	// set up before the switch is offered.
+	next := securityPath
+	if h.appPasswords != nil {
+		next = devicesSetupPath
+	}
+	templ.Handler(templates.TOTPRecoveryCodes(plaintextCodes, next)).ServeHTTP(w, r)
 }
 
 // DisableTOTP disables 2FA for the user after re-authentication: the current
@@ -204,22 +231,33 @@ func (h *SecurityHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer lockUser(userID)()
-	profile, ok := h.reauthenticate(w, r, userID, email, password)
+	profile, ok := h.reauthenticate(w, r, userID, email, password, securityPath)
 	if !ok {
 		return
 	}
 
+	// Removing 2FA clears the switch in the same write. The switch is only
+	// offered with 2FA, so leaving it on would leave no way to turn it off, and
+	// an account with no app passwords would be shut out of its mail clients
+	// with nothing visible to fix. App passwords themselves are kept.
+	wasEnforced := profile.RequireAppPasswords
 	profile.TotpSecret = nil
 	profile.TotpEnabled = false
 	profile.RecoveryCodes = nil
+	profile.RequireAppPasswords = false
 
 	if err := h.saveProfile(userID, profile); err != nil {
 		http.Error(w, "Failed to save profile", http.StatusInternalServerError)
 		return
 	}
 	h.succeed(r, email)
+	h.reissueSessionCookie(w, r, userID, profile)
 
-	http.Redirect(w, r, withFlash("/settings/security", flashSecurity2FADisabled), http.StatusSeeOther)
+	flashes := []flashKey{flashSecurity2FADisabled}
+	if wasEnforced {
+		flashes = append(flashes, flashSecurity2FADisabledMailAgain)
+	}
+	http.Redirect(w, r, withFlash(securityPath, flashes...), http.StatusSeeOther)
 }
 
 // hashPassword is a seam so tests can count calls to the expensive hash.
@@ -275,27 +313,62 @@ func (h *SecurityHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	defer lockUser(userID)()
-	profile, ok := h.reauthenticate(w, r, userID, email, currentPassword)
-	if !ok {
-		return
-	}
-
-	profile.PasswordHash = hash
-	profile.SessionGeneration++
-
-	if err := h.saveProfile(userID, profile); err != nil {
-		http.Error(w, "Failed to save profile", http.StatusInternalServerError)
+	// The lock covers the re-authentication and the profile write only.
+	// Revoking app passwords (up to ten Raft writes) never touches the profile
+	// and runs after the lock is released.
+	profile, saved := func() (*bongov1.UserProfile, bool) {
+		defer lockUser(userID)()
+		profile, ok := h.reauthenticate(w, r, userID, email, currentPassword, securityPath)
+		if !ok {
+			return nil, false
+		}
+		profile.PasswordHash = hash
+		profile.SessionGeneration++
+		if err := h.saveProfile(userID, profile); err != nil {
+			http.Error(w, "Failed to save profile", http.StatusInternalServerError)
+			return nil, false
+		}
+		return profile, true
+	}()
+	if !saved {
 		return
 	}
 	h.succeed(r, email)
+	h.reissueSessionCookie(w, r, userID, profile)
 
-	if data, err := middleware.ParseSessionCookie(h.sessionSecret, r); err == nil && data.UserID == userID {
-		epoch := security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration)
-		http.SetCookie(w, middleware.ReissueSessionCookie(h.sessionSecret, *data, h.tlsEnabled, epoch))
+	// The password is already changed, so a revoke failure cannot undo it: the
+	// user is told, not shown plain success. RevokeAll is not atomic; it stops
+	// at the first failure and reports how many it removed.
+	flashes := []flashKey{flashSecurityPasswordChanged}
+	if r.FormValue("revoke_app_passwords") != "" && h.appPasswords != nil {
+		n, err := h.appPasswords.RevokeAll(userID)
+		switch {
+		case err != nil:
+			slog.Error("password changed but app passwords were not all revoked",
+				"user_id", userID, "revoked", n, "error", err)
+			flashes = []flashKey{flashSecurityRevokeIncomplete}
+		case profile.TotpEnabled && profile.RequireAppPasswords:
+			// Every protocol credential is gone and the account password is
+			// refused in mail clients: say so.
+			flashes = []flashKey{flashSecurityAppPasswordsReadd}
+		}
 	}
 
-	http.Redirect(w, r, withFlash("/settings/security", flashSecurityPasswordChanged), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash(securityPath, flashes...), http.StatusSeeOther)
+}
+
+// reissueSessionCookie gives the calling device a cookie for the profile's new
+// session epoch, keeping its original expiry, so a change to the password or
+// the second factor ends every other session but not this one. If the current
+// cookie cannot be parsed nothing is issued and the device signs out with the
+// rest.
+func (h *SecurityHandler) reissueSessionCookie(w http.ResponseWriter, r *http.Request, userID string, profile *bongov1.UserProfile) {
+	data, err := middleware.ParseSessionCookie(h.sessionSecret, r)
+	if err != nil || data.UserID != userID {
+		return
+	}
+	epoch := security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration)
+	http.SetCookie(w, middleware.ReissueSessionCookie(h.sessionSecret, *data, h.tlsEnabled, epoch))
 }
 
 var totpAlreadyEnabledRedirect = withFlash("/settings/security", flashSecurity2FAAlreadyEnabled)
@@ -314,7 +387,9 @@ func (h *SecurityHandler) totpEnrolled(userID string) bool {
 // so the factor is only spent when the change is written. On failure it has
 // already written the response and returns ok=false. The caller holds the
 // per-user lock across this call and its write.
-func (h *SecurityHandler) reauthenticate(w http.ResponseWriter, r *http.Request, userID, email, password string) (*bongov1.UserProfile, bool) {
+// back is where a wrong password or code returns to; it must be a fixed
+// same-origin path.
+func (h *SecurityHandler) reauthenticate(w http.ResponseWriter, r *http.Request, userID, email, password, back string) (*bongov1.UserProfile, bool) {
 	ip := middleware.ClientIP(r)
 	if h.limiter != nil && h.limiter.IsLimited(ip) {
 		w.Header().Set("Retry-After", strconv.Itoa(int(h.limiter.Window().Seconds())))
@@ -334,14 +409,14 @@ func (h *SecurityHandler) reauthenticate(w http.ResponseWriter, r *http.Request,
 	if err != nil || profile.Disabled ||
 		bcrypt.CompareHashAndPassword(profile.PasswordHash, []byte(password)) != nil {
 		h.fail(ip, email)
-		http.Redirect(w, r, withFlash("/settings/security", flashSecurityInvalidPassword), http.StatusSeeOther)
+		http.Redirect(w, r, withFlash(back, flashSecurityInvalidPassword), http.StatusSeeOther)
 		return nil, false
 	}
 
 	if profile.TotpEnabled {
 		if ok, _ := consumeSecondFactor(profile, r.FormValue("totp_code"), time.Now()); !ok {
 			h.fail(ip, email)
-			http.Redirect(w, r, withFlash("/settings/security", flashSecurityInvalidAuthCode), http.StatusSeeOther)
+			http.Redirect(w, r, withFlash(back, flashSecurityInvalidAuthCode), http.StatusSeeOther)
 			return nil, false
 		}
 	}

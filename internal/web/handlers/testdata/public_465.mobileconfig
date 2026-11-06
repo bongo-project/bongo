@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>EmailAccountDescription</key>
+      <string>example.com mail</string>
+      <key>EmailAccountName</key>
+      <string>alice@example.com</string>
+      <key>EmailAccountType</key>
+      <string>EmailTypeIMAP</string>
+      <key>EmailAddress</key>
+      <string>alice@example.com</string>
+      <key>IncomingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>IncomingMailServerHostName</key>
+      <string>mail.example.com</string>
+      <key>IncomingMailServerPortNumber</key>
+      <integer>993</integer>
+      <key>IncomingMailServerUseSSL</key>
+      <true/>
+      <key>IncomingMailServerUsername</key>
+      <string>alice@example.com</string>
+      <key>OutgoingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>OutgoingMailServerHostName</key>
+      <string>mail.example.com</string>
+      <key>OutgoingMailServerPortNumber</key>
+      <integer>465</integer>
+      <key>OutgoingMailServerUseSSL</key>
+      <true/>
+      <key>OutgoingMailServerUsername</key>
+      <string>alice@example.com</string>
+      <key>OutgoingPasswordSameAsIncoming</key>
+      <true/>
+      <key>PayloadDescription</key>
+      <string>Configures mail account for example.com</string>
+      <key>PayloadDisplayName</key>
+      <string>alice@example.com</string>
+      <key>PayloadIdentifier</key>
+      <string>com.example.mail.97cd92f4b167da14.account</string>
+      <key>PayloadType</key>
+      <string>com.apple.mail.managed</string>
+      <key>PayloadUUID</key>
+      <string>8d313168-1cfd-5fa7-984c-99333aef4664</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+    </dict>
+    <dict>
+      <key>CalDAVAccountDescription</key>
+      <string>example.com calendar</string>
+      <key>CalDAVHostName</key>
+      <string>mail.example.com</string>
+      <key>CalDAVPort</key>
+      <integer>443</integer>
+      <key>CalDAVPrincipalURL</key>
+      <string>/caldav/</string>
+      <key>CalDAVUseSSL</key>
+      <true/>
+      <key>CalDAVUsername</key>
+      <string>alice@example.com</string>
+      <key>PayloadDescription</key>
+      <string>Configures CalDAV account for alice@example.com</string>
+      <key>PayloadDisplayName</key>
+      <string>example.com calendar</string>
+      <key>PayloadIdentifier</key>
+      <string>com.example.97cd92f4b167da14.caldav.account</string>
+      <key>PayloadType</key>
+      <string>com.apple.caldav.account</string>
+      <key>PayloadUUID</key>
+      <string>4ef6c879-4c8c-5704-b73e-61d36123ba67</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+    </dict>
+    <dict>
+      <key>CardDAVAccountDescription</key>
+      <string>example.com contacts</string>
+      <key>CardDAVHostName</key>
+      <string>mail.example.com</string>
+      <key>CardDAVPort</key>
+      <integer>443</integer>
+      <key>CardDAVPrincipalURL</key>
+      <string>/carddav/</string>
+      <key>CardDAVUseSSL</key>
+      <true/>
+      <key>CardDAVUsername</key>
+      <string>alice@example.com</string>
+      <key>PayloadDescription</key>
+      <string>Configures CardDAV account for alice@example.com</string>
+      <key>PayloadDisplayName</key>
+      <string>example.com contacts</string>
+      <key>PayloadIdentifier</key>
+      <string>com.example.97cd92f4b167da14.carddav.account</string>
+      <key>PayloadType</key>
+      <string>com.apple.carddav.account</string>
+      <key>PayloadUUID</key>
+      <string>267b85d2-40a0-5a94-bd6d-fc16816bb78f</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+    </dict>
+  </array>
+      <key>PayloadDisplayName</key>
+      <string>example.com mail, calendar and contacts</string>
+      <key>PayloadIdentifier</key>
+      <string>com.example.mail.97cd92f4b167da14</string>
+      <key>PayloadRemovalDisallowed</key>
+      <false/>
+      <key>PayloadType</key>
+      <string>Configuration</string>
+      <key>PayloadUUID</key>
+      <string>786167e7-ccd9-5b42-b7e8-9853e916775f</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+</dict>
+</plist>

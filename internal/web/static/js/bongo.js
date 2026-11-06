@@ -320,6 +320,37 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Add a device, Apple choice. The form posts and the response is a file
+  // download, which leaves the page as it was, so on submit the form is
+  // swapped for a panel saying what to do next. Hiding the form also stops a
+  // second click creating a second credential. A refusal navigates away, so
+  // the panel only outlives a success or a failed connection.
+  Alpine.data('appleDevice', () => ({
+    idle: true,
+    done: false,
+    submit(event) {
+      // The QR button navigates to a page, not a download: leave the form and
+      // any banner alone, or the panel would claim a download that never starts.
+      if (event.submitter && event.submitter.hasAttribute('data-device-qr')) {
+        return;
+      }
+      const form = event.target;
+      // Hide now; clear the secrets after the browser has serialised the
+      // form, which happens once this handler returns.
+      this.idle = false;
+      this.done = true;
+      // A download leaves the page in place, so a banner from an earlier
+      // attempt and the setup hint would contradict the panel. A refusal
+      // navigates and renders them afresh.
+      document.querySelectorAll('.flash, [data-apple-stale]').forEach((el) => el.remove());
+      setTimeout(() => {
+        form.querySelectorAll('input[type=password], input[name=totp_code]').forEach((el) => {
+          el.value = '';
+        });
+      }, 0);
+    }
+  }));
+
   // Collapsible sidebar sections with localStorage persistence
   Alpine.data('sidebarSection', (key) => ({
     open: localStorage.getItem('bongo-sidebar-' + key) !== 'closed',

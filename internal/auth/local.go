@@ -38,6 +38,31 @@ type KeyGetter interface {
 type LocalAuth struct {
 	store    KeyGetter
 	metadata *store.MetadataManager
+	// apps is nil until SetAppPasswords: NewLocalAuth runs before Raft starts,
+	// and an edge node has no app passwords at all.
+	apps *AppPasswords
+}
+
+// SetAppPasswords enables app passwords on the protocol path. Call it before
+// serving; with none set, AuthenticateProtocol accepts the account password
+// only.
+func (a *LocalAuth) SetAppPasswords(p *AppPasswords) { a.apps = p }
+
+// CheckStanding refuses a disabled account and a resource account. It runs
+// after the bcrypt compare on every credential path, so the refusal is
+// indistinguishable from a wrong password in error and timing. The device link
+// redemption calls it too, since it has no password to compare.
+//
+// The Pebble profile is the source of truth for the disabled flag; the SQLite
+// users.enabled filter in lookupUserID is derived and can be stale (follower
+// nodes, index rebuild). A room or equipment account has a random password
+// nobody knows; the resource refusal covers the rolling-upgrade case and a
+// hash that was somehow set.
+func CheckStanding(profile *bongov1.UserProfile) error {
+	if profile.Disabled || profile.Kind == ResourceKind {
+		return ErrBadCredentials
+	}
+	return nil
 }
 
 // NewLocalAuth creates a new LocalAuth authenticator.
@@ -61,7 +86,7 @@ func (a *LocalAuth) AuthenticateProfile(username, password string) (string, *bon
 	userID, err := a.lookupUserID(username)
 	if err != nil {
 		// Equalize timing with the valid-user path (see dummyBcryptHash).
-		_ = bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(password))
+		_ = compareHash(dummyBcryptHash, []byte(password))
 		return "", nil, ErrBadCredentials
 	}
 
@@ -69,7 +94,7 @@ func (a *LocalAuth) AuthenticateProfile(username, password string) (string, *bon
 	key := []byte(fmt.Sprintf("/user/%s/profile", userID))
 	data, err := a.store.Get(key)
 	if err != nil {
-		_ = bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(password))
+		_ = compareHash(dummyBcryptHash, []byte(password))
 		return "", nil, ErrBadCredentials
 	}
 
@@ -79,27 +104,108 @@ func (a *LocalAuth) AuthenticateProfile(username, password string) (string, *bon
 	}
 
 	// bcrypt compare.
-	if err := bcrypt.CompareHashAndPassword(profile.PasswordHash, []byte(password)); err != nil {
+	if err := compareHash(profile.PasswordHash, []byte(password)); err != nil {
 		return "", nil, ErrBadCredentials
 	}
 
-	// The Pebble profile is the source of truth for the disabled flag; the
-	// SQLite users.enabled filter in lookupUserID is derived and can be stale
-	// (follower nodes, index rebuild). Checked after bcrypt so timing and the
-	// error are identical to a wrong password.
-	if profile.Disabled {
-		return "", nil, ErrBadCredentials
-	}
-
-	// A room or equipment account has a random password nobody knows; this
-	// refusal covers the rolling-upgrade case and a hash that was somehow set.
-	// After bcrypt, like the disabled check, so it is indistinguishable from
-	// a wrong password in error and timing.
-	if profile.Kind == ResourceKind {
-		return "", nil, ErrBadCredentials
+	if err := CheckStanding(&profile); err != nil {
+		return "", nil, err
 	}
 
 	return userID, &profile, nil
+}
+
+// AuthenticateProtocol is the credential check for IMAP, POP3, SMTP submission
+// and CalDAV/CardDAV Basic. It accepts the account password or a valid app
+// password; Authenticate and AuthenticateProfile, used by web login and
+// re-authentication, accept the account password only and stay the
+// restrictive default for any call site not moved here.
+//
+// Every branch costs exactly one bcrypt comparison, so an attempt does not
+// reveal whether the user exists, has app passwords, or matched a lookup id:
+//   - unknown user or missing profile: the dummy hash;
+//   - password not shaped like an app password: the account hash;
+//   - shaped, but no record under this user: the original password against
+//     the account hash (an account password may look like an app password);
+//   - record found: the secret against the record hash, with no fallback to
+//     the account hash after a miss;
+//   - unreadable record or empty hash: the dummy hash, and ErrBadCredentials
+//     rather than a wrapped error, which SMTP would map to a different reply.
+//
+// The record is read only under the user ID resolved from the username, so a
+// credential of user A cannot authenticate user B. Accepted edge: an account
+// password that parses as an app password and whose first group equals one of
+// that user's lookup ids is judged as an app password and fails.
+//
+// The third result is the lookup id of the app password that opened the
+// session, or "" for the account password. A session keeps it and passes it to
+// AccountState, so revoking that credential ends the session. A revoked lookup
+// id can in theory be reissued to the same user (1 in 23^6 per create); the
+// old session would then count as live. It stays the same user, so this is
+// accepted rather than compared by hash.
+func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error) {
+	userID, err := a.lookupUserID(username)
+	if err != nil {
+		_ = compareHash(dummyBcryptHash, []byte(password))
+		return "", nil, "", ErrBadCredentials
+	}
+	data, err := a.store.Get([]byte(fmt.Sprintf("/user/%s/profile", userID)))
+	var profile bongov1.UserProfile
+	if err == nil {
+		err = proto.Unmarshal(data, &profile)
+	}
+	if err != nil {
+		_ = compareHash(dummyBcryptHash, []byte(password))
+		return "", nil, "", ErrBadCredentials
+	}
+
+	// The one place the credential kind is known.
+	var used *bongov1.AppPassword
+	id, secret, shaped := ParseAppPassword(password)
+	if shaped && a.apps != nil {
+		rec, found, rerr := a.apps.records.Get(userID, id)
+		switch {
+		case rerr != nil || (found && len(rec.PasswordHash) == 0):
+			a.apps.logger.Warn("app password record unreadable", "user_id", userID, "lookup", id)
+			_ = compareHash(dummyBcryptHash, []byte(password))
+			return "", nil, "", ErrBadCredentials
+		case found:
+			if compareHash(rec.PasswordHash, []byte(secret)) != nil {
+				return "", nil, "", ErrBadCredentials
+			}
+			used = rec
+		default:
+			if compareHash(profile.PasswordHash, []byte(password)) != nil {
+				return "", nil, "", ErrBadCredentials
+			}
+		}
+	} else if compareHash(profile.PasswordHash, []byte(password)) != nil {
+		return "", nil, "", ErrBadCredentials
+	}
+
+	// The per-account switch: with it on, only an app password passes. It runs
+	// after every compare, so the refusal costs the same one bcrypt comparison
+	// and returns the same error as a wrong password. It also needs TOTP, so a
+	// flag left behind by a node that cleared 2FA (an earlier binary does not
+	// know the field) cannot lock the account out of its mail clients.
+	if used == nil && profileEnforcesAppPasswords(&profile) {
+		return "", nil, "", ErrBadCredentials
+	}
+
+	if err := CheckStanding(&profile); err != nil {
+		return "", nil, "", err
+	}
+	// The id is returned only when a record actually authenticated. The parsed
+	// id is also set when an account password merely has the app password
+	// shape, and binding that session to a record that does not exist would
+	// end it on its next command. It is the key the record was found under,
+	// not rec.Id, so it can never be empty here.
+	appPasswordID := ""
+	if used != nil {
+		a.apps.recordUse(userID, used)
+		appPasswordID = id
+	}
+	return userID, &profile, appPasswordID, nil
 }
 
 func (a *LocalAuth) lookupUserID(username string) (string, error) {
@@ -136,19 +242,27 @@ type AccountState struct {
 	// Unlike the web session epoch it ignores TOTP state, so turning 2FA on or
 	// off does not drop mail clients that never use TOTP.
 	Epoch string
+	// AppPasswordRevoked is true when the session was opened with an app
+	// password whose record no longer exists. Negative so the zero value of
+	// the struct stays live.
+	AppPasswordRevoked bool
 }
 
 // Live reports whether a session that recorded epoch at login may continue.
 // A missing profile is never live (fail closed).
 func (st AccountState) Live(epoch string) bool {
-	return !st.Missing && !st.Disabled && st.Epoch == epoch
+	return !st.Missing && !st.Disabled && !st.AppPasswordRevoked && st.Epoch == epoch
 }
 
 // AccountState reads the current state of userID: one Pebble Get and a
 // protobuf unmarshal, no bcrypt, so it is cheap enough to run per command.
+// A session opened with an app password passes its lookup id and costs one
+// more local Pebble Get for the record; a session opened with the account
+// password passes "" and does no extra read. A missing record reports
+// AppPasswordRevoked; a read error is returned like a profile read error.
 // A genuinely absent profile is reported as Missing; any other store failure is
 // returned as an error so the caller can choose its own failure policy.
-func (a *LocalAuth) AccountState(userID string) (AccountState, error) {
+func (a *LocalAuth) AccountState(userID, appPasswordID string) (AccountState, error) {
 	data, err := a.store.Get([]byte(fmt.Sprintf("/user/%s/profile", userID)))
 	if errors.Is(err, store.ErrNotFound) {
 		return AccountState{Missing: true}, nil
@@ -160,17 +274,44 @@ func (a *LocalAuth) AccountState(userID string) (AccountState, error) {
 	if err := proto.Unmarshal(data, &profile); err != nil {
 		return AccountState{}, fmt.Errorf("parsing profile: %w", err)
 	}
-	return AccountState{
+	st := AccountState{
 		Disabled: profile.Disabled,
 		Epoch:    ProtocolEpoch(&profile),
-	}, nil
+	}
+	if appPasswordID != "" {
+		if a.apps == nil {
+			// Fail closed: a session bound to a credential we cannot look up.
+			st.AppPasswordRevoked = true
+			return st, nil
+		}
+		_, found, err := a.apps.records.Get(userID, appPasswordID)
+		if err != nil {
+			return AccountState{}, fmt.Errorf("reading app password: %w", err)
+		}
+		st.AppPasswordRevoked = !found
+	}
+	return st, nil
+}
+
+// profileEnforcesAppPasswords reports whether the account password is refused
+// on the protocol path.
+func profileEnforcesAppPasswords(p *bongov1.UserProfile) bool {
+	return p.RequireAppPasswords && p.TotpEnabled
 }
 
 // ProtocolEpoch is the session epoch for IMAP, POP3 and SMTP: it fingerprints
-// the password hash only. TOTP state and the web session generation are
-// deliberately excluded, so a web logout or a 2FA toggle does not end mail
-// client sessions. Login paths take it from the profile their password was
+// the password hash and whether app passwords are enforced. TOTP state and the
+// web session generation are deliberately excluded, so a web logout or a 2FA
+// toggle that leaves enforcement unchanged does not end mail client sessions.
+// Enforcement is included so that turning it on ends sessions opened with the
+// account password. Anything that flips it ends sessions too: turning it on or
+// off, and removing 2FA while it is on. App password clients reconnect once on
+// those paths. Login paths take it from the profile their password was
 // verified against; AccountState computes the same value for later checks.
 func ProtocolEpoch(p *bongov1.UserProfile) string {
-	return security.SessionEpoch(p.PasswordHash, nil, false, 0)
+	material := p.PasswordHash
+	if profileEnforcesAppPasswords(p) {
+		material = append(append([]byte{}, p.PasswordHash...), "require-app-passwords"...)
+	}
+	return security.SessionEpoch(material, nil, false, 0)
 }

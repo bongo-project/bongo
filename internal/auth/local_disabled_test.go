@@ -75,7 +75,7 @@ func TestAccountState(t *testing.T) {
 	a, mm, kv := setupTestAuth(t)
 	createTestUser(t, kv, mm, "user-1", "alice@example.com", "pw-one")
 
-	st, err := a.AccountState("user-1")
+	st, err := a.AccountState("user-1", "")
 	if err != nil || st.Missing || st.Disabled || st.Epoch == "" {
 		t.Fatalf("live state = %+v, %v", st, err)
 	}
@@ -91,7 +91,7 @@ func TestAccountState(t *testing.T) {
 	p := &bongov1.UserProfile{Email: "alice@example.com", PasswordHash: hash}
 	data, _ := proto.Marshal(p)
 	kv.data["/user/user-1/profile"] = data
-	reset, err := a.AccountState("user-1")
+	reset, err := a.AccountState("user-1", "")
 	if err != nil || reset.Epoch == st.Epoch {
 		t.Fatalf("epoch unchanged after reset: %+v, %v", reset, err)
 	}
@@ -101,7 +101,7 @@ func TestAccountState(t *testing.T) {
 	p.TotpSecret = []byte("secret")
 	data, _ = proto.Marshal(p)
 	kv.data["/user/user-1/profile"] = data
-	tfa, _ := a.AccountState("user-1")
+	tfa, _ := a.AccountState("user-1", "")
 	if tfa.Epoch != reset.Epoch {
 		t.Error("epoch must not depend on TOTP state")
 	}
@@ -110,7 +110,7 @@ func TestAccountState(t *testing.T) {
 	p.SessionGeneration = 7
 	data, _ = proto.Marshal(p)
 	kv.data["/user/user-1/profile"] = data
-	gen, _ := a.AccountState("user-1")
+	gen, _ := a.AccountState("user-1", "")
 	if gen.Epoch != reset.Epoch {
 		t.Error("epoch must not depend on the web session generation")
 	}
@@ -118,20 +118,20 @@ func TestAccountState(t *testing.T) {
 	p.Disabled = true
 	data, _ = proto.Marshal(p)
 	kv.data["/user/user-1/profile"] = data
-	dis, _ := a.AccountState("user-1")
+	dis, _ := a.AccountState("user-1", "")
 	if !dis.Disabled || dis.Live(dis.Epoch) {
 		t.Errorf("disabled state = %+v", dis)
 	}
 
 	delete(kv.data, "/user/user-1/profile")
-	gone, err := a.AccountState("user-1")
+	gone, err := a.AccountState("user-1", "")
 	if err != nil || !gone.Missing || gone.Live(gone.Epoch) {
 		t.Errorf("missing state = %+v, %v", gone, err)
 	}
 
 	// A store failure is an error, not a Missing state.
 	bad := NewLocalAuth(failingGetter{}, nil)
-	if _, err := bad.AccountState("user-1"); err == nil {
+	if _, err := bad.AccountState("user-1", ""); err == nil {
 		t.Error("store error must be surfaced")
 	}
 }

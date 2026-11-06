@@ -36,8 +36,8 @@ type popMsg struct {
 // authenticator is what POP3 needs of the auth backend: credentials checked
 // with the profile they were checked against, and the live account state.
 type authenticator interface {
-	AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error)
-	AccountState(userID string) (auth.AccountState, error)
+	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error)
+	AccountState(userID, appPasswordID string) (auth.AccountState, error)
 }
 
 var _ authenticator = (*auth.LocalAuth)(nil)
@@ -70,9 +70,12 @@ type session struct {
 	userID        string
 	// epoch is the credential fingerprint recorded at PASS; a mismatch later
 	// means the password was reset.
-	epoch    string
-	messages []popMsg // 0-indexed; POP3 message numbers are 1-based
-	deleted  map[int]bool
+	epoch string
+	// appPassword is the lookup id of the app password that opened the
+	// session, or "" for the account password. Revoking it ends the session.
+	appPassword string
+	messages    []popMsg // 0-indexed; POP3 message numbers are 1-based
+	deleted     map[int]bool
 }
 
 func newSession(
@@ -238,12 +241,13 @@ func (s *session) flushWriter() {
 
 // accountLive reports whether the authenticated account is still enabled,
 // still exists and still has the password it logged in with. It costs one
-// Pebble Get per command. The check fails closed: a missing profile reports
+// Pebble Get per command, plus one for the record when the session was opened
+// with an app password (a revoked one is not live). The check fails closed: a missing profile reports
 // not live, and a store read error is returned so the caller refuses the
 // command and closes without applying DELE marks. PASS also fails closed on
 // any error.
 func (s *session) accountLive() (bool, error) {
-	st, err := s.auth.AccountState(s.userID)
+	st, err := s.auth.AccountState(s.userID, s.appPassword)
 	if err != nil {
 		s.logger.Warn("pop3: account state check failed, refusing command", "user", s.userID, "error", err)
 		return false, err
@@ -252,7 +256,7 @@ func (s *session) accountLive() (bool, error) {
 		return true, nil
 	}
 	s.logger.Info("pop3: closing session, account no longer valid", "user", s.userID,
-		"missing", st.Missing, "disabled", st.Disabled)
+		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked)
 	return false, nil
 }
 
@@ -320,7 +324,7 @@ func (s *session) handlePass(args string) {
 		return
 	}
 
-	userID, profile, err := s.auth.AuthenticateProfile(s.username, args)
+	userID, profile, appPassword, err := s.auth.AuthenticateProtocol(s.username, args)
 	if err != nil {
 		s.logger.Warn("pop3: auth failed", "username", s.username, "ip", ip)
 		if s.authLimiter != nil {
@@ -343,6 +347,7 @@ func (s *session) handlePass(args string) {
 		return
 	}
 	s.epoch = auth.ProtocolEpoch(profile)
+	s.appPassword = appPassword
 	s.userID = userID
 	s.authenticated = true
 	s.logger.Debug("pop3: auth succeeded", "username", s.username, "user_id", userID)

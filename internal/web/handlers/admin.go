@@ -31,6 +31,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/cluster"
+	"github.com/bongo-project/bongo/internal/i18n"
 	internalmail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/queue"
 	"github.com/bongo-project/bongo/internal/store"
@@ -58,6 +59,7 @@ type AdminHandler struct {
 	addresses    *store.AddressStore
 	search       *store.SearchManager
 	domainAdmin  *store.DomainAdminStore
+	appPasswords *auth.AppPasswords // nil on a node without the service
 	// authorizedDomainsFn resolves a user's admin scope (owned and granted
 	// domains). Set by SetDomainAdminStore; replaceable in tests.
 	authorizedDomainsFn func(userID string, isGlobalAdmin bool) ([]string, error)
@@ -407,6 +409,8 @@ func (h *AdminHandler) renderUserForm(w http.ResponseWriter, r *http.Request, em
 		Kind:         profile.Kind,
 		ResourceType: profile.ResourceType,
 		Capacity:     profile.Capacity,
+
+		AppPasswordsAvailable: h.appPasswords != nil,
 	}
 
 	// Populate the address list from the SQLite derived index (best-effort;
@@ -591,6 +595,42 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Pragma", "no-cache")
 	_, email := middleware.UserFromContext(r.Context())
 	h.renderUserForm(w, r, email, userID, profile, "", tempPassword)
+}
+
+// SetAppPasswords wires the app password service.
+func (h *AdminHandler) SetAppPasswords(p *auth.AppPasswords) { h.appPasswords = p }
+
+// RevokeAllAppPasswords deletes every app password of a user, for an admin
+// responding to an incident. The account password, the profile and web
+// sessions are untouched, so there is no user lock and no session bump.
+//
+// It is one Raft Delete per credential, not an atomic command. On a failure
+// part way, the credentials already deleted stay deleted and the rest still
+// work; the admin is told the action failed and can repeat it, which is safe
+// because revoking is idempotent. A credential the user creates while this
+// runs can survive it.
+func (h *AdminHandler) RevokeAllAppPasswords(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "userID")
+	scope := middleware.AdminScopeFromContext(r.Context())
+
+	// Scope first: a missing and an out-of-scope user are refused alike.
+	if _, ok := h.requireUserAccess(w, scope, userID); !ok {
+		return
+	}
+	if h.appPasswords == nil {
+		http.NotFound(w, r)
+		return
+	}
+	adminID, _ := middleware.UserFromContext(r.Context())
+	n, err := h.appPasswords.RevokeAll(userID)
+	if err != nil {
+		h.logger.Error("admin: revoke all app passwords failed", "admin_id", adminID, "user_id", userID, "count", n, "error", err)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.revokeAppPasswordsFailed"), http.StatusInternalServerError)
+		return
+	}
+	h.logger.Info("admin: app passwords revoked", "admin_id", adminID, "user_id", userID, "count", n)
+
+	redirectAfterAction(w, r, withFlash("/admin/users/"+url.PathEscape(userID), flashAppPasswordsRevokedAll))
 }
 
 // countAdmins returns the number of users whose profile has the admin flag set.

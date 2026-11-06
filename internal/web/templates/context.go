@@ -199,3 +199,12 @@ func pageWindow(page, totalPages int) []int {
 	}
 	return pages
 }
+
+// flashLevelOr returns the banner level, defaulting to "success" when the
+// handler set none.
+func flashLevelOr(level string) string {
+	if level == "" {
+		return "success"
+	}
+	return level
+}

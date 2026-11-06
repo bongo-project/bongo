@@ -104,24 +104,26 @@ type Agent struct {
 	// reloader is set by EnableReload; nil means reload is not configured.
 	reloader *Reloader
 
-	Store       *store.PebbleStore
-	Blobs       *store.BlobStore
-	Metadata    *store.MetadataManager
-	Search      *store.SearchManager
-	Auth        *auth.LocalAuth
-	Raft        *cluster.RaftNode
-	Gossip      *cluster.GossipNode
-	SMTP        *bongosmtp.Server
-	IMAP        *bongoimap.Server
-	POP3        *bongopop3.Server
-	Notifier    *bongoimap.Notifier
-	Mailboxes   *store.MailboxStore
-	Preferences *store.PreferenceStore
-	Threads     *store.ThreadStore
-	Rules       *rules.RuleStore
-	Contacts    *store.ContactStore
-	Events      *store.EventStore
-	Tasks       *store.TaskStore
+	Store        *store.PebbleStore
+	Blobs        *store.BlobStore
+	Metadata     *store.MetadataManager
+	Search       *store.SearchManager
+	Auth         *auth.LocalAuth
+	AppPasswords *auth.AppPasswords
+	DeviceLinks  *store.DeviceLinkStore // one-time links behind the Add a device QR code
+	Raft         *cluster.RaftNode
+	Gossip       *cluster.GossipNode
+	SMTP         *bongosmtp.Server
+	IMAP         *bongoimap.Server
+	POP3         *bongopop3.Server
+	Notifier     *bongoimap.Notifier
+	Mailboxes    *store.MailboxStore
+	Preferences  *store.PreferenceStore
+	Threads      *store.ThreadStore
+	Rules        *rules.RuleStore
+	Contacts     *store.ContactStore
+	Events       *store.EventStore
+	Tasks        *store.TaskStore
 	// ScheduleInbox holds the iTIP messages CalDAV clients find in their
 	// scheduling inbox (RFC 6638).
 	ScheduleInbox *store.ScheduleInboxStore
@@ -528,6 +530,13 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		// is what lets a client idling on one node learn about a change made
 		// through another.
 		a.Preferences = store.NewPreferenceStore(pebbleStore, a)
+		// App passwords need the Raft applier, which is why they are wired
+		// here and not next to NewLocalAuth.
+		a.AppPasswords = auth.NewAppPasswords(store.NewAppPasswordStore(pebbleStore, a), logger)
+		a.AppPasswords.SetBenignTouchError(func(err error) bool { return errors.Is(err, cluster.ErrNotLeader) })
+		a.Auth.SetAppPasswords(a.AppPasswords)
+		a.DeviceLinks = store.NewDeviceLinkStore(pebbleStore, a)
+		a.AppPasswords.SetDeviceLinks(a.DeviceLinks)
 		a.Rules = rules.NewRuleStore(pebbleStore, a)
 		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)
 		a.Contacts = store.NewContactStore(pebbleStore, a)
@@ -1215,6 +1224,18 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	// Apple profile (iOS/macOS Mail): downloadable, unsigned .mobileconfig.
 	r.Get("/.well-known/mobileconfig", autoconfigH.AppleMobileconfig)
+	// The QR link of Add a device. Registered on the root router, outside the
+	// session and CSRF groups, on purpose: the phone has no session, the route
+	// reads and sets no cookie (so CSRF has nothing to protect), and the
+	// one-time token in the path is the credential. It has its own throttle,
+	// with the login limits and the login's client IP, so stale rescans do not
+	// count against web login for a household behind one address. GET only: a
+	// HEAD gets the router's 405 and consumes nothing.
+	if a.AppPasswords != nil && a.DeviceLinks != nil {
+		deviceLinkRL := middleware.NewLoginRateLimiter(middleware.DefaultMaxAttempts, middleware.DefaultWindow)
+		deviceLinkH := handlers.NewDeviceLinkHandler(a.DeviceLinks, a.AppPasswords, a, autoconfigH.SettingsForHost, deviceLinkRL)
+		r.With(deviceLinkRL.LoginRateLimit()).Get("/device-link/{user}/{token}", deviceLinkH.Redeem)
+	}
 
 	// The root redirect to the user's start page is in the protected group below.
 
@@ -1274,6 +1295,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		// immediately after key generation (registry was created above).
 		adminH.SetDKIMRegistry(a.DKIMRegistry)
 		adminH.SetSearchManager(a.Search)
+		if a.AppPasswords != nil {
+			adminH.SetAppPasswords(a.AppPasswords)
+		}
 
 		// Wire the catch-all store so SetCatchAll/ClearCatchAll can persist
 		// per-domain catch-all configuration via Raft. The resolver reads
@@ -1323,6 +1347,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/users/{userID}", adminH.UpdateUser)
 		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
 		r.Post("/admin/users/{userID}/reset-password", adminH.ResetPassword)
+		r.Post("/admin/users/{userID}/app-passwords/revoke", adminH.RevokeAllAppPasswords)
 		r.Get("/admin/users/{userID}/bookings", adminH.ResourceBookings)
 		r.Post("/admin/users/{userID}/bookings/{guid}/cancel", adminH.CancelResourceBooking)
 		r.Post("/admin/users/{userID}/delete", adminH.DeleteUser)
@@ -1385,11 +1410,25 @@ func (a *Agent) Run(ctx context.Context) error {
 		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
 		securityH.SetTLSEnabled(tlsEnabled)
 		securityH.SetRateLimiter(loginRL)
+		if a.AppPasswords != nil {
+			securityH.SetAppPasswords(a.AppPasswords)
+		}
+		securityH.SetClientSettings(autoconfigH.ClientSettings)
+		if a.DeviceLinks != nil {
+			securityH.SetDeviceLinks(a.DeviceLinks)
+		}
 		r.Get("/settings/security", securityH.SecuritySettings)
 		r.Post("/settings/security/totp/setup", securityH.SetupTOTP)
 		r.Post("/settings/security/totp/confirm", securityH.ConfirmTOTP)
 		r.Post("/settings/security/totp/disable", securityH.DisableTOTP)
 		r.Post("/settings/security/password", securityH.ChangePassword)
+		r.Post("/settings/security/app-passwords", securityH.CreateAppPassword)
+		r.Post("/settings/security/app-passwords/revoke", securityH.RevokeAppPassword)
+		r.Get("/settings/security/devices", securityH.AddDevice)
+		r.Post("/settings/security/devices", securityH.CreateDevice)
+		r.Get("/settings/security/devices/link", securityH.DeviceLinkStatus)
+		r.Post("/settings/security/require-app-passwords/on", securityH.RequireAppPasswordsOn)
+		r.Post("/settings/security/require-app-passwords/off", securityH.RequireAppPasswordsOff)
 
 		var mailH *handlers.MailHandler
 		if a.Mailboxes != nil {
@@ -2534,6 +2573,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 			a.sweepSendLogs(time.Now(), store.SendLogTTL)
 			a.sweepVacationSent(time.Now(), store.VacationSentTTL)
 			a.sweepReminderSent(time.Now(), store.ReminderSentTTL)
+			a.sweepDeviceLinks(time.Now(), store.AppPasswordTicketSweepGrace)
 			prevGrants = a.sweepOrphanedGrants(prevGrants)
 		}
 	}
@@ -3214,6 +3254,14 @@ func (a *Agent) sweepVacationSent(now time.Time, ttl time.Duration) int {
 // older than ttl and returns how many it removed. Leader-only.
 func (a *Agent) sweepReminderSent(now time.Time, ttl time.Duration) int {
 	return a.sweepAgedUserKeys(now, ttl, "reminder sent", store.ReminderSentPrefix, store.DecodeReminderSent)
+}
+
+// sweepDeviceLinks deletes device link records (store.DeviceLinkPrefix) more
+// than ttl past their expiry and returns how many it removed. The grace keeps a
+// used or expired state readable by a desktop tab that was in the background.
+// Leader-only. A delete racing a consume is safe: an absent record is refused.
+func (a *Agent) sweepDeviceLinks(now time.Time, ttl time.Duration) int {
+	return a.sweepAgedUserKeys(now, ttl, "device link", store.DeviceLinkPrefix, store.DecodeDeviceLinkExpiry)
 }
 
 // sweepAgedUserKeys deletes, through Raft, every key under each user's prefix
@@ -4991,7 +5039,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 		return "", false
 	}
 
-	userID, err := authn.Authenticate(username, password)
+	userID, _, _, err := authn.AuthenticateProtocol(username, password)
 	if err != nil {
 		if limiter.Fail(ip, username) {
 			logger.Warn("dav: basic auth locked out after repeated failures", "ip", ip)

@@ -1710,3 +1710,45 @@ All six stories merged on norman/phase-34-ui-fixes. Workflow wf_8ba74fa9-b26 sto
 
 PATTERN: tooling - use root-level `templ generate`; `-path` rewrites the FileName header in every *_templ.go.
 PATTERN: testing - integration tests that compare rendered times must use the user's zone (UTC by default), not the host's; CI hides this.
+
+## 2026-11-05: Phase 36 batch 1 (36.1, 36.2) implemented
+
+Workflow wf_866bdf9d-62b, review MINOR with 11 of 11 mutants killed. `LocalAuth.AuthenticateProtocol` is the only method that accepts app passwords and costs one bcrypt comparison on every branch. last_used_at is a conditional FSM command so it cannot resurrect a revoked record. Follow-ups are in PRD section 8.2. For 36.3: Revoke returns ErrInvalidAppPasswordID for a malformed id, and US-004 needs the handler to answer that the same as success. Paused here at the user's request; next batch is 36.3 + 36.8.
+
+PATTERN: security - a read-modify-write Put from a login path can undo a revoke's Delete; make such writes conditional in the FSM.
+
+## 2026-11-05: Phase 36 batch 2 (36.3, 36.8) implemented
+
+Workflow wf_f60aef0c-fef, review MINOR. Security page card (create, list, revoke) and admin Revoke all. Advisor added two requirements: hx-history="false" on the reveal, and no create for a session held by the 2FA policy (PRD decision 9, awaiting the operator). Review fixes applied by hand: status row layout, hyphen wrapping for the one-time password, `count` in the failure log, B's credential verified with bcrypt, banner assertion.
+
+PATTERN: tooling - workflow worktrees start at main; a stacked batch must `git merge --ff-only` the phase branch first.
+PATTERN: security - htmx history writes pages to localStorage; no-store does not stop it. Use hx-history="false" on a page that shows a secret.
+PATTERN: ui - HX-Redirect on a 303 is never seen, because XHR follows the redirect; return 200 with HX-Redirect for htmx.
+
+## 2026-11-05: Phase 36 batch 3 (36.4, 36.7, 36.9) implemented
+
+Workflow wf_9a6e4454-6b2, first review REJECT, one fix round, then MINOR with 17 of 17 mutants killed. Re-authentication and the cap of 10 sit on the one create path (`createCredential`, `AppPasswords.Create`). Change password has the revoke box. Add a device has Other, with settings from `ClientSettings`, which the autoconfig documents also use. The switch is `require_app_passwords`, enforced in `AuthenticateProtocol` with 2FA on. Decisions 13 to 18 are in the PRD. My review change: the "add your devices again" banner is a warning, not a success.
+
+PATTERN: security - anything that changes the session epoch must reissue the calling device's cookie, or a multi-step flow signs its own user out at the next click.
+PATTERN: ui - flashes on the Security page need a level; `flashLevel` maps the key to error, warning or success.
+
+## 2026-11-06: Phase 36 batch 4 (36.5) implemented
+
+Workflow wf_a9ffee53-884, review MINOR. Add a device has an Apple choice that downloads a personal profile from `buildAppleProfile`, which also builds the public profile (goldens from the pre-refactor code are byte-identical). US-006's device check is the operator's, and POST on iOS Safari is unproven until then. My review changes: Apple listed first, stale banner and setup hint removed on submit, throttle message and held Apple session tested. TestRevokeAll failed 9 of 40 runs: the test applier was not serial, so a touch could bring back a deleted record. The real FSM applies serially. Fixed by giving the applier a mutex; 60 of 60 runs pass.
+
+PATTERN: testing - a test applier that stands in for the FSM must serialise applies, or conditional commands race in ways production cannot.
+PATTERN: testing - a refusal test should assert the user-visible message as well as status and headers.
+
+## 2026-11-06: Phase 36 batch 5 (36.6) implemented
+
+Workflow wf_436dc512-981, review MINOR, 21 worker mutants killed. The QR link is `/device-link/{user}/{token}` on the root router, with its own throttle. The token's hash keys `/user/{id}/devicelink/{hash}`, and the conditional `/__apppassword_ticket__/` command spends a link once. Redemption re-checks standing, epoch, the 2FA policy and the cap before consuming, and every refusal is one fixed 404. RevokeAll deletes pending links because it does not move the epoch. My review changes: the handler test that could not fail is replaced by an integration test of the real route, RevokeAll wiring is tested on a real agent (both mutants red), the epoch comment is corrected, `IsValidHash` replaces a copy, and the used state no longer claims the profile arrived.
+
+PATTERN: testing - a test on the test's own router proves nothing about production wiring; use the real agent for route registration, throttles and setter wiring.
+PATTERN: cluster - a conditional FSM command that the caller must learn the result of returns a sentinel through ApplyCommand and logs no error for it.
+
+## 2026-11-06: Phase 36 verification and batch 6 (36.10 to 36.12)
+
+`norman verify` (wf_7f7f4b20-658, adversarial): no FAIL, most PARTIALs were test gaps. Operator scoped in ending sessions on revoke, the docs and UI items and every test gap; the guess limit reset and swapped-fields log line went to 8.2 (decision 21). Workflow wf_1407d242-419, review MINOR on all three. `AuthenticateProtocol` returns the app password lookup ID and `AccountState` checks the record. Device checks run on production (decision 22, row 36.13). Report in verification.md. My review changes: sendmail docs, CLAUDE.md mixed-version note, the intro string in the 2FA control.
+
+PATTERN: security - a Limiter.Succeed on any credential forgives failures of a different credential; ask which secret a success actually proved.
+PATTERN: testing - a negative field name (AppPasswordRevoked) keeps the zero value of a state struct live, so fakes need no change; changing the method signature makes every override fail to compile instead of silently bypassing it.

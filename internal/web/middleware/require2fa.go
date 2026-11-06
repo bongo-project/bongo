@@ -20,6 +20,21 @@ type ProfileLookup interface {
 	GetKey(key []byte) ([]byte, error)
 }
 
+// TwoFactorPolicyEnforced reports whether the system-wide require_2fa policy is
+// on. Only a missing key means off; any other read error is returned so the
+// caller can fail closed. Require2FA and the device link redemption share it,
+// so the two cannot disagree about what "enforced" means.
+func TwoFactorPolicyEnforced(profiles ProfileLookup) (bool, error) {
+	data, err := profiles.GetKey([]byte("/system/settings/require_2fa"))
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return string(data) == "1", nil
+}
+
 // Require2FAFromContext returns true when the system requires 2FA and the
 // current user has not yet enabled it. Templates use this to show a
 // persistent warning banner.
@@ -40,13 +55,13 @@ func Require2FA(profiles ProfileLookup) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if system-wide 2FA is enforced.
-			data, err := profiles.GetKey([]byte("/system/settings/require_2fa"))
-			if err != nil && !errors.Is(err, store.ErrNotFound) {
+			enforced, err := TwoFactorPolicyEnforced(profiles)
+			if err != nil {
 				slog.Warn("require 2fa: policy read failed", "error", err)
 				http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 				return
 			}
-			if err != nil || string(data) != "1" {
+			if !enforced {
 				// No policy or not enforced, pass through.
 				next.ServeHTTP(w, r)
 				return

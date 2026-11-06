@@ -9,7 +9,7 @@ import (
 )
 
 // epochRaceAuth models a password reset landing between the credential check
-// and any later read: AuthenticateProfile verifies against p1 while
+// and any later read: AuthenticateProtocol verifies against p1 while
 // AccountState already reports p2.
 type epochRaceAuth struct {
 	p1, p2     *bongov1.UserProfile
@@ -17,14 +17,14 @@ type epochRaceAuth struct {
 	stateCalls int
 }
 
-func (a *epochRaceAuth) AuthenticateProfile(string, string) (string, *bongov1.UserProfile, error) {
+func (a *epochRaceAuth) AuthenticateProtocol(string, string) (string, *bongov1.UserProfile, string, error) {
 	if a.err != nil {
-		return "", nil, a.err
+		return "", nil, "", a.err
 	}
-	return "uid1", a.p1, nil
+	return "uid1", a.p1, "", nil
 }
 
-func (a *epochRaceAuth) AccountState(string) (auth.AccountState, error) {
+func (a *epochRaceAuth) AccountState(string, string) (auth.AccountState, error) {
 	a.stateCalls++
 	return auth.AccountState{Epoch: auth.ProtocolEpoch(a.p2)}, nil
 }

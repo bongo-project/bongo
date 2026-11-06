@@ -603,10 +603,10 @@ func TestOutboundRecipientLimitNotSpentOnRejectedFrom(t *testing.T) {
 	}
 }
 
-func (f *fakeAuth) AuthenticateProfile(username, password string) (string, *bongov1.UserProfile, error) {
+func (f *fakeAuth) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error) {
 	id, err := f.Authenticate(username, password)
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
-	return id, &bongov1.UserProfile{}, nil
+	return id, &bongov1.UserProfile{}, "", nil
 }

@@ -86,6 +86,70 @@ func (h *AutoconfigHandler) serves(domain string) bool {
 	return true
 }
 
+// Transport security names for a ClientSettings endpoint.
+const (
+	securitySSL      = "SSL"      // implicit TLS
+	securitySTARTTLS = "STARTTLS" // upgrade after connecting
+)
+
+// davHTTPSPort is the port the CalDAV and CardDAV accounts connect to. It is
+// fixed because the web server is reached over public HTTPS.
+const davHTTPSPort = 443
+
+// Fixed DAV mount points, shared by the Apple profile and the settings shown
+// in the web UI.
+const (
+	caldavPath  = "/caldav/"
+	carddavPath = "/carddav/"
+)
+
+// MailEndpoint is one mail server port a client connects to.
+type MailEndpoint struct {
+	Port     int
+	Security string // securitySSL or securitySTARTTLS
+}
+
+// DAVEndpoint is a CalDAV or CardDAV port and path.
+type DAVEndpoint struct {
+	Port int
+	Path string
+}
+
+// ClientSettings is the one description of how a client reaches this server.
+// The autoconfig documents and the Add a device page both render from it, so
+// the two cannot disagree.
+type ClientSettings struct {
+	Host    string
+	IMAP    MailEndpoint
+	SMTP    []MailEndpoint // implicit TLS first when it is served
+	CalDAV  DAVEndpoint
+	CardDAV DAVEndpoint
+}
+
+// ClientSettings returns the settings for the request's host. Only IMAP over
+// implicit TLS is advertised, as in every document.
+func (h *AutoconfigHandler) ClientSettings(r *http.Request) ClientSettings {
+	return h.SettingsForHost(h.host(r))
+}
+
+// SettingsForHost returns the settings for an already-resolved host name, with
+// the ports from configuration. A device link stores the host resolved on the
+// desktop and rebuilds the rest here, so the request that redeems the link
+// (an unauthenticated phone) never chooses the host a profile advertises.
+func (h *AutoconfigHandler) SettingsForHost(host string) ClientSettings {
+	s := ClientSettings{
+		Host:    host,
+		IMAP:    MailEndpoint{Port: h.imapsPort, Security: securitySSL},
+		CalDAV:  DAVEndpoint{Port: davHTTPSPort, Path: caldavPath},
+		CardDAV: DAVEndpoint{Port: davHTTPSPort, Path: carddavPath},
+	}
+	if h.submissionsPort != 0 {
+		s.SMTP = append(s.SMTP, MailEndpoint{Port: h.submissionsPort, Security: securitySSL})
+	}
+	s.SMTP = append(s.SMTP, MailEndpoint{Port: h.submissionPort, Security: securitySTARTTLS})
+	return s
+}
+
 // MozillaConfig serves the Thunderbird/Mozilla clientConfig document. The domain
 // comes from the emailaddress query parameter, falling back to the request host
 // (with any autoconfig. prefix stripped).
@@ -104,7 +168,7 @@ func (h *AutoconfigHandler) MozillaConfig(w http.ResponseWriter, r *http.Request
 	if email != "" {
 		user = email
 	}
-	host := h.host(r)
+	settings := h.ClientSettings(r)
 	cfg := clientConfig{
 		Version: "1.1",
 		Provider: emailProvider{
@@ -113,28 +177,25 @@ func (h *AutoconfigHandler) MozillaConfig(w http.ResponseWriter, r *http.Request
 			DisplayName:      domain + " Mail",
 			DisplayShortName: domain,
 			Incoming: incomingServer{
-				Type: "imap", Hostname: host, Port: h.imapsPort,
-				SocketType: "SSL", Authentication: "password-cleartext", Username: user,
+				Type: "imap", Hostname: settings.Host, Port: settings.IMAP.Port,
+				SocketType: settings.IMAP.Security, Authentication: "password-cleartext", Username: user,
 			},
-			Outgoing: h.outgoingServers(host, user),
+			Outgoing: outgoingServers(settings, user),
 		},
 	}
 	writeXML(w, "application/xml; charset=utf-8", cfg)
 }
 
-// outgoingServers lists the SMTP submission endpoints, implicit TLS first.
-func (h *AutoconfigHandler) outgoingServers(host, user string) []outgoingServer {
-	var out []outgoingServer
-	if h.submissionsPort != 0 {
+// outgoingServers lists the SMTP submission endpoints in settings order.
+func outgoingServers(settings ClientSettings, user string) []outgoingServer {
+	out := make([]outgoingServer, 0, len(settings.SMTP))
+	for _, ep := range settings.SMTP {
 		out = append(out, outgoingServer{
-			Type: "smtp", Hostname: host, Port: h.submissionsPort,
-			SocketType: "SSL", Authentication: "password-cleartext", Username: user,
+			Type: "smtp", Hostname: settings.Host, Port: ep.Port,
+			SocketType: ep.Security, Authentication: "password-cleartext", Username: user,
 		})
 	}
-	return append(out, outgoingServer{
-		Type: "smtp", Hostname: host, Port: h.submissionPort,
-		SocketType: "STARTTLS", Authentication: "password-cleartext", Username: user,
-	})
+	return out
 }
 
 // Autodiscover serves the Microsoft Outlook POX Autodiscover response. Outlook
@@ -158,21 +219,22 @@ func (h *AutoconfigHandler) Autodiscover(w http.ResponseWriter, r *http.Request)
 	}
 
 	login := email // Outlook uses the full address as the login name
-	host := h.host(r)
+	settings := h.ClientSettings(r)
 	protocols := []autodiscoverProtocol{{
-		Type: "IMAP", Server: host, Port: h.imapsPort,
+		Type: "IMAP", Server: settings.Host, Port: settings.IMAP.Port,
 		SSL: "on", Encryption: "SSL", SPA: "off", AuthRequired: "on", LoginName: login,
 	}}
-	if h.submissionsPort != 0 {
+	for _, ep := range settings.SMTP {
+		// Outlook names the STARTTLS upgrade "TLS".
+		enc := "SSL"
+		if ep.Security == securitySTARTTLS {
+			enc = "TLS"
+		}
 		protocols = append(protocols, autodiscoverProtocol{
-			Type: "SMTP", Server: host, Port: h.submissionsPort,
-			SSL: "on", Encryption: "SSL", SPA: "off", AuthRequired: "on", LoginName: login,
+			Type: "SMTP", Server: settings.Host, Port: ep.Port,
+			SSL: "on", Encryption: enc, SPA: "off", AuthRequired: "on", LoginName: login,
 		})
 	}
-	protocols = append(protocols, autodiscoverProtocol{
-		Type: "SMTP", Server: host, Port: h.submissionPort,
-		SSL: "on", Encryption: "TLS", SPA: "off", AuthRequired: "on", LoginName: login,
-	})
 	resp := autodiscoverResponse{
 		Response: autodiscoverInner{
 			Account: autodiscoverAccount{
@@ -185,24 +247,24 @@ func (h *AutoconfigHandler) Autodiscover(w http.ResponseWriter, r *http.Request)
 	writeXML(w, "application/xml; charset=utf-8", resp)
 }
 
-// davHTTPSPort is the port the CalDAV and CardDAV accounts in the Apple profile
-// connect to. It is fixed because the web server is reached over public HTTPS.
-const davHTTPSPort = 443
-
 // writeDAVPayload appends one com.apple.<kind>.account payload dict. kind is the
 // key prefix ("CalDAV" or "CardDAV"), slug the lower-case form used in the
 // payload type and identifier. idPrefix is the reversed domain plus the
-// per-user address tag. No password key is written, so the device asks
-// for it. The UUID is derived from uuidSeed plus the address, so it is stable
-// across downloads and a reinstall replaces the account.
-func writeDAVPayload(b *bytes.Buffer, kind, slug, principal, description, host, email, idPrefix, uuidSeed string) {
+// per-user address tag. The password key is written only when password is
+// non-empty, so the public profile carries none and the device asks for it.
+// The UUID is derived from uuidSeed plus the address, so it is stable across
+// downloads and a reinstall replaces the account.
+func writeDAVPayload(b *bytes.Buffer, kind, slug, description, host string, dav DAVEndpoint, email, idPrefix, uuidSeed, password string) {
 	b.WriteString("    <dict>\n")
 	plistStr(b, kind+"AccountDescription", description)
 	plistStr(b, kind+"HostName", host)
-	plistInt(b, kind+"Port", davHTTPSPort)
-	plistStr(b, kind+"PrincipalURL", principal)
+	plistInt(b, kind+"Port", dav.Port)
+	plistStr(b, kind+"PrincipalURL", dav.Path)
 	plistBool(b, kind+"UseSSL", true)
 	plistStr(b, kind+"Username", email)
+	if password != "" {
+		plistStr(b, kind+"Password", password)
+	}
 	plistStr(b, "PayloadDescription", "Configures "+kind+" account for "+email)
 	plistStr(b, "PayloadDisplayName", description)
 	plistStr(b, "PayloadIdentifier", idPrefix+"."+slug+".account")
@@ -212,29 +274,47 @@ func writeDAVPayload(b *bytes.Buffer, kind, slug, principal, description, host, 
 	b.WriteString("    </dict>\n")
 }
 
-// AppleMobileconfig serves an unsigned Apple .mobileconfig profile for iOS and
-// macOS Mail, Calendar and Contacts (mail, CalDAV and CardDAV account
-// payloads). The address is required via the email query parameter (the
-// download link in the web UI supplies the signed-in user's address). The
-// PayloadIdentifiers are per user: they carry the reversed domain and a hash of
-// the address (addressTag), never the address, so a second user's profile on
-// the same device is not treated as a replacement of the first. The
-// profile is unsigned,
-// so the OS shows it as "Unverified" on install; it contains no password and
-// the device asks for it.
-func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Request) {
-	email := strings.TrimSpace(r.URL.Query().Get("email"))
-	domain := domainOf(email)
-	if domain == "" || !h.serves(domain) {
-		http.Error(w, "unknown or missing email domain", http.StatusBadRequest)
-		return
-	}
+// appleCredential is the app password a personal profile carries. LookupID is
+// the public lookup group of the password (never the secret), used to give
+// each credential's profile its own top-level UUID.
+type appleCredential struct {
+	Password string
+	LookupID string
+}
 
-	host := h.host(r)
+// appleProfileFilename is the download name for a profile for email's domain.
+// It never includes the user's label or address.
+func appleProfileFilename(email string) string {
+	return domainOf(email) + ".mobileconfig"
+}
+
+// buildAppleProfile renders the Apple profile for email. With a nil cred it is
+// the public profile and carries no password. With a cred it is the personal
+// profile: the same document with the app password in the mail, CalDAV and
+// CardDAV payloads and a top-level PayloadUUID per credential.
+//
+// It is pure: no request, context or session, so the public handler, Add a
+// device and a later link-based download all call it. The caller must have
+// checked the domain and that s.SMTP is not empty.
+//
+// Identifiers are per user and identical for both kinds (the reversed domain
+// plus addressTag), so installing a personal profile replaces an earlier
+// profile of the same user instead of adding second accounts. Only the
+// top-level UUID differs per credential, which makes a reinstall a new
+// version of the same profile rather than a duplicate. The UUID is derived
+// from the lookup ID, never from the secret.
+func buildAppleProfile(s ClientSettings, email string, cred *appleCredential) []byte {
+	domain := domainOf(email)
+	host := s.Host
 	rev := reverseDomain(domain)
 	tag := addressTag(email)
 	profileUUID := stableUUID("bongo-mail-profile:" + email)
 	accountUUID := stableUUID("bongo-mail-account:" + email)
+	var password string
+	if cred != nil {
+		password = cred.Password
+		profileUUID = stableUUID("bongo-personal-profile:" + email + ":" + cred.LookupID)
+	}
 
 	var b bytes.Buffer
 	b.WriteString(xml.Header)
@@ -247,19 +327,23 @@ func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Req
 	plistStr(&b, "EmailAddress", email)
 	plistStr(&b, "IncomingMailServerAuthentication", "EmailAuthPassword")
 	plistStr(&b, "IncomingMailServerHostName", host)
-	plistInt(&b, "IncomingMailServerPortNumber", h.imapsPort)
+	plistInt(&b, "IncomingMailServerPortNumber", s.IMAP.Port)
 	plistBool(&b, "IncomingMailServerUseSSL", true)
 	plistStr(&b, "IncomingMailServerUsername", email)
+	if password != "" {
+		plistStr(&b, "IncomingPassword", password)
+	}
 	plistStr(&b, "OutgoingMailServerAuthentication", "EmailAuthPassword")
 	plistStr(&b, "OutgoingMailServerHostName", host)
 	// The profile carries one outgoing server: implicit TLS when it is served.
-	outPort := h.submissionPort
-	if h.submissionsPort != 0 {
-		outPort = h.submissionsPort
-	}
-	plistInt(&b, "OutgoingMailServerPortNumber", outPort)
+	plistInt(&b, "OutgoingMailServerPortNumber", s.SMTP[0].Port)
 	plistBool(&b, "OutgoingMailServerUseSSL", true)
 	plistStr(&b, "OutgoingMailServerUsername", email)
+	if password != "" {
+		// Both mail keys are written so the profile does not depend on how
+		// the device reads OutgoingPasswordSameAsIncoming.
+		plistStr(&b, "OutgoingPassword", password)
+	}
 	plistBool(&b, "OutgoingPasswordSameAsIncoming", true)
 	plistStr(&b, "PayloadDescription", "Configures mail account for "+domain)
 	plistStr(&b, "PayloadDisplayName", email)
@@ -268,8 +352,8 @@ func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Req
 	plistStr(&b, "PayloadUUID", accountUUID)
 	plistInt(&b, "PayloadVersion", 1)
 	b.WriteString("    </dict>\n")
-	writeDAVPayload(&b, "CalDAV", "caldav", "/caldav/", domain+" calendar", host, email, rev+"."+tag, "bongo-caldav-account:")
-	writeDAVPayload(&b, "CardDAV", "carddav", "/carddav/", domain+" contacts", host, email, rev+"."+tag, "bongo-carddav-account:")
+	writeDAVPayload(&b, "CalDAV", "caldav", domain+" calendar", host, s.CalDAV, email, rev+"."+tag, "bongo-caldav-account:", password)
+	writeDAVPayload(&b, "CardDAV", "carddav", domain+" contacts", host, s.CardDAV, email, rev+"."+tag, "bongo-carddav-account:", password)
 	b.WriteString("  </array>\n")
 	plistStr(&b, "PayloadDisplayName", domain+" mail, calendar and contacts")
 	plistStr(&b, "PayloadIdentifier", rev+".mail."+tag)
@@ -278,10 +362,27 @@ func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Req
 	plistStr(&b, "PayloadUUID", profileUUID)
 	plistInt(&b, "PayloadVersion", 1)
 	b.WriteString("</dict>\n</plist>\n")
+	return b.Bytes()
+}
 
+// AppleMobileconfig serves the public, unsigned Apple .mobileconfig profile for
+// iOS and macOS Mail, Calendar and Contacts. The address is required via the
+// email query parameter. The profile contains no password and the device asks
+// for it; the personal profile with a password is built by Add a device from
+// the same buildAppleProfile. The profile is unsigned, so the OS shows it as
+// "Unverified" on install.
+func (h *AutoconfigHandler) AppleMobileconfig(w http.ResponseWriter, r *http.Request) {
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	domain := domainOf(email)
+	if domain == "" || !h.serves(domain) {
+		http.Error(w, "unknown or missing email domain", http.StatusBadRequest)
+		return
+	}
+
+	body := buildAppleProfile(h.ClientSettings(r), email, nil)
 	w.Header().Set("Content-Type", "application/x-apple-aspen-config; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", domain+".mobileconfig"))
-	_, _ = w.Write(b.Bytes())
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", appleProfileFilename(email)))
+	_, _ = w.Write(body)
 }
 
 // --- XML document types (encoding/xml escapes all values automatically) ---

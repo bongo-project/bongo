@@ -53,6 +53,33 @@ func carryFlash(path string, r *http.Request) string {
 	return withFlash(path, keys...)
 }
 
+// flashErrorIDs are the keys whose banner is a failure, not a success. A page
+// that shows flashes picks its banner level with flashLevel.
+var flashErrorIDs = map[string]bool{
+	flashSecurityInvalidPassword.id:   true,
+	flashSecurityInvalidAuthCode.id:   true,
+	flashSecurityRevokeIncomplete.id:  true,
+	flashRequireAppPasswordsNone.id:   true,
+	flashRequireAppPasswordsNo2FA.id:  true,
+	flashRequireAppPasswordsFailed.id: true,
+}
+
+// flashLevel is "error" when any of the request's flash keys is a failure,
+// "warning" when the action worked but left the user something to do, and
+// "success" otherwise.
+func flashLevel(r *http.Request) string {
+	level := "success"
+	for _, v := range r.URL.Query()["flash"] {
+		if flashErrorIDs[v] {
+			return "error"
+		}
+		if v == flashSecurityAppPasswordsReadd.id {
+			level = "warning"
+		}
+	}
+	return level
+}
+
 // flashText returns the translated banner for the request's flash keys, or ""
 // when there are none, too many, or any is not in the allow-list. Several keys
 // read as sentences: a part not ending in punctuation gets a full stop.
@@ -177,6 +204,19 @@ var (
 	flashSecurityInvalidPassword     = flashKey{"security-invalid-password"}
 	flashSecurityInvalidAuthCode     = flashKey{"security-invalid-auth-code"}
 	flashRuleDeleted                 = flashKey{"rule-deleted"}
+	flashAppPasswordRevoked          = flashKey{"app-password-revoked"}
+	flashAppPasswordsRevokedAll      = flashKey{"app-passwords-revoked-all"}
+
+	// Password change with an app password revoke that did not finish, and the
+	// per-account switch (all on the Security page).
+	flashSecurityRevokeIncomplete     = flashKey{"security-app-passwords-revoke-incomplete"}
+	flashSecurityAppPasswordsReadd    = flashKey{"security-app-passwords-readd"}
+	flashRequireAppPasswordsOn        = flashKey{"require-app-passwords-on"}
+	flashRequireAppPasswordsOff       = flashKey{"require-app-passwords-off"}
+	flashRequireAppPasswordsNone      = flashKey{"require-app-passwords-none"}
+	flashRequireAppPasswordsNo2FA     = flashKey{"require-app-passwords-no-2fa"}
+	flashRequireAppPasswordsFailed    = flashKey{"require-app-passwords-failed"}
+	flashSecurity2FADisabledMailAgain = flashKey{"security-2fa-disabled-mail-again"}
 )
 
 var flashMessages = map[string]string{
@@ -276,4 +316,15 @@ var flashMessages = map[string]string{
 	flashSecurityInvalidPassword.id:     "flash.securityInvalidPassword",
 	flashSecurityInvalidAuthCode.id:     "flash.securityInvalidAuthCode",
 	flashRuleDeleted.id:                 "flash.ruleDeleted",
+	flashAppPasswordRevoked.id:          "flash.appPasswordRevoked",
+	flashAppPasswordsRevokedAll.id:      "flash.appPasswordsRevokedAll",
+
+	flashSecurityRevokeIncomplete.id:     "flash.securityRevokeIncomplete",
+	flashSecurityAppPasswordsReadd.id:    "flash.securityAppPasswordsReadd",
+	flashRequireAppPasswordsOn.id:        "flash.requireAppPasswordsOn",
+	flashRequireAppPasswordsOff.id:       "flash.requireAppPasswordsOff",
+	flashRequireAppPasswordsNone.id:      "flash.requireAppPasswordsNone",
+	flashRequireAppPasswordsNo2FA.id:     "flash.requireAppPasswordsNo2fa",
+	flashRequireAppPasswordsFailed.id:    "flash.requireAppPasswordsFailed",
+	flashSecurity2FADisabledMailAgain.id: "flash.security2faDisabledMailAgain",
 }

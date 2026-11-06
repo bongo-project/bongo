@@ -1,6 +1,7 @@
 # PRD: Load and throughput testing v0.18.0
 
-Status: candidate, scoped after v0.17.0. The release number is provisional.
+Status: candidate, to follow v0.15.3 and come before v0.16 (decision 3). The
+release number changes at import.
 
 ## 1. Introduction / Overview
 
@@ -30,6 +31,10 @@ Three facts shape the design:
 - Show whether a node stays stable for 72 hours at 70 to 80% of that rate.
 - Give a number of users one node supports, under a stated traffic model.
 - Give evidence for the decision on write scaling (Open Question 3).
+- Find how many accounts one node holds, and what breaks first as the count rises.
+- Find how many messages and how much stored mail one node holds, and what slows
+  down or breaks first as they grow.
+- Produce numbers that can be published and repeated by a reader.
 
 ## 3. User Stories
 
@@ -123,6 +128,29 @@ a rebuild so that I can tell a setting from a design limit.
 - [ ] Metrics exist for: open user databases and evictions, search index backlog,
       queue depth, and Raft apply time. A test asserts each is exported.
 
+### US-011: See inside the server
+**Description:** As the operator, I want metrics for each suspected limit so that a
+run names the component that failed, not only the symptom.
+
+Today `/metrics` covers SMTP, the queue, antispam, dedup and vacation replies. There
+is nothing for Raft, Pebble, blobs, background jobs, the indexer, IMAP, POP3 or DAV,
+and no profiling endpoint.
+
+**Acceptance Criteria:**
+- [ ] Metrics exist for each suspected limit in section 6.2: Raft apply time and
+      commit lag, Pebble compaction and write stalls, disk sync time, open user
+      databases and evictions, indexer backlog, blob count and bytes, garbage
+      collection and snapshot duration, connections and command time per protocol.
+- [ ] A dry run before the first real run shows each metric moving under load.
+- [ ] CPU and heap profiling is available on a private listener only, and is off
+      by default.
+- [ ] Measuring does not change the result: a run with profiling off is the one
+      published.
+- [ ] Metric labels hold no user names or addresses, so cardinality stays bounded
+      at 100,000 accounts and nothing personal is exposed.
+- [ ] Log volume at the test's log level is measured, and logging on a per-message
+      path is shown not to be the limit.
+
 ### Phase C: The test
 
 ### US-008: Runbook and test config
@@ -147,6 +175,25 @@ scale rests on measurements.
 - [ ] Each suspected limit in section 6.2 is marked confirmed or not confirmed.
 - [ ] Defects found go to section 8.2 of this PRD, unless the operator scopes
       them in.
+
+### US-010: Publish the numbers
+**Description:** As the operator, I want to publish the limits on the website and
+on social media so that people can judge Bongo from measurements.
+
+**Acceptance Criteria:**
+- [ ] A results page on bongo-project.org states the Bongo version, machine, disk
+      type, config, seed size, message size mix, traffic model, and that antispam
+      and antivirus were on.
+- [ ] Each headline number comes with its conditions: accounts, active users,
+      message rate, response time at the 99th percentile, and soak length.
+- [ ] Registered accounts and active users are stated separately.
+- [ ] The page states what broke, and which fixes were made before the final run.
+- [ ] Only numbers from a final run on a tagged release are published. Two runs
+      must agree within 10%.
+- [ ] The load tool, runbook and raw reports are public, so a reader can repeat
+      the run.
+- [ ] The page makes no comparison with other mail servers, because none was tested.
+- [ ] The operator approves the page and any social media post before publishing.
 
 ## 4. Functional Requirements
 
@@ -189,6 +236,8 @@ with fixes and repeat runs.
 | Ramp, scanning off | 2 to 4 hours | Show how much of the limit is scanning work that remote agents could take (section 6.5) |
 | Ramp, mixed traffic | 2 to 4 hours | Find the limit with clients connected |
 | Connection test | 2 hours | Find the limit on open IMAP connections |
+| Account scale | 4 to 8 hours | Raise the account count past the target at a fixed active share, until something breaks |
+| Storage scale | 1 to 3 days | Raise the message count in steps of 10 times. At each step record the background job times in section 6.2, disk used and index size |
 | Soak | 24 to 72 hours | Run at 70 to 80% of the limit |
 | Failure | 1 to 2 hours | Restart under load, near-full disk, queue backlog |
 
@@ -209,11 +258,44 @@ From reading the code. None is measured.
 - **Memory.** The compose template limits the container to 512 MB.
 - **Connections.** Open file limits and per-connection memory at tens of thousands
   of IMAP connections.
+- **Blob files.** Each unique message is one file, in 256 directories (`hash[:2]`).
+  100 million blobs is about 390,000 files a directory. Inode limits and directory
+  performance depend on the file system, so record it.
+- **Blob garbage collection.** Mark-and-sweep walks every reference and every blob,
+  so its time grows with the store. If one pass takes longer than the 15 minute
+  orphan sweep interval, or its memory grows with the blob count, it becomes a limit
+  of its own. `BlobStore.List` returns every hash at once.
+- **Raft snapshots.** A snapshot tars the whole Pebble checkpoint (`fsmSnapshot.Persist`),
+  so its time and temporary disk use grow with metadata.
+- **Index rebuild.** SQLite and Bleve are rebuilt from Pebble and blobs. Rebuild and
+  backup times decide how large a store can be recovered in acceptable time.
 
 ### 6.3 Traffic model
 
 The target is 100,000 users (decision 2). 100,000 users receiving 50 messages a day is 5 million a day, or about 58 a second
 on average. With a peak of 3 to 5 times the average, about 200 to 300 a second.
+
+Users per node depends on this model, so results are given for three profiles:
+light (10 messages a day), the 50 a day above, and heavy (200 a day). The share of
+accounts active at once is stated with each. The first value to try is 10%, to be
+corrected if evidence for another value is found.
+
+### 6.3.1 Storage scale
+
+Two limits are measured separately, because they cost very different amounts.
+
+- **Message count** stresses metadata, indexes and the background jobs. It can run
+  with small messages, so 100 million messages needs terabytes less disk than a
+  realistic mix. This is the cheap test, and it is expected to break first.
+- **Bytes stored** is a run at realistic message sizes, as far as the budget allows.
+  100 million messages at 50 KB is about 5 TB. A pool larger than the disk rented is
+  not claimed: the result states the largest size actually tested.
+
+Blobs are content-addressed, so repeated bodies do not add storage. The report states
+the unique blob count and the deduplication share beside the message count.
+
+Seeding through SMTP or Raft at 200 messages a second takes about 6 days for 100
+million messages, so seeding needs a faster route (Open Question 5).
 
 ### 6.4 Safety
 
@@ -251,9 +333,21 @@ worthwhile.
 4. **Is a realistic message size distribution available?** Production has too
    little traffic to give one. Use a published mix or a stated assumption.
 
+5. **How is a large store seeded?** A bulk loader that writes Pebble and blobs
+   directly on a stopped server would be much faster than SMTP, but it needs a check
+   that the result matches a store filled normally. Decide at import.
+
 ### 8.1 Decisions
 
 1. (operator, 2026-11-05) Scoped after v0.17.0.
 2. (operator, 2026-11-05) The first target is 100,000 users.
+3. (operator, 2026-11-06) The load test moves ahead of v0.16, replacing decision 1.
+   The aim is to learn how many accounts one server handles and what breaks. The
+   result describes the release tested, so it is repeated before later releases
+   publish new numbers.
+4. (operator, 2026-11-06) The numbers are published on the website and on social
+   media (US-010).
+5. (operator, 2026-11-06) The test also finds how much storage and how many messages
+   one node holds (section 6.3.1).
 
 ### 8.2 Candidates for the next release
