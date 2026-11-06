@@ -84,8 +84,17 @@ address and the password. If verification fails, open Advanced Settings and
 set the account URL to `https://mail.example.com/caldav/` (or `/carddav/`).
 
 The configuration profile at `https://mail.example.com/.well-known/mobileconfig`
-sets up the mail, CalDAV and CardDAV accounts. It contains no password, so the
-device asks for it.
+sets up the mail, CalDAV and CardDAV accounts. That public profile contains
+no password, so the device asks for it.
+
+To skip the prompts, sign in and use Settings, Security, Add a device, Apple.
+After you confirm your password (and a code, with two-factor authentication)
+Bongo creates an app password and downloads a profile that carries it. The
+profile is not signed, so the device shows it as Not Verified. On an iPhone use
+Safari, tap Allow, then open Settings and tap Profile Downloaded. On a Mac,
+delete the file from Downloads after installing, because it holds the app
+password. It cannot be downloaded again: if you tap Ignore, revoke the entry
+and add the device again.
 
 ### Thunderbird
 

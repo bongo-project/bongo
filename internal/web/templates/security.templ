@@ -432,21 +432,11 @@ templ AddDevice(email string, v DeviceView) {
 								<div class="settings-card-pad">
 									<h3 class="settings-section-title">{ choice.Title }</h3>
 									<p class="u-text-muted">{ choice.Help }</p>
-									<form method="post" action="/settings/security/devices">
-										<input type="hidden" name="kind" value={ choice.Key }/>
-										if v.Setup {
-											<input type="hidden" name="setup" value="1"/>
-										}
-										<div class="form-group u-mb-12px">
-											<label class="form-label" for={ "device_label_" + choice.Key }>{ t(ctx, "security.appPasswordLabelPrompt") }</label>
-											<input type="text" name="label" id={ "device_label_" + choice.Key } class="form-input" required maxlength="64" autocomplete="off"/>
-										</div>
-										@reauthFields("device_"+choice.Key, v.TotpEnabled)
-										if v.TotpEnabled {
-											<p class="u-text-muted u-font-078">{ t(ctx, "security.deviceCodeWait") }</p>
-										}
-										<button type="submit" class="btn-primary">{ t(ctx, "security.appPasswordCreate") }</button>
-									</form>
+									if choice.Key == "apple" {
+										@appleDeviceCard(choice, v)
+									} else {
+										@deviceForm(choice, v)
+									}
 								</div>
 							</div>
 						}
@@ -460,7 +450,7 @@ templ AddDevice(email string, v DeviceView) {
 										<button type="submit" class="btn-primary">{ t(ctx, "security.setupFinish") }</button>
 									</form>
 								} else {
-									<p class="u-text-muted">{ t(ctx, "security.setupNeedOne") }</p>
+									<p class="u-text-muted" data-apple-stale>{ t(ctx, "security.setupNeedOne") }</p>
 								}
 								<a href="/settings/security">{ t(ctx, "security.setupSkip") }</a>
 							</div>
@@ -470,6 +460,58 @@ templ AddDevice(email string, v DeviceView) {
 			</div>
 		</main>
 	}
+}
+
+// deviceForm is the create form for one choice.
+templ deviceForm(choice DeviceChoice, v DeviceView) {
+	<form method="post" action="/settings/security/devices">
+		<input type="hidden" name="kind" value={ choice.Key }/>
+		if v.Setup {
+			<input type="hidden" name="setup" value="1"/>
+		}
+		<div class="form-group u-mb-12px">
+			<label class="form-label" for={ "device_label_" + choice.Key }>{ t(ctx, "security.appPasswordLabelPrompt") }</label>
+			<input type="text" name="label" id={ "device_label_" + choice.Key } class="form-input" required maxlength="64" autocomplete="off"/>
+		</div>
+		@reauthFields("device_"+choice.Key, v.TotpEnabled)
+		if v.TotpEnabled {
+			<p class="u-text-muted u-font-078">{ t(ctx, "security.deviceCodeWait") }</p>
+		}
+		<button type="submit" class="btn-primary">{ t(ctx, "security.appPasswordCreate") }</button>
+	</form>
+}
+
+// appleDeviceCard is the Apple choice. The install guidance is static so it
+// does not depend on JavaScript. The appleDevice component (bongo.js) swaps
+// the form for a panel when the form is submitted: the response is a file
+// download, which leaves this page as it was, so the panel says what to do
+// next and links to the page that shows the new device. A refusal navigates
+// away and a success does not, so the panel is worded for "if the download
+// started".
+templ appleDeviceCard(choice DeviceChoice, v DeviceView) {
+	<ul class="u-text-muted u-font-078 u-mb-12px">
+		<li>{ t(ctx, "security.appleStepSafari") }</li>
+		<li>{ t(ctx, "security.appleStepInstall") }</li>
+		<li>{ t(ctx, "security.appleStepNotVerified") }</li>
+		<li>{ t(ctx, "security.appleStepMac") }</li>
+		<li>{ t(ctx, "security.appleStepIgnore") }</li>
+		<li>{ t(ctx, "security.appleStepReinstall") }</li>
+	</ul>
+	<div x-data="appleDevice">
+		<div x-show="idle" @submit="submit">
+			@deviceForm(choice, v)
+		</div>
+		<div x-show="done" x-cloak role="status">
+			<p><strong>{ t(ctx, "security.appleDoneTitle") }</strong></p>
+			if v.Setup {
+				<p class="u-text-muted">{ t(ctx, "security.appleDoneSetup") }</p>
+				<a href="/settings/security/devices?setup=1" class="btn-primary u-text-decoration-none">{ t(ctx, "security.appleContinue") }</a>
+			} else {
+				<p class="u-text-muted">{ t(ctx, "security.appleDoneHelp") }</p>
+				<a href="/settings/security" class="btn-primary u-text-decoration-none">{ t(ctx, "security.appleContinue") }</a>
+			}
+		</div>
+	</div>
 }
 
 // deviceReveal shows the new password once, then each server setting with its

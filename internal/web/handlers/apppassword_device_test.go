@@ -260,9 +260,6 @@ func TestAddDeviceOther(t *testing.T) {
 	if !strings.Contains(page, `action="/settings/security/devices"`) || !strings.Contains(page, "Other") {
 		t.Error("the page does not offer Other")
 	}
-	if strings.Contains(page, "Apple") {
-		t.Error("the page offers a choice that is not built")
-	}
 	if strings.Contains(page, "Finish") {
 		t.Error("the Finish step shows outside enrolment")
 	}
@@ -300,7 +297,7 @@ func TestAddDeviceOther(t *testing.T) {
 
 	// A kind this build does not have is refused, not treated as Other.
 	f := createForm("x", secPassword, "")
-	f.Set("kind", "apple")
+	f.Set("kind", "windows")
 	if w := e.post(t, e.h.CreateDevice, secUserA, devicesURL, f); w.Code != http.StatusBadRequest || e.count(t, secUserA) != 1 {
 		t.Errorf("unknown kind: %d, %d credentials", w.Code, e.count(t, secUserA))
 	}
@@ -368,9 +365,15 @@ func TestDeviceRoutesRefuseAHeldSession(t *testing.T) {
 		middleware.Require2FA(psKeys{e.ps})(fn).ServeHTTP(w, r)
 		return w
 	}
+	apple := createForm("x", secPassword, "")
+	apple.Set("kind", deviceKindApple)
+	e.h.SetClientSettings(func(*http.Request) ClientSettings {
+		return ClientSettings{Host: "mail.example.com", SMTP: []MailEndpoint{{Port: 587, Security: securitySTARTTLS}}}
+	})
 	for name, w := range map[string]*httptest.ResponseRecorder{
 		"get devices":  held(e.h.AddDevice, http.MethodGet, devicesURL, nil),
 		"post devices": held(e.h.CreateDevice, http.MethodPost, devicesURL, createForm("x", secPassword, "")),
+		"post apple":   held(e.h.CreateDevice, http.MethodPost, devicesURL, apple),
 		"turn on":      held(e.h.RequireAppPasswordsOn, http.MethodPost, onURL, nil),
 	} {
 		// Exactly the Security page: no failure flash, so no password was

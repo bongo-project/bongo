@@ -314,8 +314,8 @@ sessions are not cookie-based.
    groups. Something similar is easy to transcribe and hard to typo; worth
    confirming before it appears in the UI.
 
-6. **Should the personal profile be signed?** Unsigned, Apple shows "Not
-   verified" on install. It still installs. Signing with the server's TLS
+6. Resolved: see decision 19 in section 8.1. **Should the personal profile be
+   signed?** Unsigned, Apple shows "Not verified" on install. It still installs. Signing with the server's TLS
    certificate may remove the warning; this has not been tested. Test it before
    US-006 is planned.
 
@@ -355,21 +355,24 @@ sessions are not cookie-based.
     enforcement needs the switch and 2FA together, so a flag left by an earlier
     binary cannot lock anyone out. The disable form warns first and the banner
     confirms it. App passwords are kept.
-14. (planning, 2026-11-05) The switch cannot turn on with no app passwords. Finish
+14. (operator, 2026-11-06) The switch cannot turn on with no app passwords. Finish
     and the notice both refuse, and Skip for now leaves it off.
-15. (planning, 2026-11-05) Turning the switch on needs the session and CSRF but no
+15. (operator, 2026-11-06) Turning the switch on needs the session and CSRF but no
     re-authentication, because it only tightens the account. A stolen session can
     therefore break the user's clients until they turn it off with password and
     code.
-16. (planning, 2026-11-05) FR-16 stays strict during enrolment. The code used to
+16. (operator, 2026-11-06) FR-16 stays strict during enrolment. The code used to
     confirm 2FA cannot be reused, so the first create can mean waiting up to 30
     seconds for the next code. The page says so.
-17. (planning, 2026-11-05) Enforcement is part of `ProtocolEpoch`, so turning the
+17. (operator, 2026-11-06) Enforcement is part of `ProtocolEpoch`, so turning the
     switch on ends IMAP and POP3 sessions opened with the account password.
     App-password clients reconnect once. Web sessions are not affected.
 18. (planning, 2026-11-05) ConfirmTOTP and DisableTOTP reissue the calling device's
     cookie, as ChangePassword does. Without this the epoch change signed the device
     out before Add a device.
+19. (operator, 2026-11-06) Open question 6: the personal profile stays unsigned
+    in v0.15.3 and the page explains Not Verified. Look again only if the device
+    check shows unsigned profiles being blocked. Findings are in section 8.2.
 
 ### 8.2 Candidates for a later release
 
@@ -430,3 +433,23 @@ Found while building Add a device and the switch (2026-11-05):
   drops Finish and Skip. Add another device keeps them.
 - Copy buttons need `navigator.clipboard`, which plain HTTP off localhost lacks.
   This is existing bongo.js behaviour.
+
+Found while building the Apple profile (2026-11-06):
+
+- Signing, per the advisor: Go's standard library has no CMS and go.mod has none,
+  so it needs a new dependency. `web.tls` is loaded once at startup and handlers
+  cannot reach the key. Bongo holds the key only when it terminates HTTPS itself.
+  Whether Verified shows for Bongo's real certificate cannot be proved without
+  that certificate and a real device. Community reports differ. Signing adds no
+  confidentiality.
+- POST as the route for a profile on iOS Safari is unproven. If the device check
+  fails, the POST re-authenticates and writes a one-time hashed ticket, then
+  redirects to a GET that creates the credential and returns the profile.
+- A failure after Create, or Ignore at the Safari prompt, leaves a working
+  credential with no file. It counts towards the cap until revoked.
+- A credential with no file also makes Finish available in setup mode.
+- Two refusals are plain text, not the Add a device page: Apple with no SMTP
+  endpoint or no domain in the address, and a throttle that lands between the
+  pre-check and `reauthenticate`. Neither should occur in practice.
+- The Apple password key names come from memory and an unsigned mailcow example,
+  not from Apple's reference. The device check settles it.

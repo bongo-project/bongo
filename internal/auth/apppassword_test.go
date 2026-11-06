@@ -26,6 +26,10 @@ type touchApplier struct {
 	ps      *store.PebbleStore
 	touches atomic.Int32
 	gate    chan struct{} // when non-nil, touches wait for it to close
+	// mu serialises applies, as the FSM does. The touch reads then writes, so
+	// without this a delete can land between the two and the test applier
+	// brings back a record the real FSM could not.
+	mu sync.Mutex
 }
 
 func (a *touchApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
@@ -34,8 +38,12 @@ func (a *touchApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) e
 		if a.gate != nil {
 			<-a.gate
 		}
+		a.mu.Lock()
+		defer a.mu.Unlock()
 		return store.ApplyAppPasswordTouch(a.ps, cmd)
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if cmd.Op == bongov1.Op_OP_DELETE {
 		return a.ps.Delete(cmd.Key)
 	}

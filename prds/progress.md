@@ -1731,3 +1731,10 @@ Workflow wf_9a6e4454-6b2, first review REJECT, one fix round, then MINOR with 17
 
 PATTERN: security - anything that changes the session epoch must reissue the calling device's cookie, or a multi-step flow signs its own user out at the next click.
 PATTERN: ui - flashes on the Security page need a level; `flashLevel` maps the key to error, warning or success.
+
+## 2026-11-06: Phase 36 batch 4 (36.5) implemented
+
+Workflow wf_a9ffee53-884, review MINOR. Add a device has an Apple choice that downloads a personal profile from `buildAppleProfile`, which also builds the public profile (goldens from the pre-refactor code are byte-identical). US-006's device check is the operator's, and POST on iOS Safari is unproven until then. My review changes: Apple listed first, stale banner and setup hint removed on submit, throttle message and held Apple session tested. TestRevokeAll failed 9 of 40 runs: the test applier was not serial, so a touch could bring back a deleted record. The real FSM applies serially. Fixed by giving the applier a mutex; 60 of 60 runs pass.
+
+PATTERN: testing - a test applier that stands in for the FSM must serialise applies, or conditional commands race in ways production cannot.
+PATTERN: testing - a refusal test should assert the user-visible message as well as status and headers.

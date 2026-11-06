@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -95,9 +96,12 @@ func noStore(w http.ResponseWriter) {
 // is already written (a refusal or a redirect) and the caller must not write.
 type credentialResult struct {
 	Plaintext string
-	ErrText   string
-	Status    int
-	Done      bool
+	// LookupID is the public lookup group of the new credential. It is set
+	// with Plaintext and is not secret.
+	LookupID string
+	ErrText  string
+	Status   int
+	Done     bool
 }
 
 // createCredential is the one create path: the plain form on the App passwords
@@ -155,7 +159,7 @@ func (h *SecurityHandler) createCredential(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	h.succeed(r, email)
-	return credentialResult{Plaintext: plaintext, Status: http.StatusOK}
+	return credentialResult{Plaintext: plaintext, LookupID: info.ID, Status: http.StatusOK}
 }
 
 // CreateAppPassword makes a credential and renders its plaintext in this one
@@ -177,15 +181,24 @@ func (h *SecurityHandler) CreateAppPassword(w http.ResponseWriter, r *http.Reque
 	h.renderSecurity(w, r, res.Status, res.Plaintext, res.ErrText)
 }
 
-// deviceChoices lists what Add a device can set up. The Apple profile is added
-// here when it exists.
-func deviceChoices(locale string) []templates.DeviceChoice {
-	return []templates.DeviceChoice{
-		{Key: deviceKindOther, Title: i18n.T(locale, "security.deviceOther"), Help: i18n.T(locale, "security.deviceOtherHelp")},
+// deviceChoices lists what Add a device can set up. Apple needs the server
+// settings to build its profile, so it is offered only when they are wired.
+func (h *SecurityHandler) deviceChoices(locale string) []templates.DeviceChoice {
+	var choices []templates.DeviceChoice
+	if h.clientSettings != nil {
+		choices = append(choices, templates.DeviceChoice{
+			Key: deviceKindApple, Title: i18n.T(locale, "security.deviceApple"), Help: i18n.T(locale, "security.deviceAppleHelp"),
+		})
 	}
+	return append(choices, templates.DeviceChoice{
+		Key: deviceKindOther, Title: i18n.T(locale, "security.deviceOther"), Help: i18n.T(locale, "security.deviceOtherHelp"),
+	})
 }
 
-const deviceKindOther = "other"
+const (
+	deviceKindOther = "other"
+	deviceKindApple = "apple"
+)
 
 // deviceView builds the Add a device page. A held session never gets here: the
 // handlers send it back to the Security page first.
@@ -193,7 +206,7 @@ func (h *SecurityHandler) deviceView(r *http.Request, userID string, setup bool)
 	locale := middleware.LocaleFromContext(r.Context())
 	view := templates.DeviceView{
 		Setup:   setup,
-		Choices: deviceChoices(locale),
+		Choices: h.deviceChoices(locale),
 	}
 	apps := h.appPasswordView(r, userID, "", "")
 	view.TotpEnabled = apps.TotpEnabled
@@ -217,18 +230,41 @@ func (h *SecurityHandler) AddDevice(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.AddDevice(email, view)).ServeHTTP(w, r)
 }
 
-// CreateDevice creates the credential for Add a device and shows it once with
-// the server settings to enter beside it. It is the same create path as the
-// plain form (createCredential), so it needs the account password and obeys
-// the limit.
+// CreateDevice creates the credential for Add a device. Other shows it once
+// with the server settings to enter beside it; Apple returns a profile that
+// carries it. Both are the same create path as the plain form
+// (createCredential), so they need the account password and obey the limit.
+//
+// The kind and the settings it needs are checked before the credential
+// exists: a refusal after Create would leave a working credential nobody was
+// given. A kind this build does not know is refused, not treated as Other, so
+// a link to a later choice fails visibly.
+//
+// The profile is a POST response, so the page does not change: the device
+// list and the setup step catch up on the next load of the page, which the
+// Apple card's panel links to.
 func (h *SecurityHandler) CreateDevice(w http.ResponseWriter, r *http.Request) {
 	if h.appPasswords == nil {
 		http.NotFound(w, r)
 		return
 	}
-	// Only Other exists. A kind this build does not know is refused, not
-	// treated as Other, so a link to a later choice fails visibly.
-	if kind := r.FormValue("kind"); kind != "" && kind != deviceKindOther {
+	userID, email := middleware.UserFromContext(r.Context())
+	locale := middleware.LocaleFromContext(r.Context())
+	kind := r.FormValue("kind")
+	var settings ClientSettings
+	switch kind {
+	case "", deviceKindOther:
+	case deviceKindApple:
+		if h.clientSettings == nil {
+			http.Error(w, "unknown device kind", http.StatusBadRequest)
+			return
+		}
+		settings = h.clientSettings(r)
+		if len(settings.SMTP) == 0 || domainOf(email) == "" {
+			http.Error(w, "device kind not available", http.StatusBadRequest)
+			return
+		}
+	default:
 		http.Error(w, "unknown device kind", http.StatusBadRequest)
 		return
 	}
@@ -237,12 +273,36 @@ func (h *SecurityHandler) CreateDevice(w http.ResponseWriter, r *http.Request) {
 	if setup {
 		back = devicesSetupPath
 	}
+
+	// reauthenticate answers a throttled client with plain text. For a form
+	// that would leave the user on a bare error, so say it on the page. A held
+	// session is sent to the Security page first, as createCredential does.
+	if middleware.Require2FAFromContext(r.Context()) {
+		http.Redirect(w, r, securityPath, http.StatusSeeOther)
+		return
+	}
+	if h.limiter != nil && h.limiter.IsLimited(middleware.ClientIP(r)) {
+		w.Header().Set("Retry-After", strconv.Itoa(int(h.limiter.Window().Seconds())))
+		view := h.deviceView(r, userID, setup)
+		view.Error = i18n.T(locale, "security.deviceThrottled")
+		templ.Handler(templates.AddDevice(email, view), templ.WithStatus(http.StatusTooManyRequests)).ServeHTTP(w, r)
+		return
+	}
+
 	res := h.createCredential(w, r, back)
 	if res.Done {
 		return
 	}
-	userID, email := middleware.UserFromContext(r.Context())
-	locale := middleware.LocaleFromContext(r.Context())
+	if kind == deviceKindApple && res.Plaintext != "" {
+		// Built in the response and never stored or logged. The label stays
+		// out of the file name.
+		body := buildAppleProfile(settings, email, &appleCredential{Password: res.Plaintext, LookupID: res.LookupID})
+		noStore(w)
+		w.Header().Set("Content-Type", "application/x-apple-aspen-config; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", appleProfileFilename(email)))
+		_, _ = w.Write(body)
+		return
+	}
 	view := h.deviceView(r, userID, setup)
 	view.Error = res.ErrText
 	if res.Plaintext != "" {
