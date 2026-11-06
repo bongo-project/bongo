@@ -1,6 +1,7 @@
 # PRD: Load and throughput testing v0.18.0
 
-Status: candidate, scoped after v0.17.0. The release number is provisional.
+Status: candidate, to follow v0.15.3 and come before v0.16 (decision 3). The
+release number changes at import.
 
 ## 1. Introduction / Overview
 
@@ -30,6 +31,8 @@ Three facts shape the design:
 - Show whether a node stays stable for 72 hours at 70 to 80% of that rate.
 - Give a number of users one node supports, under a stated traffic model.
 - Give evidence for the decision on write scaling (Open Question 3).
+- Find how many accounts one node holds, and what breaks first as the count rises.
+- Produce numbers that can be published and repeated by a reader.
 
 ## 3. User Stories
 
@@ -148,6 +151,25 @@ scale rests on measurements.
 - [ ] Defects found go to section 8.2 of this PRD, unless the operator scopes
       them in.
 
+### US-010: Publish the numbers
+**Description:** As the operator, I want to publish the limits on the website and
+on social media so that people can judge Bongo from measurements.
+
+**Acceptance Criteria:**
+- [ ] A results page on bongo-project.org states the Bongo version, machine, disk
+      type, config, seed size, message size mix, traffic model, and that antispam
+      and antivirus were on.
+- [ ] Each headline number comes with its conditions: accounts, active users,
+      message rate, response time at the 99th percentile, and soak length.
+- [ ] Registered accounts and active users are stated separately.
+- [ ] The page states what broke, and which fixes were made before the final run.
+- [ ] Only numbers from a final run on a tagged release are published. Two runs
+      must agree within 10%.
+- [ ] The load tool, runbook and raw reports are public, so a reader can repeat
+      the run.
+- [ ] The page makes no comparison with other mail servers, because none was tested.
+- [ ] The operator approves the page and any social media post before publishing.
+
 ## 4. Functional Requirements
 
 **FR-1** The tool is a Go program in `scripts/loadgen`, run on a separate machine
@@ -189,6 +211,7 @@ with fixes and repeat runs.
 | Ramp, scanning off | 2 to 4 hours | Show how much of the limit is scanning work that remote agents could take (section 6.5) |
 | Ramp, mixed traffic | 2 to 4 hours | Find the limit with clients connected |
 | Connection test | 2 hours | Find the limit on open IMAP connections |
+| Account scale | 4 to 8 hours | Raise the account count past the target at a fixed active share, until something breaks |
 | Soak | 24 to 72 hours | Run at 70 to 80% of the limit |
 | Failure | 1 to 2 hours | Restart under load, near-full disk, queue backlog |
 
@@ -214,6 +237,11 @@ From reading the code. None is measured.
 
 The target is 100,000 users (decision 2). 100,000 users receiving 50 messages a day is 5 million a day, or about 58 a second
 on average. With a peak of 3 to 5 times the average, about 200 to 300 a second.
+
+Users per node depends on this model, so results are given for three profiles:
+light (10 messages a day), the 50 a day above, and heavy (200 a day). The share of
+accounts active at once is stated with each. The first value to try is 10%, to be
+corrected if evidence for another value is found.
 
 ### 6.4 Safety
 
@@ -255,5 +283,11 @@ worthwhile.
 
 1. (operator, 2026-11-05) Scoped after v0.17.0.
 2. (operator, 2026-11-05) The first target is 100,000 users.
+3. (operator, 2026-11-06) The load test moves ahead of v0.16, replacing decision 1.
+   The aim is to learn how many accounts one server handles and what breaks. The
+   result describes the release tested, so it is repeated before later releases
+   publish new numbers.
+4. (operator, 2026-11-06) The numbers are published on the website and on social
+   media (US-010).
 
 ### 8.2 Candidates for the next release
