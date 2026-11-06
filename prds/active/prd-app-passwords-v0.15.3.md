@@ -373,6 +373,15 @@ sessions are not cookie-based.
 19. (operator, 2026-11-06) Open question 6: the personal profile stays unsigned
     in v0.15.3 and the page explains Not Verified. Look again only if the device
     check shows unsigned profiles being blocked. Findings are in section 8.2.
+20. (operator, 2026-11-06, after verification) Revoking an app password ends the
+    IMAP, POP3 and SMTP sessions it opened, on their next command, as a disabled
+    account already does. This covers single revoke, Revoke all and the revoke on
+    password change. It replaces the earlier acceptance that such sessions survive.
+21. (operator, 2026-11-06, after verification) The two findings below stay out of
+    v0.15.3: the guess limit reset and the swapped-fields log line. See section 8.2.
+22. (operator, 2026-11-06) The device checks run on production after deployment,
+    because there is no test server. They do not gate the tag. US-006 and US-007
+    stay open until they pass.
 
 ### 8.2 Candidates for a later release
 
@@ -397,7 +406,6 @@ stay needed for every other client either way.
 
 Found while building the credential record and protocol login (2026-11-05):
 
-- Open IMAP and POP3 sessions survive a revocation; the next login fails.
 - On a follower, last_used_at and the first-use log line are never written,
   because the touch is not forwarded to the leader. One-node production is not
   affected. Fix before multi-node clusters.
@@ -469,3 +477,33 @@ Found while building the QR link (2026-11-06):
 - After a link is used or expires, the QR image and warning stay on the page.
 - `~/go/bin/protoc-gen-go` is an old generator. The worker built the current one
   from the module cache; update the installed plugin.
+
+Found by verification (2026-11-06):
+
+- A leaked app password lifts the guess limit on the same account's password.
+  `Limiter.Succeed` forgives the (IP, account) failures after any success, so four
+  guesses and one app password login can repeat without limit: 400 wrong guesses
+  from one IP were not throttled, then the right password was accepted. It needs
+  a leaked app password and the switch off. Fix: an app password success forgives
+  nothing, or only failures of that credential. Deferred by decision 21.
+- A client with the user name and password fields swapped logs the app password
+  in plain text: IMAP, POP3 and SMTP log the user name at Warn on failure, and the
+  line reaches `/admin/logs`. Account passwords have the same exposure. This is
+  against FR-2's metric of no plaintext in any log. Fix: do not log a user name
+  that `ParseAppPassword` accepts. Deferred by decision 21.
+- First use is logged twice when two logins read the record before the touch
+  applies, as an Apple profile connecting Mail, Calendar and Contacts will. The
+  FSM makes the second touch a no-op, so only the log is wrong.
+- Revoking the last app password with the switch on leaves no working credential
+  in mail clients. Decision 14 refuses that state at turn-on only.
+- Add a device always shows CalDAV and CardDAV on port 443, matching the public
+  profile. A deployment on another HTTPS port gets the wrong value.
+- A follower reads the record locally, so it can accept a revoked credential
+  until it applies the Delete, and for as long as a partition lasts. One-node
+  production is not affected.
+- Two nodes racing a create can reach 11 credentials; `lockUser` is per node. A
+  credential created after Revoke all has listed the records survives it. One-node
+  production is not affected by the first.
+- Decision 13 has a mixed-version exception. If 2FA is disabled and re-enrolled on
+  an earlier binary, the flag survives as an unknown field and an upgraded node
+  enforces it. Reasoned from the code, not run. The off route recovers it.
