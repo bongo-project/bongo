@@ -410,6 +410,13 @@ worthwhile.
     moved between sizes for storage; one run comparing the two disk types.
 12. (operator, 2026-11-07) The operator posts about the tests while they run, not
     only the final numbers (US-010).
+13. (operator, 2026-11-07) The first test runs on a VPS. If its CPU is shared, the
+    run is preliminary: it finds what breaks first, and its numbers are not
+    published as headline figures (section 6.1.1, item 2).
+14. (operator, 2026-11-07) The test domain is bongo.test. The .test top-level domain
+    is reserved for testing (RFC 6761), never resolves, and cannot receive real mail.
+    No public CA issues certificates for it, so the server uses a self-signed
+    certificate and the generator connects by IP with its insecure-TLS flags.
 
 ### 8.2 Candidates for the next release
 
