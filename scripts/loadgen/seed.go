@@ -48,8 +48,10 @@ type SeedOptions struct {
 	SessionSecretFile string
 }
 
-func addSeedFlags(fs *flag.FlagSet, cfg *Config) {
-	o := &cfg.Seed
+// addPlanFlags registers the flags that decide the seed plan, with the same
+// names for every subcommand that reads the plan, so one command line gives
+// one plan. StateFile is shared for the same reason.
+func addPlanFlags(fs *flag.FlagSet, o *SeedOptions) {
 	fs.IntVar(&o.Users, "users", 100, "number of test users to create")
 	fs.IntVar(&o.MessagesPerUser, "messages-per-user", 50, "messages planned per user")
 	fs.Uint64Var(&o.Seed, "seed", 1, "seed; the same seed gives the same users, sizes, folders and bodies")
@@ -58,13 +60,18 @@ func addSeedFlags(fs *flag.FlagSet, cfg *Config) {
 	fs.Float64Var(&o.DedupShare, "dedup-share", defaultDedupShare, "share of messages large enough for a pooled attachment that carry one (0 to 1)")
 	fs.IntVar(&o.DedupMin, "dedup-min-size", defaultDedupMin, "bytes; set to the server's storage.attachment_dedup_min_size")
 	fs.IntVar(&o.PoolSize, "attachment-pool", defaultPoolSize, "number of distinct shared attachments")
+	fs.StringVar(&o.StateFile, "state-file", "", "resume state, mode 0600, holds the test-account passwords (default: under the user config directory)")
+}
+
+func addSeedFlags(fs *flag.FlagSet, cfg *Config) {
+	o := &cfg.Seed
+	addPlanFlags(fs, o)
 	fs.IntVar(&o.Concurrency, "concurrency", 8, "users seeded at once; each holds one SMTP connection")
 	fs.StringVar(&o.ControlAddr, "control-addr", "", "host:port of the server's control listener (server.control_addr); must be in --target-allow")
 	fs.StringVar(&o.SMTPAddr, "smtp-addr", "", "host:port of the server's inbound SMTP listener; must be in --target-allow")
 	fs.StringVar(&o.IMAPAddr, "imap-addr", "", "host:port of the server's IMAP listener; required when --folder-mix names a folder other than INBOX; must be in --target-allow")
 	fs.StringVar(&o.IMAPTLS, "imap-tls", imapTLSAuto, "seed: auto, implicit, starttls or plain (plain is for a dev-role server); auto never sends a password in clear")
 	fs.BoolVar(&o.IMAPInsecureTLS, "imap-insecure-tls", false, "seed: accept a self-signed IMAP certificate; for an allow-listed test target only")
-	fs.StringVar(&o.StateFile, "state-file", "", "resume state, mode 0600, holds the test-account passwords (default: under the user config directory)")
 	fs.StringVar(&o.SessionSecretFile, "session-secret-file", "", "file holding web.session_secret, mode 0600 (or set "+sessionEnvVar+")")
 	fs.Usage = func() {
 		spec, _ := newPlanSpec("seed.test", SeedOptions{

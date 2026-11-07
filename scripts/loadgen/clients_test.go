@@ -462,7 +462,7 @@ func TestClientsAuthFailureOutputHasNoSecrets(t *testing.T) {
 		e.dav.addUser(em, "server-side-password-"+string(rune('a'+i))+"-000000")
 	}
 	code, stdout, stderr := e.run(context.Background())
-	if code != exitRunInvalid {
+	if code != exitServerBehind {
 		t.Fatalf("exit %d, stderr %s", code, stderr)
 	}
 	if e.im.count("LOGIN_FAILED") == 0 || e.dav.unauthorised.Load() == 0 {
@@ -499,7 +499,7 @@ func TestClientsDAVServerErrorsAreClassifiedNotPrinted(t *testing.T) {
 		})
 		e.dav.fail.Store(int64(status))
 		code, stdout, stderr := e.run(context.Background())
-		if code != exitRunInvalid {
+		if code != exitServerBehind {
 			t.Fatalf("status %d: exit %d, stderr %s", status, code, stderr)
 		}
 		s := e.readSummary()
@@ -535,7 +535,7 @@ func TestClientsDoNotFollowRedirects(t *testing.T) {
 	e.cfg.Allow = append(e.cfg.Allow, other)
 	e.dav.redirectTo.Store(elsewhere.URL + "/caldav/")
 	code, _, stderr := e.run(context.Background())
-	if code != exitRunInvalid {
+	if code != exitServerBehind {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
 	if hits.Load() != 0 {
@@ -581,7 +581,7 @@ func TestClientsTLSModes(t *testing.T) {
 			o.Duration = 300 * time.Millisecond
 		})
 		code, _, stderr := e.run(context.Background())
-		if code != exitRunInvalid {
+		if code != exitServerBehind {
 			t.Fatalf("exit %d: %s", code, stderr)
 		}
 		// The server accepts clear logins (InsecureAuth), so a LOGIN here
@@ -600,7 +600,7 @@ func TestClientsTLSModes(t *testing.T) {
 			o.Duration = 300 * time.Millisecond
 		})
 		code, _, _ := e.run(context.Background())
-		if code != exitRunInvalid || e.im.count("LOGIN") != 0 {
+		if code != exitServerBehind || e.im.count("LOGIN") != 0 {
 			t.Fatalf("exit %d, %d logins: the certificate was accepted", code, e.im.count("LOGIN"))
 		}
 	})
@@ -631,7 +631,7 @@ func TestClientsCountRefusedConnectionsSeparately(t *testing.T) {
 	tg, _ := parseTarget(ln.Addr().String())
 	e.cfg.Allow = append(e.cfg.Allow, tg)
 	code, _, _ := e.run(context.Background())
-	if code != exitRunInvalid {
+	if code != exitServerBehind {
 		t.Fatalf("exit %d", code)
 	}
 	if accepted.Load() == 0 {

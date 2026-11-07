@@ -42,8 +42,19 @@ type imapDialer struct {
 	dial     dialFunc
 	timeout  time.Duration
 
+	// handler, when set, receives unilateral data (EXISTS during IDLE) on
+	// every connection this dialer opens. It must not block.
+	handler *imapclient.UnilateralDataHandler
+
 	mu       sync.Mutex
 	resolved string
+}
+
+func (d *imapDialer) options() *imapclient.Options {
+	if d.handler == nil {
+		return nil
+	}
+	return &imapclient.Options{UnilateralDataHandler: d.handler}
 }
 
 func newIMAPDialer(addr, mode string, insecure bool, dial dialFunc, timeout time.Duration) *imapDialer {
@@ -133,15 +144,15 @@ func (d *imapDialer) connect(ctx context.Context) (*imapclient.Client, error) {
 			_ = conn.Close()
 			return nil, fmt.Errorf("imap tls handshake: %w", err)
 		}
-		c = imapclient.New(tc, nil)
+		c = imapclient.New(tc, d.options())
 	case imapTLSStartTLS:
-		c, err = imapclient.NewStartTLS(conn, &imapclient.Options{TLSConfig: cfg})
+		c, err = imapclient.NewStartTLS(conn, &imapclient.Options{TLSConfig: cfg, UnilateralDataHandler: d.handler})
 		if err != nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("imap starttls: %w", err)
 		}
 	default:
-		c = imapclient.New(conn, nil)
+		c = imapclient.New(conn, d.options())
 	}
 	if err := c.WaitGreeting(); err != nil {
 		_ = c.Close()

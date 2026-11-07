@@ -105,7 +105,7 @@ A client that gets three authentication failures in a row stops, so a wrong
 password cannot trip the server's per-IP lockout for everyone.
 
 Run until --clients-duration ends or SIGINT/SIGTERM; the summary is written on
-every exit. Exit 0 ok, 1 interrupted, 2 refused, 3 nothing succeeded.
+every exit. Exit 0 ok, 1 interrupted, 2 refused, 4 nothing succeeded.
 
 `
 
@@ -366,8 +366,10 @@ func clientsMain(ctx context.Context, cfg Config, deps clientsDeps, stdout, stde
 		fmt.Fprintln(stderr, "loadgen: interrupted; the summary holds the counts so far")
 		return exitInterrupted
 	case okN == 0:
+		// The generator ran; the server served nothing. That is the server
+		// side of the exit-code split, not an invalid run.
 		fmt.Fprintln(stderr, "loadgen: no operation succeeded; see the error classes in the summary")
-		return exitRunInvalid
+		return exitServerBehind
 	}
 	return exitOK
 }

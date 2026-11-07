@@ -11,7 +11,10 @@
 // and each envelope address it derives itself (seed data, files), because
 // those are not known when the flags are parsed.
 //
-// Exit codes: 0 ok, 2 usage error or refusal.
+// Exit codes: 0 ok, 1 interrupted or a failed write, 2 usage error or
+// refusal, 3 run invalid (the generator saturated), 4 the server could not
+// keep up (a fixed rate not held, or no client operation succeeded), 5
+// report-compare found a metric outside the threshold.
 package main
 
 import (

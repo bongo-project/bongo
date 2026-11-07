@@ -30,6 +30,10 @@ type Config struct {
 	Egress egressConfig
 	// Clients holds the clients subcommand's options.
 	Clients clientsOptions
+	// Report holds the sample, probe, report and report-compare options.
+	Report reportConfig
+	// Bulk holds the bulk subcommand's options.
+	Bulk bulkOptions
 }
 
 // listFlag is a repeatable flag that also splits on commas.

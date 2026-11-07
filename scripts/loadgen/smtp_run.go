@@ -22,9 +22,12 @@ const (
 	// exitInterrupted: the run was stopped by a signal. The summary was
 	// still written.
 	exitInterrupted = 1
-	// exitRunInvalid: the generator saturated, or a fixed --rate was not
-	// held. In the first case the numbers say nothing about the server.
+	// exitRunInvalid: the generator saturated, so the numbers describe the
+	// generator and say nothing about the server.
 	exitRunInvalid = 3
+	// exitServerBehind: the generator was fine but the server did not keep
+	// up: a fixed --rate was not held, or no client operation succeeded.
+	exitServerBehind = 4
 )
 
 const (
@@ -110,8 +113,9 @@ type runner struct {
 	finalNs     atomic.Int64
 	interrupted atomic.Bool
 
-	lag  hist // scheduler wakeup lateness
-	wait hist // time a job sat queued for a worker
+	latency latHist // MAIL to the DATA reply, successful sends only
+	lag     hist    // scheduler wakeup lateness
+	wait    hist    // time a job sat queued for a worker
 
 	cpuMu     sync.Mutex
 	cpuFirst  time.Duration
@@ -395,6 +399,7 @@ func (r *runner) summary(partial bool) *smtpSummary {
 			OtherErrors: r.c.otherErrors.Load(), Unsent: r.c.unsent.Load(),
 		},
 		Started:        started,
+		Latency:        r.latency.snapshot(),
 		ElapsedSeconds: el.Seconds(),
 		MaxBacklog:     r.maxBacklog.Load(),
 		MaxInFlight:    r.maxBusy.Load(),
@@ -557,6 +562,7 @@ func (s *sender) transact(j job) error {
 	from := r.cfg.Senders[int(j.seq)%len(r.cfg.Senders)]
 	to := r.cfg.Recipients[int(j.seq)%len(r.cfg.Recipients)]
 	msg := buildMessage(r.runID, j.seq, r.domain, from, to, time.Now(), r.body)
+	begin := time.Now()
 	if err := s.c.Mail(from, nil); err != nil {
 		return err
 	}
@@ -570,7 +576,11 @@ func (s *sender) transact(j job) error {
 	if _, err := w.Write(msg); err != nil {
 		return err
 	}
-	return w.Close()
+	if err := w.Close(); err != nil {
+		return err
+	}
+	r.latency.add(time.Since(begin))
+	return nil
 }
 
 // drop closes the connection; the next job redials.
@@ -606,7 +616,13 @@ func runSMTP(cfg Config, stdout, stderr io.Writer) int {
 		<-ctx.Done()
 		stop()
 	}()
-	sum, err := smtpRun(ctx, cfg, sched, smtpOpts{})
+	return smtpMain(ctx, cfg, sched, smtpOpts{}, stdout, stderr)
+}
+
+// smtpMain runs the schedule and maps the outcome to an exit code. It is
+// split from runSMTP so tests can pass options and a context.
+func smtpMain(ctx context.Context, cfg Config, sched *schedule, opts smtpOpts, stdout, stderr io.Writer) int {
+	sum, err := smtpRun(ctx, cfg, sched, opts)
 	if sum == nil {
 		fmt.Fprintf(stderr, "loadgen: refused: %v\n", err)
 		return exitRefuse
@@ -632,7 +648,15 @@ func runSMTP(cfg Config, stdout, stderr io.Writer) int {
 			why = "see the summary"
 		}
 		fmt.Fprintf(stderr, "loadgen: could not hold %.1f/s (achieved %.1f/s): %s\n", cfg.SMTP.Rate, sum.AchievedRate, why)
-		return exitRunInvalid
+		return exitServerBehind
+	}
+	// A ramp is meant to find the rate the server cannot hold, so a missed
+	// step is reported and does not fail the run.
+	for _, st := range sum.Steps {
+		if st.Full && !st.Held {
+			fmt.Fprintf(stderr, "loadgen: ramp step missed its rate: target %.1f/s, achieved %.1f/s, %.0fs to %.0fs\n",
+				st.TargetRate, st.AchievedRate, st.StartSeconds, st.EndSeconds)
+		}
 	}
 	return exitOK
 }

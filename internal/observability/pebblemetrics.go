@@ -5,6 +5,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -104,4 +105,6 @@ func fsyncHistogram(h prometheus.Histogram) (count uint64, sum float64, buckets 
 
 func init() {
 	Registry.MustRegister(newPebbleCollector())
+	// The load test reads CPU, resident memory and open files from these.
+	Registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 }

@@ -3,8 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -38,6 +36,11 @@ type smtpSummary struct {
 	SaturationReasons    []string `json:"saturation_reasons"`
 	PoolExhausted        bool     `json:"pool_exhausted"`
 	PoolExhaustedSeconds float64  `json:"pool_exhausted_seconds"`
+
+	// Latency times each accepted message from MAIL to the reply to the end
+	// of DATA on an open connection. Dialling and EHLO are left out: a
+	// worker keeps its connection, so they are not part of a transaction.
+	Latency latencyHist `json:"latency"`
 
 	CPU          cpuReport `json:"cpu"`
 	MaxBacklog   int64     `json:"max_backlog"`
@@ -94,40 +97,11 @@ type lagReport struct {
 
 func millis(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
 
-// writeSummaryFile writes v (any JSON-encodable summary) to path through a temporary file and a rename, so
-// a reader never sees half a file.
+// writeSummaryFile writes v (any JSON-encodable summary) to path atomically.
 func writeSummaryFile(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode summary: %w", err)
 	}
-	data = append(data, '\n')
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".loadgen-summary-*")
-	if err != nil {
-		return fmt.Errorf("create summary: %w", err)
-	}
-	name := tmp.Name()
-	fail := func(err error) error {
-		_ = tmp.Close()
-		_ = os.Remove(name)
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		return fail(fmt.Errorf("write summary: %w", err))
-	}
-	if err := tmp.Chmod(0o600); err != nil {
-		return fail(fmt.Errorf("chmod summary: %w", err))
-	}
-	if err := tmp.Sync(); err != nil {
-		return fail(fmt.Errorf("sync summary: %w", err))
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(name)
-		return fmt.Errorf("close summary: %w", err)
-	}
-	if err := os.Rename(name, path); err != nil {
-		_ = os.Remove(name)
-		return fmt.Errorf("replace summary: %w", err)
-	}
-	return nil
+	return writeFileAtomic(path, append(data, '\n'))
 }

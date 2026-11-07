@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -94,6 +95,28 @@ func TestLoadTestMetricsExported(t *testing.T) {
 				t.Errorf("metrics output missing %q", want)
 			}
 		})
+	}
+}
+
+// TestProcessMetricsExported guards the sampler in scripts/loadgen, which
+// reads CPU, memory and open files from these three series. The collector
+// reads /proc, so the series exist on Linux only.
+func TestProcessMetricsExported(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the process collector reads /proc")
+	}
+	srv := httptest.NewServer(Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	for _, name := range []string{"process_cpu_seconds_total", "process_resident_memory_bytes", "process_open_fds"} {
+		if !strings.Contains(string(body), "# TYPE "+name+" ") {
+			t.Errorf("metrics output missing %s", name)
+		}
 	}
 }
 

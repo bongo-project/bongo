@@ -1787,3 +1787,13 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - 37.9: unknown IMAP commands never reach the backend (go-imap answers them), so IMAP labels are constants and no IMAP 'other' test exists. Three copies of a histogram-count test helper (use obstest.HistogramCount). Snapshot checkpoint phase is observed even on failure. TestIndexBacklogGaugeTracksQueue asserts absolute values on a global.
 - PATTERN: [loadgen] Parallel loadgen tasks all touch config.go's Config struct and smtp_summary.go; expect a one-line conflict per batch.
 
+## 2026-11-07: Phase 37 batch 4 (37.6, 37.11)
+
+- 37.6 plan REVISE (applied): register the Prometheus process collector on the server, since process_cpu_seconds_total, process_resident_memory_bytes and process_open_fds were not exported; the Bongo config is recorded as a SHA-256 only; disk growth means bongo_blob_bytes and bongo_blobs (no Pebble size metric yet). TestProcessMetricsExported skips off Linux; ran it in a golang:1.27.3 container, PASS.
+- 37.11 plan PROCEED with clarifications: the restart proof must use a server-role node (dev uses an in-memory snapshot store and a new temp dir); APPEND does not StoreSplit, so the loader mirrors each path; trace headers are excluded from size comparison.
+- Startup finding: Raft log and stable store share Pebble under `_raft/`; in the server role NewRaft restores the latest file snapshot and FSM.Restore deletes all `/` keys before reloading, so direct writes after a snapshot are lost. The loader loads a fresh directory through FSM.Apply with index 0 (applied_index never written) and refuses a directory with Raft state.
+- Merge conflict in config.go (Report and Bulk fields): kept both. First gate failed: TestBulkLoadWritesPlan counted 'fsm: derived index update was slow' timing warnings under load. Orchestrator fix: timing warnings ("... was slow") counted apart, first five warning messages kept without attributes; handler test mutation-checked; 16 stressed runs passed. Second gate passed.
+- Reviews MINOR. Added 37.17 (loader speed: about 25 msgs/s end to end on this Mac, below the 200 msgs/s SMTP route it should beat; check compares no SQLite rows) and 37.18 (report-compare counts bookkeeping fields so exit 5 nearly always fires; fsync +Inf bucket; probe NOOP overcount; sample truncates; clients exit 4 for config failures). 37.12 now needs both.
+- PATTERN: [tests] A test that asserts "no warnings logged" must separate timing warnings from fallback warnings, or it fails on a loaded CI machine.
+- PATTERN: [tests] Linux-only tests can be run locally with `docker run --rm -v "$PWD":/src -w /src golang:<go.mod version> go test -run X ./pkg/`.
+
