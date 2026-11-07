@@ -18,7 +18,6 @@ import (
 
 	"github.com/bongo-project/bongo/internal/agent"
 	"github.com/bongo-project/bongo/internal/config"
-	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/testutil"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -227,21 +226,15 @@ func TestBulkLoadMatchesSMTPStore(t *testing.T) {
 	})
 }
 
-// openIndexedView opens a stopped data directory read-only with its SQLite
-// index, as the equivalence dump needs.
+// openIndexedView opens a stopped data directory with its SQLite index, as
+// the equivalence dump needs.
 func openIndexedView(t *testing.T, dir string) (storeView, func()) {
 	t.Helper()
 	v, closeFn, err := openCheckStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	meta, err := store.NewMetadataManager(dir)
-	if err != nil {
-		closeFn()
-		t.Fatal(err)
-	}
-	v.meta = meta
-	return v, func() { _ = meta.Close(); closeFn() }
+	return v, closeFn
 }
 
 func keepPlanUsers(d *storeDump, spec PlanSpec) {

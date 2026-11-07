@@ -11,10 +11,27 @@
 // and each envelope address it derives itself (seed data, files), because
 // those are not known when the flags are parsed.
 //
-// Exit codes: 0 ok, 1 interrupted or a failed write, 2 usage error or
-// refusal, 3 run invalid (the generator saturated), 4 the server could not
-// keep up (a fixed rate not held, or no client operation succeeded), 5
-// report-compare found a metric outside the threshold.
+// Exit codes, shared by every subcommand unless noted:
+//
+//	0  ok (egress-check: the sink is reachable and no probe connected;
+//	   bulk check: the stores match)
+//	1  interrupted by a signal, or a failed read, write, listen or connection.
+//	   Per subcommand: smtp, clients and probe: interrupted (probe also: it
+//	   stopped on a connection failure); smtp also: a send error ended the
+//	   run; sink, seed, bulk, sample, report, report-compare: the work or a
+//	   file write failed; seed: also when interrupted; egress-check: the sink
+//	   is down or a probe connected, so the server could deliver direct to MX;
+//	   bulk check: the stores differ, or there was nothing to compare
+//	2  usage error or refusal (a flag, the safety layer, an existing sample
+//	   file without --sample-append); every subcommand
+//	3  smtp: run invalid, the generator saturated
+//	4  smtp: a fixed --rate was not held; clients: no operation succeeded and
+//	   the errors do not point at the setup, so the server served nothing
+//	5  report-compare: a measured result or an error rate is outside the
+//	   threshold, or a measured result is missing
+//	6  clients: no operation succeeded because of the configuration or
+//	   reachability (authentication, TLS verification, connection refused, a
+//	   refused redirect); the server was not measured
 package main
 
 import (

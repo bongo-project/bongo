@@ -15,6 +15,11 @@ import (
 	"time"
 )
 
+// exitConfigOrUnreachable: no operation succeeded and some failed on
+// authentication, TLS verification, a refused connection or a refused
+// redirect. The run says nothing about the server's capacity.
+const exitConfigOrUnreachable = 6
+
 func init() {
 	commands["clients"] = runClients
 	subcommandFlags["clients"] = addClientsFlags
@@ -98,14 +103,18 @@ summary holds counts and timings only, with errors counted by class.
 
 Server limits to raise first: the IMAP listener refuses connections beyond
 imap.max_connections_per_ip (default 50) and imap.max_connections (default
-1024); both are reloadable. Refusals are counted as refused_or_closed. Raise
+1024); both are reloadable. Connections the server accepts and then closes
+are counted as refused_or_closed; a connect that nothing answers is connect_refused. Raise
 this machine's open-file limit too. Port 143 on a server-role node needs
 STARTTLS; use --clients-imap-tls plain only against a dev-role server.
 A client that gets three authentication failures in a row stops, so a wrong
 password cannot trip the server's per-IP lockout for everyone.
 
 Run until --clients-duration ends or SIGINT/SIGTERM; the summary is written on
-every exit. Exit 0 ok, 1 interrupted, 2 refused, 4 nothing succeeded.
+every exit. Exit 0 ok, 1 interrupted, 2 refused, 4 nothing succeeded, 6 nothing succeeded
+and the errors are authentication, TLS verification, connection refused or a
+refused redirect, which means the setup is wrong and the server was not
+measured.
 
 `
 
@@ -366,6 +375,13 @@ func clientsMain(ctx context.Context, cfg Config, deps clientsDeps, stdout, stde
 		fmt.Fprintln(stderr, "loadgen: interrupted; the summary holds the counts so far")
 		return exitInterrupted
 	case okN == 0:
+		// A run that could not authenticate, verify TLS, connect or follow a
+		// redirect measured nothing about the server, so it must never read
+		// as a server that fell behind.
+		if cfgErrs := configErrorCounts(sum); cfgErrs != "" {
+			fmt.Fprintf(stderr, "loadgen: no operation succeeded, and the errors point at the configuration or at reachability (%s); fix the setup before reading anything into this run\n", cfgErrs)
+			return exitConfigOrUnreachable
+		}
 		// The generator ran; the server served nothing. That is the server
 		// side of the exit-code split, not an invalid run.
 		fmt.Fprintln(stderr, "loadgen: no operation succeeded; see the error classes in the summary")

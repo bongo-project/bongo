@@ -1,6 +1,10 @@
 package main
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // clientsSummary holds counts and timings only. It never holds an address,
 // a password, a URL or error text.
@@ -80,6 +84,26 @@ func (s *clientsSummary) totals() (okN, errN int64) {
 		errN += o.ErrorTotal
 	}
 	return okN, errN
+}
+
+// configErrorCounts lists the error classes that point at the run's setup,
+// with their counts over every operation, such as "auth 3, tls 2". It is empty
+// when there are none. Only counts are named, never an address or a message.
+func configErrorCounts(s *clientsSummary) string {
+	var parts []string
+	for c := range numClasses {
+		if !isConfigClass(c) {
+			continue
+		}
+		var n int64
+		for _, o := range s.Ops {
+			n += o.Errors[classNames[c]]
+		}
+		if n > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d", classNames[c], n))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func (r *clientsRunner) summary(runID string, start, end time.Time, interrupted bool) *clientsSummary {

@@ -70,7 +70,8 @@ Notes on the numbers:
     of two: they read up to 2x high.
   - Disk growth is bongo_blob_bytes and bongo_blobs. The server exposes no
     Pebble, SQLite or Bleve size, so those are not covered.
-  - WAL fsync times are upper bounds of coarse histogram buckets.
+  - WAL fsync times are upper bounds of coarse histogram buckets. A rank
+    beyond the last finite bucket is a lower bound, in the *_over_ms fields.
 
 Exit 0 ok, 1 failed, 2 refused.
 
@@ -186,6 +187,13 @@ type serverSection struct {
 	FsyncP95Ms       *float64 `json:"wal_fsync_p95_upper_ms,omitempty"`
 	FsyncP99Ms       *float64 `json:"wal_fsync_p99_upper_ms,omitempty"`
 	FsyncMaxIntP99Ms *float64 `json:"wal_fsync_interval_p99_max_upper_ms,omitempty"`
+	// The Over fields hold a rank that fell in the +Inf bucket: the true
+	// value exceeds the last finite bound. They are separate keys so a lower
+	// bound is never compared with an upper bound as one quantity.
+	FsyncP50OverMs       *float64 `json:"wal_fsync_p50_over_ms,omitempty"`
+	FsyncP95OverMs       *float64 `json:"wal_fsync_p95_over_ms,omitempty"`
+	FsyncP99OverMs       *float64 `json:"wal_fsync_p99_over_ms,omitempty"`
+	FsyncMaxIntP99OverMs *float64 `json:"wal_fsync_interval_p99_max_over_ms,omitempty"`
 
 	// NotExposed names series the server did not serve in any sample.
 	NotExposed  []string `json:"not_exposed,omitempty"`
@@ -688,6 +696,7 @@ func analyseFsync(ok []sampleRecord, s *serverSection) {
 	var totalLes []float64
 	var count uint64
 	var maxP99 float64
+	var anyOver bool
 	for i := 1; i < len(ok); i++ {
 		a, b := ok[i-1].Fsync, ok[i].Fsync
 		if a == nil || b == nil || len(a.Buckets) != len(b.Buckets) || len(b.Buckets) == 0 {
@@ -725,33 +734,52 @@ func analyseFsync(ok []sampleRecord, s *serverSection) {
 			total[k] += diff[k]
 		}
 		count += n
-		if v, ok := fsyncRank(diff, les, n, 0.99); ok {
+		if v, over, ok := fsyncRank(diff, les, n, 0.99); ok {
 			maxP99 = math.Max(maxP99, v)
+			anyOver = anyOver || over
 		}
 	}
 	s.FsyncCount = int64(count)
 	if count == 0 {
 		return
 	}
-	s.FsyncP50Ms = ptrOK(fsyncRank(total, totalLes, count, 0.50))
-	s.FsyncP95Ms = ptrOK(fsyncRank(total, totalLes, count, 0.95))
-	s.FsyncP99Ms = ptrOK(fsyncRank(total, totalLes, count, 0.99))
-	s.FsyncMaxIntP99Ms = ptr(maxP99)
+	s.FsyncP50Ms, s.FsyncP50OverMs = fsyncFigure(total, totalLes, count, 0.50)
+	s.FsyncP95Ms, s.FsyncP95OverMs = fsyncFigure(total, totalLes, count, 0.95)
+	s.FsyncP99Ms, s.FsyncP99OverMs = fsyncFigure(total, totalLes, count, 0.99)
+	if anyOver {
+		s.FsyncMaxIntP99OverMs = ptr(maxP99)
+	} else {
+		s.FsyncMaxIntP99Ms = ptr(maxP99)
+	}
+}
+
+// fsyncFigure returns the rank as an upper bound or, when it fell in +Inf, as
+// a lower bound; the other result is nil.
+func fsyncFigure(cum []uint64, les []float64, n uint64, q float64) (upper, over *float64) {
+	v, isOver, ok := fsyncRank(cum, les, n, q)
+	switch {
+	case !ok:
+		return nil, nil
+	case isOver:
+		return nil, &v
+	}
+	return &v, nil
 }
 
 // fsyncRank returns, in milliseconds, the upper bound of the bucket holding
 // the q-th of n observations. cum holds cumulative counts per upper bound. A
-// rank above the last finite bucket falls in +Inf, reported as the last bound.
-func fsyncRank(cum []uint64, les []float64, n uint64, q float64) (float64, bool) {
+// rank above the last finite bucket falls in +Inf: the value is then the last
+// finite bound and lowerBound is true, since the real time is longer.
+func fsyncRank(cum []uint64, les []float64, n uint64, q float64) (value float64, lowerBound, ok bool) {
 	if n == 0 || len(cum) == 0 {
-		return 0, false
+		return 0, false, false
 	}
 	// #nosec G115 -- an observation count never nears 2^63
 	rank := uint64(rankOf(int64(n), q))
 	for k, c := range cum {
 		if c >= rank {
-			return les[k] * 1000, true
+			return les[k] * 1000, false, true
 		}
 	}
-	return les[len(les)-1] * 1000, true
+	return les[len(les)-1] * 1000, true, true
 }

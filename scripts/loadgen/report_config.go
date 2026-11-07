@@ -22,6 +22,7 @@ type sampleOptions struct {
 	Out         string
 	Raw         string
 	RawMaxMB    int
+	Append      bool
 	InsecureTLS bool
 }
 

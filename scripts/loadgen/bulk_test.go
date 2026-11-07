@@ -228,23 +228,56 @@ func mustRead(t *testing.T, p string) []byte {
 	return b
 }
 
-// TestBulkLoadRate loads a plan big enough to be bounded by the stores rather
-// than by bcrypt, and reports the rates. It asserts only a floor, so a
-// regression to the one-message-a-second range fails while a slow disk does
-// not.
+// rateSpec is a plan with enough messages per user that bcrypt and the
+// per-user state file sync are amortised, so the rate reflects the stores.
+func rateSpec(t testing.TB) PlanSpec {
+	t.Helper()
+	o := testOptions()
+	o.Users, o.MessagesPerUser = 8, 100
+	o.SizeMix = "2KB:60,8KB:30,32KB:10"
+	spec, err := newPlanSpec("bulk.test", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return spec
+}
+
+func loadRate(t testing.TB, spec PlanSpec) *bulkResult {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "data")
+	statePath := filepath.Join(t.TempDir(), "bulk.state")
+	res, err := bulkLoad(context.Background(), spec, bulkOptions{DataDir: dir, Hostname: "bulk.test", Workers: 8}, statePath, io.Discard)
+	if err != nil {
+		t.Fatalf("bulkLoad: %v", err)
+	}
+	return res
+}
+
+// TestBulkLoadRate reports the load and end-to-end rates. It asserts only a
+// floor far below what the loader reaches, so a regression to the old range
+// fails while a slow CI disk does not.
 func TestBulkLoadRate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("rate test")
 	}
-	o := testOptions()
-	o.Users, o.MessagesPerUser = 16, 40
-	o.SizeMix = "2KB:60,8KB:30,32KB:10"
-	spec := bulkTestSpec(t, o)
-	_, res := loadBulk(t, spec)
-	t.Logf("rate: %.1f users/s, %.1f messages/s, %.2f MB/s over %.1fs, then %.1fs draining indexes",
-		res.UsersPerSec, res.MessagesPerSec, res.BytesPerSec/(1<<20), res.Seconds, res.IndexDrain)
-	if total := float64(res.Messages) / (res.Seconds + res.IndexDrain); total < 2 {
-		t.Errorf("end-to-end rate %.2f messages/s is below the floor of 2", total)
+	res := loadRate(t, rateSpec(t))
+	total := float64(res.Messages) / (res.Seconds + res.IndexDrain)
+	t.Logf("rate: %.1f messages/s loading (%.1fs), %.1f messages/s end to end (%.1fs draining indexes), %.2f MB/s, warnings %d",
+		res.MessagesPerSec, res.Seconds, total, res.IndexDrain, res.BytesPerSec/(1<<20), res.Warnings)
+	if total < 10 {
+		t.Errorf("end-to-end rate %.1f messages/s is below the floor of 10", total)
+	}
+}
+
+// BenchmarkBulkLoad reports the same rates as metrics: go test -bench
+// BulkLoad -benchtime 1x ./scripts/loadgen/
+func BenchmarkBulkLoad(b *testing.B) {
+	spec := rateSpec(b)
+	for range b.N {
+		res := loadRate(b, spec)
+		b.ReportMetric(res.MessagesPerSec, "load_msgs/s")
+		b.ReportMetric(float64(res.Messages)/(res.Seconds+res.IndexDrain), "e2e_msgs/s")
+		b.ReportMetric(res.IndexDrain, "drain_s")
 	}
 }
 

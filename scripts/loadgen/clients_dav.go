@@ -71,8 +71,10 @@ func (t *davRT) RoundTrip(req *http.Request) (*http.Response, error) {
 			t.fail(op, classHTTP5xx)
 		case sc >= 400:
 			t.fail(op, classHTTP4xx)
-		case sc >= 300 || sc < 200:
+		case sc >= 300:
 			// A redirect is never followed, so it is an error here.
+			t.fail(op, classRedirect)
+		case sc < 200:
 			t.fail(op, classOther)
 		default:
 			t.st.ok(op, time.Since(start))

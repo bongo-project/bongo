@@ -357,5 +357,15 @@ worthwhile.
 8. (import, 2026-11-07) CalDAV and CardDAV share the web listener, so their load is
    counted per request (bongo_dav_requests_in_flight, bongo_dav_requests_total), not
    per connection like IMAP, POP3 and SMTP.
+9. (operator, 2026-11-07) The bulk loader may use a batched Bleve write added to
+   internal/store, called only by the loader; the server keeps indexing per message.
+   Profiling showed Bleve indexing is about 90% of the loader's end-to-end time (about
+   36 messages/s with it, about 550/s without, on an M3 Max). The same per-message
+   Bleve cost is a suspected limit of the server itself (section 6.2, search indexing).
 
 ### 8.2 Candidates for the next release
+
+- report-compare does not warn when validity.valid or generator_saturated differ
+  between the two reports (37.18 review).
+- loadgen smtp and probe cannot tell a configuration failure (authentication, TLS)
+  from a server that fell behind; clients can since 37.18 (37.18 review).

@@ -109,9 +109,9 @@ func (d *imapDialer) transport(ctx context.Context) (string, error) {
 	case caps.Has(imap.CapStartTLS):
 		d.resolved = imapTLSStartTLS
 	case caps.Has(imap.CapLoginDisabled):
-		return "", errors.New("the IMAP server disables LOGIN without TLS and offers no STARTTLS; use --imap-tls implicit or a TLS port")
+		return "", fmt.Errorf("%w: it disables LOGIN without TLS and offers no STARTTLS; use --imap-tls implicit or a TLS port", errNoStartTLS)
 	default:
-		return "", errors.New("the IMAP server offers no STARTTLS; use --imap-tls implicit, or --imap-tls plain for a dev-role server")
+		return "", fmt.Errorf("%w: it offers no STARTTLS; use --imap-tls implicit, or --imap-tls plain for a dev-role server", errNoStartTLS)
 	}
 	return d.resolved, nil
 }

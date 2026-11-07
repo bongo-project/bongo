@@ -117,12 +117,28 @@ splitting and the SQLite and Bleve indexes are the server's. INBOX mail goes
 through the delivery stage (split, stamped); other folders mirror IMAP
 APPEND, which stores the message whole with decoded attachment blobs.
 
-Check mode compares two data directories of stopped servers per user:
-mailboxes, UIDs, flags, tags, attachment blob hashes and sizes, and message
-size without the trace headers the server adds. It ignores GUIDs, dates,
-UIDVALIDITY, the password hash and the SPF/DKIM/DMARC fields, prints every
-other difference and exits 1 if there is one. Workflow: start a fresh server,
-run "seed", stop it; run "bulk" into a second directory; run check mode.
+Speed. Measured on an Apple M3 Max laptop (APFS, so fsync is F_FULLFSYNC,
+which makes macOS unrepresentative of Linux NVMe in either direction), 8
+workers, 2KB/8KB/32KB mix, about 36 messages/s end to end (about 85/s while
+loading, then the Bleve index drains). The ceiling is Bleve: its merger takes
+about half the CPU and the drain runs after the load ends. Pebble syncs are
+under 2% of blocked time, so they are not the limit. More workers raise the
+load rate but not the drain. Run "go test -bench BulkLoad ./scripts/loadgen/"
+for the current figure on your machine.
+
+Check mode compares two data directories of stopped servers (both must be
+stopped: it opens the SQLite index through the server's manager, which may
+create files under metadata/). Per user it compares: mailboxes, flags, tags,
+attachment blob hashes and sizes, message size without the trace headers the
+server adds, and the SQLite mail row count (a side whose index cannot be read
+fails). UIDs are checked as dense 1..n per mailbox with uid_next = n+1; a
+message's own UID is not compared, because SMTP delivery order differs. Only
+users whose address is in --test-domain are compared, so an operator admin
+account does not fail the check; the number excluded is printed for each
+side. It ignores GUIDs, dates, UIDVALIDITY, the password hash and the
+SPF/DKIM/DMARC fields, prints every other difference and exits 1 if there is
+one. Workflow: start a fresh server, run "seed", stop it; run "bulk" into a
+second directory; run check mode.
 
 `
 

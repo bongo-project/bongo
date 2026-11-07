@@ -66,14 +66,24 @@ type storeDump struct {
 	Users    map[string]*userDump
 	Messages int
 	Problems []string // blobs missing, unreadable records: never a "match"
+	Excluded int      // users left out because their address is outside the test domain
 }
 
 // storeView is what a dump reads. meta may be nil, which skips the SQLite
-// row count.
+// row count; that leaves IndexRows at -1, which compareUsers refuses to treat
+// as a match. A non-empty domain keeps only users whose address is in it, so
+// an operator account the plan never made does not fail the check.
 type storeView struct {
-	ps    *store.PebbleStore
-	blobs *store.BlobStore
-	meta  *store.MetadataManager
+	ps     *store.PebbleStore
+	blobs  *store.BlobStore
+	meta   *store.MetadataManager
+	domain string
+}
+
+// emailInDomain reports whether email ends in "@"+domain. A bare suffix test
+// would let "xbulk.test" through for "bulk.test".
+func emailInDomain(email, domain string) bool {
+	return strings.HasSuffix(strings.ToLower(email), "@"+strings.ToLower(domain))
 }
 
 func dumpStore(v storeView) (*storeDump, error) {
@@ -134,6 +144,10 @@ func dumpStore(v storeView) (*storeDump, error) {
 
 	for _, pr := range profiles {
 		email := pr.p.Email
+		if v.domain != "" && !emailInDomain(email, v.domain) {
+			d.Excluded++
+			continue
+		}
 		u := &userDump{
 			Admin: pr.p.IsAdmin, Disabled: pr.p.Disabled, Kind: pr.p.Kind,
 			Addresses: owned[pr.id], Mailboxes: map[string]mailboxDump{},
@@ -208,11 +222,15 @@ func describeMessage(v storeView, userID, folder string, m *bongov1.MailboxMessa
 		key = meta.MessageId
 	}
 	md.Split = len(meta.Layout) > 0
+	var missing []string
 	for _, a := range meta.Attachments {
 		md.Attachments = append(md.Attachments, fmt.Sprintf("%s:%d", a.Hash, a.Size))
 		if a.Hash != "" && !v.blobs.Exists(a.Hash) {
-			problem = fmt.Sprintf("%s: attachment blob %s missing", key, a.Hash)
+			missing = append(missing, a.Hash)
 		}
+	}
+	if len(missing) > 0 {
+		problem = fmt.Sprintf("%s: attachment blob %s missing", key, strings.Join(missing, ", "))
 	}
 	slices.Sort(md.Attachments)
 	raw, err := store.FullRawMessage(&meta, func(h string) ([]byte, error) {
@@ -224,7 +242,11 @@ func describeMessage(v storeView, userID, folder string, m *bongov1.MailboxMessa
 		return io.ReadAll(rc)
 	})
 	if err != nil {
-		return key, md, fmt.Sprintf("%s: message unreadable: %v", key, err)
+		unreadable := fmt.Sprintf("%s: message unreadable: %v", key, err)
+		if problem != "" {
+			unreadable = problem + "; " + unreadable
+		}
+		return key, md, unreadable
 	}
 	body := stripTraceHeaders(raw)
 	md.Size = len(body)
@@ -305,7 +327,8 @@ func compareUsers(email string, a, b *userDump) []string {
 	if !slices.Equal(a.Addresses, b.Addresses) {
 		add("addresses", a.Addresses, b.Addresses)
 	}
-	if a.IndexRows != b.IndexRows {
+	// -1 means the index was not read; two unread indexes are no evidence.
+	if a.IndexRows != b.IndexRows || a.IndexRows < 0 {
 		add("SQLite mail rows", a.IndexRows, b.IndexRows)
 	}
 	for _, name := range sortedKeys(a.Mailboxes) {
@@ -382,7 +405,10 @@ func traceDeltaTotal(d *storeDump) (total int64) {
 	return total
 }
 
-// openCheckStore opens a stopped server's data directory read-only.
+// openCheckStore opens a stopped server's data directory: Pebble read-only,
+// and the SQLite index through the server's own manager. That manager is not
+// read-only and may create files under metadata/, so the directory must not
+// be in use.
 func openCheckStore(dir string) (storeView, func(), error) {
 	if !filepath.IsAbs(dir) {
 		return storeView{}, nil, fmt.Errorf("%q must be an absolute path", dir)
@@ -404,7 +430,12 @@ func openCheckStore(dir string) (storeView, func(), error) {
 		_ = ps.Close()
 		return storeView{}, nil, fmt.Errorf("open blob store: %w", err)
 	}
-	return storeView{ps: ps, blobs: blobs}, func() { _ = ps.Close() }, nil
+	meta, err := store.NewMetadataManager(dir)
+	if err != nil {
+		_ = ps.Close()
+		return storeView{}, nil, fmt.Errorf("open metadata manager: %w", err)
+	}
+	return storeView{ps: ps, blobs: blobs, meta: meta}, func() { _ = meta.Close(); _ = ps.Close() }, nil
 }
 
 func runBulkCheck(cfg Config, stdout, stderr io.Writer) int {
@@ -417,6 +448,11 @@ func runBulkCheck(cfg Config, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "loadgen: bulk: --bulk-check-a and --bulk-check-b name the same directory")
 		return exitRefuse
 	}
+	domain, err := checkTestDomain(cfg.TestDomain)
+	if err != nil {
+		fmt.Fprintf(stderr, "loadgen: bulk: %v\n", err)
+		return exitRefuse
+	}
 	var dumps [2]*storeDump
 	for i, dir := range []string{o.CheckA, o.CheckB} {
 		v, closeFn, err := openCheckStore(dir)
@@ -424,6 +460,7 @@ func runBulkCheck(cfg Config, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "loadgen: bulk: %v\n", err)
 			return exitRefuse
 		}
+		v.domain = domain
 		d, err := dumpStore(v)
 		closeFn()
 		if err != nil {
@@ -441,6 +478,7 @@ func runBulkCheck(cfg Config, stdout, stderr io.Writer) int {
 func reportCheck(a, b *storeDump, maxDiffs int, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "A: %d users, %d messages\n", len(a.Users), a.Messages)
 	fmt.Fprintf(stdout, "B: %d users, %d messages\n", len(b.Users), b.Messages)
+	fmt.Fprintf(stdout, "users excluded as outside the test domain: A=%d B=%d\n", a.Excluded, b.Excluded)
 	fmt.Fprintf(stdout, "trace header bytes ignored: A=%d B=%d\n", traceDeltaTotal(a), traceDeltaTotal(b))
 	fmt.Fprintln(stdout, "ignored fields:")
 	for _, f := range ignoredFields {

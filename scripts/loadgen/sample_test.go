@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -58,7 +59,7 @@ func TestSamplerScrapesAtTheInterval(t *testing.T) {
 	srv, _ := fakeMetrics(t, nil)
 	const interval = 50 * time.Millisecond
 	cfg := sampleConfig(t, srv.URL+"/metrics", interval, 520*time.Millisecond)
-	n, failed, err := sampleRun(context.Background(), cfg, defaultDial())
+	n, failed, err := sampleRun(context.Background(), cfg, defaultDial(), io.Discard)
 	if err != nil || failed != 0 {
 		t.Fatalf("scrapes %d, failed %d, err %v", n, failed, err)
 	}
@@ -91,9 +92,10 @@ func TestSamplerScrapesAtTheInterval(t *testing.T) {
 	if got, wantG := *srvSec.BlobBytesGrowth, float64(n-1)*4096; got != wantG {
 		t.Errorf("blob growth %v, want %v", got, wantG)
 	}
-	// Every interval adds 10 fsyncs, 9 of them below 10ms and 5 below 1ms.
-	if srvSec.FsyncP50Ms == nil || *srvSec.FsyncP50Ms != 1 || *srvSec.FsyncP99Ms != 10 {
-		t.Errorf("fsync bounds p50 %v p99 %v, want 1ms and 10ms", srvSec.FsyncP50Ms, srvSec.FsyncP99Ms)
+	// Every interval adds 10 fsyncs, 9 of them below 10ms and 5 below 1ms: the
+	// p99 is the tenth, beyond the last finite bucket, so only a lower bound.
+	if srvSec.FsyncP50Ms == nil || *srvSec.FsyncP50Ms != 1 || srvSec.FsyncP99Ms != nil || srvSec.FsyncP99OverMs == nil || *srvSec.FsyncP99OverMs != 10 {
+		t.Errorf("fsync p50 %v p99 %v over %v, want an upper 1ms and a lower bound of 10ms", srvSec.FsyncP50Ms, srvSec.FsyncP99Ms, srvSec.FsyncP99OverMs)
 	}
 	if len(srvSec.NotExposed) != 0 {
 		t.Errorf("exposed series reported missing: %v", srvSec.NotExposed)
@@ -121,7 +123,7 @@ func TestSamplerRecordsFailuresAsClasses(t *testing.T) {
 		return 0
 	})
 	cfg := sampleConfig(t, srv.URL+"/metrics?token=hunter2-url-secret", 40*time.Millisecond, 250*time.Millisecond)
-	_, failed, err := sampleRun(context.Background(), cfg, defaultDial())
+	_, failed, err := sampleRun(context.Background(), cfg, defaultDial(), io.Discard)
 	if err != nil || failed != 2 {
 		t.Fatalf("failed %d, err %v", failed, err)
 	}
@@ -147,7 +149,7 @@ func TestSamplerNeverFollowsRedirects(t *testing.T) {
 	}))
 	defer srv.Close()
 	cfg := sampleConfig(t, srv.URL, 40*time.Millisecond, 100*time.Millisecond)
-	if _, failed, err := sampleRun(context.Background(), cfg, defaultDial()); err != nil || failed == 0 {
+	if _, failed, err := sampleRun(context.Background(), cfg, defaultDial(), io.Discard); err != nil || failed == 0 {
 		t.Fatalf("failed %d, err %v: a redirect is not a metrics page", failed, err)
 	}
 	if other.Load() != 0 {
@@ -159,7 +161,7 @@ func TestSamplerRawFileIsCapped(t *testing.T) {
 	srv, _ := fakeMetrics(t, nil)
 	cfg := sampleConfig(t, srv.URL, 40*time.Millisecond, 100*time.Millisecond)
 	cfg.Report.Sample.RawMaxMB = 0
-	if _, _, err := sampleRun(context.Background(), cfg, defaultDial()); err != nil {
+	if _, _, err := sampleRun(context.Background(), cfg, defaultDial(), io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if raw, _ := os.ReadFile(cfg.Report.Sample.Raw); len(raw) != 0 {

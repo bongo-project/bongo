@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -650,13 +651,12 @@ func (p *probeRunner) watch(ctx context.Context, ready chan<- struct{}) error {
 		}); err != nil {
 			return err
 		}
-		via := ""
+		polled := false
 		select {
 		case <-ctx.Done():
 		case <-feed.sig:
-			via = "idle"
 		case <-poll.C:
-			via = "noop"
+			polled = true
 		case <-c.Closed():
 			return errServerClosed
 		}
@@ -672,14 +672,19 @@ func (p *probeRunner) watch(ctx context.Context, ready chan<- struct{}) error {
 		if err != nil {
 			return err
 		}
-		if via == "noop" {
+		// Whatever IDLE announced is taken before any NOOP, whichever case
+		// woke the loop: when the poll and an announcement are ready together,
+		// the message is an IDLE find, not a NOOP find.
+		idleEvs := feed.take()
+		var noopEvs []existsEvent
+		if polled {
 			if err := imapBound(ctx, c, p.o.Timeout, func() error { return c.Noop().Wait() }); err != nil {
 				return err
 			}
+			noopEvs = feed.take()
 		}
-		evs := feed.take()
 		var n uint32
-		for _, e := range evs {
+		for _, e := range slices.Concat(idleEvs, noopEvs) {
 			n = max(n, e.n)
 		}
 		if n <= known {
@@ -696,17 +701,33 @@ func (p *probeRunner) watch(ctx context.Context, ready chan<- struct{}) error {
 			return err
 		}
 		for seq, id := range fetchIDs(msgs) {
-			at := time.Now()
-			for _, e := range evs {
-				if e.n >= seq {
-					at = e.at
-					break
-				}
+			at, noop, found := attributeVisible(idleEvs, noopEvs, seq)
+			if !found {
+				at = time.Now()
 			}
-			p.markVisible(id, at, via == "noop")
+			p.markVisible(id, at, noop)
 		}
 		known = n
 	}
+}
+
+// attributeVisible says when the message at seq became visible and whether a
+// NOOP found it. A seq that IDLE announced, that is at or below the highest
+// count in idleEvs, is an IDLE find timed from the first announcement that
+// covers it; only a higher seq is a NOOP find. found is false when no event
+// covers seq.
+func attributeVisible(idleEvs, noopEvs []existsEvent, seq uint32) (at time.Time, noop, found bool) {
+	for _, e := range idleEvs {
+		if e.n >= seq {
+			return e.at, false, true
+		}
+	}
+	for _, e := range noopEvs {
+		if e.n >= seq {
+			return e.at, true, true
+		}
+	}
+	return time.Time{}, false, false
 }
 
 // searchLoop looks for each accepted message with UID SEARCH, backing off from

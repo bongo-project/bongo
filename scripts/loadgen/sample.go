@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -53,9 +51,10 @@ func addSampleFlags(fs *flag.FlagSet, cfg *Config) {
 	fs.DurationVar(&o.Interval, "sample-interval", 15*time.Second, "sample: time between scrapes; at most 30s")
 	fs.DurationVar(&o.Timeout, "sample-timeout", 10*time.Second, "sample: per-scrape timeout; must be below --sample-interval")
 	fs.DurationVar(&o.Duration, "sample-duration", 0, "sample: stop after this long (0 runs until SIGINT or SIGTERM)")
-	fs.StringVar(&o.Out, "sample-out", "loadgen-samples.jsonl", "sample: file the parsed samples are appended to, one JSON line per scrape, mode 0600")
-	fs.StringVar(&o.Raw, "sample-raw", "loadgen-metrics-raw.txt", "sample: file the raw scrape text is appended to, mode 0600")
-	fs.IntVar(&o.RawMaxMB, "sample-raw-max-mb", 512, "sample: stop keeping raw text after this many megabytes")
+	fs.StringVar(&o.Out, "sample-out", "loadgen-samples.jsonl", "sample: file the parsed samples are written to, one JSON line per scrape, mode 0600; refused if it holds data and --sample-append is not given")
+	fs.StringVar(&o.Raw, "sample-raw", "loadgen-metrics-raw.txt", "sample: file the raw scrape text is written to, mode 0600; refused if it holds data and --sample-append is not given")
+	fs.IntVar(&o.RawMaxMB, "sample-raw-max-mb", 512, "sample: stop keeping raw text after this many megabytes in the file, counting what --sample-append found there")
+	fs.BoolVar(&o.Append, "sample-append", false, "sample: add to existing --sample-out and --sample-raw files instead of refusing them")
 	fs.BoolVar(&o.InsecureTLS, "sample-insecure-tls", false, "sample: accept a certificate that does not match the host; for an allow-listed test target only")
 	fs.Usage = func() {
 		fmt.Fprint(fs.Output(), sampleHelp)
@@ -69,6 +68,13 @@ Scrapes the server's /metrics every --sample-interval (at most 30s) and writes
 one JSON line per scrape as it goes, so a killed run keeps what it measured. A
 failed scrape is a line too, with an error class, so gaps show in the report.
 Raw scrape text goes to a separate file.
+
+A file that already holds data is refused, with exit 2 and before any request,
+so a second run in the same directory cannot overwrite the first run's
+samples: the default file names are the same every time. Give --sample-append
+to continue an earlier run instead; the samples file is then cut back to its
+last complete line if the earlier sampler was killed mid-line, and the raw cap
+counts what the raw file already holds.
 
 Run it for the whole test, beside "smtp" and "clients". Then give its output to
 "report" with --report-samples and --report-raw.
@@ -184,9 +190,13 @@ func runSample(cfg Config, stdout, stderr io.Writer) int {
 		<-ctx.Done()
 		stop()
 	}()
-	n, failed, err := sampleRun(ctx, cfg, defaultDial())
+	n, failed, err := sampleRun(ctx, cfg, defaultDial(), stderr)
 	fmt.Fprintf(stdout, "sample: %d scrapes, %d failed; samples: %s, raw: %s\n", n, failed, cfg.Report.Sample.Out, cfg.Report.Sample.Raw)
 	if err != nil {
+		if errors.Is(err, errSampleFileUsed) {
+			fmt.Fprintf(stderr, "loadgen: refused: %v\n", err)
+			return exitRefuse
+		}
 		fmt.Fprintf(stderr, "loadgen: %v\n", err)
 		return exitFail
 	}
@@ -196,39 +206,127 @@ func runSample(cfg Config, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// openAppend opens path for writing, truncated, with mode 0600 even where the
-// file existed with a wider one.
-func openAppend(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) // #nosec G304 -- operator-chosen path
+// errSampleFileUsed marks a refusal to write over a file that holds data.
+var errSampleFileUsed = errors.New("the file already holds data; give --sample-append to add to it or choose another path")
+
+// checkSampleFiles refuses before any file is opened or any request is made, so
+// a refusal on --sample-raw cannot leave --sample-out created or touched.
+func checkSampleFiles(o sampleOptions) error {
+	if o.Append {
+		return nil
+	}
+	for _, f := range []struct{ flagName, path string }{{"--sample-out", o.Out}, {"--sample-raw", o.Raw}} {
+		st, err := os.Lstat(f.path)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+		case err != nil:
+			return fmt.Errorf("%s: %s", f.flagName, errKind(err))
+		case st.Size() > 0:
+			return fmt.Errorf("%s: %w", f.flagName, errSampleFileUsed)
+		}
+	}
+	return nil
+}
+
+// openSampleFile opens path for writing with mode 0600 even where the file
+// existed with a wider one, and returns its current size. It never truncates:
+// a file that holds data is refused unless appendMode is set, in which case
+// writes go to its end. The size is read from the open file, so a file that
+// appeared after checkSampleFiles is still caught.
+func openSampleFile(path string, appendMode bool) (*os.File, int64, error) {
+	flags := os.O_RDWR | os.O_CREATE
+	if appendMode {
+		flags |= os.O_APPEND
+	}
+	f, err := os.OpenFile(path, flags, 0o600) // #nosec G304 -- operator-chosen path
 	if err != nil {
-		return nil, errors.New("open " + errKind(err))
+		return nil, 0, errors.New("open " + errKind(err))
+	}
+	st, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, 0, errors.New("stat output")
+	}
+	if st.Size() > 0 && !appendMode {
+		_ = f.Close()
+		return nil, 0, errSampleFileUsed
 	}
 	if err := f.Chmod(0o600); err != nil {
 		_ = f.Close()
-		return nil, errors.New("chmod output")
+		return nil, 0, errors.New("chmod output")
 	}
-	return f, nil
+	return f, st.Size(), nil
+}
+
+// trimTornLine cuts a samples file back to its last newline. A sampler that
+// was killed mid-line leaves a fragment which the report ignores only at the
+// end of the file; appended to, it would sit in the middle and fail the whole
+// report. It returns the number of bytes removed.
+func trimTornLine(f *os.File, size int64) (int64, error) {
+	if size == 0 {
+		return 0, nil
+	}
+	const chunk = 64 << 10
+	buf := make([]byte, chunk)
+	end := size
+	for end > 0 {
+		start := max(end-chunk, 0)
+		b := buf[:end-start]
+		if _, err := f.ReadAt(b, start); err != nil {
+			return 0, errors.New("read samples file")
+		}
+		if i := bytes.LastIndexByte(b, '\n'); i >= 0 {
+			keep := start + int64(i) + 1
+			if keep == size {
+				return 0, nil
+			}
+			if err := f.Truncate(keep); err != nil {
+				return 0, errors.New("trim samples file")
+			}
+			return size - keep, nil
+		}
+		end = start
+	}
+	if err := f.Truncate(0); err != nil {
+		return 0, errors.New("trim samples file")
+	}
+	return size, nil
 }
 
 // sampleRun scrapes until ctx ends or --sample-duration passes. It returns the
 // scrapes made and the number that failed. The client uses the guarded dialer,
 // ignores proxies and does not follow redirects.
-func sampleRun(ctx context.Context, cfg Config, base dialFunc) (scrapes, failed int, err error) {
+//
+// Existing files are refused unless --sample-append is set (see
+// checkSampleFiles); a notice about a repaired samples file goes to stderr.
+func sampleRun(ctx context.Context, cfg Config, base dialFunc, stderr io.Writer) (scrapes, failed int, err error) {
 	if err := validateSample(cfg); err != nil {
 		return 0, 0, err
 	}
 	o := cfg.Report.Sample
+	if err := checkSampleFiles(o); err != nil {
+		return 0, 0, err
+	}
 	u, _, _ := sampleTarget(cfg)
-	out, err := openAppend(o.Out)
+	out, outSize, err := openSampleFile(o.Out, o.Append)
 	if err != nil {
-		return 0, 0, fmt.Errorf("samples file: %w", err)
+		return 0, 0, fmt.Errorf("--sample-out: %w", err)
 	}
 	defer out.Close()
-	raw, err := openAppend(o.Raw)
+	raw, rawSize, err := openSampleFile(o.Raw, o.Append)
 	if err != nil {
-		return 0, 0, fmt.Errorf("raw file: %w", err)
+		return 0, 0, fmt.Errorf("--sample-raw: %w", err)
 	}
 	defer raw.Close()
+	if o.Append {
+		dropped, err := trimTornLine(out, outSize)
+		if err != nil {
+			return 0, 0, err
+		}
+		if dropped > 0 {
+			fmt.Fprintf(stderr, "loadgen: sample: the samples file ended in a torn line from an earlier run; removed its last %d bytes\n", dropped)
+		}
+	}
 
 	hc, tr := newHTTPClient(guardedDial(cfg, base), o.InsecureTLS, o.Timeout, nil)
 	defer tr.CloseIdleConnections()
@@ -239,7 +337,8 @@ func sampleRun(ctx context.Context, cfg Config, base dialFunc) (scrapes, failed 
 		defer cancel()
 	}
 	rawBudget := int64(o.RawMaxMB) << 20
-	var rawUsed int64
+	// The cap is on the file, so an appended run starts from what it holds.
+	rawUsed := rawSize
 
 	scrape := func() error {
 		rec, body := scrapeOnce(ctx, hc, u.String(), o.Timeout)
@@ -305,7 +404,7 @@ func scrapeOnce(ctx context.Context, hc *http.Client, target string, timeout tim
 	}
 	resp, err := hc.Do(req) // #nosec G107 G704 -- target passed checkTarget and the client dials through guardedDial
 	if err != nil {
-		rec.Error = scrapeErrClass(err)
+		rec.Error = classNames[classifyTransport(err)]
 		return rec, nil
 	}
 	defer resp.Body.Close()
@@ -319,7 +418,7 @@ func scrapeOnce(ctx context.Context, hc *http.Client, target string, timeout tim
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxScrapeBytes+1))
 	if err != nil {
-		rec.Error = scrapeErrClass(err)
+		rec.Error = classNames[classifyTransport(err)]
 		return rec, nil
 	}
 	if len(body) > maxScrapeBytes {
@@ -333,16 +432,6 @@ func scrapeOnce(ctx context.Context, hc *http.Client, target string, timeout tim
 	}
 	rec.OK = true
 	return rec, body
-}
-
-func scrapeErrClass(err error) string {
-	var cve *tls.CertificateVerificationError
-	var ua x509.UnknownAuthorityError
-	var hn x509.HostnameError
-	if errors.As(err, &cve) || errors.As(err, &ua) || errors.As(err, &hn) {
-		return "tls"
-	}
-	return classNames[classifyTransport(err)]
 }
 
 // parseScrape fills rec from Prometheus text. The validation scheme is named

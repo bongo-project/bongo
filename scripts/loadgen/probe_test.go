@@ -45,6 +45,9 @@ type probeEnv struct {
 	decoyHits atomic.Int64
 	// idleBlocked makes IDLE never announce anything: EXISTS is swallowed.
 	noopOnly bool
+	// idleOnly makes a NOOP carry nothing, so every announcement goes out
+	// during IDLE and none can legitimately be a NOOP find.
+	idleOnly bool
 }
 
 type deliveredMsg struct {
@@ -89,7 +92,8 @@ func (s *probeSMTP) Data(r io.Reader) error {
 
 type hideSession struct {
 	imapserver.Session
-	e *probeEnv
+	e         *probeEnv
+	afterIdle atomic.Bool
 }
 
 func (s *hideSession) Search(kind imapserver.NumKind, c *imap.SearchCriteria, o *imap.SearchOptions) (*imap.SearchData, error) {
@@ -116,10 +120,20 @@ func (s *hideSession) Search(kind imapserver.NumKind, c *imap.SearchCriteria, o 
 	return &imap.SearchData{All: imap.UIDSetNum(uids...), Count: uint32(len(uids))}, nil
 }
 
+func (s *hideSession) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
+	if s.e.idleOnly || s.afterIdle.CompareAndSwap(true, false) {
+		return nil
+	}
+	return s.Session.Poll(w, allowExpunge)
+}
+
 func (s *hideSession) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 	if s.e.noopOnly {
 		// Hold the connection without ever announcing mail.
 		<-stop
+		// The server polls once as IDLE ends; that poll must not announce
+		// mail either, or IDLE would have found it after all.
+		s.afterIdle.Store(true)
 		return nil
 	}
 	return s.Session.Idle(w, stop)
@@ -238,6 +252,61 @@ func TestProbeCountsNoopFindsApart(t *testing.T) {
 	}
 	if sum.Seen == 0 || sum.SeenByNoop != sum.Seen {
 		t.Fatalf("seen %d, by NOOP %d: a broken IDLE must show", sum.Seen, sum.SeenByNoop)
+	}
+}
+
+// TestAttributeVisible: a message IDLE announced is an IDLE find even when a
+// NOOP ran in the same round; only a higher sequence number is a NOOP find.
+func TestAttributeVisible(t *testing.T) {
+	t0 := time.Unix(1000, 0)
+	ev := func(n uint32, ms int) existsEvent {
+		return existsEvent{n: n, at: t0.Add(time.Duration(ms) * time.Millisecond)}
+	}
+	tests := []struct {
+		name       string
+		idle, noop []existsEvent
+		seq        uint32
+		wantAt     time.Time
+		wantNoop   bool
+		wantFound  bool
+	}{
+		{"idle only", []existsEvent{ev(3, 5)}, nil, 3, t0.Add(5 * time.Millisecond), false, true},
+		{"idle and poll ready together, idle covers the seq", []existsEvent{ev(3, 5)}, []existsEvent{ev(3, 9)}, 3, t0.Add(5 * time.Millisecond), false, true},
+		{"seq below the idle count", []existsEvent{ev(2, 5), ev(4, 8)}, []existsEvent{ev(4, 9)}, 3, t0.Add(8 * time.Millisecond), false, true},
+		{"seq beyond idle is a noop find", []existsEvent{ev(3, 5)}, []existsEvent{ev(4, 9)}, 4, t0.Add(9 * time.Millisecond), true, true},
+		{"noop only", nil, []existsEvent{ev(1, 9)}, 1, t0.Add(9 * time.Millisecond), true, true},
+		{"no event covers it", []existsEvent{ev(2, 5)}, nil, 3, time.Time{}, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			at, noop, found := attributeVisible(tt.idle, tt.noop, tt.seq)
+			if !at.Equal(tt.wantAt) || noop != tt.wantNoop || found != tt.wantFound {
+				t.Errorf("got %v %v %v, want %v %v %v", at, noop, found, tt.wantAt, tt.wantNoop, tt.wantFound)
+			}
+		})
+	}
+}
+
+// TestProbeNeverCallsAnIdleAnnouncedMessageANoopFind uses a server whose NOOP
+// carries nothing, so every message arrives through IDLE, with a poll short
+// enough to be ready together with the announcements.
+func TestProbeNeverCallsAnIdleAnnouncedMessageANoopFind(t *testing.T) {
+	e := newProbeEnv(t, 5*time.Millisecond, 0)
+	e.idleOnly = true
+	cfg := e.config(t, func(o *probeOptions) {
+		o.Poll = 5 * time.Millisecond
+		o.Interval = 30 * time.Millisecond
+		o.Duration = 700 * time.Millisecond
+	})
+	sum, err := probeRun(context.Background(), cfg, defaultDial(), fastTune)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Sent < 10 || sum.Seen == 0 {
+		t.Fatalf("sent %d seen %d: too little traffic to prove anything", sum.Sent, sum.Seen)
+	}
+	if sum.SeenByNoop != 0 {
+		t.Errorf("%d of %d messages counted as NOOP finds although IDLE announced them", sum.SeenByNoop, sum.Seen)
 	}
 }
 

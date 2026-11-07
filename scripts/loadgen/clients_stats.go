@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
 	"net"
@@ -47,12 +49,33 @@ const (
 	classHTTP4xx
 	classHTTP5xx
 	classOther
+	// The next three say the run is misconfigured or its target unreachable,
+	// as opposed to a server that is overloaded.
+	classTLS
+	classConnectRefused
+	classRedirect
 	numClasses
 )
 
 var classNames = [numClasses]string{
 	"auth", "refused_or_closed", "timeout", "protocol_no_bad", "http_4xx", "http_5xx", "other",
+	"tls", "connect_refused", "redirect",
 }
+
+// isConfigClass reports whether errors of class c point at the run's
+// configuration or at reachability: wrong credentials, a certificate that is
+// not trusted, nothing listening, a redirect that is never followed.
+func isConfigClass(c errClass) bool {
+	switch c {
+	case classAuth, classTLS, classConnectRefused, classRedirect:
+		return true
+	}
+	return false
+}
+
+// errNoStartTLS marks a server that offers no TLS where the run needs it. It
+// is a TLS problem of the setup, not of the server's capacity.
+var errNoStartTLS = errors.New("the IMAP server offers no TLS")
 
 // classifyIMAP maps an error from the IMAP client to a class. login is true
 // for the LOGIN command, where any NO is an authentication failure. The error
@@ -73,14 +96,28 @@ func classifyIMAP(err error, login bool) errClass {
 }
 
 func classifyTransport(err error) errClass {
+	// TLS first: a verification failure can arrive wrapped in a dial or an
+	// HTTP error that would otherwise read as a closed connection.
+	var cve *tls.CertificateVerificationError
+	var ua x509.UnknownAuthorityError
+	var hn x509.HostnameError
+	if errors.Is(err, errNoStartTLS) || errors.As(err, &cve) || errors.As(err, &ua) || errors.As(err, &hn) {
+		return classTLS
+	}
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
 		return classTimeout
 	}
+	// Before the generic OpError arm: a failed dial wraps ECONNREFUSED in one.
+	// A server that accepts and then closes or resets is its connection
+	// limit, and stays refused_or_closed.
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return classConnectRefused
+	}
 	var oe *net.OpError
 	switch {
 	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, net.ErrClosed),
-		errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, syscall.EPIPE),
+		errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.EPIPE),
 		errors.As(err, &oe):
 		return classRefusedOrClosed
 	}

@@ -1797,3 +1797,11 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [tests] A test that asserts "no warnings logged" must separate timing warnings from fallback warnings, or it fails on a loaded CI machine.
 - PATTERN: [tests] Linux-only tests can be run locally with `docker run --rm -v "$PWD":/src -w /src golang:<go.mod version> go test -run X ./pkg/`.
 
+## 2026-11-07: Phase 37 batch 5 (37.17 partial, 37.18)
+
+- 37.18 DONE, review MINOR. 37.17 BLOCKED on a question, check fixes done and merged. Full gate passed.
+- 37.17 profile (8 users x 300, 8 workers, M3 Max, execution trace with -pprof=syscall): load 85 msgs/s, drain 38 s, 36 msgs/s end to end. Pebble syncs 1.6% of blocked syscall time, so the advised no-sync vfs wrapper was not built. Bleve 48% of CPU (Scorch merger) and 35% of blocked syscalls; with the search manager removed (temporary A/B) 552 msgs/s end to end. More workers raise the load rate but not the drain. rebuildDerivedIndexes runs only from FSM.Restore, so skip-and-rebuild is not available. Operator approved a loader-only batched Bleve write (decision 9).
+- 37.18: TestProbeNeverCallsAnIdleAnnouncedMessageANoopFind catches the old bug in only 2 of 10 -race runs; the fix is right but the test is a weak guard. Exit codes 0 to 6 documented in main.go; 6 is clients configuration failure. Two follow-ups to PRD 8.2 (validity mismatch warning; smtp and probe configuration-failure exit codes).
+- PATTERN: [profiling] CPU and block profiles miss time blocked in syscalls such as fsync; use go test -trace and go tool trace -pprof=syscall, then confirm with an A/B run.
+- PATTERN: [loadtest] Per-message Bleve indexing dominates write cost; expect it to be a server limit in the load test.
+

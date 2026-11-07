@@ -96,9 +96,9 @@ func renderMarkdown(d *reportDoc) string {
 		w("| Resident memory, bytes (average / maximum) | %s |\n", stat(s.Memory))
 		w("| Open files (average / maximum) | %s |\n", stat(s.OpenFiles))
 		w("| Blob bytes grown | %s |\n| Blobs grown | %s |\n", num(s.BlobBytesGrowth), num(s.BlobsGrowth))
-		w("| WAL fsync, upper bound of p50 / p95 / p99, ms | %s / %s / %s (%d fsyncs) |\n", num(s.FsyncP50Ms), num(s.FsyncP95Ms), num(s.FsyncP99Ms), s.FsyncCount)
-		w("| WAL fsync, worst interval p99, upper bound, ms | %s |\n\n", num(s.FsyncMaxIntP99Ms))
-		w("%s. The fsync buckets are coarse, so those figures are upper bounds.\n\n", capitalise(s.DiskNote))
+		w("| WAL fsync, upper bound of p50 / p95 / p99, ms | %s / %s / %s (%d fsyncs) |\n", bound(s.FsyncP50Ms, s.FsyncP50OverMs), bound(s.FsyncP95Ms, s.FsyncP95OverMs), bound(s.FsyncP99Ms, s.FsyncP99OverMs), s.FsyncCount)
+		w("| WAL fsync, worst interval p99, upper bound, ms | %s |\n\n", bound(s.FsyncMaxIntP99Ms, s.FsyncMaxIntP99OverMs))
+		w("%s. The fsync buckets are coarse, so those figures are upper bounds; a figure shown as \">X\" fell beyond the last bucket and is a lower bound.\n\n", capitalise(s.DiskNote))
 		if len(s.NotExposed) > 0 {
 			w("Not exposed by the server: %s.\n\n", strings.Join(s.NotExposed, ", "))
 		}
@@ -155,6 +155,14 @@ func num[T float64 | *float64](v T) string {
 		return fmt.Sprintf("%.1f", *x)
 	}
 	return "n/a"
+}
+
+// bound renders an upper bound as a number and a lower bound as ">X".
+func bound(upper, over *float64) string {
+	if over != nil {
+		return fmt.Sprintf(">%.0f", *over)
+	}
+	return num(upper)
 }
 
 func stat(r *resourceStat) string {

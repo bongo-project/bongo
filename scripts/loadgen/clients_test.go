@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -462,7 +466,7 @@ func TestClientsAuthFailureOutputHasNoSecrets(t *testing.T) {
 		e.dav.addUser(em, "server-side-password-"+string(rune('a'+i))+"-000000")
 	}
 	code, stdout, stderr := e.run(context.Background())
-	if code != exitServerBehind {
+	if code != exitConfigOrUnreachable {
 		t.Fatalf("exit %d, stderr %s", code, stderr)
 	}
 	if e.im.count("LOGIN_FAILED") == 0 || e.dav.unauthorised.Load() == 0 {
@@ -535,14 +539,14 @@ func TestClientsDoNotFollowRedirects(t *testing.T) {
 	e.cfg.Allow = append(e.cfg.Allow, other)
 	e.dav.redirectTo.Store(elsewhere.URL + "/caldav/")
 	code, _, stderr := e.run(context.Background())
-	if code != exitServerBehind {
+	if code != exitConfigOrUnreachable {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
 	if hits.Load() != 0 {
 		t.Fatalf("a redirect to a host outside --target-allow was followed %d times", hits.Load())
 	}
-	if e.readSummary().Ops[opDAVPropfind].Errors["other"] == 0 {
-		t.Error("the redirect was not counted as an error")
+	if e.readSummary().Ops[opDAVPropfind].Errors["redirect"] == 0 {
+		t.Error("the redirect was not counted as a redirect error")
 	}
 }
 
@@ -581,7 +585,7 @@ func TestClientsTLSModes(t *testing.T) {
 			o.Duration = 300 * time.Millisecond
 		})
 		code, _, stderr := e.run(context.Background())
-		if code != exitServerBehind {
+		if code != exitConfigOrUnreachable {
 			t.Fatalf("exit %d: %s", code, stderr)
 		}
 		// The server accepts clear logins (InsecureAuth), so a LOGIN here
@@ -589,8 +593,8 @@ func TestClientsTLSModes(t *testing.T) {
 		if n := e.im.count("LOGIN"); n != 0 {
 			t.Fatalf("%d LOGIN commands reached a server that offers no TLS", n)
 		}
-		if e.readSummary().Ops[opConnect].ErrorTotal == 0 {
-			t.Error("the refusal was not counted")
+		if e.readSummary().Ops[opConnect].Errors["tls"] == 0 {
+			t.Errorf("the refusal was not counted as a TLS error: %+v", e.readSummary().Ops[opConnect].Errors)
 		}
 	})
 	t.Run("a self-signed certificate is refused unless the flag is set", func(t *testing.T) {
@@ -600,8 +604,11 @@ func TestClientsTLSModes(t *testing.T) {
 			o.Duration = 300 * time.Millisecond
 		})
 		code, _, _ := e.run(context.Background())
-		if code != exitServerBehind || e.im.count("LOGIN") != 0 {
+		if code != exitConfigOrUnreachable || e.im.count("LOGIN") != 0 {
 			t.Fatalf("exit %d, %d logins: the certificate was accepted", code, e.im.count("LOGIN"))
+		}
+		if e.readSummary().Ops[opConnect].Errors["tls"] == 0 {
+			t.Errorf("the verification failure was not counted as tls: %+v", e.readSummary().Ops[opConnect].Errors)
 		}
 	})
 }
@@ -639,6 +646,34 @@ func TestClientsCountRefusedConnectionsSeparately(t *testing.T) {
 	}
 	if e.readSummary().Ops[opConnect].Errors["refused_or_closed"] == 0 {
 		t.Errorf("a closed connection was not counted as refused_or_closed: %+v", e.readSummary().Ops[opConnect].Errors)
+	}
+}
+
+// TestClientsConnectRefusedIsAConfigurationExit: nothing listens, so nothing
+// was measured. It is not the server falling behind.
+func TestClientsConnectRefusedIsAConfigurationExit(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+	e := newClientsEnv(t, 1, "plain", func(o *clientsOptions) {
+		o.IMAPActive = 1
+		o.IMAPAddr = addr
+		o.Duration = 300 * time.Millisecond
+	})
+	tg, _ := parseTarget(addr)
+	e.cfg.Allow = append(e.cfg.Allow, tg)
+	code, _, stderr := e.run(context.Background())
+	if code != exitConfigOrUnreachable {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if e.readSummary().Ops[opConnect].Errors["connect_refused"] == 0 {
+		t.Errorf("not counted as connect_refused: %+v", e.readSummary().Ops[opConnect].Errors)
+	}
+	if strings.Contains(stderr, addr) {
+		t.Errorf("the address appears on stderr: %s", stderr)
 	}
 }
 
@@ -842,6 +877,12 @@ func TestClassifyErrors(t *testing.T) {
 		"timeout":       {errIMAPTimeout, false, classTimeout},
 		"closed":        {errServerClosed, false, classRefusedOrClosed},
 		"refused":       {&net.OpError{Op: "dial", Err: os.ErrNotExist}, false, classRefusedOrClosed},
+		"conn refused":  {&net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, false, classConnectRefused},
+		"conn reset":    {&net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)}, false, classRefusedOrClosed},
+		"unknown ca":    {fmt.Errorf("dial: %w", x509.UnknownAuthorityError{}), false, classTLS},
+		"bad hostname":  {fmt.Errorf("dial: %w", x509.HostnameError{Host: "h"}), false, classTLS},
+		"verify":        {&net.OpError{Op: "dial", Err: &tls.CertificateVerificationError{}}, false, classTLS},
+		"no starttls":   {fmt.Errorf("%w: x", errNoStartTLS), false, classTLS},
 		"something odd": {os.ErrInvalid, false, classOther},
 	} {
 		if got := classifyIMAP(tc.err, tc.login); got != tc.want {

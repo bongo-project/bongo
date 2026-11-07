@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -351,7 +352,7 @@ func TestReportsHoldNoContentOrPassword(t *testing.T) {
 
 	// sampler
 	scfg := sampleConfig(t, metrics.URL+"/metrics", 40*time.Millisecond, 200*time.Millisecond)
-	if _, _, err := sampleRun(context.Background(), scfg, defaultDial()); err != nil {
+	if _, _, err := sampleRun(context.Background(), scfg, defaultDial(), io.Discard); err != nil {
 		t.Fatal(err)
 	}
 

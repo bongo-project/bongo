@@ -34,16 +34,30 @@ func addCompareFlags(fs *flag.FlagSet, cfg *Config) {
 
 const compareHelp = `usage: loadgen report-compare --target-allow H:P --test-domain D --report-compare-baseline A.json --report-compare-candidate B.json [flags]
 
-Compares two reports written by "report", metric by metric: both values, the
-difference in percent of the baseline, and whether they agree within the
-threshold (default 10). A metric present in one report only is "missing" and
-does not agree. 0 against 0 agrees; 0 against anything else does not.
+Compares the measured results of two reports written by "report": both values,
+the difference in percent of the baseline, and whether they agree within the
+threshold (default 10). Measured results are throughput, the latency
+percentiles (SMTP, delivery delay, search lag, IMAP and DAV), the server
+resource figures and the WAL fsync percentiles. A measured result present in
+one report only is "missing" and does not agree. 0 against 0 agrees; 0 against
+anything else does not. max_ms is shown but never gated: one outlier moves it.
+
+Bookkeeping is not compared: file references with their sizes and hashes,
+counts of messages and samples, failed scrapes, gaps, probe sent and
+unresolved counts and the histogram resolution. Two runs of different length
+differ in those without differing in performance.
+
+Error counts have their own table with both counts, both rates (errors
+divided by attempts) and a verdict. A rate differs when it moves by more than
+the threshold in percentage points, so 3 against 4 errors in a million agree
+and 0% against 11% does not. A different error count alone never fails.
 
 Warns on stderr when the machine type, disk type, file system or seed differ,
 since a difference then may be the hardware. It reads files and sends nothing,
 but needs --target-allow and --test-domain like every subcommand.
 
-Exit 0 all metrics agree, 1 failed, 2 refused, 5 a metric differs or is missing.
+Exit 0 all agree, 1 failed, 2 refused, 5 a measured result or an error rate
+differs, or a measured result is missing.
 
 `
 
@@ -182,19 +196,26 @@ func runReportCompare(cfg Config, stdout, stderr io.Writer) int {
 		}
 	}
 
-	rows := compareMetrics(base, cand, o.Threshold)
+	cmp := compareReports(base, cand, o.Threshold)
 	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "metric\tbaseline\tcandidate\tdiff %\tverdict")
-	bad := 0
-	for _, r := range rows {
+	for _, r := range cmp.Measured {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.Name, fmtVal(r.Base), fmtVal(r.Cand), fmtPct(r.DiffPct), r.Verdict)
-		if !r.Agree {
-			bad++
-		}
 	}
 	_ = tw.Flush()
-	fmt.Fprintf(stdout, "%d metrics, %d outside the %.4g%% threshold or missing\n", len(rows), bad, o.Threshold)
-	if bad > 0 {
+	fmt.Fprintf(stdout, "%d measured results, %d outside the %.4g%% threshold or missing\n", len(cmp.Measured), cmp.BadMeasured, o.Threshold)
+	if len(cmp.Errors) > 0 {
+		fmt.Fprintln(stdout, "\nerrors (rate = errors / attempts; differs when the rate moves by more than the threshold in percentage points)")
+		tw = tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(tw, "error count\tbaseline\tcandidate\tbaseline rate %\tcandidate rate %\tverdict")
+		for _, r := range cmp.Errors {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, fmtVal(r.Base), fmtVal(r.Cand), fmtRate(r.BaseRate), fmtRate(r.CandRate), r.Verdict)
+		}
+		_ = tw.Flush()
+		fmt.Fprintf(stdout, "%d error counts, %d with a differing rate\n", len(cmp.Errors), cmp.BadErrors)
+	}
+	fmt.Fprintf(stdout, "%d bookkeeping figures not compared\n", cmp.Bookkeeping)
+	if cmp.BadMeasured+cmp.BadErrors > 0 {
 		return exitCompareDiffers
 	}
 	return exitOK
