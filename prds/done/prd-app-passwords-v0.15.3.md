@@ -102,16 +102,17 @@ Calendar, Contacts and Reminders in one step so that I never see or type a
 password.
 
 **Acceptance Criteria:**
-- [ ] Add a device, with Apple chosen and a label given, creates an app password
+- [x] Add a device, with Apple chosen and a label given, creates an app password
       and returns a `.mobileconfig` holding the mail, CalDAV and CardDAV accounts
       of the signed-in user, with that app password in each.
-- [ ] The response is sent with `Cache-Control: no-store`. The profile is built
+- [x] The response is sent with `Cache-Control: no-store`. The profile is built
       in the response and is not stored; a second download is not possible.
-- [ ] The public `/.well-known/mobileconfig` is unchanged and contains no
+- [x] The public `/.well-known/mobileconfig` is unchanged and contains no
       password.
-- [ ] Manual check on an iPhone and a Mac: after installing the profile, Mail,
+- [x] Manual check on an iPhone and a Mac: after installing the profile, Mail,
       Calendar, Contacts and Reminders all connect with no password prompt.
-- [ ] The new device appears in the list from US-005 under its label, and
+      Not run: accepted by the operator without a device check (decision 24).
+- [x] The new device appears in the list from US-005 under its label, and
       revoking it stops all of those accounts.
 
 ### US-007: Hand a profile to a phone by QR code
@@ -119,18 +120,18 @@ password.
 phone so that I do not have to sign in to the web UI on the phone.
 
 **Acceptance Criteria:**
-- [ ] Add a device shows a QR code holding a one-time link. The link holds a
+- [x] Add a device shows a QR code holding a one-time link. The link holds a
       random token, never the app password.
-- [ ] Opening the link creates the app password and returns the profile from
+- [x] Opening the link creates the app password and returns the profile from
       US-006. The phone needs no session.
-- [ ] A second fetch of the link, a fetch after 5 minutes, and a fetch of an
+- [x] A second fetch of the link, a fetch after 5 minutes, and a fetch of an
       unknown token all return the same response, and create nothing.
-- [ ] Only a hash of the token is stored, through Raft, so a link works once
+- [x] Only a hash of the token is stored, through Raft, so a link works once
       across all nodes. The token is not written to any log, including request
       logs.
-- [ ] The page shows a warning that anyone who scans the code first gets the
+- [x] The page shows a warning that anyone who scans the code first gets the
       credential. It updates to show when the link has been used.
-- [ ] Fetches of the link are throttled per IP like a failed login.
+- [x] Fetches of the link are throttled per IP like a failed login.
 
 ### US-008: Add any other client
 **Description:** As a user of Thunderbird, Outlook or another client, I want the
@@ -377,9 +378,15 @@ sessions are not cookie-based.
     IMAP, POP3 and SMTP sessions it opened, on their next command, as a disabled
     account already does. This covers single revoke, Revoke all and the revoke on
     password change. It replaces the earlier acceptance that such sessions survive.
-21. (operator, 2026-11-06, after verification) The two findings below stay out of
-    v0.15.3: the guess limit reset and the swapped-fields log line. See section 8.2.
-22. (operator, 2026-11-06) The device checks run on production after deployment,
+21. (operator, 2026-11-06, after verification; replaced by decision 23) The guess
+    limit reset and the swapped-fields log line stay out of v0.15.3.
+23. (operator, 2026-11-07, replacing decision 21) Both findings are fixed before the
+    tag. An app password success forgives no failed guesses, and a user name with
+    the shape of an app password is not logged. A swapped account password is still
+    logged, because nothing marks it as a secret.
+24. (operator, 2026-11-07, replacing decision 22) US-006 and US-007 are ticked
+    without the device checks. Any fault is left to be reported in use. See 8.2.
+22. (operator, 2026-11-06; replaced by decision 24) The device checks run on production after deployment,
     because there is no test server. They do not gate the tag. US-006 and US-007
     stay open until they pass.
 
@@ -480,17 +487,6 @@ Found while building the QR link (2026-11-06):
 
 Found by verification (2026-11-06):
 
-- A leaked app password lifts the guess limit on the same account's password.
-  `Limiter.Succeed` forgives the (IP, account) failures after any success, so four
-  guesses and one app password login can repeat without limit: 400 wrong guesses
-  from one IP were not throttled, then the right password was accepted. It needs
-  a leaked app password and the switch off. Fix: an app password success forgives
-  nothing, or only failures of that credential. Deferred by decision 21.
-- A client with the user name and password fields swapped logs the app password
-  in plain text: IMAP, POP3 and SMTP log the user name at Warn on failure, and the
-  line reaches `/admin/logs`. Account passwords have the same exposure. This is
-  against FR-2's metric of no plaintext in any log. Fix: do not log a user name
-  that `ParseAppPassword` accepts. Deferred by decision 21.
 - First use is logged twice when two logins read the record before the touch
   applies, as an Apple profile connecting Mail, Calendar and Contacts will. The
   FSM makes the second touch a no-op, so only the log is wrong.
@@ -520,3 +516,14 @@ Found by verification (2026-11-06):
   LSP was unavailable.
 - `go test -race ./internal/web/handlers/` can pass the default 10 minute timeout
   on a loaded machine. It holds 1166 tests.
+- An account password in the user name box is still logged on a failed login,
+  because nothing marks it as a secret. Only the app password shape is recognised.
+
+Accepted without a device check (decision 24, 2026-11-07). None of these has been
+seen on a real device:
+
+- Installing the profile on an iPhone or Mac, with no password prompt.
+- The Apple password key names, which come from memory and an unsigned example.
+- POST as the download route on iOS Safari. The fallback is a ticket and a GET.
+- Whether iOS prefetches or fetches the link twice. The fallback is a tap to POST.
+- The checklists are in the release handoff, for when someone next has a device.

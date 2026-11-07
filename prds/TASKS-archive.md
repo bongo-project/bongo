@@ -572,3 +572,23 @@ Report in [verification.md](verification.md).
 | 35.5 | Test gaps: web back-fill, settings page shape, sidebar classes, Tasks write failure, repeat call | [verification.md](verification.md) | DONE (2026-11-04) | `TestCalendarPagesBackfillTasks`, `TestCalendarSettingsUsesSharedStyles`, `TestEnsureDefaultNewUserTasksFailureIsReturned`, `TestEnsureDefaultRepeatCallWritesNothing`; class scan now covers the sidebar. |
 | 35.6 | Seed: tasks dated in UTC; a redirect to login is not counted as created. Docs: which pages back-fill. Sidebar tool buttons padded. | [verification.md](verification.md) | DONE (2026-11-04) | `taskCreated`. |
 
+## Phase 36: App passwords v0.15.3
+
+PRD: [done/prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md). Report in [verification.md](verification.md).
+
+| ID | Task | Source | Status | Notes |
+|----|------|--------|--------|-------|
+| 36.1 | Credential record: FR-1 to FR-4, FR-9, FR-11; lookup ID (decision 8) | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: none |
+| 36.2 | US-002, US-003: protocol login path; web login and re-authentication refuse app passwords; audit every call site | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.1 |
+| 36.3 | US-001, US-004, US-005: create, revoke and last used in Security settings | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.2 |
+| 36.4 | US-008: Add a device, Other clients, with server settings | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.3 |
+| 36.5 | US-006: personal Apple profile; test signing first (open question 6) | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.4 |
+| 36.6 | US-007: one-time QR link | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.5 |
+| 36.7 | US-009: per-account switch and the 2FA enrolment flow | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.2, 36.4 |
+| 36.8 | US-010: admin revokes all of a user's app passwords | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.3 |
+| 36.9 | FR-15 to FR-17: revoke option on password change, re-authentication on create, cap of 10 | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.3 |
+| 36.10 | Decision 20: revoking an app password ends the IMAP, POP3 and SMTP sessions it opened | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.9. From verification |
+| 36.11 | Verification fixes: docs that contradict the switch, Finish without 2FA, translated throttle on the plain create form | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.9. From verification |
+| 36.12 | Verification test gaps, every one listed in the batch brief | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.9. From verification |
+| 36.13 | Operator device checks on production: US-006, US-007, Apple key names, POST on iOS Safari, iOS prefetch | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Not run: accepted without a device check, decision 24 |
+| 36.14 | Decision 23: app password success forgives no guesses; no app password in logs | [prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md) | DONE (2026-11-07) | Needs: 36.10. From verification |

@@ -462,7 +462,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	// error keeps well-behaved clients backing off without permanently locking
 	// out a user who later provides the right password.
 	if s.authFailures >= maxAuthFailures || s.backend.authFail.Blocked(ip) {
-		s.logger.Warn("smtp: auth throttled after repeated failures", "username", username, "ip", s.remoteIP)
+		s.logger.Warn("smtp: auth throttled after repeated failures", "username", auth.LogUsername(username), "ip", s.remoteIP)
 		return &gosmtp.SMTPError{Code: 454, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many authentication failures; try again later"}
 	}
 
@@ -474,10 +474,10 @@ func (s *Session) AuthPlain(username, password string) error {
 		// backend's error text (profile parsing, store failures) must stay in
 		// the server log. Only the error class is logged, never the password.
 		if errors.Is(err, auth.ErrBadCredentials) {
-			s.logger.Warn("smtp: auth failed", "username", username, "ip", s.remoteIP)
+			s.logger.Warn("smtp: auth failed", "username", auth.LogUsername(username), "ip", s.remoteIP)
 			return errAuthBadCredentials
 		}
-		s.logger.Error("smtp: auth backend error", "username", username, "ip", s.remoteIP, "error", err)
+		s.logger.Error("smtp: auth backend error", "username", auth.LogUsername(username), "ip", s.remoteIP, "error", err)
 		return errAuthTemporary
 	}
 
@@ -486,7 +486,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	if profile == nil || profile.Disabled {
 		s.authFailures++
 		s.backend.authFail.Fail(ip, username)
-		s.logger.Warn("smtp: auth refused, no usable profile", "username", username, "ip", s.remoteIP)
+		s.logger.Warn("smtp: auth refused, no usable profile", "username", auth.LogUsername(username), "ip", s.remoteIP)
 		return errAuthBadCredentials
 	}
 	s.epoch = auth.ProtocolEpoch(profile)
@@ -495,8 +495,13 @@ func (s *Session) AuthPlain(username, password string) error {
 	s.authed = true
 	s.userID = userID
 	s.authFailures = 0
-	s.backend.authFail.Succeed(ip, username)
-	s.logger.Debug("smtp: auth succeeded", "username", username)
+	// A success forgives failures only when it proves the secret they guessed.
+	// An app password proves nothing about the account password, and forgiving
+	// here would give its holder unlimited guesses at it.
+	if appPassword == "" {
+		s.backend.authFail.Succeed(ip, username)
+	}
+	s.logger.Debug("smtp: auth succeeded", "username", auth.LogUsername(username))
 	return nil
 }
 

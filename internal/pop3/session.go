@@ -318,7 +318,7 @@ func (s *session) handlePass(args string) {
 	// Brute-force defence: block the source IP after too many failed attempts.
 	ip := s.clientIP()
 	if s.authLimiter != nil && s.authLimiter.Blocked(ip) {
-		s.logger.Warn("pop3: auth throttled after repeated failures", "username", s.username, "ip", ip)
+		s.logger.Warn("pop3: auth throttled after repeated failures", "username", auth.LogUsername(s.username), "ip", ip)
 		s.username = ""
 		s.respond("-ERR too many failed attempts, try again later")
 		return
@@ -326,7 +326,7 @@ func (s *session) handlePass(args string) {
 
 	userID, profile, appPassword, err := s.auth.AuthenticateProtocol(s.username, args)
 	if err != nil {
-		s.logger.Warn("pop3: auth failed", "username", s.username, "ip", ip)
+		s.logger.Warn("pop3: auth failed", "username", auth.LogUsername(s.username), "ip", ip)
 		if s.authLimiter != nil {
 			s.authLimiter.Fail(ip, s.username)
 		}
@@ -335,13 +335,16 @@ func (s *session) handlePass(args string) {
 		return
 	}
 
-	if s.authLimiter != nil {
+	// A success forgives failures only when it proves the secret they guessed.
+	// An app password proves nothing about the account password, and forgiving
+	// here would give its holder unlimited guesses at it.
+	if s.authLimiter != nil && appPassword == "" {
 		s.authLimiter.Succeed(ip, s.username)
 	}
 	// Fail closed: the epoch must come from the profile the password was
 	// verified against, not a later re-read a concurrent reset could change.
 	if profile == nil || profile.Disabled {
-		s.logger.Warn("pop3: auth refused, no usable profile", "username", s.username, "ip", ip)
+		s.logger.Warn("pop3: auth refused, no usable profile", "username", auth.LogUsername(s.username), "ip", ip)
 		s.username = ""
 		s.respond("-ERR authentication failed")
 		return
@@ -350,7 +353,7 @@ func (s *session) handlePass(args string) {
 	s.appPassword = appPassword
 	s.userID = userID
 	s.authenticated = true
-	s.logger.Debug("pop3: auth succeeded", "username", s.username, "user_id", userID)
+	s.logger.Debug("pop3: auth succeeded", "username", auth.LogUsername(s.username), "user_id", userID)
 
 	if err := s.loadInboxSnapshot(); err != nil {
 		s.logger.Error("pop3: failed to load inbox", "error", err)

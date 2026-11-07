@@ -43,3 +43,37 @@ func TestDAVWrongAppPasswordsLockTheAddressOut(t *testing.T) {
 	}
 	apps.Wait()
 }
+
+// A success proves only the secret that was used: an app password must not
+// forgive failed guesses at the account password.
+func TestDAVAppPasswordForgivesNoGuesses(t *testing.T) {
+	a := newDAVTestAuth(t, map[string]string{"alice@example.com": "pw"})
+	ps, err := store.NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	apps := auth.NewAppPasswords(store.NewAppPasswordStore(ps, davPebbleApplier{ps}), nil)
+	a.SetAppPasswords(apps)
+	pw, _, err := apps.Create("uid1", "phone")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lim := authlimit.New(davMaxAuthFailures, time.Minute)
+	for i := range davMaxAuthFailures - 1 {
+		if c := davAttempt(a, lim, "alice@example.com", "guess"); c != http.StatusUnauthorized {
+			t.Fatalf("guess %d = %d, want 401", i+1, c)
+		}
+	}
+	if c := davAttempt(a, lim, "alice@example.com", pw); c != http.StatusOK {
+		t.Fatalf("app password below the limit = %d, want 200", c)
+	}
+	apps.Wait()
+	if c := davAttempt(a, lim, "alice@example.com", "guess"); c != http.StatusTooManyRequests {
+		t.Fatalf("the guess that reaches the limit = %d, want 429", c)
+	}
+	if c := davAttempt(a, lim, "alice@example.com", "pw"); c != http.StatusTooManyRequests {
+		t.Fatalf("right account password once locked = %d, want 429", c)
+	}
+}

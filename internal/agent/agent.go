@@ -5039,7 +5039,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 		return "", false
 	}
 
-	userID, _, _, err := authn.AuthenticateProtocol(username, password)
+	userID, _, appPassword, err := authn.AuthenticateProtocol(username, password)
 	if err != nil {
 		if limiter.Fail(ip, username) {
 			logger.Warn("dav: basic auth locked out after repeated failures", "ip", ip)
@@ -5051,7 +5051,12 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 		return "", false
 	}
 
-	limiter.Succeed(ip, username)
+	// A success forgives failures only when it proves the secret they guessed.
+	// An app password proves nothing about the account password, and forgiving
+	// here would give its holder unlimited guesses at it.
+	if appPassword == "" {
+		limiter.Succeed(ip, username)
+	}
 	return userID, true
 }
 
