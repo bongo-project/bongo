@@ -1,7 +1,7 @@
-# PRD: Load and throughput testing v0.18.0
+# PRD: Load and throughput testing v0.15.4
 
-Status: candidate, to follow v0.15.3 and come before v0.16 (decision 3). The
-release number changes at import.
+Status: imported as Phase 37. Follows v0.15.3 and comes before v0.16 (decisions 3
+and 6).
 
 ## 1. Introduction / Overview
 
@@ -349,5 +349,7 @@ worthwhile.
    media (US-010).
 5. (operator, 2026-11-06) The test also finds how much storage and how many messages
    one node holds (section 6.3.1).
+6. (import, 2026-11-07) The release number is v0.15.4, so v0.16 stays Sharing and
+   contacts and later releases keep their numbers.
 
 ### 8.2 Candidates for the next release
