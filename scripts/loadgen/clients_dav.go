@@ -51,9 +51,25 @@ func davOpFor(method string) string {
 	return ""
 }
 
+// withCollectionSlash gives the bare collection roots their trailing slash.
+// go-webdav trims it before asking for the current user principal, and the
+// server answers 404 for "/caldav" and "/carddav" (it serves "/caldav/"), so
+// without this no DAV client could finish discovery. The tool never follows
+// /.well-known, so it cannot rely on a redirect either.
+func withCollectionSlash(req *http.Request) *http.Request {
+	if req.URL.Path != "/caldav" && req.URL.Path != "/carddav" {
+		return req
+	}
+	r := req.Clone(req.Context())
+	r.URL.Path += "/"
+	r.URL.RawPath = ""
+	return r
+}
+
 func (t *davRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	op := davOpFor(req.Method)
 	start := time.Now()
+	req = withCollectionSlash(req)
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
 		t.fail(op, classifyTransport(err))

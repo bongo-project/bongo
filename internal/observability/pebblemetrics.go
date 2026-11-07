@@ -107,4 +107,8 @@ func init() {
 	Registry.MustRegister(newPebbleCollector())
 	// The load test reads CPU, resident memory and open files from these.
 	Registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	// Bongo serves its own registry, so the default registry's runtime
+	// collector is not served. The runbook watches go_goroutines and the heap
+	// next to resident memory to tell a leak from the allocator holding pages.
+	Registry.MustRegister(collectors.NewGoCollector())
 }

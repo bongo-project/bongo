@@ -134,6 +134,7 @@ as `/etc/bongo/bongo.hcl` and edit the sink address. What it sets and why:
 | `imap.max_connections`, `max_connections_per_ip` | 65000 | `max_connections` counts per listener (plain and TLS apart). |
 | `pop3.max_connections`, `max_connections_per_ip` | 20000 | Same. |
 | `storage.max_open_user_dbs` | 2048 | The default of 256 causes repeated closing and opening of user databases. |
+| `storage.blob_gc` | `"on"` | Unset means off, and the collector never runs: `bongo_blobs`, `bongo_blob_bytes` and `bongo_blob_gc_*` would stay at zero for the whole test. Production runs `"on"`. |
 | `antivirus.clamav.enabled` | `true` | Scanning stays on. Needs clamd installed and running. |
 | `antispam` | no `dnsbl` block | No live blocklist lookups. The built-in scorer always runs. |
 | `telemetry.pprof` | `false` | Profiling changes timing, so published runs have it off. |
@@ -165,7 +166,11 @@ Notes:
   it in the compose file to the machine's RAM less what the operating system
   and clamd need, or run the binary directly. Raise the open-file limit of the
   server process too (`ulimits` in compose, `LimitNOFILE` in systemd).
-  Each open user database holds about three file descriptors.
+  Each open user database holds about three file descriptors. In the dry run
+  (no memory limit, 20 accounts) the resident size reached 3.2 GB after 22,000
+  messages while the delivery pipeline was backlogged, so a run inside the
+  512 MB limit would be killed by the kernel (OOM) long before a rate limit
+  shows. Raise the limit first.
 - Run clamd on the server and check that its socket exists at the configured
   path before the first run. With `on_failure = "quarantine"` a stopped clamd
   quarantines mail rather than delivering it unscanned.
@@ -328,11 +333,14 @@ messages. `bulk` writes the server's data directory directly:
 sudo systemctl stop bongo        # or: docker compose stop bongo
 ./loadgen bulk --target-allow 127.0.0.1 --test-domain bongo.test \
   --bulk-data-dir /var/lib/bongo/data --bulk-hostname mail.bongo.test \
-  --state-file bulk.state --bulk-summary-file bulk-summary.json \
+  --state-file $PWD/bulk.state --bulk-summary-file bulk-summary.json \
   --users 100000 --messages-per-user 50 --seed 1 --bulk-workers 16
 sudo chown -R 10001 /var/lib/bongo/data
 sudo systemctl start bongo
 ```
+
+`bulk` requires `--state-file` (and `--bulk-data-dir`) as absolute paths and
+refuses a state file that already exists; `seed` accepts a relative one.
 
 Copy `bulk.state` to the generator (mode 0600) and use it as the state file.
 On the first start the leader hosts `bongo.test` from `smtp.hostname`.
@@ -394,6 +402,27 @@ While any stage runs, watch `/metrics` (through the tunnel) for:
 | `bongo_blob_gc_pass_seconds`, `bongo_raft_snapshot_seconds` | Background job times. |
 | `process_resident_memory_bytes`, `go_goroutines` | Server memory and goroutines. |
 
+Some of these move only on a timer. `bongo_blobs`, `bongo_blob_bytes`,
+`bongo_blob_gc_referenced_blobs` and `bongo_blob_gc_pass_seconds` are written
+by the blob garbage collector's pass, which runs every 15 minutes (a constant,
+not a config key) and first 15 minutes after the server starts. A stage shorter
+than that, or a scrape taken before the first tick, shows them at zero: that is
+not a broken metric. `bongo_blob_gc_deleted_total` stays at zero for at least
+the first hour, because a blob is deleted only when it is older than an hour
+and unreferenced on two passes in a row. `bongo_raft_snapshot_seconds` and
+`bongo_raft_snapshot_bytes` move only after `cluster.raft.snapshot_threshold`
+entries (default 8192) and at most once per `snapshot_interval`.
+`bongo_pebble_write_stalls_total` and `bongo_pebble_write_stall_seconds_total`
+count only the times Pebble made writers wait because flushes or compactions
+fell behind. They stayed at zero through 22,000 messages in the dry run, and
+zero under light load is the normal reading, not a broken metric: a rise is
+the finding. `bongo_pebble_compactions_total` moved after a few thousand
+messages.
+`bongo_search_index_backlog` counts the commands waiting in the indexer's queue
+of 4096 and cannot read above that. Once the queue is full the state machine
+indexes inline and slows the Raft apply (the log says `derived index queue
+full, indexing inline`), so a flat 4095 means "at least this far behind".
+
 Also watch the machines themselves: CPU, memory, disk latency (`iostat -x 5`)
 and free space on both.
 
@@ -435,6 +464,14 @@ messages fall below the offered rate, SMTP latency climbs steeply,
 `bongo_search_index_backlog` or the queue grows without bound, the error rate
 rises, or the probe counts messages lost. The summary marks a run invalid when
 the generator saturated (exit 3); that run does not measure the server.
+
+The probe's "lost" means "not seen within the probe timeout", not "never
+delivered". When the delivery pipeline falls behind, accepted mail waits in the
+queue and shows up minutes later. In the dry run 25 of 48 probe messages were
+counted lost while the server was 11,000 messages behind, and every accepted
+message was in the mailboxes once the backlog drained. Before calling mail
+lost, wait for the backlog to clear (the count of `deliver: mail stored` log
+lines reaching `bongo_smtp_messages_total`) and count the messages over IMAP.
 
 Files: `ramp-mail-smtp.json`, `ramp-mail-probe.json`,
 `ramp-mail-samples.jsonl`, `ramp-mail-raw.txt`, `sink-summary.json`.
@@ -504,8 +541,10 @@ something breaks. About 4 to 8 hours. Load a larger account set (section 6),
 then run the 7.3 commands with `--imap-idle`, `--imap-active`, `--dav` and
 `--pop3` scaled to the same share of the accounts. Watch `bongo_user_dbs_open`
 and `bongo_user_db_evictions_total` against `storage.max_open_user_dbs`, and
-the memory of the server. Stop when latency or errors leave the range of the
-previous step.
+the memory of the server. Open search indexes have their own cap of 128 that no
+config key changes: `bongo_search_indexes_open` stops at 128 and
+`bongo_search_index_evictions_total` starts to rise once more than 128 accounts
+are active. Stop when latency or errors leave the range of the previous step.
 
 ### 7.6 Storage scale
 
@@ -633,13 +672,42 @@ Restore the snapshot before every run, so each run starts from the same data.
 4. Start the server and check that it hosts `bongo.test` and the accounts
    answer (one IMAP login from the generator).
 
-To move a volume to a bigger or smaller machine, stop the server, detach the
-volume, attach it to the new machine, mount it at `storage.data_dir`, and start
-the server with the same config. Raft records the node's address, and a new
-machine may have a new one. A single node restarting on a moved data directory
-is checked in the dry run (task 37.13); do not rely on it before that check
-has passed on the same providers and volume types. If the node does not start,
-stop and report it; do not edit the Raft state by hand.
+### Moving the data directory to another machine or path
+
+A single node starts on a moved data directory. The dry run moved a 22,000
+message store to a new path with new Raft, gossip and listener ports, and it
+elected itself and served all of the data. The steps that worked:
+
+1. Stop the server with SIGTERM and wait for the process to exit (about a
+   second). Never copy or move a running store.
+2. Optionally copy the directory first (`cp -R`) as a reference, and compare it
+   after the move with `loadgen bulk --bulk-check-a COPY --bulk-check-b MOVED`
+   (both servers stopped; exit 0 means the stores match).
+3. Move or mount the directory at the new `storage.data_dir`. Keep
+   `server.name` unchanged: it is the node's Raft ID.
+4. In the config change `storage.data_dir`, and `server.advertise_addr` if the
+   machine has a new address. Raft and gossip bind the advertise address
+   (`cluster.bind_addr` if set), so it must be an address of the new machine.
+5. Start the server. Expect the start to take longer than a normal restart,
+   because Raft restores its latest snapshot into Pebble first (about 20
+   seconds for 44,000 keys on a busy laptop). Wait for the log line
+   `raft: leadership acquired`. If it does not appear within a minute, stop and
+   report; do not edit the Raft state by hand.
+6. Check the data: one IMAP login per account for the message counts, one
+   `SEARCH TEXT` for a word you know is in the bodies, and one delivery by
+   SMTP.
+
+What this does not prove. The dry run had only the address 127.0.0.1, so the
+node moved to new ports, never to a different IP address. The mechanism is the
+same (the node votes for itself by its ID, and binds the address in the
+config), but confirm it on the first real move.
+
+The stored Raft configuration keeps the old address. After the move, the log
+still reads `initial configuration: ... Address:127.0.0.1:OLD-PORT` while the
+node runs at the new one, because a start on existing state never rewrites the
+configuration. That is harmless for one node, and the load test never adds a
+second. Never add a node to a moved store without first checking what address
+the stored configuration holds for the first node.
 
 ## 10. Removing the machines and volumes
 

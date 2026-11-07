@@ -72,6 +72,11 @@ func TestLoadTestExampleConfig(t *testing.T) {
 	if cfg.Storage.MaxOpenUserDBs <= 0 {
 		t.Errorf("storage.max_open_user_dbs = %d, want it set", cfg.Storage.MaxOpenUserDBs)
 	}
+	// Unset means off, and the blob gauges and the GC histogram are written
+	// only by a pass, so the soak would show no blob metric at all.
+	if got := cfg.Storage.BlobGCMode(); got == "off" {
+		t.Errorf("storage.blob_gc mode = %q, want on or dryrun so the blob metrics move", got)
+	}
 	if cfg.Storage.DataDir == "" {
 		t.Error("storage.data_dir is empty")
 	}

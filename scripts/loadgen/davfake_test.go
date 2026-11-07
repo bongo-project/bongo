@@ -89,6 +89,12 @@ func (f *davFake) handle(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "failure for "+user+" at "+r.URL.Path)
 		return
 	}
+	// The real server serves the collection roots with a trailing slash only;
+	// "/caldav" is a 404 there, and go-webdav's discovery asks for exactly that.
+	if r.URL.Path == "/caldav" || r.URL.Path == "/carddav" {
+		http.NotFound(w, r)
+		return
+	}
 	body, _ := io.ReadAll(r.Body)
 	cal := strings.HasPrefix(r.URL.Path, "/caldav")
 	root := "/carddav/"

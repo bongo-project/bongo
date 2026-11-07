@@ -120,6 +120,25 @@ func TestProcessMetricsExported(t *testing.T) {
 	}
 }
 
+// TestGoRuntimeMetricsExported guards the runbook's watch table, which names
+// go_goroutines. Bongo serves its own registry, so the runtime collector that
+// the default registry carries is absent unless it is registered here.
+func TestGoRuntimeMetricsExported(t *testing.T) {
+	srv := httptest.NewServer(Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	for _, name := range []string{"go_goroutines", "go_memstats_heap_inuse_bytes"} {
+		if !strings.Contains(string(body), "# TYPE "+name+" ") {
+			t.Errorf("metrics output missing %s", name)
+		}
+	}
+}
+
 func TestRaftCommitLag(t *testing.T) {
 	if got := testutil.ToFloat64(RaftCommitLagEntries); got != 0 {
 		t.Fatalf("lag with no source = %v, want 0", got)

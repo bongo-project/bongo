@@ -428,3 +428,24 @@ worthwhile.
   already in use": it picks a free port and binds it later, and another test can
   take the port in between. Seen once in the full suite on 2026-11-07; passed
   three times alone.
+- No outbound mail generator: add an authenticated submission mode to loadgen
+  (seeded credentials, 587 or 465) so the sink, bongo_queue_* and the submission
+  connection metric are driven (dry run finding 9).
+- The search index cache cap (128 open indexes) is hard-coded; the account-scale
+  stage reaches it at 128 active accounts. Config key or not is a product
+  decision (dry run finding 10).
+- Six INFO lines per accepted message on the hot path and one WARN per message
+  when the indexer queue is full; at the default rotation that keeps about 15
+  minutes of history at 200 messages/s. Consider DEBUG for SPF result and
+  message enqueued, and rate-limit the queue-full warning (dry run finding 11).
+- Resident memory reached 3.2 GB after 22,000 messages with a backlogged
+  pipeline, against 150 MB for a fresh node on the same data. Cause unknown
+  (backlog, Bleve, SQLite caches, or heap not returned); the Go runtime metrics
+  now exposed should tell on the first VPS run (dry run finding 12).
+- After a moved data directory the stored Raft configuration keeps the old
+  address; harmless for one node, wrong for a later second node. A leader could
+  re-register its own ID with the current address on start (dry run finding 14).
+- The runbook's certificate command has no IP SAN; add one before any cluster
+  stage (dry run finding 16). The report states "The sink received 0 messages"
+  on every run until the submission mode exists (dry run finding 17).
+

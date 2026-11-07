@@ -1828,3 +1828,13 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Orchestrator fixes at merge: quoted the IPv6 probe addresses (zsh globbing); section 10 now says the config is kept as its hash and the secret lives in an environment file; clients --help said IMAP connection limits are reloadable, but diff.go and config-reload.md class them RESTART. Full gate passed.
 - To confirm in 37.13: IMAP and POP3 read cluster.tls, so the self-signed certificate also turns on single-node Raft TLS.
 
+## 2026-11-07: Phase 37 batch 9 (37.13 dry run)
+
+- 37.13 plan REVISE (applied): no GC interval key exists (orphanGCInterval is a 15-minute constant), so the run lasted past the first tick; loadgen makes no outbound mail, so queue and sink metrics cannot move; set every listener port explicitly.
+- Ran on loopback, ports 47000-48999, scratch under /private/tmp, ClamAV off (no clamd). Four nodes started and stopped by PID; scratch removed. Worker review MINOR. Results in docs/design/load-test-dry-run.md.
+- Fixed with tests: storage.blob_gc unset in deploy/loadtest.example.hcl; DAV discovery 404 on PROPFIND /caldav (go-webdav trims the slash; the fake hid it); Go runtime collector not registered. Runbook: blob metrics move only on the GC tick, write stalls 0 is normal, backlog gauge caps at 4096, probe "lost" means not seen within the timeout, bulk needs absolute paths, 512 MB compose memory limit, moved-directory procedure.
+- Observed: 6 INFO lines and about 1,340 bytes per accepted message; SMTP accepted 75/s but the pipeline stored about 22/s, 11,000 queued, probe delay 48 s, search lag 26 s; RSS 3.2 GB after 22,000 messages against 150 MB fresh. Moved directory: 20 s start, all data and search intact, stored Raft address unchanged. Seven follow-ups to PRD 8.2.
+- The main checkout had live uncommitted UI edits from someone else (templates, CSS, JS, i18n, prds/research/prd-ui-unification-v0.16.md) while this batch merged. Staged and committed by explicit path only, and ran the gate in a clean worktree.
+- PATTERN: [tests] A fake that accepts what the real server refuses hides integration bugs; the dry run against the real server is what found the DAV discovery failure.
+- PATTERN: [git] When the main checkout has someone else's unstaged edits, stage by explicit path, commit the index only, and run the gate in a separate worktree at the commit.
+

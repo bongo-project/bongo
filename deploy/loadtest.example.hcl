@@ -64,6 +64,13 @@ storage {
   # descriptors, so raise the server's open-file limit with it.
   max_open_user_dbs = 2048
 
+  # Unset means "off", and then the blob garbage collector never runs: the
+  # bongo_blobs, bongo_blob_bytes and bongo_blob_gc_* metrics stay at zero for
+  # the whole test. Production runs "on", so the test does too. A pass runs
+  # every 15 minutes (not configurable), the first one 15 minutes after start.
+  # It deletes only blobs unreferenced on two passes and older than an hour.
+  blob_gc = "on"
+
   pebble {
   }
 }
