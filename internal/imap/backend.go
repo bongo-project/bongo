@@ -317,13 +317,13 @@ func (s *session) Login(username, password string) error {
 	}
 
 	if s.authLimiter.Blocked(ip) {
-		s.logger.Warn("imap: login throttled after repeated failures", "username", username, "ip", s.remoteIP)
+		s.logger.Warn("imap: login throttled after repeated failures", "username", auth.LogUsername(username), "ip", s.remoteIP)
 		return errAuthRateLimited
 	}
 
 	userID, profile, appPassword, err := s.auth.AuthenticateProtocol(username, password)
 	if err != nil {
-		s.logger.Warn("imap: login failed", "username", username, "ip", s.remoteIP)
+		s.logger.Warn("imap: login failed", "username", auth.LogUsername(username), "ip", s.remoteIP)
 		if s.authLimiter.Fail(ip, username) {
 			return errAuthRateLimited
 		}
@@ -333,14 +333,19 @@ func (s *session) Login(username, password string) error {
 	// verified against, so a reset between verification and a re-read cannot
 	// hand the old password a session with the new epoch.
 	if profile == nil || profile.Disabled {
-		s.logger.Warn("imap: login refused, no usable profile", "username", username)
+		s.logger.Warn("imap: login refused, no usable profile", "username", auth.LogUsername(username))
 		return imapserver.ErrAuthFailed
 	}
 	s.epoch = auth.ProtocolEpoch(profile)
 	s.appPassword = appPassword
 	s.userID = userID
-	s.authLimiter.Succeed(ip, username)
-	s.logger.Debug("imap: login succeeded", "username", username, "user_id", userID)
+	// A success forgives failures only when it proves the secret they guessed.
+	// An app password proves nothing about the account password, and forgiving
+	// here would give its holder unlimited guesses at it.
+	if appPassword == "" {
+		s.authLimiter.Succeed(ip, username)
+	}
+	s.logger.Debug("imap: login succeeded", "username", auth.LogUsername(username), "user_id", userID)
 	return nil
 }
 

@@ -1752,3 +1752,7 @@ PATTERN: cluster - a conditional FSM command that the caller must learn the resu
 
 PATTERN: security - a Limiter.Succeed on any credential forgives failures of a different credential; ask which secret a success actually proved.
 PATTERN: testing - a negative field name (AppPasswordRevoked) keeps the zero value of a state struct live, so fakes need no change; changing the method signature makes every override fail to compile instead of silently bypassing it.
+
+## 2026-11-07: Phase 36 task 36.14
+
+Asked about the tag, the operator reversed decision 21: both findings fixed first (decision 23). Done by hand, tests first; every new test was red on the merged code. Callers skip `Succeed` when the login used an app password. `auth.LogUsername` guards every protocol user name in logs, with a trim for pasted line endings. Mutants on each throttled line and the trim went red.

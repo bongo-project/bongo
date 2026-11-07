@@ -105,6 +105,20 @@ func MaskAppPassword(id string) string {
 	return strings.Join(groups, "-")
 }
 
+// redactedUsername stands in for a user name that looks like an app password.
+const redactedUsername = "[app password]"
+
+// LogUsername returns a user name that is safe to log. A client with its fields
+// swapped sends the app password as the user name, and every failed login logs
+// that name, so a name with the shape of an app password is replaced. The space
+// trim covers a pasted line ending, which ParseAppPassword alone would refuse.
+func LogUsername(username string) string {
+	if _, _, ok := ParseAppPassword(strings.TrimSpace(username)); ok {
+		return redactedUsername
+	}
+	return username
+}
+
 // ParseAppPassword reads a typed app password. It accepts hyphens, spaces or no
 // separator and folds ASCII case (phones auto-capitalise), and returns the
 // public lookup id and the 18-letter secret. ok is false unless the input is

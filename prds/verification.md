@@ -1,8 +1,8 @@
 # Verification: App passwords v0.15.3
 
 **Date:** 2026-11-06
-**Commit verified:** `67fa569`, then re-checked after the fixes in Phase 36 tasks 36.10 to 36.12
-**PRD:** [active/prd-app-passwords-v0.15.3.md](active/prd-app-passwords-v0.15.3.md)
+**Commit verified:** `67fa569`, then re-checked after the fixes in Phase 36 tasks 36.10 to 36.12 and 36.14
+**PRD:** [done/prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md)
 **Rigor:** adversarial. Three requirement groups each had two read-only verifiers, one judging whether tests would go red and one attacking the behaviour. A completeness critic then reviewed the whole result and settled disagreements. Operator decisions in PRD 8.1 override the story text where they differ.
 **Scale:** 7 agents, 255 tool calls, 67 minutes. The fix batch used 13 more agents.
 
@@ -19,22 +19,22 @@ The first pass had no FAIL. Its 82 verdicts across the lenses were 45 PASS and 3
 | US-003 no web access | PASS | One-compare test added on the web path. |
 | US-004 revoke | PASS | Revoking now also ends open sessions (decision 20). |
 | US-005 what is in use | PASS | Created date as US-001. |
-| US-006 Apple profile | PARTIAL | Device check outstanding (task 36.13). Server side verified. |
-| US-007 QR link | PARTIAL | Device check outstanding (task 36.13): POST on iOS Safari, prefetch. Server side verified. |
+| US-006 Apple profile | PASS by operator acceptance | Server side verified. Not checked on a device (decision 24). |
+| US-007 QR link | PASS by operator acceptance | Server side verified. POST on iOS Safari and prefetch not checked on a device (decision 24). |
 | US-008 other clients | PASS | Page values now compared row by row with a non-default fixture. |
 | US-009 switch | PASS | Finish no longer shown without 2FA. Per-protocol rows added. |
 | US-010 admin revoke | PASS | Open sessions end; route added to the CSRF table. |
-| FR-2 and the no-plaintext metric | PARTIAL | Swapped-fields log line, deferred by decision 21. |
-| FR-8 and Goal 3 | PARTIAL | Guess limit reset, deferred by decision 21. |
+| FR-2 and the no-plaintext metric | PASS | Swapped-fields log line fixed (decision 23). |
+| FR-8 and Goal 3 | PASS | Guess limit reset fixed (decision 23). |
 | Other FRs, decisions 5 to 19 | PASS | |
 
 ## Behaviour defects
 
 Each was reproduced before any action was taken.
 
-1. **A leaked app password lifted the guess limit on the account password.** `Limiter.Succeed` forgives (IP, account) failures after any success. Reproduced: 400 wrong guesses from one IP with no throttle, then the right password accepted; the control locked at 5. **Open.** Deferred to PRD 8.2 by the operator.
+1. **A leaked app password lifted the guess limit on the account password.** `Limiter.Succeed` forgives (IP, account) failures after any success. Reproduced: 400 wrong guesses from one IP with no throttle, then the right password accepted; the control locked at 5. **Fixed** in 36.14: an app password success forgives nothing, on all four protocols.
 2. **A revoked app password left open sessions working.** A held SMTP session kept relaying, and IMAP and POP3 sessions survived, including after Revoke all. **Fixed** in 36.10. A session keeps the lookup ID and `AccountState` checks the record.
-3. **Swapped user name and password fields logged the app password in plain text.** Reproduced on IMAP; POP3 and SMTP log the same field. **Open.** Deferred to PRD 8.2 by the operator.
+3. **Swapped user name and password fields logged the app password in plain text.** Reproduced on IMAP; POP3 and SMTP log the same field. **Fixed** in 36.14: `auth.LogUsername` replaces a name with that shape. A swapped account password is still logged; recorded in 8.2.
 4. **Docs contradicted the switch.** `docs/caldav-carddav.md`, `docs/sendmail.md`, `docs/walkthrough.md` and `SECURITY.md` are corrected.
 5. **Finish was shown to an account without 2FA** at `/settings/security/devices?setup=1`. The server refused the POST. **Fixed** in 36.11.
 6. **The plain create form answered a throttled user in bare English text.** **Fixed** in 36.11. `reauthenticate` keeps this for change password, disable 2FA and switch-off; recorded in 8.2.
@@ -51,6 +51,6 @@ A separate `sweep invariants` run was not done. Each batch ran its own mutants, 
 
 ## Not proved
 
-- Real-device install, POST on iOS Safari, iOS prefetch, and the Apple password key names. These run on production after deployment (decision 22, task 36.13).
+- Real-device install, POST on iOS Safari, iOS prefetch, and the Apple password key names. The operator accepted these without a device check (decision 24).
 - CSRF is proven in a test agent in the server role, not on a deployed server.
 - `govulncheck` was not run in the verification pass.

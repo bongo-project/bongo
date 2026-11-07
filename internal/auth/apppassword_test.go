@@ -681,3 +681,27 @@ func TestRefusedAccountsDoNotTouch(t *testing.T) {
 		t.Error("refused account touched or logged first use")
 	}
 }
+
+func TestLogUsername(t *testing.T) {
+	const shaped = "abcdef-ghjkmn-pqrstu-vwxyza"
+	for _, tc := range []struct {
+		name, in, want string
+	}{
+		{"address", "a@example.com", "a@example.com"},
+		{"local part", "alice", "alice"},
+		{"empty", "", ""},
+		{"app password", shaped, redactedUsername},
+		{"upper case", strings.ToUpper(shaped), redactedUsername},
+		{"no separators", strings.ReplaceAll(shaped, "-", ""), redactedUsername},
+		{"spaces", strings.ReplaceAll(shaped, "-", " "), redactedUsername},
+		{"pasted with a newline", shaped + "\n", redactedUsername},
+		{"pasted with a tab", "\t" + shaped, redactedUsername},
+		{"one letter short", shaped[:len(shaped)-1], shaped[:len(shaped)-1]},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := LogUsername(tc.in); got != tc.want {
+				t.Fatalf("LogUsername(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
