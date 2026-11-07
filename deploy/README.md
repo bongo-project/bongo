@@ -24,6 +24,7 @@ for **example.com** on a single Docker host, behind an existing Traefik.
 | `LOGGING.md` | Where logs go and how to collect them; where `/metrics` is served |
 | `bongo.service` | systemd unit for the binary release (no Docker); see `docs/install.md` |
 | `bongo.example.hcl` | Fully annotated example configuration for the binary release |
+| `loadtest.example.hcl` | Configuration for a load test on the reserved domain `bongo.test`; see `docs/load-testing.md`. Not a production template and not in the release zip |
 | `release-README.md` | README shipped inside the binary release zip |
 
 ### How mail reaches bongo (important)

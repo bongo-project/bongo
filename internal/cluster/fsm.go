@@ -21,6 +21,7 @@ import (
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/store"
 )
 
@@ -143,6 +144,7 @@ func (f *FSM) StartIndexer(ctx context.Context) {
 				for {
 					select {
 					case cmd := <-queue:
+						observability.SearchIndexBacklog.Dec()
 						f.runDerivedIndexes(cmd)
 						f.indexInflight.Add(-1)
 					default:
@@ -150,6 +152,7 @@ func (f *FSM) StartIndexer(ctx context.Context) {
 					}
 				}
 			case cmd := <-queue:
+				observability.SearchIndexBacklog.Dec()
 				f.runDerivedIndexes(cmd)
 				f.indexInflight.Add(-1)
 			}
@@ -274,7 +277,9 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	// logs say nothing about time spent inside the FSM.
 	start := time.Now()
 	defer func() {
-		if elapsed := time.Since(start); elapsed >= slowApplyThreshold {
+		elapsed := time.Since(start)
+		observability.RaftFSMApplySeconds.Observe(elapsed.Seconds())
+		if elapsed >= slowApplyThreshold {
 			f.logger.Warn("fsm: apply was slow",
 				"index", log.Index,
 				"duration_ms", elapsed.Milliseconds(),
@@ -517,9 +522,13 @@ func (f *FSM) updateDerivedIndexes(cmd *bongov1.RaftCommand) {
 	}
 
 	f.indexInflight.Add(1)
+	// Inc and Dec commute, so the apply goroutine and the worker need no
+	// ordering between them; a Set of len(queue) from both could land stale.
+	observability.SearchIndexBacklog.Inc()
 	select {
 	case queue <- queued:
 	default:
+		observability.SearchIndexBacklog.Dec()
 		// Backlog full. Index inline rather than drop: a dropped update would
 		// leave a message unsearchable until the next rebuild, and the entry
 		// is already committed. This reintroduces the original blocking
@@ -756,6 +765,10 @@ func (f *FSM) enqueueBlobRefs(cmd *bongov1.RaftCommand) {
 
 // Snapshot returns an FSMSnapshot that captures the current Pebble state.
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
+	// This runs on the FSM goroutine, so applies wait for it; the timer adds
+	// nothing but a clock read.
+	defer observability.RaftSnapshotCheckpoint.Since(time.Now())
+
 	checkpointDir, err := os.MkdirTemp("", "bongo-snapshot-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot temp dir: %w", err)
@@ -858,11 +871,31 @@ type fsmSnapshot struct {
 var _ raft.FSMSnapshot = (*fsmSnapshot)(nil)
 
 func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
-	if err := tarDir(s.pebbleDir, sink); err != nil {
+	start := time.Now()
+	counted := &countingWriter{w: sink}
+	if err := tarDir(s.pebbleDir, counted); err != nil {
 		_ = sink.Cancel()
 		return fmt.Errorf("persisting snapshot: %w", err)
 	}
-	return sink.Close()
+	if err := sink.Close(); err != nil {
+		return err
+	}
+	observability.RaftSnapshotPersist.Since(start)
+	observability.RaftSnapshotBytes.Set(float64(counted.n))
+	return nil
+}
+
+// countingWriter counts the bytes written through it, for the snapshot size
+// gauge.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
 }
 
 func (s *fsmSnapshot) Release() {

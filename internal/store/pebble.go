@@ -5,8 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/pebble"
+
+	"github.com/bongo-project/bongo/internal/observability"
 )
 
 // ErrNotFound is returned when a key does not exist.
@@ -27,6 +32,14 @@ type Iterator interface {
 // PebbleStore wraps a Pebble database for key-value storage.
 type PebbleStore struct {
 	db *pebble.DB
+
+	// mu orders Metrics reads against Close: db.Metrics does not check for a
+	// closed database. Only the metrics path and Close take it, so writers
+	// never contend on it.
+	mu     sync.RWMutex
+	closed bool
+
+	unhookMetrics func()
 }
 
 // Option configures a PebbleStore.
@@ -50,6 +63,39 @@ func WithLogger(l *slog.Logger) Option {
 	}
 }
 
+// stallTimer feeds the write stall counters. Pebble calls both hooks with its
+// DB mutex held, so they may only touch atomics: no locks, no logging, and no
+// db.Metrics call.
+type stallTimer struct {
+	beganNanos atomic.Int64
+}
+
+func (t *stallTimer) begin(pebble.WriteStallBeginInfo) {
+	observability.PebbleWriteStalls.Inc()
+	t.beganNanos.Store(time.Now().UnixNano())
+}
+
+func (t *stallTimer) end() {
+	// Zero means no begin was seen, so there is nothing to add.
+	if began := t.beganNanos.Swap(0); began != 0 {
+		observability.PebbleWriteStallSeconds.Add(time.Duration(time.Now().UnixNano() - began).Seconds())
+	}
+}
+
+// WithMetrics exports this database's Pebble metrics and write stalls through
+// the process-wide collectors. Opt in on the main database only: the process
+// has one set of series, and a short-lived store (such as the one a snapshot
+// restore opens) would otherwise count into them and take over the source.
+func WithMetrics() Option {
+	return func(opts *pebble.Options) {
+		t := &stallTimer{}
+		opts.EventListener = &pebble.EventListener{
+			WriteStallBegin: t.begin,
+			WriteStallEnd:   t.end,
+		}
+	}
+}
+
 // NewPebbleStore opens a Pebble database at the given directory.
 func NewPebbleStore(dataDir string, opts ...Option) (*PebbleStore, error) {
 	pebbleOpts := &pebble.Options{}
@@ -64,12 +110,30 @@ func NewPebbleStore(dataDir string, opts ...Option) (*PebbleStore, error) {
 		defer pebbleOpts.Cache.Unref()
 	}
 
+	// Option is a plain function over pebble.Options, so WithMetrics can only
+	// leave its listener behind as the marker that metrics were asked for.
+	exportMetrics := pebbleOpts.EventListener != nil && pebbleOpts.EventListener.WriteStallBegin != nil
+
 	db, err := pebble.Open(dataDir, pebbleOpts)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble store: %w", err)
 	}
 
-	return &PebbleStore{db: db}, nil
+	s := &PebbleStore{db: db}
+	if exportMetrics {
+		s.unhookMetrics = observability.SetPebbleMetricsSource(s.metrics)
+	}
+	return s, nil
+}
+
+// metrics returns the database metrics, or nil once the store is closed.
+func (s *PebbleStore) metrics() *pebble.Metrics {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil
+	}
+	return s.db.Metrics()
 }
 
 // Get retrieves the value for a key. Returns ErrNotFound if the key does not exist.
@@ -197,6 +261,12 @@ func (s *PebbleStore) EstimateDiskUsage() int64 {
 
 // Close closes the Pebble database.
 func (s *PebbleStore) Close() error {
+	if s.unhookMetrics != nil {
+		s.unhookMetrics()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("closing pebble store: %w", err)
 	}

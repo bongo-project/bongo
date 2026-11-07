@@ -1760,3 +1760,81 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 ## 2026-11-07: load test imported
 
 - Load test PRD imported as Phase 37 (16 tasks), release v0.15.4, ahead of v0.16. The tool, server metrics and local dry run need no budget; 37.14 onward need the rented machines. Open question 5 (bulk loader) is 37.11, for the operator to confirm.
+
+## 2026-11-07: Phase 37 batch 1 (37.1, 37.7, 37.10)
+
+- Workflow: advisor plan, sonnet golang-pro worker in a worktree, advisor review. All three DONE, review MINOR. Merged with git apply --3way, no conflicts. Full gate passed: make test-all (integration 478s), lint 0 issues, gosec clean, vet on scripts/loadgen.
+- 37.1: scripts/loadgen with `check`. Empty items in --target-allow are refused, not dropped. IP-literal targets skip the production check (no production IP list), as does a name resolving to a production IP; documented. Underscores are accepted in host names. TestCommandsTableHoldsOnlyKnown checks only that `check` exists.
+- 37.7: search manager maxOpen (128) left fixed; candidate for its own key and metrics. QueueDepth is set only by the leader's worker. The backlog gauge race went to 37.9. The cluster metrics test asserts absolute values on a global gauge; safe while no cluster test is parallel.
+- 37.10: pprof mounted outside the HMAC group on the loopback control router, because go tool pprof cannot sign requests. The DefaultServeMux test skips the peer and redirect servers in dev, where they are nil.
+- PATTERN: [tests] golangci-lint excludes scripts/, so loadgen tasks must run go vet and gosec on it by hand.
+- PATTERN: [tests] A mutant that adds a route before r.Use makes chi panic, so it goes red for the wrong reason; place route mutants where the real mount is.
+
+## 2026-11-07: Phase 37 batch 2 (37.2, 37.3, 37.8)
+
+- All three DONE, review MINOR. Merge conflict in scripts/loadgen/config.go (both added a Config field and a flag hook): kept both. Orchestrator change after merge: seed's default folder mix is INBOX only, because SMTP delivers only to INBOX and the old default (70/20/10) delivered 70% of N x M; two tests given explicit mixes. Full gate passed (integration 493s, lint 0, gosec clean).
+- 37.2: blob dedup applies only to attachment parts of at least storage.attachment_dedup_min_size (32 KB), so the repeat share is built from large attachments. Bongo does not dedupe by Message-ID, so a kill -9 between 250 and the state fsync can resend up to `concurrency` messages. The leak test captures only the injected writers. A second Ctrl-C does not stop a send in backoff.
+- 37.3: flags are prefixed --smtp-* because all subcommands share one FlagSet. busy counts message building as well as sending, so slow generator work can read as pool exhaustion. Exit 3 covers both an invalid run and a server that could not keep up; moved to 37.6. The drift test margin is thin (a sleep-after-send mutant failed by 7.5% against 5%).
+- 37.8: AppliedIndex in raft v1.8 advances when a batch is dispatched to the FSM, so commit lag is not FSM completion. The Raft log shares the Pebble WAL, so one fsync histogram covers both. db.Metrics() takes Pebble's mutex per scrape. Raft index source is not cleared on NewAgent error paths (harmless).
+- PATTERN: [loadgen] All subcommands share one FlagSet, so each subcommand prefixes its flags.
+- PATTERN: [loadgen] The control listener is loopback only; the generator reaches it through an SSH tunnel and signs with the session secret, read from the environment or a 0600 file, never a flag.
+
+## 2026-11-07: Phase 37 batch 3 (37.4, 37.5, 37.9)
+
+- All three DONE, review MINOR. Conflicts in scripts/loadgen/config.go (three Config fields) and smtp_summary.go (both generalised writeSummaryFile to take any): resolved. Orchestrator fix after merge: DAV object paths assumed a trailing slash on the collection; davObjectPath added with a test that fails on concatenation. Full gate passed.
+- 37.4: go-smtp answers 452 past MaxRecipients, so a sink limit below the server's fan-out makes the server queue and retry. No periodic summary flush (SIGKILL loses the run), no connection cap. egress-check covers TCP 25 only; the runbook must say HTTPS and DNS are not checked.
+- 37.5: worker wrote code and tests together, not tests first; 15 mutants all killed. 'plain' IMAP TLS mode sends LOGIN in clear (opt-in, dev only). imapBound has a cosmetic timer race. DAV timing tests use wall-clock windows; a CI flake risk.
+- 37.9: unknown IMAP commands never reach the backend (go-imap answers them), so IMAP labels are constants and no IMAP 'other' test exists. Three copies of a histogram-count test helper (use obstest.HistogramCount). Snapshot checkpoint phase is observed even on failure. TestIndexBacklogGaugeTracksQueue asserts absolute values on a global.
+- PATTERN: [loadgen] Parallel loadgen tasks all touch config.go's Config struct and smtp_summary.go; expect a one-line conflict per batch.
+
+## 2026-11-07: Phase 37 batch 4 (37.6, 37.11)
+
+- 37.6 plan REVISE (applied): register the Prometheus process collector on the server, since process_cpu_seconds_total, process_resident_memory_bytes and process_open_fds were not exported; the Bongo config is recorded as a SHA-256 only; disk growth means bongo_blob_bytes and bongo_blobs (no Pebble size metric yet). TestProcessMetricsExported skips off Linux; ran it in a golang:1.27.3 container, PASS.
+- 37.11 plan PROCEED with clarifications: the restart proof must use a server-role node (dev uses an in-memory snapshot store and a new temp dir); APPEND does not StoreSplit, so the loader mirrors each path; trace headers are excluded from size comparison.
+- Startup finding: Raft log and stable store share Pebble under `_raft/`; in the server role NewRaft restores the latest file snapshot and FSM.Restore deletes all `/` keys before reloading, so direct writes after a snapshot are lost. The loader loads a fresh directory through FSM.Apply with index 0 (applied_index never written) and refuses a directory with Raft state.
+- Merge conflict in config.go (Report and Bulk fields): kept both. First gate failed: TestBulkLoadWritesPlan counted 'fsm: derived index update was slow' timing warnings under load. Orchestrator fix: timing warnings ("... was slow") counted apart, first five warning messages kept without attributes; handler test mutation-checked; 16 stressed runs passed. Second gate passed.
+- Reviews MINOR. Added 37.17 (loader speed: about 25 msgs/s end to end on this Mac, below the 200 msgs/s SMTP route it should beat; check compares no SQLite rows) and 37.18 (report-compare counts bookkeeping fields so exit 5 nearly always fires; fsync +Inf bucket; probe NOOP overcount; sample truncates; clients exit 4 for config failures). 37.12 now needs both.
+- PATTERN: [tests] A test that asserts "no warnings logged" must separate timing warnings from fallback warnings, or it fails on a loaded CI machine.
+- PATTERN: [tests] Linux-only tests can be run locally with `docker run --rm -v "$PWD":/src -w /src golang:<go.mod version> go test -run X ./pkg/`.
+
+## 2026-11-07: Phase 37 batch 5 (37.17 partial, 37.18)
+
+- 37.18 DONE, review MINOR. 37.17 BLOCKED on a question, check fixes done and merged. Full gate passed.
+- 37.17 profile (8 users x 300, 8 workers, M3 Max, execution trace with -pprof=syscall): load 85 msgs/s, drain 38 s, 36 msgs/s end to end. Pebble syncs 1.6% of blocked syscall time, so the advised no-sync vfs wrapper was not built. Bleve 48% of CPU (Scorch merger) and 35% of blocked syscalls; with the search manager removed (temporary A/B) 552 msgs/s end to end. More workers raise the load rate but not the drain. rebuildDerivedIndexes runs only from FSM.Restore, so skip-and-rebuild is not available. Operator approved a loader-only batched Bleve write (decision 9).
+- 37.18: TestProbeNeverCallsAnIdleAnnouncedMessageANoopFind catches the old bug in only 2 of 10 -race runs; the fix is right but the test is a weak guard. Exit codes 0 to 6 documented in main.go; 6 is clients configuration failure. Two follow-ups to PRD 8.2 (validity mismatch warning; smtp and probe configuration-failure exit codes).
+- PATTERN: [profiling] CPU and block profiles miss time blocked in syscalls such as fsync; use go test -trace and go tool trace -pprof=syscall, then confirm with an A/B run.
+- PATTERN: [loadtest] Per-message Bleve indexing dominates write cost; expect it to be a server limit in the load test.
+
+## 2026-11-07: Phase 37 batch 6 (37.17)
+
+- 37.17 DONE, review MINOR. No FSM change: cluster.FSM.SetSearchManager takes the SearchIndexer interface, so each loader shard gets a store.MailBatcher (flush at 256 docs or 8 MB, on user change, before a delete; profile writes pass through; first flush error sticky). newMailDocument is shared by both paths. Index creation unchanged (bleve.New, empty config), pinned by an index_meta.json test; no Scorch tuning, never unsafe_batch.
+- Rates (M3 Max, darwin F_FULLFSYNC, 8 workers): 8x300 85/s load, 38 s drain, 36/s end to end before; 419/s load, 1.8 s drain, about 319/s after. 32x300 about 343/s end to end. About 3.5 days for 100 million messages.
+- Orchestrator additions after review: TestBulkLoadFillsGAL (the IndexProfile pass-through had no test; a return-nil mutant passed everything). The GAL is searched by analysed-token prefix, so the test queries the local part; the first version queried the full address and failed for that reason. --bulk-workers capped at 128 (search manager maxOpen) with a refusal case. Both mutation-checked.
+- Logged: race-mode rate floor (15/s) is below per-message indexing under race (27.5/s); date term counts compared as sets and term dictionaries skipped for the user with a delete (unmerged segments). go test -trace was not run.
+- Gate: first run failed on TestRunWithPeersOpensPeerListener (port taken between pick and bind, unrelated); passed alone three times; rerun passed. Flake added to PRD 8.2.
+- PATTERN: [search] GAL queries are prefix queries over analysed tokens; query the local part or a name, never a full address.
+
+## 2026-11-07: Phase 37 batch 7 (37.19, 37.20)
+
+- Both DONE, review MINOR. 37.19 plan REVISE (applied): a separate --clients-pop3-tls flag, because the IMAP auto mode keys on IMAP ports. Conflicts in clients.go (runner fields: pool and the POP3 total) and clients_summary.go (SourceAddrs and POP3 fields): kept both. Confirmed POP3 dials through the clients runner's guardedDial(cfg, dialFor(cfg)). Full gate passed.
+- TestDialFromSpreadsOverTwoLoopbackAddresses skips unless 127.0.0.2 is assigned, which it is not by default on macOS or in a Linux container; ran it in golang:1.27.3 with --cap-add NET_ADMIN and `ip addr add 127.0.0.2/8 dev lo`: PASS (5 and 5).
+- Logged: source_addrs on the clients and probe summaries and the Markdown line are untested; production uses dialFor(cfg) while many tests use defaultDial(); seed and sample record no per-address counts; the clients Note always mentions POP3; stdout summary shows only IDLE figures; a failed POP3 auto probe is not cached; clientStats.totals() and clientsSummary.totals() disagree on connect ops (only the latter drives the exit code).
+- PATTERN: [tests] A test that skips unless the machine has extra configuration may never run anywhere; run it once in a container with the configuration, and say so.
+
+## 2026-11-07: Phase 37 batch 8 (37.12)
+
+- 37.12 plan REVISE (applied): no hosted-domain config key exists; the leader hosts the registered domain of smtp.hostname (ensureConfiguredDomain), so mail.bongo.test hosts bongo.test; smtp.limits.messages_per_minute defaults to 60 per source IP and caps a ramp at 1 msg/s per address, so the test config sets 0; TestDeployHostsRefused would have demanded mail.bongo.test be refused, fixed by skipping RFC 6761 reserved names (not by adding bongo.test to the production list, which would refuse the test domain).
+- First review REJECT: the soak smtp command had a stray mid-line `\ `, which loadgen refuses as a positional argument; the doc flag check missed it. Fixed, and the check now fails on a backslash inside a command line (mutation-checked). Re-review MINOR.
+- Orchestrator fixes at merge: quoted the IPv6 probe addresses (zsh globbing); section 10 now says the config is kept as its hash and the secret lives in an environment file; clients --help said IMAP connection limits are reloadable, but diff.go and config-reload.md class them RESTART. Full gate passed.
+- To confirm in 37.13: IMAP and POP3 read cluster.tls, so the self-signed certificate also turns on single-node Raft TLS.
+
+## 2026-11-07: Phase 37 batch 9 (37.13 dry run)
+
+- 37.13 plan REVISE (applied): no GC interval key exists (orphanGCInterval is a 15-minute constant), so the run lasted past the first tick; loadgen makes no outbound mail, so queue and sink metrics cannot move; set every listener port explicitly.
+- Ran on loopback, ports 47000-48999, scratch under /private/tmp, ClamAV off (no clamd). Four nodes started and stopped by PID; scratch removed. Worker review MINOR. Results in docs/design/load-test-dry-run.md.
+- Fixed with tests: storage.blob_gc unset in deploy/loadtest.example.hcl; DAV discovery 404 on PROPFIND /caldav (go-webdav trims the slash; the fake hid it); Go runtime collector not registered. Runbook: blob metrics move only on the GC tick, write stalls 0 is normal, backlog gauge caps at 4096, probe "lost" means not seen within the timeout, bulk needs absolute paths, 512 MB compose memory limit, moved-directory procedure.
+- Observed: 6 INFO lines and about 1,340 bytes per accepted message; SMTP accepted 75/s but the pipeline stored about 22/s, 11,000 queued, probe delay 48 s, search lag 26 s; RSS 3.2 GB after 22,000 messages against 150 MB fresh. Moved directory: 20 s start, all data and search intact, stored Raft address unchanged. Seven follow-ups to PRD 8.2.
+- The main checkout had live uncommitted UI edits from someone else (templates, CSS, JS, i18n, prds/research/prd-ui-unification-v0.16.md) while this batch merged. Staged and committed by explicit path only, and ran the gate in a clean worktree.
+- PATTERN: [tests] A fake that accepts what the real server refuses hides integration bugs; the dry run against the real server is what found the DAV discovery failure.
+- PATTERN: [git] When the main checkout has someone else's unstaged edits, stage by explicit path, commit the index only, and run the gate in a separate worktree at the commit.
+

@@ -174,6 +174,13 @@ storage {
   # Sampled every 10 seconds. 0 disables the check. Default 1024.
   # min_free_mb = 1024
 
+  # Most per-user SQLite databases held open at once. Each open database uses
+  # about three file descriptors (db, -wal, -shm), so keep this well inside the
+  # process limit (RLIMIT_NOFILE). With more active users than this, the least
+  # recently used database is closed and reopened on next use; watch
+  # bongo_user_db_evictions_total. Range 1 to 16384. Restart required.
+  # max_open_user_dbs = 256
+
   # Unreferenced-blob garbage collector:
   #   "off"    (default) — never runs; blobs are retained forever
   #   "dryrun"           — logs what it WOULD delete, deletes nothing
@@ -742,6 +749,15 @@ telemetry {
     enabled = true
     port    = 9090
   }
+
+  # Go pprof handlers (heap, goroutine, profile) on the loopback control
+  # listener (server.control_addr) only, never on the web port. Off by default;
+  # needs a restart. They carry no HMAC, because `go tool pprof` cannot sign
+  # requests: the protection is loopback plus this switch, so leave it off in
+  # production. Profiling changes timing, so published load-test runs have it
+  # off. Use: go tool pprof http://127.0.0.1:8081/debug/pprof/heap, or
+  # .../debug/pprof/profile?seconds=20 (under the 60s control WriteTimeout).
+  # pprof = false
 
   log {
     level  = "info"   # debug | info | warn | error

@@ -87,7 +87,7 @@ var restartKeys = []string{
 	"cluster.raft.snapshot_interval", "cluster.raft.trailing_logs",
 	"cluster.gossip.port", "cluster.gossip.encryption_key", "cluster.peer_port",
 	"cluster.tls.cert_file", "cluster.tls.key_file", "cluster.tls.ca_file",
-	"storage.data_dir", "storage.pebble.cache_size", "storage.attachment_dedup_min_size", "storage.blob_gc", "storage.min_free_mb",
+	"storage.data_dir", "storage.pebble.cache_size", "storage.attachment_dedup_min_size", "storage.blob_gc", "storage.min_free_mb", "storage.max_open_user_dbs",
 	"smtp.enabled", "smtp.port", "smtp.submission_port", "smtp.submissions_port", "smtp.hostname", "smtp.proxy_protocol", "smtp.srs_max_age_days", "smtp.postmaster_account",
 	"smtp.srs_bounces_per_address_per_hour", "smtp.srs_bounces_per_hour",
 	"calendar.subscriptions.allow_private_networks",
@@ -120,6 +120,7 @@ var restartKeys = []string{
 	"queue.max_lifetime", "queue.max_retry_interval", "queue.delay_warning_after", "queue.concurrency",
 	"telemetry.log.format", "telemetry.log.file", "telemetry.log.max_size_mb",
 	"telemetry.log.max_backups", "telemetry.log.max_age_days", "telemetry.log.compress",
+	"telemetry.pprof",
 	"agent_server.address",
 	"agent_server.tls.cert_file", "agent_server.tls.key_file", "agent_server.tls.ca_file",
 }

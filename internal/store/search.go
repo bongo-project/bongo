@@ -11,6 +11,8 @@ import (
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/mapping"
+
+	"github.com/bongo-project/bongo/internal/observability"
 )
 
 // MailDocument is the document structure indexed in Bleve for mail search.
@@ -96,6 +98,13 @@ func (sm *SearchManager) IndexMail(userID, guid string, subject, from string, to
 		return err
 	}
 
+	return idx.Index(guid, newMailDocument(subject, from, to, body, receivedAt, hasAttachment, tags, spamScore))
+}
+
+// newMailDocument builds the indexed document. The per-message path and the
+// loader's batch path both call it, so the two indexes cannot differ in
+// content.
+func newMailDocument(subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, tags []string, spamScore []float64) MailDocument {
 	doc := MailDocument{
 		Subject:       subject,
 		From:          from,
@@ -108,7 +117,7 @@ func (sm *SearchManager) IndexMail(userID, guid string, subject, from string, to
 	if len(spamScore) > 0 {
 		doc.SpamScore = spamScore[0]
 	}
-	return idx.Index(guid, doc)
+	return doc
 }
 
 // Search performs a full-text search in a user's index.
@@ -470,6 +479,7 @@ func (sm *SearchManager) Close() error {
 			errs = append(errs, fmt.Errorf("closing search index %q: %w", entry.userID, err))
 		}
 		sm.lruList.Remove(elem)
+		observability.SearchIndexesOpen.Dec()
 		delete(sm.cache, entry.userID)
 	}
 
@@ -517,6 +527,7 @@ func (sm *SearchManager) openUser(userID string) (bleve.Index, error) {
 	}
 	elem := sm.lruList.PushFront(entry)
 	sm.cache[userID] = elem
+	observability.SearchIndexesOpen.Inc()
 
 	return idx, nil
 }
@@ -536,6 +547,7 @@ func (sm *SearchManager) DeleteUser(userID string) error {
 	if elem, ok := sm.cache[userID]; ok {
 		entry := elem.Value.(*searchEntry)
 		sm.lruList.Remove(elem)
+		observability.SearchIndexesOpen.Dec()
 		delete(sm.cache, userID)
 		if err := entry.index.Close(); err != nil {
 			sm.mu.Unlock()
@@ -558,6 +570,8 @@ func (sm *SearchManager) evictOldestLocked() error {
 	}
 	entry := elem.Value.(*searchEntry)
 	sm.lruList.Remove(elem)
+	observability.SearchIndexesOpen.Dec()
+	observability.SearchIndexEvictions.Inc()
 	delete(sm.cache, entry.userID)
 	return entry.index.Close()
 }

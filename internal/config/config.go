@@ -194,7 +194,16 @@ type StorageConfig struct {
 	// MinFreeMB is the free space, in MiB, below which the server refuses new
 	// mail, uploads and DAV writes (default 1024; 0 disables the check).
 	MinFreeMB int `hcl:"min_free_mb,optional" mapstructure:"min_free_mb"`
+	// MaxOpenUserDBs caps the per-user SQLite databases held open at once
+	// (default 256). Beyond it the least recently used is closed and reopened
+	// on next use. Each open database holds about three file descriptors.
+	MaxOpenUserDBs int `hcl:"max_open_user_dbs,optional" mapstructure:"max_open_user_dbs"`
 }
+
+// maxOpenUserDBsLimit bounds storage.max_open_user_dbs. Every open user
+// database holds a db, -wal and -shm file, so a larger value risks exhausting
+// RLIMIT_NOFILE before the cache ever evicts.
+const maxOpenUserDBsLimit = 16384
 
 // maxMinFreeMB bounds storage.min_free_mb at 1 TiB so the MiB-to-bytes
 // conversion cannot overflow.
@@ -895,6 +904,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("storage.min_free_mb: must be between 0 and %d, got %d", maxMinFreeMB, c.Storage.MinFreeMB)
 	}
 
+	if c.Storage.MaxOpenUserDBs < 1 || c.Storage.MaxOpenUserDBs > maxOpenUserDBsLimit {
+		return fmt.Errorf("storage.max_open_user_dbs: must be between 1 and %d, got %d", maxOpenUserDBsLimit, c.Storage.MaxOpenUserDBs)
+	}
+
 	if c.Server.Role == "agent" {
 		if len(c.Server.Agents) == 0 {
 			return fmt.Errorf("server.agents: role \"agent\" requires a non-empty agents list")
@@ -1326,6 +1339,14 @@ func defaultPipelineStages() []StageConfig {
 type TelemetryConfig struct {
 	Prometheus PrometheusConfig `hcl:"prometheus,block" mapstructure:"prometheus"`
 	Log        LogConfig        `hcl:"log,block" mapstructure:"log"`
+
+	// Pprof serves the Go pprof handlers (heap, goroutine, CPU profile and
+	// the other runtime profiles) on the loopback control listener
+	// (server.control_addr) only, never on the web port. Off by default.
+	// Profiling changes timing, so published load-test runs have it off. A CPU
+	// profile must be shorter than the control server's 60s WriteTimeout
+	// (pprof answers 400 for seconds >= WriteTimeout). Restart required.
+	Pprof bool `hcl:"pprof,optional" mapstructure:"pprof"`
 }
 
 type PrometheusConfig struct {
@@ -1412,6 +1433,7 @@ func Defaults() *Config {
 			},
 			AttachmentDedupMinSize: "32KB",
 			MinFreeMB:              1024,
+			MaxOpenUserDBs:         256,
 		},
 		SMTP: SMTPConfig{
 			Enabled:                     true,

@@ -81,6 +81,10 @@ func init() {
 
 // Agent manages the bongo server lifecycle.
 type Agent struct {
+	// unhookRaftIndexes detaches the commit lag gauge from this agent's Raft
+	// node at shutdown. Nil when no Raft node was started.
+	unhookRaftIndexes func()
+
 	// blobSweepBeforeDelete, when set, runs between the sweep plan and the
 	// delete. Tests use it to land a dedup write in that window; it is nil in
 	// production.
@@ -385,7 +389,7 @@ func (a *Agent) GetKey(key []byte) ([]byte, error) {
 // Pebble's own log output goes through the process logger, not stdlib log.
 // A cacheBytes of zero leaves Pebble's built-in default block cache.
 func pebbleStoreOptions(logger *slog.Logger, cacheBytes int64) []store.Option {
-	opts := []store.Option{store.WithLogger(logger.With("component", "pebble"))}
+	opts := []store.Option{store.WithLogger(logger.With("component", "pebble")), store.WithMetrics()}
 	if cacheBytes > 0 {
 		opts = append(opts, store.WithCacheSize(cacheBytes))
 	}
@@ -475,7 +479,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	logger.Info("blob store opened", "dir", filepath.Join(dataDir, "blobs"))
 
 	// Open metadata manager (per-user SQLite + system.db).
-	metaMgr, err := store.NewMetadataManager(dataDir)
+	metaMgr, err := store.NewMetadataManager(dataDir, store.WithMaxOpen(cfg.Storage.MaxOpenUserDBs))
 	if err != nil {
 		closeErr := pebbleStore.Close()
 		return nil, fmt.Errorf("opening metadata manager: %w", errors.Join(err, closeErr))
@@ -519,6 +523,9 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 			return nil, fmt.Errorf("creating raft node: %w", errors.Join(err, closeErr))
 		}
 		a.Raft = raftNode
+		a.unhookRaftIndexes = observability.SetRaftIndexSource(func() (uint64, uint64) {
+			return raftNode.Raft.LastIndex(), raftNode.Raft.AppliedIndex()
+		})
 		logger.Info("raft node initialized", "role", cfg.Server.Role)
 
 		// Create MailboxStore, Notifier, PreferenceStore, and ThreadStore.
@@ -1037,6 +1044,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	// with r: no compression, CSRF or session middleware belongs on this gate.
 	cr := chi.NewRouter()
 	cr.Use(middleware.SecurityHeaders())
+	// pprof sits outside the HMAC group on purpose: go tool pprof cannot sign
+	// requests. The protection is the loopback listener plus the off-by-default
+	// switch. It is never mounted on r.
+	if a.Config.Telemetry.Pprof {
+		mountPprof(cr)
+	}
 	cr.Group(func(cr chi.Router) {
 		cr.Use(middleware.RequireInternalAuth(sessionSecret))
 
@@ -1151,13 +1164,13 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// CardDAV endpoint with basic auth.
 	if carddavBackend != nil {
-		r.Handle("/carddav/*", carddavHandler)
+		r.Handle("/carddav/*", observability.DAVMiddleware(observability.ProtocolCardDAV, carddavHandler))
 		r.HandleFunc("/.well-known/carddav", davWellKnown("/carddav/"))
 	}
 
 	// CalDAV endpoint with basic auth.
 	if caldavBackend != nil {
-		r.Handle("/caldav/*", caldavHandler)
+		r.Handle("/caldav/*", observability.DAVMiddleware(observability.ProtocolCalDAV, caldavHandler))
 		r.HandleFunc("/.well-known/caldav", davWellKnown("/caldav/"))
 	}
 
@@ -2995,6 +3008,7 @@ func (a *Agent) deleteSweptBlobs(toDelete []string, cutoff time.Time, dryRun boo
 			continue
 		}
 		deleted++
+		observability.BlobGCDeleted.Inc()
 	}
 	return deleted, spared, nil
 }
@@ -3008,6 +3022,7 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 	if a.Raft == nil || !a.IsLeader() || a.Blobs == nil || a.Store == nil {
 		return map[string]bool{}
 	}
+	start := time.Now()
 	referenced, err := collectReferencedBlobs(a.Store, a.Spool)
 	if err != nil {
 		a.logger.Warn("blob-gc: collecting references failed", "error", err)
@@ -3029,12 +3044,24 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 		// Same reasoning as the collectReferencedBlobs failure above.
 		return map[string]bool{}
 	}
+	// One stat per blob gives both the age the plan needs and the size the
+	// gauges report. A blob that vanished since the listing is skipped.
 	mtimes := make(map[string]time.Time, len(hashes))
+	var totalBytes int64
 	for _, h := range hashes {
-		if mt, err := a.Blobs.ModTime(h); err == nil {
+		if mt, size, err := a.Blobs.Stat(h); err == nil {
 			mtimes[h] = mt
+			totalBytes += size
 		}
 	}
+	// The gauges describe the store as listed, before this pass deletes
+	// anything.
+	observability.BlobCount.Set(float64(len(mtimes)))
+	observability.BlobBytes.Set(float64(totalBytes))
+	observability.BlobGCReferenced.Set(float64(len(referenced)))
+	// Observed only from here: a pass that failed to mark or list did no
+	// sweep, and its short duration would skew the histogram.
+	defer func() { observability.BlobGCPassSeconds.Observe(time.Since(start).Seconds()) }()
 	cutoff := time.Now().Add(-minAge)
 	current, toDelete := planBlobSweep(referenced, mtimes, prev, cutoff)
 	candidates := len(toDelete)
@@ -4921,6 +4948,9 @@ func (a *Agent) Shutdown() error {
 
 	// 5. Raft.
 	if a.Raft != nil {
+		if a.unhookRaftIndexes != nil {
+			a.unhookRaftIndexes()
+		}
 		if err := a.Raft.Shutdown(); err != nil {
 			errs = append(errs, fmt.Errorf("shutting down raft: %w", err))
 		} else {

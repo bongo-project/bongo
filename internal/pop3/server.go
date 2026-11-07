@@ -12,6 +12,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/authlimit"
 	"github.com/bongo-project/bongo/internal/netx"
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/store"
 )
 
@@ -86,11 +87,12 @@ func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool, trust *ne
 	if s.maxConn <= 0 {
 		s.maxConn = netx.DefaultMaxConnections
 	}
+	conns := observability.ProtocolConns(observability.ProtocolPOP3)
 	plain, err := net.Listen("tcp", plainAddr)
 	if err != nil {
 		return fmt.Errorf("pop3 listen %s: %w", plainAddr, err)
 	}
-	s.plainListener = netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(plain, s.maxConn), proxyProtocol, trust, netx.WithRejectLogger(s.logger)), s.connLimit)
+	s.plainListener = netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(plain, s.maxConn), proxyProtocol, trust, netx.WithRejectLogger(s.logger)), s.connLimit, netx.WithConnMetrics(conns.Open, conns.Accepted))
 	s.logger.Info("pop3: listening", "addr", s.plainListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 
 	if tlsAddr != "" && s.tlsCfg != nil {
@@ -102,7 +104,7 @@ func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool, trust *ne
 			return fmt.Errorf("pop3s listen %s: %w", tlsAddr, err)
 		}
 		// PROXY header must be read before the TLS handshake.
-		s.tlsListener = tls.NewListener(netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(rawTLS, s.maxConn), proxyProtocol, trust, netx.WithRejectLogger(s.logger)), s.connLimit), s.tlsCfg)
+		s.tlsListener = tls.NewListener(netx.LimitPerIP(netx.MaybeProxyProtocol(netutil.LimitListener(rawTLS, s.maxConn), proxyProtocol, trust, netx.WithRejectLogger(s.logger)), s.connLimit, netx.WithConnMetrics(conns.Open, conns.Accepted)), s.tlsCfg)
 		s.logger.Info("pop3s: listening", "addr", s.tlsListener.Addr(), "max_conn", s.maxConn, "max_per_ip", s.connLimit.Max())
 	}
 

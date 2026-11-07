@@ -100,13 +100,32 @@ func (l *PerIPLimiter) Max() int {
 // refused connection is then closed before any TLS handshake, so a silent
 // client over its cap cannot hold a global slot waiting for a ClientHello.
 // The slot is released when the connection is closed.
-func LimitPerIP(ln net.Listener, l *PerIPLimiter) net.Listener {
-	return &limitListener{Listener: ln, l: l}
+//
+// WithConnMetrics counts the connections the limiter admits. Counting here
+// rather than at Accept keeps refused connections out of the totals, since
+// admission happens on first use.
+func LimitPerIP(ln net.Listener, l *PerIPLimiter, opts ...LimitOption) net.Listener {
+	ll := &limitListener{Listener: ln, l: l}
+	for _, o := range opts {
+		o(ll)
+	}
+	return ll
+}
+
+// LimitOption configures LimitPerIP.
+type LimitOption func(*limitListener)
+
+// WithConnMetrics makes LimitPerIP increment accepted and open when it admits
+// a connection and decrement open once when that connection closes.
+func WithConnMetrics(open Gauge, accepted Counter) LimitOption {
+	return func(ll *limitListener) { ll.open, ll.accepted = open, accepted }
 }
 
 type limitListener struct {
 	net.Listener
-	l *PerIPLimiter
+	l        *PerIPLimiter
+	open     Gauge
+	accepted Counter
 }
 
 func (ll *limitListener) Accept() (net.Conn, error) {
@@ -114,7 +133,7 @@ func (ll *limitListener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &limitConn{Conn: c, l: ll.l}, nil
+	return &limitConn{Conn: c, l: ll.l, open: ll.open, accepted: ll.accepted}, nil
 }
 
 // ErrTooManyConnections is returned by I/O on a connection refused by the
@@ -123,7 +142,9 @@ var ErrTooManyConnections = errors.New("too many connections from source address
 
 type limitConn struct {
 	net.Conn
-	l *PerIPLimiter
+	l        *PerIPLimiter
+	open     Gauge
+	accepted Counter
 
 	once sync.Once
 	ip   net.IP
@@ -142,6 +163,10 @@ func (c *limitConn) admit() error {
 		}
 		if c.l.Acquire(ip) {
 			c.ip, c.held = ip, true
+			if c.open != nil {
+				c.open.Inc()
+				c.accepted.Inc()
+			}
 		}
 	})
 	if !c.held {
@@ -172,6 +197,9 @@ func (c *limitConn) Close() error {
 	c.once.Do(func() {})
 	if c.held && c.released.CompareAndSwap(false, true) {
 		c.l.Release(c.ip)
+		if c.open != nil {
+			c.open.Dec()
+		}
 	}
 	return err
 }

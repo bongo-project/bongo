@@ -88,6 +88,12 @@ so that the test resembles real use.
 - [ ] `--dav N` runs N CalDAV and CardDAV clients polling at a configured
       interval and occasionally writing.
 - [ ] Web UI traffic is out of scope for the first version.
+- [ ] `--pop3 N` runs N POP3 clients that log in, list, retrieve and delete on a
+      configured cycle (decision 10).
+- [ ] The generator can spread connections over several local source addresses,
+      so one generator is not limited to about 28,000 connections to one server
+      address and port. The report states the source addresses used, so a
+      generator limit is never reported as a server limit (decision 10).
 
 ### US-005: Sink outbound mail
 **Description:** As the operator, I want outbound mail captured so that nothing
@@ -194,6 +200,10 @@ on social media so that people can judge Bongo from measurements.
       the run.
 - [ ] The page makes no comparison with other mail servers, because none was tested.
 - [ ] The operator approves the page and any social media post before publishing.
+- [ ] Posts are written as the tests run, not only at the end: what is being
+      tested, on what machine and disk, and what broke (decision 12). Each post
+      states its conditions and that the numbers are preliminary until the final
+      run. The operator writes or approves each one.
 
 ## 4. Functional Requirements
 
@@ -243,6 +253,37 @@ with fixes and repeat runs.
 
 The soak is the longest stage because blob garbage collection, Pebble compaction,
 Raft snapshots and disk growth only show their effect over time.
+
+### 6.1.1 Machines and disks (decisions 10 and 11)
+
+Bongo writes everything to one data directory, and the operator chooses the disk
+under it. A small server keeps it on the root disk; a large mail store needs a
+mounted volume, which is network storage at most providers. The test covers both.
+
+1. **Start small, then scale up.** Run the stages on a small machine first, then on
+   one or two larger sizes. If the limit does not move when CPU and memory double,
+   it is not CPU or memory (Bleve indexing and disk sync are the suspects). Results
+   are given per machine size.
+2. **Dedicated CPU only.** Shared-CPU machines vary with their neighbours, which
+   breaks the rule that two runs agree within 10%.
+3. **Local disk for accounts, message rate and connections.** This is what a
+   one-server installation most likely runs, and it is the best case.
+4. **A mounted volume for storage scale.** Load it once, snapshot it, and move it
+   between machine sizes. Every machine size uses the same volume type, so the only
+   change between runs is CPU and memory.
+5. **Restore the snapshot before every run.** Each run adds mail, so runs compare
+   only from the same starting data. The snapshot also restores the store after the
+   failure stage.
+6. **One comparison run on the same machine with each disk type.** It states what
+   a volume costs in speed, which readers need when they choose a disk.
+7. **Check that a node starts on a moved disk.** Raft records the node's address,
+   and a new machine may have a new one. The dry run (US-011) proves a single node
+   restarts cleanly on a moved data directory before the plan relies on it.
+8. **The generator machine.** Same region as the server, dedicated CPU, open-file
+   and local port limits raised, several source addresses for the connection stage.
+   The report shows generator CPU and backlog (FR-5).
+
+The results feed disk and machine guidance in the install documentation.
 
 ### 6.2 Suspected limits
 
@@ -335,7 +376,7 @@ worthwhile.
 
 5. **How is a large store seeded?** A bulk loader that writes Pebble and blobs
    directly on a stopped server would be much faster than SMTP, but it needs a check
-   that the result matches a store filled normally. Decide at import.
+   that the result matches a store filled normally. Resolved: decision 7.
 
 ### 8.1 Decisions
 
@@ -351,5 +392,60 @@ worthwhile.
    one node holds (section 6.3.1).
 6. (import, 2026-11-07) The release number is v0.15.4, so v0.16 stays Sharing and
    contacts and later releases keep their numbers.
+7. (operator, 2026-11-07) Open question 5: build the bulk loader. It writes Pebble and
+   blobs directly on a stopped server, and a check shows the result matches a store
+   filled through SMTP (task 37.11).
+8. (import, 2026-11-07) CalDAV and CardDAV share the web listener, so their load is
+   counted per request (bongo_dav_requests_in_flight, bongo_dav_requests_total), not
+   per connection like IMAP, POP3 and SMTP.
+9. (operator, 2026-11-07) The bulk loader may use a batched Bleve write added to
+   internal/store, called only by the loader; the server keeps indexing per message.
+   Profiling showed Bleve indexing is about 90% of the loader's end-to-end time (about
+   36 messages/s with it, about 550/s without, on an M3 Max). The same per-message
+   Bleve cost is a suspected limit of the server itself (section 6.2, search indexing).
+10. (operator, 2026-11-07) The load includes POP3, and the generator can use several
+    source addresses so the connection stage measures the server, not the generator.
+11. (operator, 2026-11-07) Machines and disks follow section 6.1.1: start on a small
+    dedicated-CPU machine and scale up; local disk for scale; a snapshotted volume
+    moved between sizes for storage; one run comparing the two disk types.
+12. (operator, 2026-11-07) The operator posts about the tests while they run, not
+    only the final numbers (US-010).
+13. (operator, 2026-11-07) The first test runs on a VPS. If its CPU is shared, the
+    run is preliminary: it finds what breaks first, and its numbers are not
+    published as headline figures (section 6.1.1, item 2).
+14. (operator, 2026-11-07) The test domain is bongo.test. The .test top-level domain
+    is reserved for testing (RFC 6761), never resolves, and cannot receive real mail.
+    No public CA issues certificates for it, so the server uses a self-signed
+    certificate and the generator connects by IP with its insecure-TLS flags.
 
 ### 8.2 Candidates for the next release
+
+- report-compare does not warn when validity.valid or generator_saturated differ
+  between the two reports (37.18 review).
+- loadgen smtp and probe cannot tell a configuration failure (authentication, TLS)
+  from a server that fell behind; clients can since 37.18 (37.18 review).
+- TestRunWithPeersOpensPeerListener (internal/agent) can fail with "address
+  already in use": it picks a free port and binds it later, and another test can
+  take the port in between. Seen once in the full suite on 2026-11-07; passed
+  three times alone.
+- No outbound mail generator: add an authenticated submission mode to loadgen
+  (seeded credentials, 587 or 465) so the sink, bongo_queue_* and the submission
+  connection metric are driven (dry run finding 9).
+- The search index cache cap (128 open indexes) is hard-coded; the account-scale
+  stage reaches it at 128 active accounts. Config key or not is a product
+  decision (dry run finding 10).
+- Six INFO lines per accepted message on the hot path and one WARN per message
+  when the indexer queue is full; at the default rotation that keeps about 15
+  minutes of history at 200 messages/s. Consider DEBUG for SPF result and
+  message enqueued, and rate-limit the queue-full warning (dry run finding 11).
+- Resident memory reached 3.2 GB after 22,000 messages with a backlogged
+  pipeline, against 150 MB for a fresh node on the same data. Cause unknown
+  (backlog, Bleve, SQLite caches, or heap not returned); the Go runtime metrics
+  now exposed should tell on the first VPS run (dry run finding 12).
+- After a moved data directory the stored Raft configuration keeps the old
+  address; harmless for one node, wrong for a later second node. A leader could
+  re-register its own ID with the current address on start (dry run finding 14).
+- The runbook's certificate command has no IP SAN; add one before any cluster
+  stage (dry run finding 16). The report states "The sink received 0 messages"
+  on every run until the submission mode exists (dry run finding 17).
+

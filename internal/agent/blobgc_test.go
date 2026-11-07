@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,9 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -1069,6 +1072,121 @@ func TestBlobGCFailureAndModeChangeReset(t *testing.T) {
 				"mode-change reset must not permanently disable deletion")
 		}
 	})
+
+	// The metrics describe the listing taken at the start of each pass, so the
+	// gauges are checked against an independent walk of the store made just
+	// before the pass, and the known-size blobs guarantee that walk is not empty.
+	t.Run("blob metrics follow the pass", func(t *testing.T) {
+		old := time.Now().Add(-365 * 24 * time.Hour)
+		put := func(fill byte, size int, backdate bool) string {
+			t.Helper()
+			h, err := a.Blobs.Put(bytes.Repeat([]byte{fill}, size))
+			if err != nil {
+				t.Fatalf("Put: %v", err)
+			}
+			if backdate {
+				if err := os.Chtimes(blobFilePath(a.dataDir, h), old, old); err != nil {
+					t.Fatalf("Chtimes: %v", err)
+				}
+			}
+			return h
+		}
+		ref1 := put('a', 1000, true)
+		ref2 := put('b', 3001, true)
+		put('c', 1500, true)
+		put('d', 2999, true)
+		meta, err := proto.Marshal(&bongov1.MailMeta{
+			RawMessage:  &bongov1.BlobRef{Hash: ref1},
+			Attachments: []*bongov1.BlobRef{{Hash: ref2}},
+		})
+		if err != nil {
+			t.Fatalf("Marshal: %v", err)
+		}
+		if err := a.Store.Set([]byte("/user/u-metrics/mail/g1"), meta); err != nil {
+			t.Fatalf("Set mail: %v", err)
+		}
+
+		// walk is the independent view: count, bytes and the old unreferenced
+		// blobs that a second pass will delete.
+		walk := func() (count int, total int64, orphans int) {
+			t.Helper()
+			ref, err := collectReferencedBlobs(a.Store, a.Spool)
+			if err != nil {
+				t.Fatalf("collectReferencedBlobs: %v", err)
+			}
+			hashes, err := a.Blobs.List()
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			for _, h := range hashes {
+				mt, size, err := a.Blobs.Stat(h)
+				if err != nil {
+					t.Fatalf("Stat: %v", err)
+				}
+				count++
+				total += size
+				if !ref[h] && mt.Before(time.Now().Add(-time.Hour)) {
+					orphans++
+				}
+			}
+			return count, total, orphans
+		}
+		gauges := func() (count, bytes, referenced float64) {
+			return testutil.ToFloat64(observability.BlobCount),
+				testutil.ToFloat64(observability.BlobBytes),
+				testutil.ToFloat64(observability.BlobGCReferenced)
+		}
+
+		count, size, orphans := walk()
+		if orphans < 2 {
+			t.Fatalf("setup: %d old orphans, want at least 2", orphans)
+		}
+		deleted0 := testutil.ToFloat64(observability.BlobGCDeleted)
+		passes0 := histogramSampleCount(t, "bongo_blob_gc_pass_seconds")
+
+		prev := a.sweepOrphanedBlobs(map[string]bool{}, time.Hour, false)
+		c, b, r := gauges()
+		if c != float64(count) || b != float64(size) || r != 2 {
+			t.Errorf("after pass 1: count=%v bytes=%v referenced=%v, want %d %d 2", c, b, r, count, size)
+		}
+		if got := testutil.ToFloat64(observability.BlobGCDeleted) - deleted0; got != 0 {
+			t.Errorf("pass 1 deleted %v, want 0 (first sighting)", got)
+		}
+
+		a.sweepOrphanedBlobs(prev, time.Hour, false)
+		c, b, _ = gauges()
+		if c != float64(count) || b != float64(size) {
+			t.Errorf("after pass 2: count=%v bytes=%v, want the pre-deletion listing %d %d", c, b, count, size)
+		}
+		if got := testutil.ToFloat64(observability.BlobGCDeleted) - deleted0; got != float64(orphans) {
+			t.Errorf("pass 2 deleted %v, want %d", got, orphans)
+		}
+
+		a.sweepOrphanedBlobs(map[string]bool{}, time.Hour, false)
+		if c, _, _ = gauges(); c != float64(count-orphans) {
+			t.Errorf("after pass 3: count=%v, want %d", c, count-orphans)
+		}
+		if got := histogramSampleCount(t, "bongo_blob_gc_pass_seconds") - passes0; got != 3 {
+			t.Errorf("pass histogram samples +%d, want +3", got)
+		}
+	})
+}
+
+// histogramSampleCount reads the sample count of an unlabelled histogram from
+// the metrics registry.
+func histogramSampleCount(t *testing.T, name string) uint64 {
+	t.Helper()
+	families, err := observability.Registry.Gather()
+	if err != nil {
+		t.Fatalf("Gather: %v", err)
+	}
+	for _, mf := range families {
+		if mf.GetName() == name && len(mf.GetMetric()) == 1 {
+			return mf.GetMetric()[0].GetHistogram().GetSampleCount()
+		}
+	}
+	t.Fatalf("histogram %s not found", name)
+	return 0
 }
 
 // TestBlobGCCandidatesAcrossModeChange is the direct acceptance test for
