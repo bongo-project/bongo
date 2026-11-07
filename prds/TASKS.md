@@ -217,7 +217,7 @@ PRD: [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md).
 | 37.8 | US-011: Raft, Pebble and disk sync metrics | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.7 |
 | 37.9 | US-011: blob, garbage collection, snapshot, indexer and per-protocol metrics, with bounded labels | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.7 |
 | 37.10 | US-011: CPU and heap profiling on a private listener, off by default | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | ACTIVE | Needs: none |
-| 37.11 | Open question 5: bulk loader for large stores, and a check that the result matches a normally filled store | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.2. Operator to confirm the approach |
+| 37.11 | Open question 5: bulk loader for large stores, and a check that the result matches a normally filled store | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.2. Approach confirmed (decision 7) |
 | 37.12 | US-008: `docs/load-testing.md` and the test config | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.4, 37.6 |
 | 37.13 | US-011: local dry run shows each metric moving; measure log volume | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.6, 37.8, 37.9, 37.10, 37.12 |
 | 37.14 | US-009: run every stage in section 6.1 on rented machines | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.11, 37.13. Needs budget (open question 1) |

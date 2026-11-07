@@ -335,7 +335,7 @@ worthwhile.
 
 5. **How is a large store seeded?** A bulk loader that writes Pebble and blobs
    directly on a stopped server would be much faster than SMTP, but it needs a check
-   that the result matches a store filled normally. Decide at import.
+   that the result matches a store filled normally. Resolved: decision 7.
 
 ### 8.1 Decisions
 
@@ -351,5 +351,8 @@ worthwhile.
    one node holds (section 6.3.1).
 6. (import, 2026-11-07) The release number is v0.15.4, so v0.16 stays Sharing and
    contacts and later releases keep their numbers.
+7. (operator, 2026-11-07) Open question 5: build the bulk loader. It writes Pebble and
+   blobs directly on a stopped server, and a check shows the result matches a store
+   filled through SMTP (task 37.11).
 
 ### 8.2 Candidates for the next release
