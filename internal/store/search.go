@@ -11,6 +11,8 @@ import (
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/mapping"
+
+	"github.com/bongo-project/bongo/internal/observability"
 )
 
 // MailDocument is the document structure indexed in Bleve for mail search.
@@ -470,6 +472,7 @@ func (sm *SearchManager) Close() error {
 			errs = append(errs, fmt.Errorf("closing search index %q: %w", entry.userID, err))
 		}
 		sm.lruList.Remove(elem)
+		observability.SearchIndexesOpen.Dec()
 		delete(sm.cache, entry.userID)
 	}
 
@@ -517,6 +520,7 @@ func (sm *SearchManager) openUser(userID string) (bleve.Index, error) {
 	}
 	elem := sm.lruList.PushFront(entry)
 	sm.cache[userID] = elem
+	observability.SearchIndexesOpen.Inc()
 
 	return idx, nil
 }
@@ -536,6 +540,7 @@ func (sm *SearchManager) DeleteUser(userID string) error {
 	if elem, ok := sm.cache[userID]; ok {
 		entry := elem.Value.(*searchEntry)
 		sm.lruList.Remove(elem)
+		observability.SearchIndexesOpen.Dec()
 		delete(sm.cache, userID)
 		if err := entry.index.Close(); err != nil {
 			sm.mu.Unlock()
@@ -558,6 +563,8 @@ func (sm *SearchManager) evictOldestLocked() error {
 	}
 	entry := elem.Value.(*searchEntry)
 	sm.lruList.Remove(elem)
+	observability.SearchIndexesOpen.Dec()
+	observability.SearchIndexEvictions.Inc()
 	delete(sm.cache, entry.userID)
 	return entry.index.Close()
 }

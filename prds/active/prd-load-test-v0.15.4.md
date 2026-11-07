@@ -354,5 +354,8 @@ worthwhile.
 7. (operator, 2026-11-07) Open question 5: build the bulk loader. It writes Pebble and
    blobs directly on a stopped server, and a check shows the result matches a store
    filled through SMTP (task 37.11).
+8. (import, 2026-11-07) CalDAV and CardDAV share the web listener, so their load is
+   counted per request (bongo_dav_requests_in_flight, bongo_dav_requests_total), not
+   per connection like IMAP, POP3 and SMTP.
 
 ### 8.2 Candidates for the next release

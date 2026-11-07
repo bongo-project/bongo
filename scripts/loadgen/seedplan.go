@@ -16,9 +16,9 @@ import (
 // little traffic to measure a mix from. They are printed by seed -h.
 const (
 	defaultSizeMix = "2KB:35,8KB:30,32KB:20,128KB:10,1MB:5"
-	// INBOX only, so a default run delivers about N x M messages. A mix
-	// naming other folders plans them but counts them as deferred until
-	// IMAP APPEND exists.
+	// INBOX only, so a default run delivers about N x M messages over SMTP
+	// and needs no IMAP address. A mix naming other folders fills them
+	// with IMAP APPEND.
 	defaultFolderMix = "INBOX:1"
 	// defaultDedupMin matches storage.attachment_dedup_min_size.
 	defaultDedupMin   = 32 * 1024

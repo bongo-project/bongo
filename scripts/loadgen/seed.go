@@ -41,6 +41,9 @@ type SeedOptions struct {
 	Concurrency       int
 	ControlAddr       string
 	SMTPAddr          string
+	IMAPAddr          string
+	IMAPTLS           string
+	IMAPInsecureTLS   bool
 	StateFile         string
 	SessionSecretFile string
 }
@@ -58,6 +61,9 @@ func addSeedFlags(fs *flag.FlagSet, cfg *Config) {
 	fs.IntVar(&o.Concurrency, "concurrency", 8, "users seeded at once; each holds one SMTP connection")
 	fs.StringVar(&o.ControlAddr, "control-addr", "", "host:port of the server's control listener (server.control_addr); must be in --target-allow")
 	fs.StringVar(&o.SMTPAddr, "smtp-addr", "", "host:port of the server's inbound SMTP listener; must be in --target-allow")
+	fs.StringVar(&o.IMAPAddr, "imap-addr", "", "host:port of the server's IMAP listener; required when --folder-mix names a folder other than INBOX; must be in --target-allow")
+	fs.StringVar(&o.IMAPTLS, "imap-tls", imapTLSAuto, "seed: auto, implicit, starttls or plain (plain is for a dev-role server); auto never sends a password in clear")
+	fs.BoolVar(&o.IMAPInsecureTLS, "imap-insecure-tls", false, "seed: accept a self-signed IMAP certificate; for an allow-listed test target only")
 	fs.StringVar(&o.StateFile, "state-file", "", "resume state, mode 0600, holds the test-account passwords (default: under the user config directory)")
 	fs.StringVar(&o.SessionSecretFile, "session-secret-file", "", "file holding web.session_secret, mode 0600 (or set "+sessionEnvVar+")")
 	fs.Usage = func() {
@@ -85,11 +91,12 @@ production-name check; the allow list is the only guard. The secret comes from
 clock within 90 seconds of the server's. The test domain must already be a
 hosted domain on the server.
 
-Messages are delivered over SMTP, so they all land in INBOX, and the default
---folder-mix is INBOX only. A mix that names other folders plans them too, but
-this command counts those messages as deferred and does not send them: filling
-other folders needs IMAP APPEND, which is not implemented here. Appended mail
-would also bypass attachment deduplication.
+Messages for INBOX are delivered over SMTP, and the default --folder-mix is
+INBOX only. A mix that names other folders needs --imap-addr: after a user's
+INBOX mail is delivered, the rest are added with IMAP APPEND, logging in as
+that user and creating a missing folder first. Without --imap-addr such a mix
+is refused before anything is sent. Appended mail bypasses the SMTP delivery
+path, so it also bypasses attachment deduplication.
 
 Sizes follow --size-mix (default %[1]s; each message is 75%% to 125%% of its
 bucket). These are stated assumptions, not a measured production mix.
@@ -111,7 +118,9 @@ An interrupted run (SIGINT or SIGTERM) finishes the messages in flight and
 exits 1; run the same command again to resume with no repeats. After a hard
 kill (kill -9, power loss) up to --concurrency messages that were being sent
 may be delivered a second time, because the server does not deduplicate by
-Message-ID. The run reports how many were resent. The Message-ID is
+Message-ID. The run reports how many were resent; an unconfirmed APPEND is
+first looked up by Message-ID in its folder, so it is not repeated if it
+landed. The Message-ID is
 <loadgen-SEED-uN-mM@domain>, also in X-Loadgen-Id.
 
 Default size mix: %[1]s
@@ -167,8 +176,9 @@ func runSeed(cfg Config, stdout, stderr io.Writer) int {
 }
 
 type seedCounts struct {
-	created, existing, usersSkipped            atomic.Int64
-	sent, msgsSkipped, deferred, possiblyTwice atomic.Int64
+	created, existing, usersSkipped  atomic.Int64
+	sent, msgsSkipped, possiblyTwice atomic.Int64
+	appended, appendSkipped          atomic.Int64
 }
 
 func seedMain(ctx context.Context, cfg Config, deps seedDeps, stdout, stderr io.Writer) int {
@@ -178,7 +188,13 @@ func seedMain(ctx context.Context, cfg Config, deps seedDeps, stdout, stderr io.
 		fmt.Fprintf(stderr, "loadgen: seed: %v\n", err)
 		return exitRefuse
 	}
-	for _, a := range []struct{ flag, addr string }{{"--control-addr", o.ControlAddr}, {"--smtp-addr", o.SMTPAddr}} {
+	for _, a := range []struct {
+		flag, addr string
+		optional   bool
+	}{{"--control-addr", o.ControlAddr, false}, {"--smtp-addr", o.SMTPAddr, false}, {"--imap-addr", o.IMAPAddr, true}} {
+		if a.addr == "" && a.optional {
+			continue
+		}
 		if a.addr == "" {
 			fmt.Fprintf(stderr, "loadgen: seed: %s is required\n", a.flag)
 			return exitRefuse
@@ -191,6 +207,18 @@ func seedMain(ctx context.Context, cfg Config, deps seedDeps, stdout, stderr io.
 	spec, err := newPlanSpec(domain, o)
 	if err != nil {
 		fmt.Fprintf(stderr, "loadgen: seed: %v\n", err)
+		return exitRefuse
+	}
+	if o.IMAPTLS == "" {
+		o.IMAPTLS = imapTLSAuto
+	}
+	if !validIMAPTLS(o.IMAPTLS) {
+		fmt.Fprintf(stderr, "loadgen: seed: --imap-tls %q is not auto, implicit, starttls or plain\n", o.IMAPTLS)
+		return exitRefuse
+	}
+	if spec.needsIMAP() && o.IMAPAddr == "" {
+		// Deferring them silently would leave a half-seeded data set.
+		fmt.Fprintln(stderr, "loadgen: seed: --folder-mix names folders other than INBOX, which are filled with IMAP APPEND; --imap-addr is required")
 		return exitRefuse
 	}
 	if o.Concurrency < 1 || o.Concurrency > 256 {
@@ -221,6 +249,7 @@ func seedMain(ctx context.Context, cfg Config, deps seedDeps, stdout, stderr io.
 		spec: spec, st: st, deps: deps, domain: domain,
 		pool:  newAttachPool(spec),
 		admin: newControlClient(o.ControlAddr, deps.secret, dial),
+		imap:  newIMAPDialer(o.IMAPAddr, o.IMAPTLS, o.IMAPInsecureTLS, dial, sendTimeout),
 		smtp: func() *smtpSender {
 			return &smtpSender{addr: o.SMTPAddr, helo: "loadgen." + domain, dial: dial, backoff: deps.backoff, tries: deps.tries}
 		},
@@ -238,8 +267,8 @@ func seedMain(ctx context.Context, cfg Config, deps seedDeps, stdout, stderr io.
 	fmt.Fprintf(stdout, "seed %s\n", state)
 	fmt.Fprintf(stdout, "users: %d planned, %d created, %d already existed from an earlier run, %d already done\n",
 		spec.Users, c.created.Load(), c.existing.Load(), c.usersSkipped.Load())
-	fmt.Fprintf(stdout, "messages: %d sent, %d already sent, %d deferred to folders (IMAP APPEND not implemented), %d resent after an unconfirmed send\n",
-		c.sent.Load(), c.msgsSkipped.Load(), c.deferred.Load(), c.possiblyTwice.Load())
+	fmt.Fprintf(stdout, "messages: %d sent, %d already sent, %d appended to folders, %d already appended, %d resent after an unconfirmed send\n",
+		c.sent.Load(), c.msgsSkipped.Load(), c.appended.Load(), c.appendSkipped.Load(), c.possiblyTwice.Load())
 	fmt.Fprintf(stdout, "attachment dedup: share %.1f%% of messages expected\n", spec.EffectiveDedupShare()*100)
 	switch {
 	case runErr != nil:
@@ -259,6 +288,7 @@ type seeder struct {
 	pool   *AttachPool
 	admin  *controlClient
 	smtp   func() *smtpSender
+	imap   *imapDialer
 	counts seedCounts
 }
 
@@ -324,8 +354,7 @@ func (r *seeder) seedUser(ctx context.Context, s *smtpSender, i int) error {
 	}
 	for _, mp := range up.Messages {
 		if mp.Folder != inboxFolder {
-			r.counts.deferred.Add(1)
-			continue
+			continue // appended below, once the INBOX mail is in
 		}
 		switch r.st.Msg(mp.User, mp.Index) {
 		case msgDone:
@@ -351,7 +380,7 @@ func (r *seeder) seedUser(ctx context.Context, s *smtpSender, i int) error {
 		}
 		r.counts.sent.Add(1)
 	}
-	return nil
+	return r.appendFolders(ctx, up)
 }
 
 // ensureUser creates the account. The password is persisted before the call,

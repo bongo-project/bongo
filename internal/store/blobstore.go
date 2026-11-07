@@ -284,6 +284,20 @@ func (bs *BlobStore) ModTime(hash string) (time.Time, error) {
 	return fi.ModTime(), nil
 }
 
+// Stat returns the last-modified time and size of a blob with one stat call.
+// The blob GC uses it over ModTime plus Size, which would stat every blob
+// twice on a store that can hold millions.
+func (bs *BlobStore) Stat(hash string) (modTime time.Time, size int64, err error) {
+	if !IsValidHash(hash) {
+		return time.Time{}, 0, fmt.Errorf("blob %q: %w", hash, ErrInvalidHash)
+	}
+	fi, err := os.Stat(bs.blobPath(hash))
+	if err != nil {
+		return time.Time{}, 0, err
+	}
+	return fi.ModTime(), fi.Size(), nil
+}
+
 // Size returns the on-disk size of a blob in bytes. Used by the blob GC to
 // record what a sweep is about to reclaim: a hash alone does not tell an
 // operator reviewing a candidate list whether a deletion would cost a few

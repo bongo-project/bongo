@@ -19,6 +19,7 @@ import (
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
 	"github.com/bongo-project/bongo/internal/mimesafe"
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -311,6 +312,7 @@ func (s *session) checkAccount() error {
 
 // Login authenticates the user, throttling brute-force attempts per source IP.
 func (s *session) Login(username, password string) error {
+	defer observability.IMAPLogin.Since(time.Now())
 	ip := ""
 	if s.remoteIP != nil {
 		ip = s.remoteIP.String()
@@ -351,6 +353,7 @@ func (s *session) Login(username, password string) error {
 
 // Select opens a mailbox.
 func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.SelectData, error) {
+	defer observability.IMAPSelect.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return nil, err
 	}
@@ -396,6 +399,7 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 
 // Create creates a new mailbox.
 func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
+	defer observability.IMAPCreate.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -412,6 +416,7 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 
 // Delete deletes a mailbox.
 func (s *session) Delete(mailbox string) error {
+	defer observability.IMAPDelete.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -429,6 +434,7 @@ func (s *session) Delete(mailbox string) error {
 
 // Rename renames a mailbox.
 func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) error {
+	defer observability.IMAPRename.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -450,6 +456,7 @@ func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) e
 
 // Subscribe adds a mailbox to the user's subscription set.
 func (s *session) Subscribe(mailbox string) error {
+	defer observability.IMAPSubscribe.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -467,6 +474,7 @@ func (s *session) Subscribe(mailbox string) error {
 
 // Unsubscribe removes a mailbox from the user's subscription set.
 func (s *session) Unsubscribe(mailbox string) error {
+	defer observability.IMAPUnsubscribe.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -485,6 +493,7 @@ func (s *session) Unsubscribe(mailbox string) error {
 
 // List returns mailbox listings matching the pattern.
 func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, options *imap.ListOptions) error {
+	defer observability.IMAPList.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -581,6 +590,7 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 
 // Status returns mailbox status data.
 func (s *session) Status(mailbox string, options *imap.StatusOptions) (*imap.StatusData, error) {
+	defer observability.IMAPStatus.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return nil, err
 	}
@@ -639,6 +649,7 @@ func (s *session) AppendLimit() uint32 {
 
 // Append stores a message in the specified mailbox.
 func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
+	defer observability.IMAPAppend.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return nil, err
 	}
@@ -837,6 +848,7 @@ type updateWriter interface {
 // message appended to Sent was stored correctly and then stayed invisible until
 // the client restarted and issued a fresh SELECT.
 func (s *session) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
+	defer observability.IMAPPoll.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		// go-imap treats a Poll error as fatal to the connection, and Poll runs
 		// after the command has already been answered (NOOP has no handler of
@@ -1017,6 +1029,7 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 
 // Unselect closes the selected mailbox.
 func (s *session) Unselect() error {
+	defer observability.IMAPUnselect.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -1028,6 +1041,7 @@ func (s *session) Unselect() error {
 
 // Expunge removes messages marked as deleted.
 func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error {
+	defer observability.IMAPExpunge.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -1064,6 +1078,7 @@ func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error 
 
 // Search searches for messages matching the criteria.
 func (s *session) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria, options *imap.SearchOptions) (*imap.SearchData, error) {
+	defer observability.IMAPSearch.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return nil, err
 	}
@@ -1133,6 +1148,7 @@ func (s *session) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria,
 
 // Fetch retrieves message data.
 func (s *session) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, options *imap.FetchOptions) error {
+	defer observability.IMAPFetch.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -1559,6 +1575,7 @@ func (s *session) extractMIMEPart(rawMsg []byte, partPath []int) []byte {
 
 // Store updates message flags.
 func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *imap.StoreFlags, options *imap.StoreOptions) error {
+	defer observability.IMAPStore.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
@@ -1724,6 +1741,7 @@ func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsO
 // summed per MailMeta, so the copy is free under the existing accounting.
 // Refusing it would also block moving mail to Trash to get back under quota.
 func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) {
+	defer observability.IMAPCopy.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return nil, err
 	}
@@ -1784,6 +1802,7 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 
 // Move moves messages to another mailbox (MOVE extension).
 func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string) error {
+	defer observability.IMAPMove.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
 	}

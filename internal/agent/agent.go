@@ -1164,13 +1164,13 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// CardDAV endpoint with basic auth.
 	if carddavBackend != nil {
-		r.Handle("/carddav/*", carddavHandler)
+		r.Handle("/carddav/*", observability.DAVMiddleware(observability.ProtocolCardDAV, carddavHandler))
 		r.HandleFunc("/.well-known/carddav", davWellKnown("/carddav/"))
 	}
 
 	// CalDAV endpoint with basic auth.
 	if caldavBackend != nil {
-		r.Handle("/caldav/*", caldavHandler)
+		r.Handle("/caldav/*", observability.DAVMiddleware(observability.ProtocolCalDAV, caldavHandler))
 		r.HandleFunc("/.well-known/caldav", davWellKnown("/caldav/"))
 	}
 
@@ -3008,6 +3008,7 @@ func (a *Agent) deleteSweptBlobs(toDelete []string, cutoff time.Time, dryRun boo
 			continue
 		}
 		deleted++
+		observability.BlobGCDeleted.Inc()
 	}
 	return deleted, spared, nil
 }
@@ -3021,6 +3022,7 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 	if a.Raft == nil || !a.IsLeader() || a.Blobs == nil || a.Store == nil {
 		return map[string]bool{}
 	}
+	start := time.Now()
 	referenced, err := collectReferencedBlobs(a.Store, a.Spool)
 	if err != nil {
 		a.logger.Warn("blob-gc: collecting references failed", "error", err)
@@ -3042,12 +3044,24 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 		// Same reasoning as the collectReferencedBlobs failure above.
 		return map[string]bool{}
 	}
+	// One stat per blob gives both the age the plan needs and the size the
+	// gauges report. A blob that vanished since the listing is skipped.
 	mtimes := make(map[string]time.Time, len(hashes))
+	var totalBytes int64
 	for _, h := range hashes {
-		if mt, err := a.Blobs.ModTime(h); err == nil {
+		if mt, size, err := a.Blobs.Stat(h); err == nil {
 			mtimes[h] = mt
+			totalBytes += size
 		}
 	}
+	// The gauges describe the store as listed, before this pass deletes
+	// anything.
+	observability.BlobCount.Set(float64(len(mtimes)))
+	observability.BlobBytes.Set(float64(totalBytes))
+	observability.BlobGCReferenced.Set(float64(len(referenced)))
+	// Observed only from here: a pass that failed to mark or list did no
+	// sweep, and its short duration would skew the histogram.
+	defer func() { observability.BlobGCPassSeconds.Observe(time.Since(start).Seconds()) }()
 	cutoff := time.Now().Add(-minAge)
 	current, toDelete := planBlobSweep(referenced, mtimes, prev, cutoff)
 	candidates := len(toDelete)

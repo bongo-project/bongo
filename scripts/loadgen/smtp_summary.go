@@ -94,10 +94,10 @@ type lagReport struct {
 
 func millis(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
 
-// writeSummaryFile writes s to path through a temporary file and a rename, so
+// writeSummaryFile writes v (any JSON-encodable summary) to path through a temporary file and a rename, so
 // a reader never sees half a file.
-func writeSummaryFile(path string, s *smtpSummary) error {
-	data, err := json.MarshalIndent(s, "", "  ")
+func writeSummaryFile(path string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode summary: %w", err)
 	}

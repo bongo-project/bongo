@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -39,6 +40,9 @@ type fakeServer struct {
 	t      *testing.T
 	admin  *httptest.Server
 	smtpLn net.Listener
+	// imap serves APPEND for the non-INBOX folders; it knows the accounts
+	// this fake's control listener created.
+	imap *imapFake
 
 	mu        sync.Mutex
 	users     map[string]string // email -> password as received
@@ -54,6 +58,13 @@ type fakeServer struct {
 func newFakeServer(t *testing.T) *fakeServer {
 	t.Helper()
 	f := &fakeServer{t: t, users: map[string]string{}}
+	f.imap = newIMAPFake(t, "plain")
+	f.imap.lookup = func(email string) (string, bool) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		pw, ok := f.users[email]
+		return pw, ok
+	}
 	f.admin = httptest.NewServer(http.HandlerFunc(f.handleCreate))
 	t.Cleanup(f.admin.Close)
 
@@ -193,13 +204,14 @@ func newSeedEnv(t *testing.T, f *fakeServer, mod func(*SeedOptions)) *seedEnv {
 	o.FolderMix = "INBOX:80,Archive:20"
 	o.Users, o.MessagesPerUser, o.Concurrency = 6, 8, 3
 	o.ControlAddr, o.SMTPAddr = f.controlAddr(), f.smtpAddr()
+	o.IMAPAddr, o.IMAPTLS = f.imap.addr(), imapTLSPlain
 	e := &seedEnv{t: t, f: f, state: filepath.Join(t.TempDir(), "seed.state")}
 	o.StateFile = e.state
 	if mod != nil {
 		mod(&o)
 	}
 	var allow []Target
-	for _, a := range []string{f.controlAddr(), f.smtpAddr()} {
+	for _, a := range []string{f.controlAddr(), f.smtpAddr(), f.imap.addr()} {
 		tg, err := parseTarget(a)
 		if err != nil {
 			t.Fatal(err)
@@ -229,8 +241,9 @@ func (e *seedEnv) run(ctx context.Context) (code int, stdout, stderr string) {
 	return code, out.String(), errb.String()
 }
 
-// planIDs are the Message-IDs of the INBOX messages in the plan.
-func planIDs(t *testing.T, o SeedOptions) (inbox []string, deferred int) {
+// planIDs are the Message-IDs of the INBOX messages in the plan, and how many
+// messages it puts in other folders.
+func planIDs(t *testing.T, o SeedOptions) (inbox []string, folders int) {
 	t.Helper()
 	spec, err := newPlanSpec("seed.test", o)
 	if err != nil {
@@ -241,11 +254,45 @@ func planIDs(t *testing.T, o SeedOptions) (inbox []string, deferred int) {
 			if m.Folder == inboxFolder {
 				inbox = append(inbox, m.ID)
 			} else {
-				deferred++
+				folders++
 			}
 		}
 	}
-	return inbox, deferred
+	return inbox, folders
+}
+
+// checkFolders reads every user's folders back from the IMAP server and
+// requires each planned non-INBOX message to be there exactly once.
+func (e *seedEnv) checkFolders(im *imapFake) {
+	e.t.Helper()
+	spec, err := newPlanSpec("seed.test", e.cfg.Seed)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	st, err := openState(e.state, spec.header())
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer st.Close()
+	for i := range spec.Users {
+		want := map[string][]string{}
+		for _, mp := range spec.PlanUser(i).Messages {
+			if mp.Folder != inboxFolder {
+				want[mp.Folder] = append(want[mp.Folder], mp.ID)
+			}
+		}
+		u := st.User(i)
+		for folder, ids := range want {
+			var got []string
+			for _, m := range im.inspect(u.email, u.pw, folder) {
+				got = append(got, m.ID)
+			}
+			sameSet(e.t, got, ids)
+		}
+		if n := len(im.inspect(u.email, u.pw, inboxFolder)); n != 0 {
+			e.t.Errorf("user %d: %d messages in INBOX that APPEND must not have put there", i, n)
+		}
+	}
 }
 
 func sameSet(t *testing.T, got, want []string) {
@@ -280,9 +327,9 @@ func TestSeedEndToEnd(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit %d, stderr: %s", code, stderr)
 	}
-	want, deferred := planIDs(t, e.cfg.Seed)
-	if len(want) == 0 || deferred == 0 {
-		t.Fatalf("test plan is degenerate: %d inbox, %d deferred", len(want), deferred)
+	want, folders := planIDs(t, e.cfg.Seed)
+	if len(want) == 0 || folders == 0 {
+		t.Fatalf("test plan is degenerate: %d inbox, %d in folders", len(want), folders)
 	}
 	sameSet(t, f.ids(), want)
 	if len(f.users) != 6 {
@@ -296,9 +343,15 @@ func TestSeedEndToEnd(t *testing.T) {
 			t.Errorf("delivered to unknown %s", m.rcpt)
 		}
 	}
-	if !strings.Contains(stdout, "6 created") || !strings.Contains(stdout, "deferred") {
+	if !strings.Contains(stdout, "6 created") || !strings.Contains(stdout, fmt.Sprintf("%d appended to folders", folders)) {
 		t.Errorf("summary: %s", stdout)
 	}
+	// The other folders are filled over IMAP, once each, and INBOX gets
+	// nothing from APPEND: its mail came over SMTP.
+	if got := f.imap.count("APPEND"); got != int64(folders) {
+		t.Errorf("server saw %d APPENDs, want %d", got, folders)
+	}
+	e.checkFolders(f.imap)
 
 	// The state file's password is the one the server holds.
 	spec, _ := newPlanSpec("seed.test", e.cfg.Seed)
@@ -703,7 +756,7 @@ func TestSeedFlagsAndHelp(t *testing.T) {
 		t.Fatalf("-h exit %d", code)
 	}
 	help := out.String() + errb.String()
-	for _, want := range []string{defaultSizeMix, defaultFolderMix, "POST /internal/user/create", sessionEnvVar, "90 seconds", "-users", "-state-file", "% of all messages"} {
+	for _, want := range []string{defaultSizeMix, defaultFolderMix, "POST /internal/user/create", sessionEnvVar, "90 seconds", "-users", "-state-file", "% of all messages", "-imap-addr", "-imap-tls", "-imap-insecure-tls", "IMAP APPEND", "bypasses attachment deduplication"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help lacks %q", want)
 		}

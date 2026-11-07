@@ -14,6 +14,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
@@ -153,6 +154,13 @@ func (s *session) handle() {
 		cmd, args := s.parseCommand(line)
 		cmd = strings.ToUpper(cmd)
 
+		// The timer starts here, so it includes the account-liveness check
+		// below: that is a store read every authenticated command pays and
+		// belongs in the time a client waits. Unknown commands are labelled
+		// "other"; the label never carries the client's text.
+		start := time.Now()
+		timer := observability.POP3Command(cmd)
+
 		// A revoked account gets nothing further, and in particular its pending
 		// DELE marks are not applied (no UPDATE state).
 		// A store error that hides the account state is refused the same way,
@@ -172,6 +180,7 @@ func (s *session) handle() {
 		switch cmd {
 		case "QUIT":
 			s.handleQuit()
+			timer.Since(start)
 			return
 		case "CAPA":
 			s.handleCapa()
@@ -200,6 +209,7 @@ func (s *session) handle() {
 		default:
 			s.respond("-ERR unknown command")
 		}
+		timer.Since(start)
 	}
 }
 

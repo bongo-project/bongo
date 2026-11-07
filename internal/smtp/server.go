@@ -452,6 +452,7 @@ func (s *Session) checkAccountLive(cmd string) error {
 
 // AuthPlain handles PLAIN authentication.
 func (s *Session) AuthPlain(username, password string) error {
+	defer observability.SMTPAuth.Since(time.Now())
 	ip := ""
 	if s.remoteIP != nil {
 		ip = s.remoteIP.String()
@@ -584,6 +585,7 @@ func (l *loginServer) Next(response []byte) (challenge []byte, done bool, err er
 
 // Mail is called with the MAIL FROM command.
 func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
+	defer observability.SMTPMail.Since(time.Now())
 	s.declaredSize = 0
 	s.dsnRet, s.dsnEnvID = "", ""
 	if opts != nil && opts.Size > 0 {
@@ -650,6 +652,7 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 // external recipients is only allowed for authenticated sessions (submission).
 // This is the explicit open-relay guard.
 func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
+	defer observability.SMTPRcpt.Since(time.Now())
 	dsn, dsnErr := rcptDSNFrom(opts)
 	if dsnErr != nil {
 		return dsnErr
@@ -839,6 +842,7 @@ func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
 
 // Data is called when the message data is received.
 func (s *Session) Data(r io.Reader) error {
+	defer observability.SMTPData.Since(time.Now())
 	if len(s.localRcpts)+len(s.externalRcpts) == 0 {
 		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 		return &gosmtp.SMTPError{Code: 554, EnhancedCode: gosmtp.EnhancedCode{5, 5, 1}, Message: "No valid recipients"}
@@ -1142,6 +1146,7 @@ func malformedFrom(msg string) error {
 
 // Reset is called between messages on the same connection.
 func (s *Session) Reset() {
+	defer observability.SMTPReset.Since(time.Now())
 	s.from = ""
 	s.declaredSize = 0
 	s.localRcpts = nil
@@ -1413,11 +1418,18 @@ func (s *Server) Listen() error {
 	// client IP is available for SPF and logging.
 	mxl = netx.MaybeProxyProtocol(mxl, s.proxyProtocol, s.trustedProxies, netx.WithRejectLogger(s.logger))
 	subl = netx.MaybeProxyProtocol(subl, s.proxyProtocol, s.trustedProxies, netx.WithRejectLogger(s.logger))
+	// Counting goes after the PROXY layer so only connections that got through
+	// it are counted. SMTP has no per-IP limiter.
+	mxConns := observability.ProtocolConns(observability.ProtocolSMTP)
+	subConns := observability.ProtocolConns(observability.ProtocolSubmission)
+	mxl = netx.CountConns(mxl, mxConns.Open, mxConns.Accepted)
+	subl = netx.CountConns(subl, subConns.Open, subConns.Accepted)
 	s.mxListener = mxl
 	s.subListener = subl
 	if tlsl != nil {
 		// PROXY goes before TLS: the header is plaintext ahead of the handshake.
 		tlsl = netx.MaybeProxyProtocol(tlsl, s.proxyProtocol, s.trustedProxies, netx.WithRejectLogger(s.logger))
+		tlsl = netx.CountConns(tlsl, subConns.Open, subConns.Accepted)
 		s.submissionsListener = tls.NewListener(tlsl, s.submissionsTLS)
 		s.logger.Info("smtp: listening", "mx", s.mxListener.Addr(), "submission", s.subListener.Addr(),
 			"submissions", s.submissionsListener.Addr(), "max_conn", s.maxConn, "proxy_protocol", s.proxyProtocol)

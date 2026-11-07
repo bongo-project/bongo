@@ -1779,3 +1779,11 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [loadgen] All subcommands share one FlagSet, so each subcommand prefixes its flags.
 - PATTERN: [loadgen] The control listener is loopback only; the generator reaches it through an SSH tunnel and signs with the session secret, read from the environment or a 0600 file, never a flag.
 
+## 2026-11-07: Phase 37 batch 3 (37.4, 37.5, 37.9)
+
+- All three DONE, review MINOR. Conflicts in scripts/loadgen/config.go (three Config fields) and smtp_summary.go (both generalised writeSummaryFile to take any): resolved. Orchestrator fix after merge: DAV object paths assumed a trailing slash on the collection; davObjectPath added with a test that fails on concatenation. Full gate passed.
+- 37.4: go-smtp answers 452 past MaxRecipients, so a sink limit below the server's fan-out makes the server queue and retry. No periodic summary flush (SIGKILL loses the run), no connection cap. egress-check covers TCP 25 only; the runbook must say HTTPS and DNS are not checked.
+- 37.5: worker wrote code and tests together, not tests first; 15 mutants all killed. 'plain' IMAP TLS mode sends LOGIN in clear (opt-in, dev only). imapBound has a cosmetic timer race. DAV timing tests use wall-clock windows; a CI flake risk.
+- 37.9: unknown IMAP commands never reach the backend (go-imap answers them), so IMAP labels are constants and no IMAP 'other' test exists. Three copies of a histogram-count test helper (use obstest.HistogramCount). Snapshot checkpoint phase is observed even on failure. TestIndexBacklogGaugeTracksQueue asserts absolute values on a global.
+- PATTERN: [loadgen] Parallel loadgen tasks all touch config.go's Config struct and smtp_summary.go; expect a one-line conflict per batch.
+

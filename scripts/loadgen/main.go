@@ -1,6 +1,8 @@
 // Command loadgen generates load against a Bongo test deployment.
 //
 //	go run ./scripts/loadgen check --target-allow HOST[:PORT] --test-domain DOMAIN [--target HOST:PORT] [--from ADDR] [--rcpt ADDR]
+//	... sink --sink-listen IP:PORT [--sink-domain DOMAIN]   (see sink -h)
+//	... egress-check --egress-sink H:P --egress-probe IP:25   (see egress-check -h)
 //
 // The tool is fail-closed. run parses the flags of every subcommand and calls
 // Validate before it dispatches, so no subcommand can reach the network

@@ -74,6 +74,20 @@ func TestLoadTestMetricsExported(t *testing.T) {
 		{"bongo_pebble_wal_fsync_seconds", "histogram"},
 		{"bongo_pebble_write_stalls_total", "counter"},
 		{"bongo_pebble_write_stall_seconds_total", "counter"},
+		{"bongo_blobs", "gauge"},
+		{"bongo_blob_bytes", "gauge"},
+		{"bongo_blob_gc_pass_seconds", "histogram"},
+		{"bongo_blob_gc_deleted_total", "counter"},
+		{"bongo_blob_gc_referenced_blobs", "gauge"},
+		{"bongo_raft_snapshot_seconds", "histogram"},
+		{"bongo_raft_snapshot_bytes", "gauge"},
+		{"bongo_search_indexes_open", "gauge"},
+		{"bongo_search_index_evictions_total", "counter"},
+		{"bongo_protocol_connections", "gauge"},
+		{"bongo_protocol_connections_accepted_total", "counter"},
+		{"bongo_protocol_command_seconds", "histogram"},
+		{"bongo_dav_requests_in_flight", "gauge"},
+		{"bongo_dav_requests_total", "counter"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if want := "# TYPE " + tt.name + " " + tt.kind; !strings.Contains(s, want) {

@@ -25,6 +25,11 @@ type Config struct {
 	// Seed holds the seed subcommand's options.
 	Seed SeedOptions
 	SMTP smtpConfig
+	// Sink and Egress hold the sink and egress-check subcommands' options.
+	Sink   sinkConfig
+	Egress egressConfig
+	// Clients holds the clients subcommand's options.
+	Clients clientsOptions
 }
 
 // listFlag is a repeatable flag that also splits on commas.
