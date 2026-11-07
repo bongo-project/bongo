@@ -1805,3 +1805,12 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [profiling] CPU and block profiles miss time blocked in syscalls such as fsync; use go test -trace and go tool trace -pprof=syscall, then confirm with an A/B run.
 - PATTERN: [loadtest] Per-message Bleve indexing dominates write cost; expect it to be a server limit in the load test.
 
+## 2026-11-07: Phase 37 batch 6 (37.17)
+
+- 37.17 DONE, review MINOR. No FSM change: cluster.FSM.SetSearchManager takes the SearchIndexer interface, so each loader shard gets a store.MailBatcher (flush at 256 docs or 8 MB, on user change, before a delete; profile writes pass through; first flush error sticky). newMailDocument is shared by both paths. Index creation unchanged (bleve.New, empty config), pinned by an index_meta.json test; no Scorch tuning, never unsafe_batch.
+- Rates (M3 Max, darwin F_FULLFSYNC, 8 workers): 8x300 85/s load, 38 s drain, 36/s end to end before; 419/s load, 1.8 s drain, about 319/s after. 32x300 about 343/s end to end. About 3.5 days for 100 million messages.
+- Orchestrator additions after review: TestBulkLoadFillsGAL (the IndexProfile pass-through had no test; a return-nil mutant passed everything). The GAL is searched by analysed-token prefix, so the test queries the local part; the first version queried the full address and failed for that reason. --bulk-workers capped at 128 (search manager maxOpen) with a refusal case. Both mutation-checked.
+- Logged: race-mode rate floor (15/s) is below per-message indexing under race (27.5/s); date term counts compared as sets and term dictionaries skipped for the user with a delete (unmerged segments). go test -trace was not run.
+- Gate: first run failed on TestRunWithPeersOpensPeerListener (port taken between pick and bind, unrelated); passed alone three times; rerun passed. Flake added to PRD 8.2.
+- PATTERN: [search] GAL queries are prefix queries over analysed tokens; query the local part or a name, never a full address.
+

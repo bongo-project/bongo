@@ -92,6 +92,7 @@ func TestBulkMainRefusalsWriteNothing(t *testing.T) {
 		{"state file inside the data dir", func(t *testing.T, c *Config) {
 			c.Seed.StateFile = filepath.Join(c.Bulk.DataDir, "x.state")
 		}, "inside the data directory"},
+		{"too many workers", func(t *testing.T, c *Config) { c.Bulk.Workers = 129 }, "between 1 and 128"},
 		{"control: a valid run", func(t *testing.T, c *Config) { c.Seed.Users = 1 }, ""},
 	}
 	for _, tc := range tests {

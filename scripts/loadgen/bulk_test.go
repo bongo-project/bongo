@@ -264,8 +264,12 @@ func TestBulkLoadRate(t *testing.T) {
 	total := float64(res.Messages) / (res.Seconds + res.IndexDrain)
 	t.Logf("rate: %.1f messages/s loading (%.1fs), %.1f messages/s end to end (%.1fs draining indexes), %.2f MB/s, warnings %d",
 		res.MessagesPerSec, res.Seconds, total, res.IndexDrain, res.BytesPerSec/(1<<20), res.Warnings)
-	if total < 10 {
-		t.Errorf("end-to-end rate %.1f messages/s is below the floor of 10", total)
+	floor := 100.0 // measured 200-330 without the race detector
+	if raceEnabled {
+		floor = 15 // measured 26-37; per-message indexing gave 27
+	}
+	if total < floor {
+		t.Errorf("end-to-end rate %.1f messages/s is below the floor of %.0f", total, floor)
 	}
 }
 

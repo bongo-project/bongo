@@ -120,6 +120,9 @@ type loaderStores struct {
 	applier   *fsmApplier
 	mailboxes *store.MailboxStore
 	logger    *slog.Logger
+	// perMessageIndex gives every shard the shared search manager, as the
+	// server has it. Only the equivalence test sets it.
+	perMessageIndex bool
 }
 
 // shard is one FSM with its own offline applier and background index worker.
@@ -128,15 +131,29 @@ type shard struct {
 	applier   *fsmApplier
 	mailboxes *store.MailboxStore
 	stopIdx   context.CancelFunc
+	// batcher is nil when the shard indexes per message (tests only).
+	batcher *store.MailBatcher
 }
+
+// The FSM takes the batcher where it would take the shared search manager.
+// Checked here because store must not import cluster.
+var _ cluster.SearchIndexer = (*store.MailBatcher)(nil)
 
 func (ls *loaderStores) newShard() *shard {
 	f := cluster.NewFSM(ls.ps, ls.blobs, ls.meta, ls.logger)
-	f.SetSearchManager(ls.search)
+	var batcher *store.MailBatcher
+	if ls.perMessageIndex {
+		f.SetSearchManager(ls.search)
+	} else {
+		// One batcher per shard: a shard loads one user at a time, so its
+		// pending batch is that user's.
+		batcher = ls.search.NewMailBatcher(0, 0)
+		f.SetSearchManager(batcher)
+	}
 	ap := &fsmApplier{fsm: f}
 	ctx, cancel := context.WithCancel(context.Background())
 	f.StartIndexer(ctx)
-	sh := &shard{fsm: f, applier: ap, mailboxes: store.NewMailboxStore(ls.ps, ap), stopIdx: cancel}
+	sh := &shard{fsm: f, applier: ap, mailboxes: store.NewMailboxStore(ls.ps, ap), stopIdx: cancel, batcher: batcher}
 	ls.shards = append(ls.shards, sh)
 	return sh
 }
@@ -147,6 +164,10 @@ var errDataDirInUse = errors.New("server running or data dir in use")
 // lock makes this fail while a server (or any other opener in this process)
 // holds the directory.
 func openLoaderStores(dir string, logger *slog.Logger) (*loaderStores, error) {
+	return openLoaderStoresIndexed(dir, logger, false)
+}
+
+func openLoaderStoresIndexed(dir string, logger *slog.Logger, perMessageIndex bool) (*loaderStores, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "pebble"), 0o750); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
@@ -154,7 +175,7 @@ func openLoaderStores(dir string, logger *slog.Logger) (*loaderStores, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errDataDirInUse, err)
 	}
-	ls := &loaderStores{dir: dir, ps: ps, logger: logger}
+	ls := &loaderStores{dir: dir, ps: ps, logger: logger, perMessageIndex: perMessageIndex}
 	fail := func(err error) (*loaderStores, error) {
 		_ = ls.closeStores()
 		return nil, err
@@ -185,7 +206,15 @@ func (ls *loaderStores) drain(timeout time.Duration) (time.Duration, error) {
 		sh.stopIdx()
 		sh.fsm.StopIndexer()
 	}
-	closeErr := ls.closeStores()
+	// After the indexers have stopped, so no IndexMail can follow, and before
+	// the search manager closes, or the buffered tails would be lost.
+	var flushErrs []error
+	for _, sh := range ls.shards {
+		if sh.batcher != nil {
+			flushErrs = append(flushErrs, sh.batcher.Flush())
+		}
+	}
+	closeErr := errors.Join(append(flushErrs, ls.closeStores())...)
 	if !idle {
 		return time.Since(start), errors.Join(fmt.Errorf("index worker still busy after %s", timeout), closeErr)
 	}
@@ -232,7 +261,7 @@ func bulkLoad(ctx context.Context, spec PlanSpec, o bulkOptions, statePath strin
 	var warns, slow atomic.Int64
 	samples := &warnSample{}
 	logger := slog.New(countingHandler{warns: &warns, slow: &slow, first: samples})
-	ls, err := openLoaderStores(o.DataDir, logger)
+	ls, err := openLoaderStoresIndexed(o.DataDir, logger, o.perMessageIndex)
 	if err != nil {
 		return nil, &refusal{err}
 	}

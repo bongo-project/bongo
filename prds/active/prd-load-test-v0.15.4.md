@@ -417,3 +417,7 @@ worthwhile.
   between the two reports (37.18 review).
 - loadgen smtp and probe cannot tell a configuration failure (authentication, TLS)
   from a server that fell behind; clients can since 37.18 (37.18 review).
+- TestRunWithPeersOpensPeerListener (internal/agent) can fail with "address
+  already in use": it picks a free port and binds it later, and another test can
+  take the port in between. Seen once in the full suite on 2026-11-07; passed
+  three times alone.

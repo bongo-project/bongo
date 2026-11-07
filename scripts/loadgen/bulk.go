@@ -39,9 +39,23 @@ import (
 //	    The first real log entries are therefore applied on top of the loaded
 //	    data, whatever their index.
 //	    The FSM assumes serial applies, and the derived-index worker of one FSM
-//	    is the slowest part of a load (Bleve merges segments after every
-//	    message). So each load worker owns its own FSM, applier and index
-//	    worker, and applies are serial within one worker only. This is safe
+//	    is the slowest part of a load. So each load worker owns its own FSM,
+//	    applier and index worker, and applies are serial within one worker only.
+//	    The Bleve writes are the one thing that differs from the server: each
+//	    FSM gets a store.MailBatcher in place of the shared search manager, so
+//	    a user's documents are written as batches (256 documents or 8 MB) and
+//	    flushed when the index worker has stopped and before the search manager
+//	    closes. Without that, Scorch persisted and merged after every message,
+//	    and the load ran at about 36 messages/s end to end; with batching it
+//	    runs at about 320-340 (8 workers, Apple M3 Max, 8 and 32 users of 300
+//	    messages, darwin: its F_FULLFSYNC is not representative of Linux NVMe).
+//	    What the FSM writes
+//	    to Pebble and SQLite is unchanged, and the Bleve content is the same
+//	    (TestBulkLoadBatchedIndexMatchesPerMessage). Nothing the server runs
+//	    constructs a batcher (TestOnlyLoaderUsesMailBatcher). A worker count
+//	    above the search manager's 128 open indexes lets one worker's eviction
+//	    close an index another is writing; keep it at or below 128.
+//	    Per-worker FSMs are safe
 //	    because a user is loaded by exactly one worker, which keeps that
 //	    user's UID allocation and mailbox updates in plan order, and because
 //	    different users share no Pebble key: everything lives under
@@ -74,6 +88,10 @@ type bulkOptions struct {
 	CheckA   string
 	CheckB   string
 	MaxDiffs int
+
+	// perMessageIndex keeps the server's per-message Bleve writes. Tests use
+	// it to prove the batched index equals it; there is no flag.
+	perMessageIndex bool
 }
 
 func addBulkFlags(fs *flag.FlagSet, cfg *Config) {
@@ -119,12 +137,14 @@ APPEND, which stores the message whole with decoded attachment blobs.
 
 Speed. Measured on an Apple M3 Max laptop (APFS, so fsync is F_FULLFSYNC,
 which makes macOS unrepresentative of Linux NVMe in either direction), 8
-workers, 2KB/8KB/32KB mix, about 36 messages/s end to end (about 85/s while
-loading, then the Bleve index drains). The ceiling is Bleve: its merger takes
-about half the CPU and the drain runs after the load ends. Pebble syncs are
-under 2% of blocked time, so they are not the limit. More workers raise the
-load rate but not the drain. Run "go test -bench BulkLoad ./scripts/loadgen/"
-for the current figure on your machine.
+workers, 2KB/8KB/32KB mix: about 420 messages/s while loading and about 320
+messages/s end to end for 8 users of 300 messages (about 340 end to end for 32
+users), with under 2 seconds of index drain. Before the Bleve writes were
+batched the same plan ran at about 85/s loading and 36/s end to end. The
+loader writes each user's search documents in batches instead of one commit
+per message; the index content is the same. Use at most 128 workers. Run "go
+test -bench BulkLoad ./scripts/loadgen/" for the current figure on your
+machine.
 
 Check mode compares two data directories of stopped servers (both must be
 stopped: it opens the SQLite index through the server's manager, which may
@@ -221,8 +241,10 @@ func bulkMain(ctx context.Context, cfg Config, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "loadgen: bulk: %v\n", err)
 		return exitRefuse
 	}
-	if o.Workers < 1 || o.Workers > 256 {
-		fmt.Fprintln(stderr, "loadgen: bulk: --bulk-workers must be between 1 and 256")
+	// Above the search manager's 128 open indexes, one worker's eviction can
+	// close an index another worker is flushing into.
+	if o.Workers < 1 || o.Workers > 128 {
+		fmt.Fprintln(stderr, "loadgen: bulk: --bulk-workers must be between 1 and 128")
 		return exitRefuse
 	}
 	spec, err := newPlanSpec(domain, cfg.Seed)

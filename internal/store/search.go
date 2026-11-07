@@ -98,6 +98,13 @@ func (sm *SearchManager) IndexMail(userID, guid string, subject, from string, to
 		return err
 	}
 
+	return idx.Index(guid, newMailDocument(subject, from, to, body, receivedAt, hasAttachment, tags, spamScore))
+}
+
+// newMailDocument builds the indexed document. The per-message path and the
+// loader's batch path both call it, so the two indexes cannot differ in
+// content.
+func newMailDocument(subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, tags []string, spamScore []float64) MailDocument {
 	doc := MailDocument{
 		Subject:       subject,
 		From:          from,
@@ -110,7 +117,7 @@ func (sm *SearchManager) IndexMail(userID, guid string, subject, from string, to
 	if len(spamScore) > 0 {
 		doc.SpamScore = spamScore[0]
 	}
-	return idx.Index(guid, doc)
+	return doc
 }
 
 // Search performs a full-text search in a user's index.
