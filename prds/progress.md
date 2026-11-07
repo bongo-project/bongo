@@ -1756,3 +1756,7 @@ PATTERN: testing - a negative field name (AppPasswordRevoked) keeps the zero val
 ## 2026-11-07: Phase 36 task 36.14
 
 Asked about the tag, the operator reversed decision 21: both findings fixed first (decision 23). Done by hand, tests first; every new test was red on the merged code. Callers skip `Succeed` when the login used an app password. `auth.LogUsername` guards every protocol user name in logs, with a trim for pasted line endings. Mutants on each throttled line and the trim went red.
+
+## 2026-11-07: load test imported
+
+- Load test PRD imported as Phase 37 (16 tasks), release v0.15.4, ahead of v0.16. The tool, server metrics and local dry run need no budget; 37.14 onward need the rented machines. Open question 5 (bulk loader) is 37.11, for the operator to confirm.
