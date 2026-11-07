@@ -34,6 +34,8 @@ type Config struct {
 	Report reportConfig
 	// Bulk holds the bulk subcommand's options.
 	Bulk bulkOptions
+	// Source is the --source-addr list shared by every dialler.
+	Source sourceAddrs
 }
 
 // listFlag is a repeatable flag that also splits on commas.
@@ -87,6 +89,7 @@ func newFlagSet(name string, cfg *Config, out io.Writer) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(out)
 	fs.Var(targetAllowFlag{cfg}, "target-allow", "host[:port] the tool may contact (repeatable or comma-separated; an entry without a port allows any port)")
+	fs.Var(sourceAddrFlag{cfg}, "source-addr", sourceAddrUsage)
 	fs.Var(listFlag{&cfg.Targets}, "target", "host:port to contact; must be in --target-allow (repeatable or comma-separated)")
 	fs.StringVar(&cfg.TestDomain, "test-domain", "", "every sender and recipient domain must be this domain or a subdomain of it")
 	fs.BoolVar(&cfg.IOwnThisTarget, "i-own-this-target", false, "allow a target on the built-in production list; never lifts the test-domain rules")

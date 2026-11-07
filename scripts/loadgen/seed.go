@@ -177,7 +177,7 @@ func runSeed(cfg Config, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return seedMain(ctx, cfg, seedDeps{
-		dial: defaultDial(), secret: secret, newPassword: NewPassword,
+		dial: dialFor(cfg), secret: secret, newPassword: NewPassword,
 		backoff: time.Second, tries: 8,
 	}, stdout, stderr)
 }

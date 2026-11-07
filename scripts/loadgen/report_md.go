@@ -73,12 +73,12 @@ func renderMarkdown(d *reportDoc) string {
 		w("Found %d, not found %d. Resolution: %.0f ms.\n\n", s.Found, s.NotFound, s.ResolutionMs)
 	}
 
-	w("## IMAP and DAV\n\n")
+	w("## IMAP, POP3 and DAV\n\n")
 	if c := d.Clients; c == nil {
 		notMeasured("no clients summary was given")
 	} else {
 		w("%s.\n\n| Operation | Count | p50 ms | p95 ms | p99 ms | Errors |\n|---|---|---|---|---|---|\n", c.Note)
-		for _, name := range []string{opLogin, opFetchHeaders, opFetchBody, opDAVPropfind, opDAVReport, opDAVPut} {
+		for _, name := range reportedClientOps {
 			if o, ok := c.Ops[name]; ok {
 				w("| %s | %d | %s | %s | %s | %d |\n", name, o.Count, num(o.P50Ms), num(o.P95Ms), num(o.P99Ms), o.Errors)
 			}
@@ -116,6 +116,13 @@ func renderMarkdown(d *reportDoc) string {
 		w("The run is **valid**: the generator did not saturate.\n\n")
 	} else {
 		w("The run is **invalid**: the generator saturated (%s), so the numbers describe the generator, not the server.\n\n", strings.Join(v.SaturationReasons, ", "))
+	}
+	for _, g := range d.Meta.SourceAddrs {
+		parts := make([]string, len(g.Addrs))
+		for i, a := range g.Addrs {
+			parts[i] = fmt.Sprintf("%s %d", a.Addr, a.Connections)
+		}
+		w("Connections of %s came from %d source addresses (connections opened: %s).\n\n", g.Generator, len(g.Addrs), strings.Join(parts, ", "))
 	}
 	if v.SampleGapOver30s {
 		w("A gap between server samples exceeded 30s.\n\n")

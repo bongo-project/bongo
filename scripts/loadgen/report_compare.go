@@ -37,7 +37,7 @@ const compareHelp = `usage: loadgen report-compare --target-allow H:P --test-dom
 Compares the measured results of two reports written by "report": both values,
 the difference in percent of the baseline, and whether they agree within the
 threshold (default 10). Measured results are throughput, the latency
-percentiles (SMTP, delivery delay, search lag, IMAP and DAV), the server
+percentiles (SMTP, delivery delay, search lag, IMAP, POP3 and DAV), the server
 resource figures and the WAL fsync percentiles. A measured result present in
 one report only is "missing" and does not agree. 0 against 0 agrees; 0 against
 anything else does not. max_ms is shown but never gated: one outlier moves it.

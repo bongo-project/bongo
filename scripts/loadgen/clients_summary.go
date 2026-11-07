@@ -15,11 +15,14 @@ type clientsSummary struct {
 	ElapsedSeconds float64   `json:"elapsed_seconds"`
 	Interrupted    bool      `json:"interrupted"`
 
-	Params clientsParams        `json:"params"`
-	Ops    map[string]opSummary `json:"ops"`
-	Idle   idleSummary          `json:"idle"`
-	Active activeSummary        `json:"active"`
-	DAV    davSummary           `json:"dav"`
+	Params clientsParams `json:"params"`
+	// SourceAddrs is bookkeeping for --source-addr, not a measurement.
+	SourceAddrs []sourceCount        `json:"source_addrs,omitempty"`
+	Ops         map[string]opSummary `json:"ops"`
+	Idle        idleSummary          `json:"idle"`
+	Active      activeSummary        `json:"active"`
+	DAV         davSummary           `json:"dav"`
+	POP3        pop3Summary          `json:"pop3"`
 }
 
 type clientsParams struct {
@@ -38,6 +41,12 @@ type clientsParams struct {
 	DAVWriteShare  float64 `json:"dav_write_share"`
 	IdleRestartSec float64 `json:"idle_restart_seconds"`
 	IMAPTLS        string  `json:"imap_tls,omitempty"`
+
+	POP3         int     `json:"pop3"`
+	POP3TLS      string  `json:"pop3_tls,omitempty"`
+	POP3CycleSec float64 `json:"pop3_cycle_seconds"`
+	RetrCount    int     `json:"pop3_retr_count"`
+	DeleShare    float64 `json:"pop3_dele_share"`
 }
 
 // opSummary counts successes and times them; Errors holds a count per class
@@ -73,12 +82,21 @@ type davSummary struct {
 	StoppedAuth int64 `json:"clients_stopped_after_auth_failures"`
 }
 
+type pop3Summary struct {
+	Cycles       int64 `json:"cycles"`
+	Completed    int64 `json:"completed"`
+	Retrieved    int64 `json:"messages_retrieved"`
+	Deleted      int64 `json:"messages_deleted"`
+	SkippedEmpty int64 `json:"retr_skipped_empty"`
+	StoppedAuth  int64 `json:"clients_stopped_after_auth_failures"`
+}
+
 // totals sums successes and errors. A completed connection is not counted as
 // a success: a server that accepts every connection and refuses every login
 // has not served the load.
 func (s *clientsSummary) totals() (okN, errN int64) {
 	for name, o := range s.Ops {
-		if name != opConnect {
+		if !isConnectOp(name) {
 			okN += o.Count
 		}
 		errN += o.ErrorTotal
@@ -111,13 +129,14 @@ func (r *clientsRunner) summary(runID string, start, end time.Time, interrupted 
 	o := r.cfg
 	sum := &clientsSummary{
 		RunID: runID, Start: start, End: end, ElapsedSeconds: end.Sub(start).Seconds(),
-		Interrupted: interrupted,
+		Interrupted: interrupted, SourceAddrs: r.pool.counts(),
 		Params: clientsParams{
 			IMAPIdle: o.IMAPIdle, IMAPActive: o.IMAPActive, DAV: o.DAV, Accounts: len(r.accts),
 			DurationSecs: o.Duration.Seconds(), TimeoutSecs: o.Timeout.Seconds(), RampSecs: o.Ramp.Seconds(),
 			ActiveCycleSec: o.ActiveCycle.Seconds(), FetchCount: o.FetchCount, BodyShare: o.BodyShare,
 			FlagEvery: o.FlagEvery, DAVIntervalSec: o.DAVInterval.Seconds(), DAVWriteShare: o.DAVWriteShare,
 			IdleRestartSec: o.IdleRestart.Seconds(), IMAPTLS: o.IMAPTLS,
+			POP3: o.POP3, POP3TLS: o.POP3TLS, POP3CycleSec: o.POP3Cycle.Seconds(), RetrCount: o.RetrCount, DeleShare: o.DeleShare,
 		},
 		Ops: make(map[string]opSummary, len(s.ops)),
 		Idle: idleSummary{
@@ -129,6 +148,10 @@ func (r *clientsRunner) summary(runID string, start, end time.Time, interrupted 
 			FetchSkippedEmpty: s.fetchSkippedEmpty.Load(), StoppedAuth: s.activeStoppedAuth.Load(),
 		},
 		DAV: davSummary{Cycles: s.davCycles.Load(), Writes: s.davWrites.Load(), StoppedAuth: s.davStoppedAuth.Load()},
+		POP3: pop3Summary{
+			Cycles: s.pop3Cycles.Load(), Completed: s.pop3Done.Load(), Retrieved: s.pop3Retrieved.Load(),
+			Deleted: s.pop3Deleted.Load(), SkippedEmpty: s.pop3SkippedEmpty.Load(), StoppedAuth: s.pop3StoppedAuth.Load(),
+		},
 	}
 	for name, op := range s.ops {
 		sm := opSummary{

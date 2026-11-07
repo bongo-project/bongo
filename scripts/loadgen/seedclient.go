@@ -29,6 +29,10 @@ func guardedDial(cfg Config, base dialFunc) dialFunc {
 	}
 }
 
+// dialFor is the dialler a subcommand starts from: defaultDial, bound to the
+// --source-addr pool when one is set.
+func dialFor(cfg Config) dialFunc { return dialFrom(cfg.Source.pool, 10*time.Second) }
+
 func defaultDial() dialFunc {
 	d := &net.Dialer{Timeout: 10 * time.Second}
 	return d.DialContext

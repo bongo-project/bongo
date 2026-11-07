@@ -1814,3 +1814,10 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Gate: first run failed on TestRunWithPeersOpensPeerListener (port taken between pick and bind, unrelated); passed alone three times; rerun passed. Flake added to PRD 8.2.
 - PATTERN: [search] GAL queries are prefix queries over analysed tokens; query the local part or a name, never a full address.
 
+## 2026-11-07: Phase 37 batch 7 (37.19, 37.20)
+
+- Both DONE, review MINOR. 37.19 plan REVISE (applied): a separate --clients-pop3-tls flag, because the IMAP auto mode keys on IMAP ports. Conflicts in clients.go (runner fields: pool and the POP3 total) and clients_summary.go (SourceAddrs and POP3 fields): kept both. Confirmed POP3 dials through the clients runner's guardedDial(cfg, dialFor(cfg)). Full gate passed.
+- TestDialFromSpreadsOverTwoLoopbackAddresses skips unless 127.0.0.2 is assigned, which it is not by default on macOS or in a Linux container; ran it in golang:1.27.3 with --cap-add NET_ADMIN and `ip addr add 127.0.0.2/8 dev lo`: PASS (5 and 5).
+- Logged: source_addrs on the clients and probe summaries and the Markdown line are untested; production uses dialFor(cfg) while many tests use defaultDial(); seed and sample record no per-address counts; the clients Note always mentions POP3; stdout summary shows only IDLE figures; a failed POP3 auto probe is not cached; clientStats.totals() and clientsSummary.totals() disagree on connect ops (only the latter drives the exit code).
+- PATTERN: [tests] A test that skips unless the machine has extra configuration may never run anywhere; run it once in a container with the configuration, and say so.
+

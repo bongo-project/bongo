@@ -29,11 +29,26 @@ const (
 	opDAVPropfind  = "dav_propfind"
 	opDAVReport    = "dav_report"
 	opDAVPut       = "dav_put"
+
+	// POP3 keeps its own names, so its timings never merge into IMAP's.
+	opPOP3Connect = "pop3_connect"
+	opPOP3Login   = "pop3_login"
+	opPOP3Stat    = "pop3_stat"
+	opPOP3List    = "pop3_list"
+	opPOP3Retr    = "pop3_retr"
+	opPOP3Dele    = "pop3_dele"
+	opPOP3Quit    = "pop3_quit"
 )
+
+// isConnectOp reports whether op only proves a connection was made, which is
+// not service: a server that accepts every connection and refuses every login
+// has not served the load.
+func isConnectOp(op string) bool { return op == opConnect || op == opPOP3Connect }
 
 var clientOps = []string{
 	opConnect, opLogin, opList, opSelect, opFetchHeaders, opFetchBody, opStore,
 	opIdleStart, opIdleHold, opDAVPropfind, opDAVReport, opDAVPut,
+	opPOP3Connect, opPOP3Login, opPOP3Stat, opPOP3List, opPOP3Retr, opPOP3Dele, opPOP3Quit,
 }
 
 // errClass is the only form an error takes in the summary. Raw error text can
@@ -146,6 +161,8 @@ type clientStats struct {
 
 	activeCycles, activeDone, fetchSkippedEmpty, activeStoppedAuth, idleStoppedAuth atomic.Int64
 	davCycles, davWrites, davStoppedAuth                                            atomic.Int64
+
+	pop3Cycles, pop3Done, pop3Retrieved, pop3Deleted, pop3SkippedEmpty, pop3StoppedAuth atomic.Int64
 }
 
 func newClientStats() *clientStats {

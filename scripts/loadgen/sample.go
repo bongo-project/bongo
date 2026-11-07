@@ -190,7 +190,7 @@ func runSample(cfg Config, stdout, stderr io.Writer) int {
 		<-ctx.Done()
 		stop()
 	}()
-	n, failed, err := sampleRun(ctx, cfg, defaultDial(), stderr)
+	n, failed, err := sampleRun(ctx, cfg, dialFor(cfg), stderr)
 	fmt.Fprintf(stdout, "sample: %d scrapes, %d failed; samples: %s, raw: %s\n", n, failed, cfg.Report.Sample.Out, cfg.Report.Sample.Raw)
 	if err != nil {
 		if errors.Is(err, errSampleFileUsed) {

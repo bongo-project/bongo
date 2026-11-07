@@ -96,6 +96,12 @@ func runWith(table map[string]command, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "loadgen: refused: %v\n", err)
 		return exitRefuse
 	}
+	// Validate promises no I/O; reading the interface list is I/O, so it is
+	// a second gate rather than part of Validate.
+	if err := checkSourceAddrs(cfg, interfaceAddrs); err != nil {
+		fmt.Fprintf(stderr, "loadgen: refused: %v\n", err)
+		return exitRefuse
+	}
 	return cmd(cfg, stdout, stderr)
 }
 

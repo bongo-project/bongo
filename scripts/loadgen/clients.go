@@ -38,12 +38,14 @@ const (
 // only in this subcommand's FlagSet, so they collide with nothing. The rest
 // carry a clients- prefix like the smtp flags carry smtp-.
 type clientsOptions struct {
-	IMAPIdle, IMAPActive, DAV int
+	IMAPIdle, IMAPActive, DAV, POP3 int
 
 	StateFile   string
 	IMAPAddr    string
 	IMAPTLS     string
 	DAVAddr     string
+	POP3Addr    string
+	POP3TLS     string
 	InsecureTLS bool
 
 	Duration time.Duration
@@ -60,6 +62,10 @@ type clientsOptions struct {
 	DAVInterval   time.Duration
 	DAVWriteShare float64
 	IdleRestart   time.Duration
+
+	POP3Cycle time.Duration
+	RetrCount int
+	DeleShare float64
 }
 
 func addClientsFlags(fs *flag.FlagSet, cfg *Config) {
@@ -67,10 +73,13 @@ func addClientsFlags(fs *flag.FlagSet, cfg *Config) {
 	fs.IntVar(&o.IMAPIdle, "imap-idle", 0, "clients: IMAP connections to hold in IDLE")
 	fs.IntVar(&o.IMAPActive, "imap-active", 0, "clients: IMAP clients that log in, LIST, SELECT INBOX, FETCH and STORE on a cycle")
 	fs.IntVar(&o.DAV, "dav", 0, "clients: CalDAV and CardDAV clients that poll their collections and sometimes write")
+	fs.IntVar(&o.POP3, "pop3", 0, "clients: POP3 clients that log in, STAT, LIST, RETR recent messages and QUIT on a cycle")
 	fs.StringVar(&o.StateFile, "clients-state-file", "", "seed state file to read accounts from, mode 0600; it is only read, never changed (required)")
 	fs.StringVar(&o.IMAPAddr, "clients-imap-addr", "", "host:port of the IMAP listener; must be in --target-allow")
 	fs.StringVar(&o.IMAPTLS, "clients-imap-tls", imapTLSAuto, "clients: auto, implicit, starttls or plain. auto uses implicit TLS on ports 993 and 1993 and otherwise STARTTLS when offered, and never sends a password in clear; plain is for a dev-role server")
 	fs.StringVar(&o.DAVAddr, "clients-dav-addr", "", "host:port of the HTTPS listener serving /caldav/ and /carddav/; must be in --target-allow. Redirects are never followed")
+	fs.StringVar(&o.POP3Addr, "clients-pop3-addr", "", "host:port of the POP3 listener; must be in --target-allow")
+	fs.StringVar(&o.POP3TLS, "clients-pop3-tls", pop3TLSAuto, "clients: auto, implicit, starttls or plain. auto uses implicit TLS on ports 995 and 1995 and otherwise STLS when offered, and never sends a password in clear; plain is for a dev-role server")
 	fs.BoolVar(&o.InsecureTLS, "clients-insecure-tls", false, "clients: accept a self-signed server certificate; for an allow-listed test target only")
 	fs.DurationVar(&o.Duration, "clients-duration", 10*time.Minute, "clients: how long to run")
 	fs.DurationVar(&o.Timeout, "clients-timeout", 30*time.Second, "clients: per-operation timeout; also the grace given to in-flight operations on shutdown")
@@ -84,6 +93,9 @@ func addClientsFlags(fs *flag.FlagSet, cfg *Config) {
 	fs.DurationVar(&o.DAVInterval, "clients-dav-interval", time.Minute, "clients: time between the starts of a DAV client's poll cycles")
 	fs.Float64Var(&o.DAVWriteShare, "clients-dav-write-share", 0.05, "clients: share of DAV cycles that PUT one event or contact (0 to 1). Writes rotate over four fixed hrefs per client, so storage stays flat")
 	fs.DurationVar(&o.IdleRestart, "clients-idle-restart", 25*time.Minute, "clients: end and restart IDLE this often, before the 29 minute limit servers may enforce")
+	fs.DurationVar(&o.POP3Cycle, "clients-pop3-cycle", time.Minute, "clients: time between the starts of a POP3 client's cycles; each cycle connects afresh and quits")
+	fs.IntVar(&o.RetrCount, "clients-pop3-retr-count", 5, "clients: recent messages to RETR per POP3 cycle")
+	fs.Float64Var(&o.DeleShare, "clients-pop3-dele-share", 0, "clients: share of retrieved POP3 messages to DELE (0 to 1). The server moves them to Trash at QUIT, which shrinks the INBOX the IMAP clients use, so the default is 0")
 	fs.Usage = func() {
 		fmt.Fprint(fs.Output(), clientsHelp)
 		fs.PrintDefaults()
@@ -94,8 +106,10 @@ const clientsHelp = `usage: loadgen clients --target-allow H:P --test-domain D -
 
 Drives accounts that "loadgen seed" created: --imap-idle N holds N IMAP IDLE
 connections, --imap-active N runs clients that log in, LIST, SELECT INBOX,
-FETCH recent messages and STORE a flag on a cycle, and --dav N runs CalDAV and
-CardDAV clients that poll and sometimes PUT. Web UI traffic is not generated.
+FETCH recent messages and STORE a flag on a cycle, --dav N runs CalDAV and
+CardDAV clients that poll and sometimes PUT, and --pop3 N runs POP3 clients that
+log in, STAT, LIST, RETR recent messages, DELE a share (default none) and QUIT.
+Web UI traffic is not generated.
 
 Accounts come from the seed state file (mode 0600, read only). Client i uses
 account i modulo the number of accounts. Passwords are never printed; the
@@ -107,6 +121,14 @@ imap.max_connections_per_ip (default 50) and imap.max_connections (default
 are counted as refused_or_closed; a connect that nothing answers is connect_refused. Raise
 this machine's open-file limit too. Port 143 on a server-role node needs
 STARTTLS; use --clients-imap-tls plain only against a dev-role server.
+POP3 is capped the same way by pop3.max_connections_per_ip (default 50) and
+pop3.max_connections (default 1024 per listener); a larger --pop3 shows up as
+refused_or_closed until they are raised. The POP3 server also blocks a source
+address after 5 failed logins in 15 minutes, so a wrong password stops every
+POP3 client behind this address even though each stops after three; the run
+exits 6. pop3_login includes the server's snapshot of the INBOX, which grows
+with mailbox size, and with --clients-pop3-dele-share above 0 the cost of
+moving messages to Trash lands in pop3_quit, not pop3_dele.
 A client that gets three authentication failures in a row stops, so a wrong
 password cannot trip the server's per-IP lockout for everyone.
 
@@ -124,7 +146,7 @@ func validateClients(cfg Config) error {
 	counts := []struct {
 		flag string
 		n    int
-	}{{"--imap-idle", o.IMAPIdle}, {"--imap-active", o.IMAPActive}, {"--dav", o.DAV}}
+	}{{"--imap-idle", o.IMAPIdle}, {"--imap-active", o.IMAPActive}, {"--dav", o.DAV}, {"--pop3", o.POP3}}
 	total := 0
 	for _, c := range counts {
 		if c.n < 0 || c.n > maxClientsPerKind {
@@ -133,7 +155,7 @@ func validateClients(cfg Config) error {
 		total += c.n
 	}
 	if total == 0 {
-		return errors.New("clients needs at least one of --imap-idle, --imap-active or --dav above 0")
+		return errors.New("clients needs at least one of --imap-idle, --imap-active, --dav or --pop3 above 0")
 	}
 	if o.StateFile == "" {
 		return errors.New("--clients-state-file is required")
@@ -149,7 +171,15 @@ func validateClients(cfg Config) error {
 	if o.DAV > 0 && o.DAVAddr == "" {
 		return errors.New("--clients-dav-addr is required with --dav")
 	}
-	for _, a := range []struct{ flag, addr string }{{"--clients-imap-addr", o.IMAPAddr}, {"--clients-dav-addr", o.DAVAddr}} {
+	if o.POP3 > 0 {
+		if o.POP3Addr == "" {
+			return errors.New("--clients-pop3-addr is required with --pop3")
+		}
+		if !validIMAPTLS(o.POP3TLS) {
+			return fmt.Errorf("--clients-pop3-tls %q is not auto, implicit, starttls or plain", o.POP3TLS)
+		}
+	}
+	for _, a := range []struct{ flag, addr string }{{"--clients-imap-addr", o.IMAPAddr}, {"--clients-dav-addr", o.DAVAddr}, {"--clients-pop3-addr", o.POP3Addr}} {
 		if a.addr == "" {
 			continue
 		}
@@ -160,7 +190,7 @@ func validateClients(cfg Config) error {
 	for _, s := range []struct {
 		flag string
 		v    float64
-	}{{"--clients-body-share", o.BodyShare}, {"--clients-dav-write-share", o.DAVWriteShare}} {
+	}{{"--clients-body-share", o.BodyShare}, {"--clients-dav-write-share", o.DAVWriteShare}, {"--clients-pop3-dele-share", o.DeleShare}} {
 		if math.IsNaN(s.v) || s.v < 0 || s.v > 1 {
 			return fmt.Errorf("%s must be between 0 and 1", s.flag)
 		}
@@ -182,6 +212,14 @@ func validateClients(cfg Config) error {
 	}
 	if o.FetchCount < 1 || o.FetchCount > maxFetchCount {
 		return fmt.Errorf("--clients-fetch-count must be between 1 and %d", maxFetchCount)
+	}
+	if o.POP3 > 0 {
+		if o.POP3Cycle <= 0 {
+			return errors.New("--clients-pop3-cycle must be above 0")
+		}
+		if o.RetrCount < 1 || o.RetrCount > maxFetchCount {
+			return fmt.Errorf("--clients-pop3-retr-count must be between 1 and %d", maxFetchCount)
+		}
 	}
 	if o.FlagEvery < 0 {
 		return errors.New("--clients-flag-every must not be negative")
@@ -206,7 +244,9 @@ type clientsRunner struct {
 	st      *clientStats
 	accts   []account
 	imap    *imapDialer
+	pop3    *pop3Dialer
 	dial    dialFunc
+	pool    *sourcePool
 	runID   string
 	soft    context.Context
 	hard    context.Context
@@ -220,6 +260,7 @@ const (
 	kindIdle = iota
 	kindActive
 	kindDAV
+	kindPOP3
 )
 
 // rngFor gives each worker its own stream, so choices depend on the seed and
@@ -238,6 +279,8 @@ func (r *clientsRunner) account(kind, idx int) account {
 		off = r.cfg.IMAPIdle
 	case kindDAV:
 		off = r.cfg.IMAPIdle + r.cfg.IMAPActive
+	case kindPOP3:
+		off = r.cfg.IMAPIdle + r.cfg.IMAPActive + r.cfg.DAV
 	}
 	return r.accts[(off+idx)%len(r.accts)]
 }
@@ -287,9 +330,10 @@ func newClientsRunner(cfg Config, deps clientsDeps) (*clientsRunner, error) {
 	}
 	dial := guardedDial(cfg, deps.dial)
 	return &clientsRunner{
-		cfg: o, st: newClientStats(), accts: accts, dial: dial, runID: runID,
-		total: o.IMAPIdle + o.IMAPActive + o.DAV,
+		cfg: o, st: newClientStats(), accts: accts, dial: dial, pool: cfg.Source.pool, runID: runID,
+		total: o.IMAPIdle + o.IMAPActive + o.DAV + o.POP3,
 		imap:  newIMAPDialer(o.IMAPAddr, o.IMAPTLS, o.InsecureTLS, dial, o.Timeout),
+		pop3:  newPOP3Dialer(o.POP3Addr, o.POP3TLS, o.InsecureTLS, dial, o.Timeout),
 	}, nil
 }
 
@@ -323,6 +367,7 @@ func clientsRun(parent context.Context, cfg Config, deps clientsDeps) (*clientsS
 	spawn(o.IMAPIdle, r.idleWorker)
 	spawn(o.IMAPActive, r.activeWorker)
 	spawn(o.DAV, r.davWorker)
+	spawn(o.POP3, r.pop3Worker)
 
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
@@ -354,7 +399,7 @@ func runClients(cfg Config, stdout, stderr io.Writer) int {
 		<-ctx.Done()
 		stop()
 	}()
-	return clientsMain(ctx, cfg, clientsDeps{dial: defaultDial()}, stdout, stderr)
+	return clientsMain(ctx, cfg, clientsDeps{dial: dialFor(cfg)}, stdout, stderr)
 }
 
 func clientsMain(ctx context.Context, cfg Config, deps clientsDeps, stdout, stderr io.Writer) int {

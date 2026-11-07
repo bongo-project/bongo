@@ -149,7 +149,7 @@ func TestBuildReportNotMeasuredAndPartial(t *testing.T) {
 func TestMarkdownHoldsEverySection(t *testing.T) {
 	headings := []string{
 		"## Run metadata", "## Throughput", "## SMTP latency", "## Errors", "## Delivery delay",
-		"## Search lag", "## IMAP and DAV", "## Server resources", "## Validity",
+		"## Search lag", "## IMAP, POP3 and DAV", "## Server resources", "## Validity",
 	}
 	full, err := buildReport(reportInputs(t), time.Now())
 	if err != nil {

@@ -97,6 +97,9 @@ type runner struct {
 	body   []byte
 	start  time.Time
 	runCtx context.Context
+	// dial opens every connection; guardedDial runs checkTarget before any
+	// bind to a source address. Nil means the default guarded dialler.
+	dial dialFunc
 
 	c    counters
 	jobs chan job
@@ -174,6 +177,7 @@ func smtpRun(ctx context.Context, cfg Config, sched *schedule, opts smtpOpts) (*
 		jobs:        make(chan job, queueCap),
 		stepStarted: make([]atomic.Int64, len(sched.segs)),
 		runCtx:      context.Background(),
+		dial:        guardedDial(cfg, dialFrom(cfg.Source.pool, sc.Timeout)),
 	}
 	if c, err := opts.cpuNow(); err == nil {
 		r.cpuOK = true
@@ -392,7 +396,7 @@ func (r *runner) summary(partial bool) *smtpSummary {
 	s := &smtpSummary{
 		RunID: r.runID, Start: r.start, End: end, Partial: partial,
 		Mode: mode, Params: params, Interrupted: r.interrupted.Load(),
-		Due: due,
+		Due: due, SourceAddrs: r.cfg.sourceCounts(),
 		Counts: summaryCounts{
 			OK: r.c.ok.Load(), Rejected5xx: r.c.rejected5xx.Load(), Deferred4xx: r.c.deferred4xx.Load(),
 			TimedOut: r.c.timedOut.Load(), ConnErrors: r.c.connErrors.Load(),
@@ -534,12 +538,13 @@ func (s *sender) send(j job) {
 
 func (s *sender) dial() error {
 	r := s.r
-	// Every dial, including a redial after an error, passes the gate.
-	if err := checkTarget(r.cfg, s.addr); err != nil {
-		return &dialError{err}
+	// Every dial, including a redial after an error, passes the gate in
+	// guardedDial.
+	dial := r.dial
+	if dial == nil {
+		dial = guardedDial(r.cfg, dialFrom(r.cfg.Source.pool, r.cfg.SMTP.Timeout))
 	}
-	d := net.Dialer{Timeout: r.cfg.SMTP.Timeout}
-	conn, err := d.DialContext(r.runCtx, "tcp", s.addr)
+	conn, err := dial(r.runCtx, "tcp", s.addr)
 	if err != nil {
 		return &dialError{err}
 	}

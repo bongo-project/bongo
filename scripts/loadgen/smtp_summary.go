@@ -19,10 +19,12 @@ type smtpSummary struct {
 	Params      summaryParams `json:"params"`
 	Interrupted bool          `json:"interrupted"`
 
-	Due        int64         `json:"due"`
-	Counts     summaryCounts `json:"counts"`
-	Reconciled bool          `json:"reconciled"`
-	Started    int64         `json:"started"`
+	Due int64 `json:"due"`
+	// SourceAddrs is bookkeeping for --source-addr, not a measurement.
+	SourceAddrs []sourceCount `json:"source_addrs,omitempty"`
+	Counts      summaryCounts `json:"counts"`
+	Reconciled  bool          `json:"reconciled"`
+	Started     int64         `json:"started"`
 
 	ElapsedSeconds float64      `json:"elapsed_seconds"`
 	AchievedRate   float64      `json:"achieved_rate"`

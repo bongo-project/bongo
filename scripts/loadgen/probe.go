@@ -123,6 +123,8 @@ type probeSummary struct {
 	Error string `json:"error,omitempty"`
 
 	Params probeParams `json:"params"`
+	// SourceAddrs is bookkeeping for --source-addr, not a measurement.
+	SourceAddrs []sourceCount `json:"source_addrs,omitempty"`
 
 	Sent       int64 `json:"sent"`
 	SendErrors int64 `json:"send_errors"`
@@ -282,6 +284,7 @@ func (p *probeRunner) summary(partial, interrupted bool) *probeSummary {
 			PollSeconds: p.o.Poll.Seconds(), SizeBytes: p.o.Size, ResolutionMs: millis(p.tune.backoffCap),
 		},
 		DelayMs: []float64{}, SearchLagMs: []float64{},
+		SourceAddrs: p.cfg.sourceCounts(),
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -335,7 +338,7 @@ func runProbe(cfg Config, stdout, stderr io.Writer) int {
 		<-ctx.Done()
 		stop()
 	}()
-	sum, err := probeRun(ctx, cfg, defaultDial(), probeTuning{})
+	sum, err := probeRun(ctx, cfg, dialFor(cfg), probeTuning{})
 	if sum == nil {
 		fmt.Fprintf(stderr, "loadgen: refused: %v\n", err)
 		return exitRefuse
@@ -497,7 +500,8 @@ func (p *probeRunner) sendLoop(ctx context.Context, fatal <-chan struct{}, domai
 	cfg.Senders = cfg.Senders[:1]
 	cfg.Recipients = []string{p.acct.email}
 	cfg.SMTP.Timeout = p.o.Timeout
-	r := &runner{cfg: cfg, runID: p.runID, domain: domain, body: fillerBody(p.o.Size), runCtx: ctx}
+	r := &runner{cfg: cfg, runID: p.runID, domain: domain, body: fillerBody(p.o.Size), runCtx: ctx,
+		dial: guardedDial(cfg, dialFrom(cfg.Source.pool, p.o.Timeout))}
 	s := &sender{r: r, addr: cfg.Targets[0]}
 	defer s.drop()
 

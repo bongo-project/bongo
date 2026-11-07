@@ -66,7 +66,7 @@ password; the Bongo config is recorded as a SHA-256 only.
 Notes on the numbers:
   - SMTP latency is MAIL to the DATA reply on an open connection, from a
     histogram with about 6% resolution.
-  - IMAP and DAV times come from the clients summary, whose buckets are powers
+  - IMAP, POP3 and DAV times come from the clients summary, whose buckets are powers
     of two: they read up to 2x high.
   - Disk growth is bongo_blob_bytes and bongo_blobs. The server exposes no
     Pebble, SQLite or Bleve size, so those are not covered.
@@ -76,6 +76,13 @@ Notes on the numbers:
 Exit 0 ok, 1 failed, 2 refused.
 
 `
+
+// reportedClientOps are the client operations the report carries. Connects
+// and the cheap POP3 steps are left out: the summary file has them all.
+var reportedClientOps = []string{
+	opLogin, opFetchHeaders, opFetchBody, opDAVPropfind, opDAVReport, opDAVPut,
+	opPOP3Login, opPOP3Retr, opPOP3Quit,
+}
 
 // reportDoc is the JSON report. A section is nil when its input was not
 // given, and the flattening for report-compare then has no metrics for it.
@@ -101,8 +108,24 @@ type reportMeta struct {
 	Seed         string   `json:"seed,omitempty"`
 	ConfigSHA256 string   `json:"bongo_config_sha256,omitempty"`
 	RunIDs       []string `json:"run_ids,omitempty"`
+	// SourceAddrs lists, per generator input, the local addresses its
+	// connections came from. Bookkeeping, kept under meta so it is never
+	// compared as a metric.
+	SourceAddrs []generatorSources `json:"source_addrs,omitempty"`
 	// Missing names the metadata the operator did not give.
 	Missing []string `json:"missing,omitempty"`
+}
+
+// generatorSources names one input summary and its per-address connection counts.
+type generatorSources struct {
+	Generator string        `json:"generator"`
+	Addrs     []sourceCount `json:"addrs"`
+}
+
+func (m *reportMeta) addSources(generator string, s []sourceCount) {
+	if len(s) > 0 {
+		m.SourceAddrs = append(m.SourceAddrs, generatorSources{Generator: generator, Addrs: s})
+	}
 }
 
 type quantiles struct {
@@ -390,6 +413,7 @@ func buildReport(o reportOptions, now time.Time) (*reportDoc, error) {
 				v.PartialInputs = append(v.PartialInputs, "smtp #"+strconv.Itoa(i+1))
 			}
 			doc.Meta.RunIDs = append(doc.Meta.RunIDs, s.RunID)
+			doc.Meta.addSources("smtp #"+strconv.Itoa(i+1), s.SourceAddrs)
 			merged.Counts.OK += s.Counts.OK
 			merged.Counts.Rejected5xx += s.Counts.Rejected5xx
 			merged.Counts.Deferred4xx += s.Counts.Deferred4xx
@@ -447,6 +471,7 @@ func buildReport(o reportOptions, now time.Time) (*reportDoc, error) {
 			v.PartialInputs = append(v.PartialInputs, "probe")
 		}
 		doc.Meta.RunIDs = append(doc.Meta.RunIDs, s.RunID)
+		doc.Meta.addSources("probe", s.SourceAddrs)
 		doc.Delivery = &deliverySection{
 			quantiles: quantilesOf(s.DelayMs), Sent: s.Sent, Seen: s.Seen, SeenByNoop: s.SeenByNoop, Lost: s.Lost,
 			VisibleBeforeAccept: s.VisibleBeforeAccept, Unresolved: s.Unresolved,
@@ -469,9 +494,10 @@ func buildReport(o reportOptions, now time.Time) (*reportDoc, error) {
 			return nil, err
 		}
 		doc.Meta.RunIDs = append(doc.Meta.RunIDs, s.RunID)
+		doc.Meta.addSources("clients", s.SourceAddrs)
 		cs := &clientsSection{Ops: map[string]opQuantiles{},
-			Note: "log2 histogram buckets: each percentile is a bucket upper bound and can read up to 2x high"}
-		for _, name := range []string{opLogin, opFetchHeaders, opFetchBody, opDAVPropfind, opDAVReport, opDAVPut} {
+			Note: "log2 histogram buckets: each percentile is a bucket upper bound and can read up to 2x high; pop3_login includes the server's INBOX snapshot, which grows with mailbox size, and pop3_quit holds the cost of moving deleted messages to Trash"}
+		for _, name := range reportedClientOps {
 			op, ok := s.Ops[name]
 			if !ok || (op.Count == 0 && op.ErrorTotal == 0) {
 				continue
@@ -484,7 +510,7 @@ func buildReport(o reportOptions, now time.Time) (*reportDoc, error) {
 		}
 		doc.Clients = cs
 	} else {
-		note("IMAP and DAV times (no --report-clients)")
+		note("IMAP, POP3 and DAV times (no --report-clients)")
 	}
 
 	if o.Samples != "" {
