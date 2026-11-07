@@ -203,23 +203,23 @@ Imported 2026-10-23 from the hardening PRD. Releases: v0.9.0 = Phases 19 and 20,
 
 ## Phase 37: Load and throughput testing v0.15.4
 
-PRD: [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md).
+PRD: [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md).
 
 | ID | Task | Source | Status | Notes |
 |----|------|--------|--------|-------|
-| 37.1 | US-001, FR-1, FR-2: `scripts/loadgen` with target and domain guards | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: none |
-| 37.2 | US-002, FR-3: repeatable seed through the normal paths, with resume | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.1 |
-| 37.3 | US-003, FR-5: SMTP traffic at a set rate, ramps, and generator self-reporting | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.1 |
-| 37.4 | US-005: SMTP sink and the outbound pre-flight check | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.1 |
-| 37.5 | US-004: IMAP IDLE, active IMAP and DAV clients | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.2 |
-| 37.6 | US-006, FR-4, FR-6: report, percentiles, server sampling, comparing two runs | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.3, 37.5 |
-| 37.7 | US-007: configurable user database limit, first metrics | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: none |
-| 37.8 | US-011: Raft, Pebble and disk sync metrics | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.7 |
-| 37.9 | US-011: blob, garbage collection, snapshot, indexer and per-protocol metrics, with bounded labels | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.7 |
-| 37.10 | US-011: CPU and heap profiling on a private listener, off by default | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: none |
-| 37.11 | Open question 5: bulk loader for large stores, and a check that the result matches a normally filled store | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.2. Operator to confirm the approach |
-| 37.12 | US-008: `docs/load-testing.md` and the test config | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.4, 37.6 |
-| 37.13 | US-011: local dry run shows each metric moving; measure log volume | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.6, 37.8, 37.9, 37.10, 37.12 |
-| 37.14 | US-009: run every stage in section 6.1 on rented machines | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.11, 37.13. Needs budget (open question 1) |
-| 37.15 | US-009: `docs/design/load-test-results.md`, with each suspected limit marked | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.14 |
-| 37.16 | US-010: results page and social posts, after operator approval | [prd-load-test-v0.15.4.md](backlog/prd-load-test-v0.15.4.md) | TODO | Needs: 37.15 |
+| 37.1 | US-001, FR-1, FR-2: `scripts/loadgen` with target and domain guards | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | ACTIVE | Needs: none |
+| 37.2 | US-002, FR-3: repeatable seed through the normal paths, with resume | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.1 |
+| 37.3 | US-003, FR-5: SMTP traffic at a set rate, ramps, and generator self-reporting | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.1 |
+| 37.4 | US-005: SMTP sink and the outbound pre-flight check | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.1 |
+| 37.5 | US-004: IMAP IDLE, active IMAP and DAV clients | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.2 |
+| 37.6 | US-006, FR-4, FR-6: report, percentiles, server sampling, comparing two runs | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.3, 37.5 |
+| 37.7 | US-007: configurable user database limit, first metrics | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | ACTIVE | Needs: none |
+| 37.8 | US-011: Raft, Pebble and disk sync metrics | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.7 |
+| 37.9 | US-011: blob, garbage collection, snapshot, indexer and per-protocol metrics, with bounded labels | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.7 |
+| 37.10 | US-011: CPU and heap profiling on a private listener, off by default | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | ACTIVE | Needs: none |
+| 37.11 | Open question 5: bulk loader for large stores, and a check that the result matches a normally filled store | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.2. Operator to confirm the approach |
+| 37.12 | US-008: `docs/load-testing.md` and the test config | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.4, 37.6 |
+| 37.13 | US-011: local dry run shows each metric moving; measure log volume | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.6, 37.8, 37.9, 37.10, 37.12 |
+| 37.14 | US-009: run every stage in section 6.1 on rented machines | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.11, 37.13. Needs budget (open question 1) |
+| 37.15 | US-009: `docs/design/load-test-results.md`, with each suspected limit marked | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.14 |
+| 37.16 | US-010: results page and social posts, after operator approval | [prd-load-test-v0.15.4.md](active/prd-load-test-v0.15.4.md) | TODO | Needs: 37.15 |
