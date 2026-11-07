@@ -81,6 +81,10 @@ func init() {
 
 // Agent manages the bongo server lifecycle.
 type Agent struct {
+	// unhookRaftIndexes detaches the commit lag gauge from this agent's Raft
+	// node at shutdown. Nil when no Raft node was started.
+	unhookRaftIndexes func()
+
 	// blobSweepBeforeDelete, when set, runs between the sweep plan and the
 	// delete. Tests use it to land a dedup write in that window; it is nil in
 	// production.
@@ -385,7 +389,7 @@ func (a *Agent) GetKey(key []byte) ([]byte, error) {
 // Pebble's own log output goes through the process logger, not stdlib log.
 // A cacheBytes of zero leaves Pebble's built-in default block cache.
 func pebbleStoreOptions(logger *slog.Logger, cacheBytes int64) []store.Option {
-	opts := []store.Option{store.WithLogger(logger.With("component", "pebble"))}
+	opts := []store.Option{store.WithLogger(logger.With("component", "pebble")), store.WithMetrics()}
 	if cacheBytes > 0 {
 		opts = append(opts, store.WithCacheSize(cacheBytes))
 	}
@@ -519,6 +523,9 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 			return nil, fmt.Errorf("creating raft node: %w", errors.Join(err, closeErr))
 		}
 		a.Raft = raftNode
+		a.unhookRaftIndexes = observability.SetRaftIndexSource(func() (uint64, uint64) {
+			return raftNode.Raft.LastIndex(), raftNode.Raft.AppliedIndex()
+		})
 		logger.Info("raft node initialized", "role", cfg.Server.Role)
 
 		// Create MailboxStore, Notifier, PreferenceStore, and ThreadStore.
@@ -4927,6 +4934,9 @@ func (a *Agent) Shutdown() error {
 
 	// 5. Raft.
 	if a.Raft != nil {
+		if a.unhookRaftIndexes != nil {
+			a.unhookRaftIndexes()
+		}
 		if err := a.Raft.Shutdown(); err != nil {
 			errs = append(errs, fmt.Errorf("shutting down raft: %w", err))
 		} else {

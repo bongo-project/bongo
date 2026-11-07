@@ -278,7 +278,9 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	// logs say nothing about time spent inside the FSM.
 	start := time.Now()
 	defer func() {
-		if elapsed := time.Since(start); elapsed >= slowApplyThreshold {
+		elapsed := time.Since(start)
+		observability.RaftFSMApplySeconds.Observe(elapsed.Seconds())
+		if elapsed >= slowApplyThreshold {
 			f.logger.Warn("fsm: apply was slow",
 				"index", log.Index,
 				"duration_ms", elapsed.Milliseconds(),

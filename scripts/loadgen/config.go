@@ -22,6 +22,9 @@ type Config struct {
 	IOwnThisTarget bool
 	Senders        []string
 	Recipients     []string
+	// Seed holds the seed subcommand's options.
+	Seed SeedOptions
+	SMTP smtpConfig
 }
 
 // listFlag is a repeatable flag that also splits on commas.
@@ -67,6 +70,10 @@ func (f targetAllowFlag) Set(s string) error {
 	return nil
 }
 
+// subcommandFlags lets a subcommand register its own flags without editing
+// newFlagSet; the file that defines the subcommand fills it in init.
+var subcommandFlags = map[string]func(*flag.FlagSet, *Config){}
+
 func newFlagSet(name string, cfg *Config, out io.Writer) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(out)
@@ -76,5 +83,9 @@ func newFlagSet(name string, cfg *Config, out io.Writer) *flag.FlagSet {
 	fs.BoolVar(&cfg.IOwnThisTarget, "i-own-this-target", false, "allow a target on the built-in production list; never lifts the test-domain rules")
 	fs.Var(listFlag{&cfg.Senders}, "from", "envelope sender address (repeatable or comma-separated)")
 	fs.Var(listFlag{&cfg.Recipients}, "rcpt", "envelope recipient address (repeatable or comma-separated)")
+	if add := subcommandFlags[name]; add != nil {
+		add(fs, cfg)
+	}
+	registerSMTPFlags(fs, &cfg.SMTP)
 	return fs
 }

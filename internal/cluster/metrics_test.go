@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -97,4 +98,47 @@ func raftApplySamples(t *testing.T) uint64 {
 		t.Fatalf("Write: %v", err)
 	}
 	return m.GetHistogram().GetSampleCount()
+}
+
+func fsmApplySamples(t *testing.T) uint64 {
+	t.Helper()
+	var m dto.Metric
+	if err := observability.RaftFSMApplySeconds.Write(&m); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	return m.GetHistogram().GetSampleCount()
+}
+
+// TestApplyCommandObservesFSMApplyAndLag checks the FSM timer counts one sample
+// per applied command, and that the lag gauge, wired to the real node, settles
+// at zero once a write has been applied.
+func TestApplyCommandObservesFSMApplyAndLag(t *testing.T) {
+	node, _ := newLeaderNode(t)
+	clear := observability.SetRaftIndexSource(func() (uint64, uint64) {
+		return node.Raft.LastIndex(), node.Raft.AppliedIndex()
+	})
+	defer clear()
+
+	n0 := fsmApplySamples(t)
+	const writes = 5
+	for i := range writes {
+		if err := ApplyCommand(node.Raft, &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   []byte(fmt.Sprintf("/test/fsm-apply-%d", i)),
+			Value: []byte("v"),
+		}, 5*time.Second); err != nil {
+			t.Fatalf("ApplyCommand: %v", err)
+		}
+	}
+	if got := fsmApplySamples(t); got != n0+writes {
+		t.Fatalf("fsm apply samples = %d, want %d", got, n0+writes)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for testutil.ToFloat64(observability.RaftCommitLagEntries) != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("lag = %v after writes were applied, want 0", testutil.ToFloat64(observability.RaftCommitLagEntries))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }

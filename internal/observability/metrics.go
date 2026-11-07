@@ -162,6 +162,48 @@ var RaftApplySeconds = factory.NewHistogram(
 	},
 )
 
+// RaftCommitLagEntries is the number of entries in the local Raft log that
+// have not yet been handed to the FSM (last log index minus applied index). On
+// a single node it is nonzero only while a batch is between append and apply;
+// on a cluster it also shows replication falling behind. It reads a source set
+// by SetRaftIndexSource and reports 0 when none is set.
+var RaftCommitLagEntries = factory.NewGaugeFunc(
+	prometheus.GaugeOpts{
+		Name: "bongo_raft_commit_lag_entries",
+		Help: "Raft log entries appended locally but not yet applied, last index minus applied index.",
+	},
+	raftCommitLag,
+)
+
+// RaftFSMApplySeconds observes the time FSM.Apply itself takes for one log
+// entry. Subtracting it from RaftApplySeconds leaves the log append, disk
+// sync and replication time, which is the split a commit-lag investigation
+// needs. Entries skipped on replay are observed too; they take microseconds.
+var RaftFSMApplySeconds = factory.NewHistogram(
+	prometheus.HistogramOpts{
+		Name:    "bongo_raft_fsm_apply_seconds",
+		Help:    "Time the FSM spends applying one Raft log entry, in seconds.",
+		Buckets: []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+	},
+)
+
+// PebbleWriteStalls counts write stalls: the times Pebble paused writers
+// because memtables or level 0 backed up behind compaction.
+var PebbleWriteStalls = factory.NewCounter(
+	prometheus.CounterOpts{
+		Name: "bongo_pebble_write_stalls_total",
+		Help: "Times Pebble stalled writes waiting for flush or compaction.",
+	},
+)
+
+// PebbleWriteStallSeconds is the total time writers spent stalled.
+var PebbleWriteStallSeconds = factory.NewCounter(
+	prometheus.CounterOpts{
+		Name: "bongo_pebble_write_stall_seconds_total",
+		Help: "Total time Pebble held writes stalled, in seconds.",
+	},
+)
+
 // Handler returns an http.Handler that serves Prometheus metrics. Mount at /metrics.
 func Handler() http.Handler {
 	return promhttp.HandlerFor(Registry, promhttp.HandlerOpts{

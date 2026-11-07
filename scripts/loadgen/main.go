@@ -29,10 +29,11 @@ const (
 	exitRefuse = 2
 )
 
-// commands holds every subcommand. Later subcommands (seed, smtp, clients,
-// sink, report) are added here and inherit the guard in runWith.
+// commands holds every subcommand; a subcommand in its own file may register
+// itself here from init(). All of them inherit the guard in runWith.
 var commands = map[string]command{
 	"check": runCheck,
+	"smtp":  runSMTP,
 }
 
 func main() {

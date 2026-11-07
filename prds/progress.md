@@ -1770,3 +1770,12 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [tests] golangci-lint excludes scripts/, so loadgen tasks must run go vet and gosec on it by hand.
 - PATTERN: [tests] A mutant that adds a route before r.Use makes chi panic, so it goes red for the wrong reason; place route mutants where the real mount is.
 
+## 2026-11-07: Phase 37 batch 2 (37.2, 37.3, 37.8)
+
+- All three DONE, review MINOR. Merge conflict in scripts/loadgen/config.go (both added a Config field and a flag hook): kept both. Orchestrator change after merge: seed's default folder mix is INBOX only, because SMTP delivers only to INBOX and the old default (70/20/10) delivered 70% of N x M; two tests given explicit mixes. Full gate passed (integration 493s, lint 0, gosec clean).
+- 37.2: blob dedup applies only to attachment parts of at least storage.attachment_dedup_min_size (32 KB), so the repeat share is built from large attachments. Bongo does not dedupe by Message-ID, so a kill -9 between 250 and the state fsync can resend up to `concurrency` messages. The leak test captures only the injected writers. A second Ctrl-C does not stop a send in backoff.
+- 37.3: flags are prefixed --smtp-* because all subcommands share one FlagSet. busy counts message building as well as sending, so slow generator work can read as pool exhaustion. Exit 3 covers both an invalid run and a server that could not keep up; moved to 37.6. The drift test margin is thin (a sleep-after-send mutant failed by 7.5% against 5%).
+- 37.8: AppliedIndex in raft v1.8 advances when a batch is dispatched to the FSM, so commit lag is not FSM completion. The Raft log shares the Pebble WAL, so one fsync histogram covers both. db.Metrics() takes Pebble's mutex per scrape. Raft index source is not cleared on NewAgent error paths (harmless).
+- PATTERN: [loadgen] All subcommands share one FlagSet, so each subcommand prefixes its flags.
+- PATTERN: [loadgen] The control listener is loopback only; the generator reaches it through an SSH tunnel and signs with the session secret, read from the environment or a 0600 file, never a flag.
+
