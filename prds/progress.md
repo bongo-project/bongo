@@ -1760,3 +1760,13 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 ## 2026-11-07: load test imported
 
 - Load test PRD imported as Phase 37 (16 tasks), release v0.15.4, ahead of v0.16. The tool, server metrics and local dry run need no budget; 37.14 onward need the rented machines. Open question 5 (bulk loader) is 37.11, for the operator to confirm.
+
+## 2026-11-07: Phase 37 batch 1 (37.1, 37.7, 37.10)
+
+- Workflow: advisor plan, sonnet golang-pro worker in a worktree, advisor review. All three DONE, review MINOR. Merged with git apply --3way, no conflicts. Full gate passed: make test-all (integration 478s), lint 0 issues, gosec clean, vet on scripts/loadgen.
+- 37.1: scripts/loadgen with `check`. Empty items in --target-allow are refused, not dropped. IP-literal targets skip the production check (no production IP list), as does a name resolving to a production IP; documented. Underscores are accepted in host names. TestCommandsTableHoldsOnlyKnown checks only that `check` exists.
+- 37.7: search manager maxOpen (128) left fixed; candidate for its own key and metrics. QueueDepth is set only by the leader's worker. The backlog gauge race went to 37.9. The cluster metrics test asserts absolute values on a global gauge; safe while no cluster test is parallel.
+- 37.10: pprof mounted outside the HMAC group on the loopback control router, because go tool pprof cannot sign requests. The DefaultServeMux test skips the peer and redirect servers in dev, where they are nil.
+- PATTERN: [tests] golangci-lint excludes scripts/, so loadgen tasks must run go vet and gosec on it by hand.
+- PATTERN: [tests] A mutant that adds a route before r.Use makes chi panic, so it goes red for the wrong reason; place route mutants where the real mount is.
+

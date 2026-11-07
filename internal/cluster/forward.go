@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/raft"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/observability"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -49,8 +50,13 @@ func ApplyCommand(r *raft.Raft, cmd *bongov1.RaftCommand, timeout time.Duration)
 		return fmt.Errorf("encoding command: %w", err)
 	}
 
+	// Timed here rather than in FSM.Apply: only this span includes the log
+	// fsync and the commit wait, which is the write latency callers feel.
+	start := time.Now()
 	future := r.Apply(data, timeout)
-	if err := future.Error(); err != nil {
+	err = future.Error()
+	observability.RaftApplySeconds.Observe(time.Since(start).Seconds())
+	if err != nil {
 		return fmt.Errorf("raft apply: %w", err)
 	}
 

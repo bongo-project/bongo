@@ -21,6 +21,7 @@ import (
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/store"
 )
 
@@ -143,13 +144,16 @@ func (f *FSM) StartIndexer(ctx context.Context) {
 				for {
 					select {
 					case cmd := <-queue:
+						observability.SearchIndexBacklog.Set(float64(len(queue)))
 						f.runDerivedIndexes(cmd)
 						f.indexInflight.Add(-1)
 					default:
+						observability.SearchIndexBacklog.Set(float64(len(queue)))
 						return
 					}
 				}
 			case cmd := <-queue:
+				observability.SearchIndexBacklog.Set(float64(len(queue)))
 				f.runDerivedIndexes(cmd)
 				f.indexInflight.Add(-1)
 			}
@@ -519,6 +523,7 @@ func (f *FSM) updateDerivedIndexes(cmd *bongov1.RaftCommand) {
 	f.indexInflight.Add(1)
 	select {
 	case queue <- queued:
+		observability.SearchIndexBacklog.Set(float64(len(queue)))
 	default:
 		// Backlog full. Index inline rather than drop: a dropped update would
 		// leave a message unsearchable until the next rebuild, and the entry

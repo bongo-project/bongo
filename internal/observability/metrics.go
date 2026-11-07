@@ -116,6 +116,52 @@ var AttachmentDedupBytesSavedTotal = factory.NewCounter(
 	},
 )
 
+// UserDBsOpen is the number of per-user SQLite databases currently held open
+// by the metadata manager. Maintained with Inc and Dec at each open and
+// removal, so it stays the sum across managers in one process. Unlabelled:
+// users are unbounded.
+var UserDBsOpen = factory.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "bongo_user_dbs_open",
+		Help: "Number of per-user SQLite databases currently open.",
+	},
+)
+
+// UserDBEvictions counts per-user databases closed because the open-database
+// limit (storage.max_open_user_dbs) was reached. Explicit closes and user
+// deletion are not counted. A fast-rising value means the working set of
+// active users exceeds the limit and databases are being closed and reopened.
+var UserDBEvictions = factory.NewCounter(
+	prometheus.CounterOpts{
+		Name: "bongo_user_db_evictions_total",
+		Help: "Per-user SQLite databases closed to stay under storage.max_open_user_dbs.",
+	},
+)
+
+// SearchIndexBacklog is the number of derived-index commands queued behind the
+// FSM indexer worker. It does not count the item being processed. When the
+// queue is full indexing falls back to inline and nothing is queued, so a
+// value pinned near the queue size is the saturation signal.
+var SearchIndexBacklog = factory.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "bongo_search_index_backlog",
+		Help: "Derived-index commands waiting for the FSM indexer worker, excluding the one in progress.",
+	},
+)
+
+// RaftApplySeconds observes the time a leader write waits in ApplyCommand, from
+// submitting the entry until the FSM has applied it. It is the latency callers
+// see: it includes the log append and disk sync, quorum replication on a
+// cluster, and the FSM apply. Writes rejected before submission (not leader)
+// are not observed.
+var RaftApplySeconds = factory.NewHistogram(
+	prometheus.HistogramOpts{
+		Name:    "bongo_raft_apply_seconds",
+		Help:    "Time for a Raft write to commit and apply, as seen by the caller, in seconds.",
+		Buckets: []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+	},
+)
+
 // Handler returns an http.Handler that serves Prometheus metrics. Mount at /metrics.
 func Handler() http.Handler {
 	return promhttp.HandlerFor(Registry, promhttp.HandlerOpts{

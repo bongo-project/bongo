@@ -11,6 +11,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/bongo-project/bongo/internal/observability"
 )
 
 // Document types for the storeobject table.
@@ -612,9 +614,14 @@ type MetadataManager struct {
 // MetadataManagerOption configures a MetadataManager.
 type MetadataManagerOption func(*MetadataManager)
 
-// WithMaxOpen sets the maximum number of open user databases.
+// WithMaxOpen sets the maximum number of open user databases. A value below 1
+// is ignored: a zero limit would evict on every open and thrash the cache.
 func WithMaxOpen(n int) MetadataManagerOption {
-	return func(m *MetadataManager) { m.maxOpen = n }
+	return func(m *MetadataManager) {
+		if n > 0 {
+			m.maxOpen = n
+		}
+	}
 }
 
 // WithIdleTimeout sets the idle timeout for user database connections.
@@ -692,6 +699,7 @@ func (m *MetadataManager) OpenUser(userID string) (*UserIndex, error) {
 	}
 	elem := m.lruList.PushFront(entry)
 	m.cache[userID] = elem
+	observability.UserDBsOpen.Inc()
 
 	return idx, nil
 }
@@ -709,6 +717,7 @@ func (m *MetadataManager) CloseUser(userID string) error {
 	entry := elem.Value.(*lruEntry)
 	m.lruList.Remove(elem)
 	delete(m.cache, userID)
+	observability.UserDBsOpen.Dec()
 	return entry.index.Close()
 }
 
@@ -852,6 +861,7 @@ func (m *MetadataManager) Close() error {
 		}
 		m.lruList.Remove(elem)
 		delete(m.cache, entry.userID)
+		observability.UserDBsOpen.Dec()
 	}
 
 	if err := m.System.Close(); err != nil {
@@ -872,5 +882,8 @@ func (m *MetadataManager) evictOldestLocked() error {
 	entry := elem.Value.(*lruEntry)
 	m.lruList.Remove(elem)
 	delete(m.cache, entry.userID)
+	// Counted whether or not Close succeeds: the entry is already gone.
+	observability.UserDBsOpen.Dec()
+	observability.UserDBEvictions.Inc()
 	return entry.index.Close()
 }

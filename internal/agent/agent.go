@@ -475,7 +475,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	logger.Info("blob store opened", "dir", filepath.Join(dataDir, "blobs"))
 
 	// Open metadata manager (per-user SQLite + system.db).
-	metaMgr, err := store.NewMetadataManager(dataDir)
+	metaMgr, err := store.NewMetadataManager(dataDir, store.WithMaxOpen(cfg.Storage.MaxOpenUserDBs))
 	if err != nil {
 		closeErr := pebbleStore.Close()
 		return nil, fmt.Errorf("opening metadata manager: %w", errors.Join(err, closeErr))
@@ -1037,6 +1037,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	// with r: no compression, CSRF or session middleware belongs on this gate.
 	cr := chi.NewRouter()
 	cr.Use(middleware.SecurityHeaders())
+	// pprof sits outside the HMAC group on purpose: go tool pprof cannot sign
+	// requests. The protection is the loopback listener plus the off-by-default
+	// switch. It is never mounted on r.
+	if a.Config.Telemetry.Pprof {
+		mountPprof(cr)
+	}
 	cr.Group(func(cr chi.Router) {
 		cr.Use(middleware.RequireInternalAuth(sessionSecret))
 
