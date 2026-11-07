@@ -152,6 +152,7 @@ mTLS configured.
 | [`docs/dev-quickstart.md`](docs/dev-quickstart.md) | Local development loop |
 | [`docs/caldav-carddav.md`](docs/caldav-carddav.md) | Calendar and contact sync: account details, discovery, client setup, troubleshooting |
 | [`docs/importing.md`](docs/importing.md) | Importing existing mail |
+| [`docs/load-testing.md`](docs/load-testing.md) | Runbook for a load and throughput test on rented machines |
 | [`docs/multi-node-cluster-checklist.md`](docs/multi-node-cluster-checklist.md) | Hardening before multi-node |
 | [`CLAUDE.md`](CLAUDE.md) | Architecture overview and conventions |
 | [`SECURITY.md`](SECURITY.md) | Reporting a vulnerability, supported versions, known limitations |

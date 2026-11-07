@@ -136,6 +136,40 @@ func TestCheckTargetDirect(t *testing.T) {
 
 var deployName = regexp.MustCompile(`(hostname|domain)\s*=\s*"([^"]+)"`)
 
+// reservedTestName reports whether name is under a top-level domain reserved
+// for testing and documentation by RFC 6761 (.test, .invalid, .example,
+// .localhost).
+func reservedTestName(name string) bool {
+	name = strings.ToLower(strings.TrimSuffix(name, "."))
+	for _, tld := range []string{"test", "invalid", "example", "localhost"} {
+		if name == tld || strings.HasSuffix(name, "."+tld) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestReservedTestName(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"mail.bongo.test", true},
+		{"bongo.test", true},
+		{"BONGO.TEST.", true},
+		{"a.invalid", true},
+		{"mail.example.com", false},
+		{"mail.tydewhatmay.eu", false},
+		{"attest", false},
+		{"mail.contest", false},
+	}
+	for _, tt := range tests {
+		if got := reservedTestName(tt.name); got != tt.want {
+			t.Errorf("reservedTestName(%q) = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
 // TestDeployHostsRefused proves the hosts named in the deploy examples are
 // refused when listed, and accepted only with the override.
 func TestDeployHostsRefused(t *testing.T) {
@@ -152,6 +186,13 @@ func TestDeployHostsRefused(t *testing.T) {
 		for _, line := range strings.Split(string(b), "\n") {
 			line = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "#"))
 			if m := deployName.FindStringSubmatch(line); m != nil {
+				// Names under a reserved top-level domain are test names
+				// (the load test config uses bongo.test). They are not
+				// production, and the production list must not hold them,
+				// or --test-domain bongo.test would be refused.
+				if reservedTestName(m[2]) {
+					continue
+				}
 				names[m[2]] = true
 			}
 		}

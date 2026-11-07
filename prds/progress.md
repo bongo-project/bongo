@@ -1821,3 +1821,10 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Logged: source_addrs on the clients and probe summaries and the Markdown line are untested; production uses dialFor(cfg) while many tests use defaultDial(); seed and sample record no per-address counts; the clients Note always mentions POP3; stdout summary shows only IDLE figures; a failed POP3 auto probe is not cached; clientStats.totals() and clientsSummary.totals() disagree on connect ops (only the latter drives the exit code).
 - PATTERN: [tests] A test that skips unless the machine has extra configuration may never run anywhere; run it once in a container with the configuration, and say so.
 
+## 2026-11-07: Phase 37 batch 8 (37.12)
+
+- 37.12 plan REVISE (applied): no hosted-domain config key exists; the leader hosts the registered domain of smtp.hostname (ensureConfiguredDomain), so mail.bongo.test hosts bongo.test; smtp.limits.messages_per_minute defaults to 60 per source IP and caps a ramp at 1 msg/s per address, so the test config sets 0; TestDeployHostsRefused would have demanded mail.bongo.test be refused, fixed by skipping RFC 6761 reserved names (not by adding bongo.test to the production list, which would refuse the test domain).
+- First review REJECT: the soak smtp command had a stray mid-line `\ `, which loadgen refuses as a positional argument; the doc flag check missed it. Fixed, and the check now fails on a backslash inside a command line (mutation-checked). Re-review MINOR.
+- Orchestrator fixes at merge: quoted the IPv6 probe addresses (zsh globbing); section 10 now says the config is kept as its hash and the secret lives in an environment file; clients --help said IMAP connection limits are reloadable, but diff.go and config-reload.md class them RESTART. Full gate passed.
+- To confirm in 37.13: IMAP and POP3 read cluster.tls, so the self-signed certificate also turns on single-node Raft TLS.
+

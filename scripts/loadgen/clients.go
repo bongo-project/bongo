@@ -117,7 +117,7 @@ summary holds counts and timings only, with errors counted by class.
 
 Server limits to raise first: the IMAP listener refuses connections beyond
 imap.max_connections_per_ip (default 50) and imap.max_connections (default
-1024); both are reloadable. Connections the server accepts and then closes
+1024); changing either needs a server restart. Connections the server accepts and then closes
 are counted as refused_or_closed; a connect that nothing answers is connect_refused. Raise
 this machine's open-file limit too. Port 143 on a server-role node needs
 STARTTLS; use --clients-imap-tls plain only against a dev-role server.
