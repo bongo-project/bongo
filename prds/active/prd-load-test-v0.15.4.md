@@ -88,6 +88,12 @@ so that the test resembles real use.
 - [ ] `--dav N` runs N CalDAV and CardDAV clients polling at a configured
       interval and occasionally writing.
 - [ ] Web UI traffic is out of scope for the first version.
+- [ ] `--pop3 N` runs N POP3 clients that log in, list, retrieve and delete on a
+      configured cycle (decision 10).
+- [ ] The generator can spread connections over several local source addresses,
+      so one generator is not limited to about 28,000 connections to one server
+      address and port. The report states the source addresses used, so a
+      generator limit is never reported as a server limit (decision 10).
 
 ### US-005: Sink outbound mail
 **Description:** As the operator, I want outbound mail captured so that nothing
@@ -194,6 +200,10 @@ on social media so that people can judge Bongo from measurements.
       the run.
 - [ ] The page makes no comparison with other mail servers, because none was tested.
 - [ ] The operator approves the page and any social media post before publishing.
+- [ ] Posts are written as the tests run, not only at the end: what is being
+      tested, on what machine and disk, and what broke (decision 12). Each post
+      states its conditions and that the numbers are preliminary until the final
+      run. The operator writes or approves each one.
 
 ## 4. Functional Requirements
 
@@ -243,6 +253,37 @@ with fixes and repeat runs.
 
 The soak is the longest stage because blob garbage collection, Pebble compaction,
 Raft snapshots and disk growth only show their effect over time.
+
+### 6.1.1 Machines and disks (decisions 10 and 11)
+
+Bongo writes everything to one data directory, and the operator chooses the disk
+under it. A small server keeps it on the root disk; a large mail store needs a
+mounted volume, which is network storage at most providers. The test covers both.
+
+1. **Start small, then scale up.** Run the stages on a small machine first, then on
+   one or two larger sizes. If the limit does not move when CPU and memory double,
+   it is not CPU or memory (Bleve indexing and disk sync are the suspects). Results
+   are given per machine size.
+2. **Dedicated CPU only.** Shared-CPU machines vary with their neighbours, which
+   breaks the rule that two runs agree within 10%.
+3. **Local disk for accounts, message rate and connections.** This is what a
+   one-server installation most likely runs, and it is the best case.
+4. **A mounted volume for storage scale.** Load it once, snapshot it, and move it
+   between machine sizes. Every machine size uses the same volume type, so the only
+   change between runs is CPU and memory.
+5. **Restore the snapshot before every run.** Each run adds mail, so runs compare
+   only from the same starting data. The snapshot also restores the store after the
+   failure stage.
+6. **One comparison run on the same machine with each disk type.** It states what
+   a volume costs in speed, which readers need when they choose a disk.
+7. **Check that a node starts on a moved disk.** Raft records the node's address,
+   and a new machine may have a new one. The dry run (US-011) proves a single node
+   restarts cleanly on a moved data directory before the plan relies on it.
+8. **The generator machine.** Same region as the server, dedicated CPU, open-file
+   and local port limits raised, several source addresses for the connection stage.
+   The report shows generator CPU and backlog (FR-5).
+
+The results feed disk and machine guidance in the install documentation.
 
 ### 6.2 Suspected limits
 
@@ -362,6 +403,13 @@ worthwhile.
    Profiling showed Bleve indexing is about 90% of the loader's end-to-end time (about
    36 messages/s with it, about 550/s without, on an M3 Max). The same per-message
    Bleve cost is a suspected limit of the server itself (section 6.2, search indexing).
+10. (operator, 2026-11-07) The load includes POP3, and the generator can use several
+    source addresses so the connection stage measures the server, not the generator.
+11. (operator, 2026-11-07) Machines and disks follow section 6.1.1: start on a small
+    dedicated-CPU machine and scale up; local disk for scale; a snapshotted volume
+    moved between sizes for storage; one run comparing the two disk types.
+12. (operator, 2026-11-07) The operator posts about the tests while they run, not
+    only the final numbers (US-010).
 
 ### 8.2 Candidates for the next release
 
