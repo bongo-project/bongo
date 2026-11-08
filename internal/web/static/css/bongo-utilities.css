@@ -105,6 +105,7 @@
   z-index: 200;
   max-width: min(420px, calc(100vw - 32px));
 }
+.notification-prompt[hidden] { display: none; }
 .notification-prompt-enable {
   border: 0;
   border-radius: var(--radius-sm);
