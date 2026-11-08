@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+var applicationScripts = []string{
+	"bongo.js",
+	"bongo-components.js",
+	"bongo-mail.js",
+	"bongo-pages.js",
+}
+
 // A message link carries hx-get for the full view, and htmx handles the click
 // on the link itself. The reading-pane interceptor therefore has to run in the
 // capture phase, or htmx swaps the whole view before it sees the click.
@@ -33,11 +40,49 @@ func TestReadingPaneClickIsCaptured(t *testing.T) {
 
 func readJS(t *testing.T, name string) string {
 	t.Helper()
-	data, err := os.ReadFile(name)
-	if err != nil {
-		t.Fatalf("read %s: %v", name, err)
+	if name == "bongo.js" {
+		var combined strings.Builder
+		for _, script := range applicationScripts {
+			combined.Write(mustReadScript(t, script))
+			combined.WriteByte('\n')
+		}
+		return combined.String()
 	}
-	return string(data)
+	data, err := os.ReadFile(name)
+	if err == nil {
+		return string(data)
+	}
+	t.Fatalf("cannot load JavaScript fixture %s: %v", name, err)
+	return ""
+}
+
+func mustReadScript(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(name)
+	if err == nil {
+		return data
+	}
+	t.Fatalf("cannot load JavaScript fixture %s: %v", name, err)
+	return nil
+}
+
+func TestApplicationJavaScriptIsSplitBySubsystem(t *testing.T) {
+	for _, script := range applicationScripts {
+		info, err := os.Stat(script)
+		if err != nil {
+			t.Fatalf("stat %s: %v", script, err)
+		}
+		if info.Size() == 0 {
+			t.Errorf("%s is empty", script)
+		}
+	}
+	core, err := os.Stat("bongo.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if core.Size() > 20_000 {
+		t.Errorf("bongo.js grew back into a monolith: %d bytes", core.Size())
+	}
 }
 
 // funcBody returns the source of a top-level function in bongo.js.

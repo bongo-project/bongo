@@ -95,6 +95,10 @@ templ Layout(title string, email string) {
 			<link rel="apple-touch-icon" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
 			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-mail.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-apps.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-utilities.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-components.css?v=" + assetVersion() }/>
 			<link rel="stylesheet" href={ "/static/css/generated_geometry.css?v=" + assetVersion() }/>
 		</head>
 		<body hx-headers={ csrfHeaders(ctx) }>
@@ -130,6 +134,9 @@ templ Layout(title string, email string) {
 			<script src={ "/static/js/richeditor.js?v=" + assetVersion() }></script>
 			<script src="/static/js/alpine-csp.min.js" defer></script>
 			<script src={ "/static/js/bongo.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-components.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-mail.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-pages.js?v=" + assetVersion() }></script>
 		</body>
 	</html>
 }
@@ -148,6 +155,10 @@ templ LayoutWithContent(title string, email string) {
 			<link rel="apple-touch-icon" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
 			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-mail.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-apps.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-utilities.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-components.css?v=" + assetVersion() }/>
 			<link rel="stylesheet" href={ "/static/css/generated_geometry.css?v=" + assetVersion() }/>
 		</head>
 		<body hx-headers={ csrfHeaders(ctx) }>
@@ -179,6 +190,9 @@ templ LayoutWithContent(title string, email string) {
 			<script src={ "/static/js/richeditor.js?v=" + assetVersion() }></script>
 			<script src="/static/js/alpine-csp.min.js" defer></script>
 			<script src={ "/static/js/bongo.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-components.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-mail.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-pages.js?v=" + assetVersion() }></script>
 		</body>
 	</html>
 }
@@ -196,6 +210,10 @@ templ LoginLayout(title string) {
 			<link rel="apple-touch-icon" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
 			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-mail.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-apps.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-utilities.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-components.css?v=" + assetVersion() }/>
 		</head>
 		<body class="login-page">
 			{ children... }

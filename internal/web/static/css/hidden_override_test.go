@@ -1,7 +1,6 @@
 package css_test
 
 import (
-	"os"
 	"regexp"
 	"testing"
 )
@@ -16,11 +15,7 @@ var hiddenToggledPanels = []string{".tag-dropdown", ".msg-more-menu", ".context-
 // display:none back. Every panel toggled with the hidden attribute needs an
 // explicit [hidden] rule.
 func TestDisplayRulesOnToggledPanelsKeepHiddenWorking(t *testing.T) {
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css := string(data)
+	css := mustApplicationCSS(t)
 	for _, class := range hiddenToggledPanels {
 		rules := regexp.MustCompile(`(?s)(?:^|[^\w.\[-])`+regexp.QuoteMeta(class)+`\s*\{([^}]*)\}`).FindAllStringSubmatch(css, -1)
 		if len(rules) == 0 {
@@ -47,11 +42,7 @@ func TestDisplayRulesOnToggledPanelsKeepHiddenWorking(t *testing.T) {
 // x-bind:hidden nothing overrides it, so clearing the attribute shows nothing.
 // The right-click message menu was invisible this way.
 func TestToggledPanelsAreNotHiddenByBaseRule(t *testing.T) {
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css := string(data)
+	css := mustApplicationCSS(t)
 	none := regexp.MustCompile(`(?:^|[;\s])display\s*:\s*none`)
 	for _, class := range hiddenToggledPanels {
 		rules := regexp.MustCompile(`(?s)(?:^|[^\w.\[-])`+regexp.QuoteMeta(class)+`\s*\{([^}]*)\}`).FindAllStringSubmatch(css, -1)

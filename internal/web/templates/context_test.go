@@ -48,6 +48,28 @@ func TestLayoutWithContentLoadsSharedDesignTokens(t *testing.T) {
 	if strings.Index(html, `/static/css/componentlib/colors_and_type.css`) > strings.Index(html, `/static/css/bongo.css`) {
 		t.Fatal("componentlib design tokens must be loaded before bongo.css")
 	}
+	assertAssetOrder(t, html, "/static/css/", []string{
+		"bongo.css", "bongo-mail.css", "bongo-apps.css", "bongo-utilities.css", "bongo-components.css", "generated_geometry.css",
+	})
+	assertAssetOrder(t, html, "/static/js/", []string{
+		"bongo.js", "bongo-components.js", "bongo-mail.js", "bongo-pages.js",
+	})
+}
+
+func assertAssetOrder(t *testing.T, html, prefix string, assets []string) {
+	t.Helper()
+	previous := -1
+	for _, asset := range assets {
+		position := strings.Index(html, prefix+asset)
+		if position < 0 {
+			t.Errorf("layout does not load %s", asset)
+			continue
+		}
+		if position < previous {
+			t.Errorf("%s is loaded out of order", asset)
+		}
+		previous = position
+	}
 }
 
 func TestMailboxContentExposesRealResponsivePaneTargets(t *testing.T) {

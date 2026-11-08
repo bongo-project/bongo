@@ -76,8 +76,8 @@ CSS has accumulated as a final override layer over legacy rules.
 
 ### Phase E: Frontend consolidation and verification
 
-- [ ] Split the monolithic JS and CSS by subsystem without adding a build step.
-- [ ] Remove superseded selectors and the legacy polish override layer.
+- [x] Split the monolithic JS and CSS by subsystem without adding a build step.
+- [x] Remove superseded selectors and the legacy polish override layer.
 - [x] Add and document a generator for generated_geometry.css.
 - [x] Capture full pages, dark mobile, tablet, open mobile navigation and
       populated edge states in the screenshot harness.

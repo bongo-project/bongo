@@ -41,6 +41,10 @@ func composeShell(body, theme string) string {
 <title>compose</title>
 <link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css">
 <link rel="stylesheet" href="/static/css/bongo.css">
+<link rel="stylesheet" href="/static/css/bongo-mail.css">
+<link rel="stylesheet" href="/static/css/bongo-apps.css">
+<link rel="stylesheet" href="/static/css/bongo-utilities.css">
+<link rel="stylesheet" href="/static/css/bongo-components.css">
 <link rel="stylesheet" href="/static/css/generated_geometry.css">
 </head><body>
 <main class="content" id="main-content">` + body + `</main>
@@ -48,6 +52,9 @@ func composeShell(body, theme string) string {
 <script src="/static/js/richeditor.js"></script>
 <script src="/static/js/alpine-csp.min.js" defer></script>
 <script src="/static/js/bongo.js"></script>
+<script src="/static/js/bongo-components.js"></script>
+<script src="/static/js/bongo-mail.js"></script>
+<script src="/static/js/bongo-pages.js"></script>
 </body></html>`
 }
 

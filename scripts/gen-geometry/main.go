@@ -15,6 +15,7 @@ func main() {
 	output := flag.String("out", defaultOutput, "generated CSS output path")
 	flag.Parse()
 
+	// #nosec G306 -- generated CSS is a public embedded static asset.
 	if err := os.WriteFile(*output, generate(), 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "write generated geometry: %v\n", err)
 		os.Exit(1)

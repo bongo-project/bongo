@@ -63,7 +63,15 @@ func TestCalendarSettingsClassesHaveCSSRules(t *testing.T) {
 	}
 
 	var css strings.Builder
-	for _, p := range []string{"../static/css/bongo.css", "../static/css/componentlib/colors_and_type.css", "../static/css/generated_geometry.css"} {
+	for _, p := range []string{
+		"../static/css/componentlib/colors_and_type.css",
+		"../static/css/bongo.css",
+		"../static/css/bongo-mail.css",
+		"../static/css/bongo-apps.css",
+		"../static/css/bongo-utilities.css",
+		"../static/css/bongo-components.css",
+		"../static/css/generated_geometry.css",
+	} {
 		b, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatalf("read %s: %v", p, err)

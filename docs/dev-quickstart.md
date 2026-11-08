@@ -6,6 +6,14 @@ finite set of CSP-safe positioning classes used by mail gestures, context menus
 and calendar events; edit `scripts/gen-geometry` when its ranges or increments
 need to change, never the generated CSS directly.
 
+The application assets intentionally need no bundler. Templates load CSS in
+this cascade order: `bongo.css` (tokens and shell), `bongo-mail.css`,
+`bongo-apps.css`, `bongo-utilities.css`, then `bongo-components.css` (canonical
+shared component states). JavaScript loads `bongo.js` (core),
+`bongo-components.js` (Alpine registrations), `bongo-mail.js` (mail and keyboard
+interactions), then `bongo-pages.js` (page lifecycle hooks). Keep those orders
+when adding a test fixture or layout.
+
 ## Build and Run
 
 ```bash
