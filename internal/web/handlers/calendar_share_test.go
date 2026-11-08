@@ -467,6 +467,7 @@ func TestUnshareCalendar(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			e := newShareEnv(t, true)
 			for _, who := range tt.seed {
 				if err := e.acl.SetCalendarGrant("alice", e.calID, who, store.GrantLevelRead, store.GrantStateAccepted, "alice", e.now); err != nil {

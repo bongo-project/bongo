@@ -252,6 +252,15 @@ function keyboardShortcutAction(key) {
   return shortcut ? shortcut.action : '';
 }
 
+// Some browsers on macOS report the physical Shift+/ combination instead of
+// the resulting question mark. Normalise both forms so the documented help
+// shortcut works with a real keyboard as well as a synthetic key event.
+function keyboardShortcutKey(event) {
+  if (event.shiftKey && event.key === '/') return '?';
+  if (event.shiftKey && event.key === '3') return '#';
+  return event.key;
+}
+
 function keyboardShortcutHelp() {
   return keyboardShortcuts.map(function(item) {
     return '<dt><kbd>' + item.display + '</kbd></dt><dd>' + i18n(item.label) + '</dd>';
@@ -372,7 +381,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  const shortcutAction = keyboardShortcutAction(e.key);
+  const shortcutAction = keyboardShortcutAction(keyboardShortcutKey(e));
 
   if (shortcutAction === 'help') {
     e.preventDefault();

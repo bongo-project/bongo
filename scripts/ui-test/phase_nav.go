@@ -78,6 +78,9 @@ func phaseShell(c *checker, page *rod.Page) {
 	evalPage(page, `document.activeElement && document.activeElement.blur()`)
 	evalPage(page, ctrlK)
 	c.check("Shell", "Ctrl-K focuses search", boolErr(active() == "global-search"))
+	evalPage(page, `document.activeElement && document.activeElement.blur()`)
+	evalPage(page, `document.dispatchEvent(new KeyboardEvent('keydown', {key: 'k', metaKey: true, bubbles: true, cancelable: true}))`)
+	c.check("Shell", "Cmd-K focuses search", boolErr(active() == "global-search"))
 
 	// Ctrl-K inside another field must leave focus where it is.
 	if has(page, "#main-content input, #main-content textarea") {

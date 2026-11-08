@@ -1684,15 +1684,13 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("web: flag toggled", "flag", flag, "action", action, "mailbox", mailbox, "uid", uid, "user", userID)
 
-	// Return updated star icon.
+	// Return the same star button used by the message row. Keeping the HTMX
+	// replacement's class and attributes intact lets keyboard shortcuts and
+	// subsequent clicks toggle it again.
 	msg, _ := h.mailboxes.GetMessage(userID, realMailbox, uint32(uid))
 	flagged := msg != nil && msg.Flags&store.FlagFlagged != 0
-	postPath := fmt.Sprintf("/mail/%s/%d/flags", url.PathEscape(mailbox), uid)
-
-	if flagged {
-		fmt.Fprintf(w, `<span class="flag-star flagged" hx-post="%s" hx-vals='{"action":"remove","flag":"flagged"}' hx-swap="outerHTML">&#9733;</span>`, postPath)
-	} else {
-		fmt.Fprintf(w, `<span class="flag-star" hx-post="%s" hx-vals='{"action":"add","flag":"flagged"}' hx-swap="outerHTML">&#9734;</span>`, postPath)
+	if err := templates.MessageStarButton(mailbox, uint32(uid), flagged).Render(r.Context(), w); err != nil {
+		h.logger.Error("web: render updated star button", "error", err, "mailbox", mailbox, "uid", uid, "user", userID)
 	}
 }
 

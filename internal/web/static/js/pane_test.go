@@ -163,7 +163,7 @@ func TestUnreadShortcutUsesTheBulkActionPipeline(t *testing.T) {
 func TestShortcutRegistryDrivesDispatchAndHelp(t *testing.T) {
 	js := readJS(t, "bongo.js")
 	for _, want := range []string{
-		"var keyboardShortcuts = [", "keyboardShortcutAction(e.key)",
+		"var keyboardShortcuts = [", "keyboardShortcutAction(keyboardShortcutKey(e))",
 		"keyboardShortcuts.find(", "keyboardShortcuts.map(",
 		"'<dl>' + keyboardShortcutHelp() + '</dl>'",
 	} {
@@ -173,6 +173,19 @@ func TestShortcutRegistryDrivesDispatchAndHelp(t *testing.T) {
 	}
 	if strings.Contains(js, "'<dt><kbd>j</kbd>") {
 		t.Error("shortcut help still duplicates individual key definitions")
+	}
+}
+
+func TestShiftedShortcutsAcceptMacKeyEvents(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	body := funcBody(t, js, "keyboardShortcutKey")
+	for _, want := range []string{
+		"event.shiftKey && event.key === '/'", "return '?'",
+		"event.shiftKey && event.key === '3'", "return '#'",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("shifted shortcut normalisation missing %q", want)
+		}
 	}
 }
 

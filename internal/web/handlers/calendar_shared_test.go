@@ -270,6 +270,7 @@ func TestSharedRouteAuthorisation(t *testing.T) {
 	for _, rt := range sharedRoutes() {
 		for _, actor := range []string{actNone, actFreeBusy, actPending, actRead, actWrite} {
 			t.Run(rt.name+"/"+actor, func(t *testing.T) {
+				t.Parallel()
 				e := newSharedEnv(t)
 				before := e.eventCount(sharedOwner)
 				w := rt.run(e, actor)

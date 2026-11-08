@@ -288,24 +288,7 @@ templ MessageRows(messages []MessageSummary, mailbox string, view *store.HeaderV
 				x-on:change={ fmt.Sprintf("toggle(%d, $event)", msg.UID) }
 				x-bind:checked={ fmt.Sprintf("isSelected(%d, $el)", msg.UID) }
 			/>
-			<button
-				type="button"
-				class={ "msg-star", templ.KV("flagged", msg.Flagged) }
-				hx-post={ fmt.Sprintf("/mail/%s/%d/flags", encMailbox(rowActionMailbox(msg, mailbox, view)), msg.UID) }
-				hx-vals={ flagToggleVals(msg.Flagged) }
-				hx-swap="outerHTML"
-				if msg.Flagged {
-					aria-label={ t(ctx, "mail.unstarMessage") }
-				} else {
-					aria-label={ t(ctx, "mail.starMessage") }
-				}
-			>
-				if msg.Flagged {
-					&#9733;
-				} else {
-					&#9734;
-				}
-			</button>
+			@MessageStarButton(rowActionMailbox(msg, mailbox, view), msg.UID, msg.Flagged)
 			<div class="msg-main">
 				<div class="msg-line">
 					<span class="msg-from">
@@ -465,6 +448,27 @@ func flagToggleVals(flagged bool) string {
 		return `{"action":"remove","flag":"flagged"}`
 	}
 	return `{"action":"add","flag":"flagged"}`
+}
+
+templ MessageStarButton(mailbox string, uid uint32, flagged bool) {
+	<button
+		type="button"
+		class={ "msg-star", templ.KV("flagged", flagged) }
+		hx-post={ fmt.Sprintf("/mail/%s/%d/flags", encMailbox(mailbox), uid) }
+		hx-vals={ flagToggleVals(flagged) }
+		hx-swap="outerHTML"
+		if flagged {
+			aria-label={ t(ctx, "mail.unstarMessage") }
+		} else {
+			aria-label={ t(ctx, "mail.starMessage") }
+		}
+	>
+		if flagged {
+			&#9733;
+		} else {
+			&#9734;
+		}
+	</button>
 }
 
 // msgRowLink renders a message-row link. In the Drafts mailbox it opens the

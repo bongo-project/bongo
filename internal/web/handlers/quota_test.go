@@ -987,6 +987,7 @@ func TestQuotaRefusalPageVersusText(t *testing.T) {
 	for _, tc := range quotaRefusalCases {
 		for _, locale := range []string{"en", "de", "fr", "es"} {
 			t.Run(tc.name+"/"+locale+"/page", func(t *testing.T) {
+				t.Parallel()
 				w, want := tc.run(t, locale, false)
 				if w.Code != http.StatusInsufficientStorage {
 					t.Fatalf("status=%d want 507: %s", w.Code, w.Body.String())
@@ -1007,6 +1008,7 @@ func TestQuotaRefusalPageVersusText(t *testing.T) {
 				}
 			})
 			t.Run(tc.name+"/"+locale+"/htmx", func(t *testing.T) {
+				t.Parallel()
 				w, want := tc.run(t, locale, true)
 				if w.Code != http.StatusInsufficientStorage {
 					t.Fatalf("status=%d want 507", w.Code)
