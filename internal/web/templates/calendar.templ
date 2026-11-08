@@ -100,7 +100,7 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 }
 
 templ CalendarSidebar(calendars []*bongov1.Calendar) {
-	<nav aria-label={ t(ctx, "calendar.navigation") }>
+	<nav class="sidebar-scroll" aria-label={ t(ctx, "calendar.navigation") }>
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "nav.calendar") }</div>
 			<ul class="nav-list">
@@ -153,6 +153,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 			</ul>
 		</div>
 	</nav>
+	@AppSwitcher("calendar")
 }
 
 // EventAvailability is the event form's availability fragment: for each
@@ -204,17 +205,20 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 			<div class="toolbar">
 				<a href="/calendar" class="tool-btn">&larr; { t(ctx, "calendar.backToCalendar") }</a>
 			</div>
-			if isNew {
-				<h3>{ t(ctx, "calendar.newEvent") }</h3>
-			} else {
-				<h3>{ t(ctx, "calendar.editEvent") }</h3>
-			}
-			if occ := occurrenceFromCtx(ctx); occ != nil && !isNew {
-				<p class="meta event-meta" role="note">
-					{ fmt.Sprintf(t(ctx, "calendar.occurrenceNotice"), occurrenceWhen(ctx, occ), occ.Title) }
-				</p>
-			}
-			<form
+			<div class="event-editor">
+				<header class="event-editor-head">
+					if isNew {
+						<h1>{ t(ctx, "calendar.newEvent") }</h1>
+					} else {
+						<h1>{ t(ctx, "calendar.editEvent") }</h1>
+					}
+					if occ := occurrenceFromCtx(ctx); occ != nil && !isNew {
+						<p class="meta event-meta" role="note">
+							{ fmt.Sprintf(t(ctx, "calendar.occurrenceNotice"), occurrenceWhen(ctx, occ), occ.Title) }
+						</p>
+					}
+				</header>
+				<form
 				if isNew {
 					method="post"
 					action="/calendar/event"
@@ -436,7 +440,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						<span class="u-ml-1">{ t(ctx, "calendar.updated") } { formatEventDate(ctx, event.UpdatedAt) }</span>
 					</div>
 				}
-				<div class="u-flex u-gap-05">
+				<div class="event-form-actions">
 					if !eventFormReadOnly(ctx) {
 						<button type="submit" class="btn-primary">
 							if isNew {
@@ -461,7 +465,8 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						</button>
 					}
 				</div>
-			</form>
+				</form>
+			</div>
 		</main>
 	}
 }
@@ -502,7 +507,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 			</div>
 		}
 	</div>
-	<div class="week-grid">
+	<div class="week-grid" data-calendar-scroll>
 		<div class="time-gutter">
 			for h := 0; h < 24; h++ {
 				<div class="hour-label">{ fmt.Sprintf("%02d:00", h) }</div>
@@ -605,7 +610,7 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 			</div>
 		</div>
 	}
-	<div class="day-grid">
+	<div class="day-grid" data-calendar-scroll>
 		<div class="time-gutter">
 			for h := 0; h < 24; h++ {
 				<div class="hour-label">{ fmt.Sprintf("%02d:00", h) }</div>

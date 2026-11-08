@@ -59,7 +59,7 @@ func taskIsDone(t *bongov1.Task) bool {
 }
 
 templ TasksSidebar() {
-	<nav aria-label={ t(ctx, "tasks.navigation") }>
+	<nav class="sidebar-scroll" aria-label={ t(ctx, "tasks.navigation") }>
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "nav.tasks") }</div>
 			<ul class="nav-list">
@@ -84,6 +84,7 @@ templ TasksSidebar() {
 			</ul>
 		</div>
 	</nav>
+	@AppSwitcher("tasks")
 }
 
 templ taskPriorityOptions(selected int32) {

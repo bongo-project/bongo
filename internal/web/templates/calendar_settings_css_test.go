@@ -109,6 +109,16 @@ func TestCalendarSettingsUsesSharedStyles(t *testing.T) {
 	}
 }
 
+func TestCalendarPublishingDestructiveActionsConfirm(t *testing.T) {
+	out := renderToString(t, CalendarPublishSection(PublishSettings{Calendar: "cal1", Published: true, HasPassword: true}))
+	for _, class := range []string{"publish-regenerate-form", "publish-unpublish-form", "publish-password-remove-form"} {
+		form := regexp.MustCompile(`<form[^>]*hx-confirm="[^"]+"[^>]*class="` + class + `"`).FindString(out)
+		if form == "" {
+			t.Errorf("%s has no confirmation", class)
+		}
+	}
+}
+
 // FR-1: the calendar pages outside settings keep no unstyled submit either.
 func TestCalendarFormsHaveStyledSubmits(t *testing.T) {
 	out := renderToString(t, CalendarSharesPage([]PendingShare{{Owner: "o", OwnerLabel: "o@b.c", Calendar: "c", CalendarName: "Work", Level: "read"}}, nil, nil, "a@b.c"))

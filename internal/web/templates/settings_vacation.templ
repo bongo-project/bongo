@@ -16,16 +16,8 @@ type VacationView struct {
 
 templ VacationPage(v VacationView, email string) {
 	@LayoutWithContent(t(ctx, "settings.vacation"), email) {
-		<aside class="sidebar" id="sidebar">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
-					<li><a href="/settings/rules">{ t(ctx, "settings.filterRules") }</a></li>
-					<li><a href="/settings/vacation" class="active">{ t(ctx, "settings.vacation") }</a></li>
-					<li><a href="/settings">{ t(ctx, "nav.settings") }</a></li>
-					<li><a href="/settings/security">{ t(ctx, "settings.security") }</a></li>
-				</ul>
-			</nav>
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("vacation")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">

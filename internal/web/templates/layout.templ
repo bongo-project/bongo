@@ -5,7 +5,7 @@ package templates
 templ Topbar(email string) {
 	<header class="topbar" role="banner">
 		<div class="topbar-left">
-			<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+			<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" x-bind:aria-expanded="sidebarOpen" aria-controls="sidebar">&#9776;</button>
 			<a href="/mail/INBOX" class="brand" aria-label="BongoMail">
 				@Icon("logo", "brand-glyph")
 				<span class="wordmark">Bongo<em>&middot;</em>mail</span>
@@ -67,6 +67,20 @@ templ Topbar(email string) {
 	</header>
 }
 
+templ NotificationPrompt() {
+	<div x-data="notifications" x-init="init()">
+		<div class="notification-prompt" x-bind:hidden="!showPrompt" x-cloak="" role="region" aria-label={ t(ctx, "settings.enableNotifications") }>
+			<span>{ t(ctx, "settings.notificationPrompt") }</span>
+			<button type="button" class="notification-prompt-enable" x-on:click="requestPermission()">{ t(ctx, "settings.enableNotifications") }</button>
+			<button type="button" class="notification-prompt-close" x-on:click="dismissPrompt()" aria-label={ t(ctx, "common.close") }>@Icon("x", "")</button>
+		</div>
+	</div>
+}
+
+templ ClientStatus() {
+	<div id="client-status" class="client-status" role="status" aria-live="polite" hidden></div>
+}
+
 templ Layout(title string, email string) {
 	<!DOCTYPE html>
 	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-theme="auto" data-accent="bongo" data-sidebar="dark">
@@ -109,17 +123,8 @@ templ Layout(title string, email string) {
 				</main>
 			</div>
 			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>
-			<div x-data="notifications" x-init="init()">
-				<button
-					type="button"
-					class="notification-prompt outline secondary"
-					x-bind:hidden="permission !== 'default'"
-					x-on:click="requestPermission()"
-					x-cloak=""
-				>
-					{ t(ctx, "settings.enableNotifications") }
-				</button>
-			</div>
+			@ClientStatus()
+			@NotificationPrompt()
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
 			<script src={ "/static/js/richeditor.js?v=" + assetVersion() }></script>
@@ -167,17 +172,8 @@ templ LayoutWithContent(title string, email string) {
 				{ children... }
 			</div>
 			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>
-			<div x-data="notifications" x-init="init()">
-				<button
-					type="button"
-					class="notification-prompt outline secondary"
-					x-bind:hidden="permission !== 'default'"
-					x-on:click="requestPermission()"
-					x-cloak=""
-				>
-					{ t(ctx, "settings.enableNotifications") }
-				</button>
-			</div>
+			@ClientStatus()
+			@NotificationPrompt()
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
 			<script src={ "/static/js/richeditor.js?v=" + assetVersion() }></script>

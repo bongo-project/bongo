@@ -96,16 +96,8 @@ func deviceLinkStatusURL(hash string, setup bool) string {
 
 templ SecuritySettings(totpEnabled bool, email string, flash string, apps AppPasswordView) {
 	@LayoutWithContent(t(ctx, "settings.security"), email) {
-		<aside class="sidebar" id="sidebar">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
-					<li><a href="/settings/rules">{ t(ctx, "settings.filterRules") }</a></li>
-					<li><a href="/settings/vacation">{ t(ctx, "settings.vacation") }</a></li>
-					<li><a href="/settings">{ t(ctx, "nav.settings") }</a></li>
-					<li><a href="/settings/security" class="active">{ t(ctx, "settings.security") }</a></li>
-				</ul>
-			</nav>
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("security")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
@@ -343,12 +335,8 @@ templ requireAppPasswordsCard(apps AppPasswordView) {
 
 templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 	@LayoutWithContent(t(ctx, "security.setupTwoFactor"), "") {
-		<aside class="sidebar" id="sidebar">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/settings/security">{ t(ctx, "nav.security") }</a></li>
-				</ul>
-			</nav>
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("security")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
@@ -390,12 +378,8 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 
 templ TOTPRecoveryCodes(codes []string, continueHref string) {
 	@LayoutWithContent(t(ctx, "security.recoveryCodes"), "") {
-		<aside class="sidebar" id="sidebar">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/settings/security">{ t(ctx, "nav.security") }</a></li>
-				</ul>
-			</nav>
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("security")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
@@ -431,12 +415,8 @@ templ TOTPRecoveryCodes(codes []string, continueHref string) {
 // create the password shown once beside the server settings.
 templ AddDevice(email string, v DeviceView) {
 	@LayoutWithContent(t(ctx, "security.appPasswordAddDevice"), email) {
-		<aside class="sidebar" id="sidebar">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/settings/security">{ t(ctx, "nav.security") }</a></li>
-				</ul>
-			</nav>
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("security")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">

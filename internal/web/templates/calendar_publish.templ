@@ -39,11 +39,11 @@ templ CalendarPublishSection(p PublishSettings) {
 				<label class="form-label" for={ "pub-webcal-" + p.Calendar }>{ t(ctx, "calendar.publishWebcalLink") }</label>
 				<input type="text" readonly value={ p.WebcalLink } id={ "pub-webcal-" + p.Calendar } class="form-input publish-link" autocomplete="off"/>
 			</div>
-			<form hx-post={ "/calendar/" + p.Calendar + "/publish/regenerate" } hx-swap="none" class="publish-regenerate-form">
+			<form hx-post={ "/calendar/" + p.Calendar + "/publish/regenerate" } hx-swap="none" hx-confirm={ t(ctx, "calendar.publishRegenerateConfirm") } class="publish-regenerate-form">
 				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 				<button type="submit" class="btn-secondary">{ t(ctx, "calendar.publishRegenerate") }</button>
 			</form>
-			<form hx-post={ "/calendar/" + p.Calendar + "/unpublish" } hx-swap="none" class="publish-unpublish-form">
+			<form hx-post={ "/calendar/" + p.Calendar + "/unpublish" } hx-swap="none" hx-confirm={ t(ctx, "calendar.publishUnpublishConfirm") } class="publish-unpublish-form">
 				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 				<button type="submit" class="btn-danger">{ t(ctx, "calendar.publishUnpublish") }</button>
 			</form>
@@ -61,7 +61,7 @@ templ CalendarPublishSection(p PublishSettings) {
 				<button type="submit" class="btn-secondary">{ t(ctx, "common.save") }</button>
 			</form>
 			if p.HasPassword {
-				<form hx-post={ "/calendar/" + p.Calendar + "/publish/password" } hx-swap="none" class="publish-password-remove-form">
+				<form hx-post={ "/calendar/" + p.Calendar + "/publish/password" } hx-swap="none" hx-confirm={ t(ctx, "calendar.publishPasswordRemoveConfirm") } class="publish-password-remove-form">
 					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 					<input type="hidden" name="remove_password" value="1"/>
 					<button type="submit" class="btn-secondary">{ t(ctx, "calendar.publishPasswordRemove") }</button>

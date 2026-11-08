@@ -594,7 +594,7 @@ templ contactCard(c *bongov1.Contact, editorOpen bool) {
 }
 
 templ ContactsSidebar() {
-	<nav aria-label={ t(ctx, "contacts.contactsNav") }>
+	<nav class="sidebar-scroll" aria-label={ t(ctx, "contacts.contactsNav") }>
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "nav.contacts") }</div>
 			<ul class="nav-list">
@@ -618,6 +618,7 @@ templ ContactsSidebar() {
 			</ul>
 		</div>
 	</nav>
+	@AppSwitcher("contacts")
 }
 
 func formatContactDate(unix int64) string {

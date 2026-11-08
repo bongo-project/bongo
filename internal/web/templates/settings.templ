@@ -5,45 +5,39 @@ import bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, fwd ForwardView) {
 	@LayoutWithContent(t(ctx, "settings.settings"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-			<nav aria-label={ t(ctx, "settings.navAriaLabel") }>
-				<div class="sidebar-group">
-					<div class="sidebar-label">{ t(ctx, "settings.navigation") }</div>
-					<ul class="nav-list">
-						<li class="nav-item"><a href="/mail/INBOX"><span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span> { t(ctx, "nav.backToMail") }</a></li>
-						<li class="nav-item"><a href="/settings/rules"><span class="nav-icon" aria-hidden="true">@Icon("sliders", "")</span> { t(ctx, "settings.filterRules") }</a></li>
-						<li class="nav-item"><a href="/settings/vacation"><span class="nav-icon" aria-hidden="true">@Icon("reply", "")</span> { t(ctx, "settings.vacation") }</a></li>
-						<li class="nav-item"><a href="/settings/tags"><span class="nav-icon" aria-hidden="true">@Icon("tag", "")</span> { t(ctx, "nav.tags") }</a></li>
-						<li class="nav-item"><a href="/settings/security"><span class="nav-icon" aria-hidden="true">@Icon("shield", "")</span> { t(ctx, "settings.security") }</a></li>
-					</ul>
-				</div>
-			</nav>
+			@SettingsSidebar("settings")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
-				<div class="settings-container" x-data="{ activeTab: 0 }">
+				<div class="settings-container" x-data="settingsTabs(5)">
 					if flash != "" {
 						@FlashMessage(flash, "success")
 					}
-					<div class="settings-tabs" role="tablist" aria-label={ t(ctx, "settings.sectionsAria") }>
-						<button type="button" class="settings-tab" role="tab"
+					<div class="settings-tabs" role="tablist" aria-label={ t(ctx, "settings.sectionsAria") } x-on:keydown="onKeydown($event)">
+						<button type="button" class="settings-tab" role="tab" id="settings-tab-appearance" aria-controls="settings-panel-appearance"
 							x-bind:class="{ 'active': activeTab === 0 }" x-bind:aria-selected="activeTab === 0"
+							x-bind:tabindex="activeTab === 0 ? 0 : -1"
 							x-on:click="activeTab = 0">{ t(ctx, "settings.appearance") }</button>
-						<button type="button" class="settings-tab" role="tab"
+						<button type="button" class="settings-tab" role="tab" id="settings-tab-display" aria-controls="settings-panel-display"
 							x-bind:class="{ 'active': activeTab === 1 }" x-bind:aria-selected="activeTab === 1"
+							x-bind:tabindex="activeTab === 1 ? 0 : -1"
 							x-on:click="activeTab = 1">{ t(ctx, "settings.display") }</button>
-						<button type="button" class="settings-tab" role="tab"
+						<button type="button" class="settings-tab" role="tab" id="settings-tab-composition" aria-controls="settings-panel-composition"
 							x-bind:class="{ 'active': activeTab === 2 }" x-bind:aria-selected="activeTab === 2"
+							x-bind:tabindex="activeTab === 2 ? 0 : -1"
 							x-on:click="activeTab = 2">{ t(ctx, "settings.composition") }</button>
-						<button type="button" class="settings-tab" role="tab"
+						<button type="button" class="settings-tab" role="tab" id="settings-tab-localization" aria-controls="settings-panel-localization"
 							x-bind:class="{ 'active': activeTab === 3 }" x-bind:aria-selected="activeTab === 3"
+							x-bind:tabindex="activeTab === 3 ? 0 : -1"
 							x-on:click="activeTab = 3">{ t(ctx, "settings.localization") }</button>
-						<button type="button" class="settings-tab" role="tab"
+						<button type="button" class="settings-tab" role="tab" id="settings-tab-forwarding" aria-controls="settings-panel-forwarding"
 							x-bind:class="{ 'active': activeTab === 4 }" x-bind:aria-selected="activeTab === 4"
+							x-bind:tabindex="activeTab === 4 ? 0 : -1"
 							x-on:click="activeTab = 4">{ t(ctx, "settings.forwarding") }</button>
 					</div>
 					<form method="post" action="/settings">
 						<!-- Appearance -->
-						<div class="settings-section" x-bind:hidden="activeTab !== 0">
+						<div class="settings-section" id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" x-bind:hidden="activeTab !== 0">
 							<h2 class="settings-section-title">{ t(ctx, "settings.appearance") }</h2>
 							<p class="settings-section-desc">{ t(ctx, "settings.appearanceDesc") }</p>
 							<div class="settings-card">
@@ -80,7 +74,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 							</div>
 						</div>
 						<!-- Display -->
-						<div class="settings-section" x-bind:hidden="activeTab !== 1">
+						<div class="settings-section" id="settings-panel-display" role="tabpanel" aria-labelledby="settings-tab-display" x-bind:hidden="activeTab !== 1" x-cloak>
 							<h2 class="settings-section-title">{ t(ctx, "settings.display") }</h2>
 							<p class="settings-section-desc">{ t(ctx, "settings.displayDesc") }</p>
 							<div class="settings-card">
@@ -108,7 +102,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 							</div>
 						</div>
 						<!-- Composition -->
-						<div class="settings-section" x-bind:hidden="activeTab !== 2">
+						<div class="settings-section" id="settings-panel-composition" role="tabpanel" aria-labelledby="settings-tab-composition" x-bind:hidden="activeTab !== 2" x-cloak>
 							<h2 class="settings-section-title">{ t(ctx, "settings.composition") }</h2>
 							<p class="settings-section-desc">{ t(ctx, "settings.compositionDesc") }</p>
 							<div class="settings-card">
@@ -139,7 +133,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 							</div>
 						</div>
 						<!-- Localization -->
-						<div class="settings-section" x-bind:hidden="activeTab !== 3">
+						<div class="settings-section" id="settings-panel-localization" role="tabpanel" aria-labelledby="settings-tab-localization" x-bind:hidden="activeTab !== 3" x-cloak>
 							<h2 class="settings-section-title">{ t(ctx, "settings.localization") }</h2>
 							<p class="settings-section-desc">{ t(ctx, "settings.localizationDesc") }</p>
 							<div class="settings-card">
@@ -165,7 +159,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 							</div>
 						</div>
 						<!-- Forwarding -->
-						<div class="settings-section" x-bind:hidden="activeTab !== 4">
+						<div class="settings-section" id="settings-panel-forwarding" role="tabpanel" aria-labelledby="settings-tab-forwarding" x-bind:hidden="activeTab !== 4" x-cloak>
 							<h2 class="settings-section-title">{ t(ctx, "settings.forwarding") }</h2>
 							<p class="settings-section-desc">{ t(ctx, "settings.forwardDesc") }</p>
 							<div class="settings-card">
@@ -193,7 +187,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string, f
 					</form>
 					if len(fwd.Targets) > 0 || fwd.Error != "" {
 						<!-- Forwarding targets: separate forms, so they sit outside the settings form -->
-						<div class="settings-section" x-bind:hidden="activeTab !== 4">
+						<div class="settings-section" x-bind:hidden="activeTab !== 4" aria-labelledby="settings-tab-forwarding" x-cloak>
 							<h2 class="settings-section-title">{ t(ctx, "settings.forwardTargets") }</h2>
 							if fwd.Error != "" {
 								@FlashMessage(fwd.Error, "error")

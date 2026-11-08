@@ -4,13 +4,14 @@ import "fmt"
 
 templ importSidebar() {
 	<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-		<nav aria-label={ t(ctx, "nav.mailboxNav") }>
+		<nav class="sidebar-scroll" aria-label={ t(ctx, "nav.mailboxNav") }>
 			<div class="sidebar-group">
 				<ul class="nav-list">
 					<li class="nav-item"><a href="/mail/INBOX"><span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span> { t(ctx, "nav.backToMail") }</a></li>
 				</ul>
 			</div>
 		</nav>
+		@AppSwitcher("mail")
 	</aside>
 }
 

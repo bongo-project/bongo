@@ -45,6 +45,63 @@ func hasCustomFolders(mailboxes []MailboxInfo) bool {
 	return false
 }
 
+// AppSwitcher is the stable application-level navigation shared by every
+// authenticated sidebar. Contextual navigation scrolls above it, so a long
+// folder tree never hides the other Bongo applications.
+templ AppSwitcher(active string) {
+	<nav class="sidebar-apps" aria-label={ t(ctx, "nav.applications") }>
+		<a href="/summary" class={ "sidebar-app", templ.KV("active", active == "summary") } aria-current?={ active == "summary" } title={ t(ctx, "nav.summary") }>
+			@Icon("bell", "")
+			<span>{ t(ctx, "nav.summary") }</span>
+		</a>
+		<a href="/mail/INBOX" class={ "sidebar-app", templ.KV("active", active == "mail") } aria-current?={ active == "mail" } title={ t(ctx, "nav.mail") }>
+			@Icon("inbox", "")
+			<span>{ t(ctx, "nav.mail") }</span>
+		</a>
+		<a href="/calendar" class={ "sidebar-app", templ.KV("active", active == "calendar") } aria-current?={ active == "calendar" } title={ t(ctx, "nav.calendar") }>
+			@Icon("calendar", "")
+			<span>{ t(ctx, "nav.calendar") }</span>
+		</a>
+		<a href="/tasks" class={ "sidebar-app", templ.KV("active", active == "tasks") } aria-current?={ active == "tasks" } title={ t(ctx, "nav.tasks") }>
+			@Icon("check", "")
+			<span>{ t(ctx, "nav.tasks") }</span>
+		</a>
+		<a href="/contacts" class={ "sidebar-app", templ.KV("active", active == "contacts") } aria-current?={ active == "contacts" } title={ t(ctx, "nav.contacts") }>
+			@Icon("users", "")
+			<span>{ t(ctx, "nav.contacts") }</span>
+		</a>
+		<a href="/settings" class={ "sidebar-app", templ.KV("active", active == "settings") } aria-current?={ active == "settings" } title={ t(ctx, "nav.settings") }>
+			@Icon("settings", "")
+			<span>{ t(ctx, "nav.settings") }</span>
+		</a>
+		if middleware.AdminFromContext(ctx) {
+			<a href="/admin" class={ "sidebar-app", templ.KV("active", active == "admin") } aria-current?={ active == "admin" } title={ t(ctx, "nav.admin") }>
+				@Icon("shield", "")
+				<span>{ t(ctx, "nav.admin") }</span>
+			</a>
+		}
+	</nav>
+}
+
+// SettingsSidebar keeps settings destinations consistent across preferences,
+// rules, vacation, tags, addresses and security sub-pages.
+templ SettingsSidebar(active string) {
+	<nav class="sidebar-scroll" aria-label={ t(ctx, "settings.navAriaLabel") }>
+		<div class="sidebar-group">
+			<div class="sidebar-label">{ t(ctx, "settings.navigation") }</div>
+			<ul class="nav-list">
+				<li class="nav-item"><a href="/settings" class={ templ.KV("active", active == "settings") } aria-current?={ active == "settings" }><span class="nav-icon" aria-hidden="true">@Icon("settings", "")</span><span>{ t(ctx, "nav.settings") }</span></a></li>
+				<li class="nav-item"><a href="/settings/rules" class={ templ.KV("active", active == "rules") } aria-current?={ active == "rules" }><span class="nav-icon" aria-hidden="true">@Icon("sliders", "")</span><span>{ t(ctx, "settings.filterRules") }</span></a></li>
+				<li class="nav-item"><a href="/settings/vacation" class={ templ.KV("active", active == "vacation") } aria-current?={ active == "vacation" }><span class="nav-icon" aria-hidden="true">@Icon("reply", "")</span><span>{ t(ctx, "settings.vacation") }</span></a></li>
+				<li class="nav-item"><a href="/settings/tags" class={ templ.KV("active", active == "tags") } aria-current?={ active == "tags" }><span class="nav-icon" aria-hidden="true">@Icon("tag", "")</span><span>{ t(ctx, "nav.tags") }</span></a></li>
+				<li class="nav-item"><a href="/settings/addresses" class={ templ.KV("active", active == "addresses") } aria-current?={ active == "addresses" }><span class="nav-icon" aria-hidden="true">@Icon("send", "")</span><span>{ t(ctx, "settings.sendAsAddresses") }</span></a></li>
+				<li class="nav-item"><a href="/settings/security" class={ templ.KV("active", active == "security") } aria-current?={ active == "security" }><span class="nav-icon" aria-hidden="true">@Icon("shield", "")</span><span>{ t(ctx, "settings.security") }</span></a></li>
+			</ul>
+		</div>
+	</nav>
+	@AppSwitcher("settings")
+}
+
 templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 	<div class="sidebar-top">
 		<a href="/compose" class="compose-btn" hx-get="/compose" hx-target="#main-content" hx-push-url="true">
@@ -55,27 +112,12 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 	<nav class="sidebar-scroll" aria-label={ t(ctx, "nav.mailboxes") }>
 		<div class="sidebar-group" data-group="mail">
 			<div class="sidebar-label">{ t(ctx, "nav.mail") }</div>
-			<ul class="nav-list" id="mailbox-drop-targets" aria-label={ t(ctx, "nav.views") }>
+			<ul class="nav-list" id="mailbox-drop-targets" aria-label={ t(ctx, "nav.mail") }>
 				for _, mb := range mailboxes {
-					if isSystemMailbox(mb.Name) {
+					if mb.Name == "INBOX" || mb.Name == "Sent" || mb.Name == "Drafts" {
 						@MailboxTreeNode(mb, selected)
 					}
 				}
-				<li class="nav-item">
-					<a
-						href="/mail/unread"
-						if selected == "unread" {
-							class="active"
-						}
-						hx-get="/mail/unread"
-						hx-target="#main-content"
-						hx-push-url="true"
-					>
-						<span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span>
-						<span>{ t(ctx, "nav.unread") }</span>
-						<span id="unread-badge" class="unread-badge"></span>
-					</a>
-				</li>
 				<li class="nav-item">
 					<a
 						href="/mail/starred"
@@ -90,6 +132,19 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 						<span>{ t(ctx, "nav.starred") }</span>
 					</a>
 				</li>
+			</ul>
+		</div>
+		<div class="sidebar-group" data-group="more" x-data="sidebarSection('more', false)">
+			<button type="button" class="sidebar-label sidebar-label-toggle" x-on:click="toggle()" x-bind:aria-expanded="open">
+				<span>{ t(ctx, "nav.more") }</span>
+				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}" aria-hidden="true">&#9660;</span>
+			</button>
+			<ul class="nav-list" x-bind:hidden="!open" aria-label={ t(ctx, "nav.more") }>
+				for _, mb := range mailboxes {
+					if mb.Name == "Archive" || mb.Name == "Junk" || mb.Name == "Trash" {
+						@MailboxTreeNode(mb, selected)
+					}
+				}
 				<li class="nav-item">
 					<a
 						href="/mail/all-mail"
@@ -102,6 +157,29 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 					>
 						<span class="nav-icon" aria-hidden="true">@Icon("archive", "")</span>
 						<span>{ t(ctx, "nav.allMail") }</span>
+					</a>
+				</li>
+			</ul>
+		</div>
+		<div class="sidebar-group" data-group="views" x-data="sidebarSection('views', false)">
+			<button type="button" class="sidebar-label sidebar-label-toggle" x-on:click="toggle()" x-bind:aria-expanded="open">
+				<span>{ t(ctx, "nav.views") }</span>
+				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}" aria-hidden="true">&#9660;</span>
+			</button>
+			<ul class="nav-list" x-bind:hidden="!open" aria-label={ t(ctx, "nav.views") }>
+				<li class="nav-item">
+					<a
+						href="/mail/unread"
+						if selected == "unread" {
+							class="active"
+						}
+						hx-get="/mail/unread"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span>
+						<span>{ t(ctx, "nav.unread") }</span>
+						<span id="unread-badge" class="unread-badge"></span>
 					</a>
 				</li>
 				<li class="nav-item">
@@ -149,9 +227,12 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 			</ul>
 		</div>
 		if hasCustomFolders(mailboxes) {
-			<div class="sidebar-group" data-group="folders">
-				<div class="sidebar-label">{ t(ctx, "nav.folders") }</div>
-				<ul class="nav-list">
+			<div class="sidebar-group" data-group="folders" x-data="sidebarSection('folders', true)">
+				<button type="button" class="sidebar-label sidebar-label-toggle" x-on:click="toggle()" x-bind:aria-expanded="open">
+					<span>{ t(ctx, "nav.folders") }</span>
+					<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}" aria-hidden="true">&#9660;</span>
+				</button>
+				<ul class="nav-list" x-bind:hidden="!open">
 					for _, mb := range mailboxes {
 						if !isSystemMailbox(mb.Name) {
 							@MailboxTreeNode(mb, selected)
@@ -161,11 +242,11 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 			</div>
 		}
 		if len(tags) > 0 {
-			<div class="sidebar-group" data-group="tags" x-data="sidebarSection('tags')">
-				<div class="sidebar-label sidebar-label-toggle" x-on:click="toggle()">
+			<div class="sidebar-group" data-group="tags" x-data="sidebarSection('tags', true)">
+				<button type="button" class="sidebar-label sidebar-label-toggle" x-on:click="toggle()" x-bind:aria-expanded="open">
 					<span>{ t(ctx, "nav.tags") }</span>
-					<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
-				</div>
+					<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}" aria-hidden="true">&#9660;</span>
+				</button>
 				<ul class="nav-list" x-bind:hidden="!open" aria-label={ t(ctx, "nav.tags") }>
 					for i, tag := range tags {
 						if i < 20 {
@@ -199,67 +280,12 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				</ul>
 			</div>
 		}
-		<div class="sidebar-group" data-group="workspace">
-			<div class="sidebar-label">{ t(ctx, "nav.workspace") }</div>
-			<ul class="nav-list" aria-label={ t(ctx, "nav.applications") }>
-				<li class="nav-item">
-					<a
-						href="/summary"
-						if selected == "summary" {
-							class="active"
-						}
-					>
-						<span class="nav-icon" aria-hidden="true">@Icon("bell", "")</span>
-						<span>{ t(ctx, "nav.summary") }</span>
-					</a>
-				</li>
-				<li class="nav-item">
-					<a href="/calendar">
-						<span class="nav-icon" aria-hidden="true">@Icon("calendar", "")</span>
-						<span>{ t(ctx, "nav.calendar") }</span>
-					</a>
-				</li>
-				<li class="nav-item">
-					<a href="/tasks">
-						<span class="nav-icon" aria-hidden="true">@Icon("check", "")</span>
-						<span>{ t(ctx, "nav.tasks") }</span>
-					</a>
-				</li>
-				<li class="nav-item">
-					<a href="/contacts">
-						<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
-						<span>{ t(ctx, "nav.contacts") }</span>
-					</a>
-				</li>
-				<li class="nav-item">
-					<a href="/settings/rules">
-						<span class="nav-icon" aria-hidden="true">@Icon("sliders", "")</span>
-						<span>{ t(ctx, "nav.filterRules") }</span>
-					</a>
-				</li>
-				<li class="nav-item">
-					<a href="/settings/vacation">
-						<span class="nav-icon" aria-hidden="true">@Icon("reply", "")</span>
-						<span>{ t(ctx, "settings.vacation") }</span>
-					</a>
-				</li>
-				<li class="nav-item">
-					<a href="/settings">
-						<span class="nav-icon" aria-hidden="true">@Icon("settings", "")</span>
-						<span>{ t(ctx, "nav.settings") }</span>
-					</a>
-				</li>
-				if middleware.AdminFromContext(ctx) {
-					<li class="nav-item">
-						<a href="/admin">
-							<span class="nav-icon" aria-hidden="true">@Icon("shield", "")</span>
-							<span>{ t(ctx, "nav.admin") }</span>
-						</a>
-					</li>
-				}
-			</ul>
-		</div>
 	</nav>
+	if selected == "summary" {
+		@AppSwitcher("summary")
+	} else {
+		@AppSwitcher("mail")
+	}
 }
 
 // mailboxCount is always rendered, hidden at zero, so the live refresh in

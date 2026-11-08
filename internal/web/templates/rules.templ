@@ -43,13 +43,8 @@ type MailSample struct {
 
 templ RulesListPage(rules []RuleInfo, email string, flash string) {
 	@LayoutWithContent(t(ctx, "nav.filterRules"), email) {
-		<aside class="sidebar" id="sidebar">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/settings">{ t(ctx, "nav.settings") }</a></li>
-					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
-				</ul>
-			</nav>
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("rules")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
@@ -64,7 +59,7 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 			</div>
 			<p class="rules-intro">{ t(ctx, "rules.intro") }</p>
 			if len(rules) == 0 {
-				<p class="secondary-text">{ t(ctx, "rules.noRulesYet") }</p>
+				@EmptyState(t(ctx, "rules.noRulesYet"), t(ctx, "rules.intro"))
 			} else {
 				<div class="card rules-card">
 					<div class="card-head">
@@ -157,12 +152,8 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 
 templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, flash string) {
 	@LayoutWithContent(ruleFormTitle(ctx, isNew), email) {
-		<aside class="sidebar" id="sidebar">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/settings/rules">{ t(ctx, "rules.backToRules") }</a></li>
-				</ul>
-			</nav>
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("rules")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">

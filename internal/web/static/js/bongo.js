@@ -16,6 +16,39 @@ function i18n(key) {
   return i18n._cache[key] || '';
 }
 
+var clientStatusTimer = null;
+
+// showClientStatus gives every client-side mutation a shared, accessible
+// failure surface. Server text is already localized; the fallback covers
+// network errors and empty responses.
+function showClientStatus(message, level) {
+  var el = document.getElementById('client-status');
+  if (!el) return;
+  clearTimeout(clientStatusTimer);
+  el.textContent = String(message || i18n('js.actionFailed')).trim().slice(0, 300);
+  el.className = 'client-status client-status-' + (level || 'error');
+  el.hidden = false;
+  clientStatusTimer = setTimeout(function() { el.hidden = true; }, 6000);
+}
+
+// Fetch callers retain their normal response handling, while failed mutations
+// can no longer disappear silently. Read failures stay local to their widgets.
+(function () {
+  var origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    var method = ((init && init.method) || (typeof input === 'object' && input.method) || 'GET').toUpperCase();
+    var result = origFetch.apply(this, arguments);
+    if (method === 'GET' || method === 'HEAD') return result;
+    result.then(function(resp) {
+      if (resp.ok) return;
+      resp.clone().text()
+        .then(function(body) { showClientStatus(body || i18n('js.actionFailed'), 'error'); })
+        .catch(function() { showClientStatus('', 'error'); });
+    }).catch(function() { showClientStatus('', 'error'); });
+    return result;
+  };
+})();
+
 // CSRF: the server requires an X-CSRF-Token header on state-changing requests.
 // HTMX sends it automatically via hx-headers on <body>, but Alpine's fetch()
 // calls (bulk actions, settings auto-save, tag CRUD, etc.) do not, so wrap
@@ -320,6 +353,30 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  Alpine.data('settingsTabs', (count) => ({
+    activeTab: 0,
+    select(index, moveFocus) {
+      this.activeTab = (index + count) % count;
+      if (!moveFocus) return;
+      this.$nextTick(() => {
+        const tabs = this.$root.querySelectorAll('[role="tab"]');
+        if (tabs[this.activeTab]) {
+          tabs[this.activeTab].focus();
+          tabs[this.activeTab].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      });
+    },
+    onKeydown(event) {
+      if (!event.target.matches('[role="tab"]')) return;
+      if (event.key === 'ArrowRight') this.select(this.activeTab + 1, true);
+      else if (event.key === 'ArrowLeft') this.select(this.activeTab - 1, true);
+      else if (event.key === 'Home') this.select(0, true);
+      else if (event.key === 'End') this.select(count - 1, true);
+      else return;
+      event.preventDefault();
+    }
+  }));
+
   // Add a device, Apple choice. The form posts and the response is a file
   // download, which leaves the page as it was, so on submit the form is
   // swapped for a panel saying what to do next. Hiding the form also stops a
@@ -352,8 +409,10 @@ document.addEventListener('alpine:init', () => {
   }));
 
   // Collapsible sidebar sections with localStorage persistence
-  Alpine.data('sidebarSection', (key) => ({
-    open: localStorage.getItem('bongo-sidebar-' + key) !== 'closed',
+  Alpine.data('sidebarSection', (key, defaultOpen) => ({
+    open: localStorage.getItem('bongo-sidebar-' + key) === null
+      ? defaultOpen !== false
+      : localStorage.getItem('bongo-sidebar-' + key) !== 'closed',
     toggle() {
       this.open = !this.open;
       localStorage.setItem('bongo-sidebar-' + key, this.open ? 'open' : 'closed');
@@ -957,7 +1016,12 @@ document.addEventListener('alpine:init', () => {
   // Desktop notifications + SSE
   Alpine.data('notifications', () => ({
     permission: typeof Notification !== 'undefined' ? Notification.permission : 'denied',
+    promptDismissed: localStorage.getItem('bongo-notification-prompt') === 'dismissed',
     eventSource: null,
+
+    get showPrompt() {
+      return this.permission === 'default' && !this.promptDismissed;
+    },
 
     init() {
       this.connectSSE();
@@ -967,7 +1031,14 @@ document.addEventListener('alpine:init', () => {
       if (typeof Notification === 'undefined') return;
       Notification.requestPermission().then(p => {
         this.permission = p;
+        this.promptDismissed = true;
+        localStorage.setItem('bongo-notification-prompt', 'dismissed');
       });
+    },
+
+    dismissPrompt() {
+      this.promptDismissed = true;
+      localStorage.setItem('bongo-notification-prompt', 'dismissed');
     },
 
     connectSSE() {
@@ -981,7 +1052,7 @@ document.addEventListener('alpine:init', () => {
           if (this.permission === 'granted') {
             const n = new Notification(data.from || i18n('js.newMail'), {
               body: data.subject || '',
-              icon: '/static/logo.png'
+              icon: '/static/img/bongo-favicon.png'
             });
             n.onclick = () => { window.focus(); n.close(); };
           }
@@ -1006,7 +1077,7 @@ document.addEventListener('alpine:init', () => {
           if (this.permission === 'granted') {
             const n = new Notification(i18n('js.eventReminderPrefix') + data.minutes_before + i18n('js.eventReminderSuffix'), {
               body: data.title || i18n('js.upcomingEvent'),
-              icon: '/static/logo.png'
+              icon: '/static/img/bongo-favicon.png'
             });
             n.onclick = () => { window.focus(); n.close(); };
           }
@@ -2526,9 +2597,10 @@ document.addEventListener('keydown', (e) => {
 // Focus management after HTMX content swaps
 document.body.addEventListener('htmx:afterSwap', function(evt) {
   var target = evt.detail.target;
-  var focusable = target.querySelector('h1, h2, h3, [autofocus], a, button, input:not([type="hidden"])');
+  if (!target || target.id !== 'main-content') return;
+  var focusable = target.querySelector('[autofocus], h1, h2, h3');
   if (focusable) {
-    focusable.setAttribute('tabindex', '-1');
+    if (!focusable.hasAttribute('tabindex')) focusable.setAttribute('tabindex', '-1');
     focusable.focus();
   }
   // Announce swap to screen readers.
@@ -2589,7 +2661,7 @@ function initDragDrop() {
             const row = document.querySelector('.msg-list .msg-row[data-uid="' + uid + '"]');
             if (row) row.remove();
           }
-        }).catch(() => {});
+        });
       }
     });
   });
@@ -2904,7 +2976,10 @@ document.addEventListener('click', function(e) {
     row.parentNode.insertBefore(sibling, row);
   }
   var ids = Array.from(row.parentNode.querySelectorAll(':scope > [data-id]')).map(function(r) { return r.dataset.id; });
-  fetch('/settings/rules/reorder', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(ids)});
+  fetch('/settings/rules/reorder', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(ids)})
+    .then(function(resp) {
+      if (!resp.ok) htmx.ajax('GET', window.location.pathname, '#main-content');
+    });
   // Re-focus the button after DOM move.
   btn.focus();
 });
@@ -2924,26 +2999,13 @@ function updateSidebarActive() {
   });
 }
 
-// Settings tab switching (vanilla JS fallback for Alpine.js).
-function initSettingsTabs() {
-  var container = document.querySelector('.settings-container');
-  if (!container) return;
-  if (container.dataset.tabsInit === 'true') return;
-  container.dataset.tabsInit = 'true';
-  var tabs = container.querySelectorAll('.settings-tab');
-  var sections = container.querySelectorAll('form > .settings-section');
-  if (tabs.length === 0 || sections.length === 0) return;
-  // Show only the first section by default.
-  sections.forEach(function(s, i) { s.hidden = i !== 0; });
-  tabs.forEach(function(tab, i) {
-    tab.addEventListener('click', function() {
-      tabs.forEach(function(t) { t.classList.remove('active'); });
-      tab.classList.add('active');
-      sections.forEach(function(s, j) { s.hidden = j !== i; });
-    });
-    // Set first tab as active.
-    if (i === 0) tab.classList.add('active');
-    else tab.classList.remove('active');
+function initCalendarScroll(root) {
+  (root || document).querySelectorAll('[data-calendar-scroll]').forEach(function(grid) {
+    if (grid.dataset.scrollReady === 'true') return;
+    grid.dataset.scrollReady = 'true';
+    var hour = grid.querySelector('.day-column.today') ? new Date().getHours() : 8;
+    var row = grid.querySelector('.hour-row[data-hour="' + Math.max(0, hour - 1) + '"]');
+    if (row) grid.scrollTop = row.offsetTop;
   });
 }
 
@@ -2951,7 +3013,7 @@ function initCalendarDynamicStyles(root) {
   return root;
 }
 
-// Flash message auto-dismiss + init drag-drop + init settings tabs
+// Flash message auto-dismiss and page-level component initialisation.
 document.addEventListener('DOMContentLoaded', () => {
   syncAdminLayoutClass();
   initDragDrop();
@@ -2960,7 +3022,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAdminLogViewer();
   initContactsPage();
   updateSidebarActive();
-  initSettingsTabs();
+  initCalendarScroll(document);
   document.querySelectorAll('.flash').forEach(el => {
     setTimeout(() => {
       el.classList.add('flash-dismissing');
@@ -2969,7 +3031,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// Update sidebar active state + settings tabs after HTMX navigation.
+// Update page-level components after HTMX navigation.
 document.addEventListener('htmx:pushedIntoHistory', updateSidebarActive);
 document.addEventListener('htmx:afterSettle', function() {
   syncAdminLayoutClass();
@@ -2977,7 +3039,7 @@ document.addEventListener('htmx:afterSettle', function() {
   initRulesSortable();
   initAdminLogViewer();
   initContactsPage();
-  initSettingsTabs();
+  initCalendarScroll(document);
 });
 
 // htmx does not swap a 4xx/5xx response, so a form that names a status area
@@ -2985,10 +3047,18 @@ document.addEventListener('htmx:afterSettle', function() {
 // Put the response text, which the server translates, into that area.
 document.addEventListener('htmx:responseError', function (evt) {
   var area = evt.detail && evt.detail.target;
-  if (!area || !area.hasAttribute || !area.hasAttribute('data-form-status')) return;
+  var text = (evt.detail.xhr && evt.detail.xhr.responseText || '').trim();
+  if (!area || !area.hasAttribute || !area.hasAttribute('data-form-status')) {
+    showClientStatus(text, 'error');
+    return;
+  }
   var msg = document.createElement('div');
   msg.className = 'flash flash-error';
   msg.setAttribute('role', 'alert');
-  msg.textContent = (evt.detail.xhr && evt.detail.xhr.responseText || '').trim();
+  msg.textContent = text || i18n('js.actionFailed');
   area.replaceChildren(msg);
+});
+
+document.addEventListener('htmx:sendError', function () {
+  showClientStatus('', 'error');
 });
