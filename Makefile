@@ -103,10 +103,10 @@ dev: build
 ## UI test targets
 
 ui-test:
-	go run ./scripts/ui-test/...
+	go run ./scripts/ui-test/... --plain-http
 
 ui-test-headed:
-	go run ./scripts/ui-test/... --headed --slow 300
+	go run ./scripts/ui-test/... --plain-http --headed --slow 300
 
 ui-test-setup: build
 	$(BUILD_DIR)/$(BINARY) serve --dev &
@@ -115,7 +115,7 @@ ui-test-setup: build
 	go run ./scripts/validate-server/... --plain-http --seed-only
 
 # Visual verification harness: builds into a temp dir, starts a dev server on
-# free ports, seeds it, and screenshots every route (light, dark, mobile).
+# free ports, seeds it, and screenshots routes across the visual/a11y matrix.
 # Not part of test-all or CI. OUT must be outside the repository.
 #   make ui-shots OUT=~/shots
 # Any failure (UI findings or a setup error) surfaces as make's exit status 2

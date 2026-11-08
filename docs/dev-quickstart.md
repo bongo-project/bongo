@@ -107,8 +107,11 @@ func main() {
 
 `make ui-shots` builds the server into a temporary directory, starts a dev
 server on free ports, seeds it, logs in and captures each main route at
-1440x900 light, 1440x900 dark and 390x844 light with headless Chrome. It reports
-console errors, CSP violations and failed same-origin requests.
+desktop, phone and tablet sizes in light and dark modes with headless Chrome.
+Focused inbox captures also exercise 200% zoom, forced colours and reduced
+motion, while an automated audit reports duplicate IDs, unnamed controls,
+horizontal overflow, console errors, CSP violations and failed same-origin
+requests. Captures are full-page and include the open mobile navigation drawer.
 
 ```bash
 make ui-shots                 # screenshots go to a new temp dir

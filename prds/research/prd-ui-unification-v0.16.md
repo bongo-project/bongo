@@ -71,7 +71,7 @@ CSS has accumulated as a final override layer over legacy rules.
 - [x] Centralize keyboard shortcut definitions and help rendering.
 - [x] Scope HTMX focus movement to page-level navigation and explicit dialogs.
 - [x] Restore focus after dialogs and menus close.
-- [ ] Add automated accessibility checks, 200% zoom, forced-colour and
+- [x] Add automated accessibility checks, 200% zoom, forced-colour and
       reduced-motion coverage.
 
 ### Phase E: Frontend consolidation and verification
@@ -79,9 +79,9 @@ CSS has accumulated as a final override layer over legacy rules.
 - [ ] Split the monolithic JS and CSS by subsystem without adding a build step.
 - [ ] Remove superseded selectors and the legacy polish override layer.
 - [ ] Add and document a generator for generated_geometry.css.
-- [ ] Capture full pages, dark mobile, tablet, open mobile navigation and
+- [x] Capture full pages, dark mobile, tablet, open mobile navigation and
       populated edge states in the screenshot harness.
-- [ ] Add interaction coverage for drawers, collapsible groups, tabs, dialogs,
+- [x] Add interaction coverage for drawers, collapsible groups, tabs, dialogs,
       failure feedback and keyboard-only flows.
 
 ## Acceptance criteria

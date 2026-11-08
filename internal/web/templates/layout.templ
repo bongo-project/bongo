@@ -5,7 +5,7 @@ package templates
 templ Topbar(email string) {
 	<header class="topbar" role="banner">
 		<div class="topbar-left">
-			<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" x-bind:aria-expanded="sidebarOpen" aria-controls="sidebar">&#9776;</button>
+			<button type="button" class="hamburger" x-on:click="toggleSidebar($event)" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" x-bind:aria-expanded="sidebarOpen" aria-controls="sidebar">&#9776;</button>
 			<a href="/mail/INBOX" class="brand" aria-label="BongoMail">
 				@Icon("logo", "brand-glyph")
 				<span class="wordmark">Bongo<em>&middot;</em>mail</span>
@@ -114,8 +114,8 @@ templ Layout(title string, email string) {
 					</div>
 				</div>
 			}
-			<div class="layout">
-				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
+			<div class="layout" x-on:keydown="trapSidebarFocus($event)" x-on:keydown.escape.window="closeSidebar()">
+				<div class="sidebar-overlay" x-on:click="dismissSidebar()" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
 				<aside class="sidebar" id="sidebar" aria-label={ t(ctx, "nav.mailboxNav") } x-bind:class="{'open': sidebarOpen}">
 					{ children... }
 				</aside>
@@ -167,8 +167,8 @@ templ LayoutWithContent(title string, email string) {
 					</div>
 				</div>
 			}
-			<div class="layout">
-				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
+			<div class="layout" x-on:keydown="trapSidebarFocus($event)" x-on:keydown.escape.window="closeSidebar()">
+				<div class="sidebar-overlay" x-on:click="dismissSidebar()" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
 				{ children... }
 			</div>
 			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>

@@ -230,6 +230,7 @@ document.addEventListener('alpine:init', () => {
     layoutMode: localStorage.getItem('bongo-layout') || 'list',
     density: localStorage.getItem('bongo-density') || 'comfortable',
     sidebarOpen: false,
+    sidebarReturnFocus: null,
 
     init() {
       this.applyTheme();
@@ -324,8 +325,45 @@ document.addEventListener('alpine:init', () => {
       fetch('/settings', { method: 'POST', body: form }).catch(() => {});
     },
 
-    toggleSidebar() {
-      this.sidebarOpen = !this.sidebarOpen;
+    toggleSidebar(event) {
+      const opening = !this.sidebarOpen;
+      this.sidebarOpen = opening;
+      if (!opening) return;
+      this.sidebarReturnFocus = event && event.currentTarget;
+      this.$nextTick(() => {
+        const first = document.querySelector('#sidebar a[href], #sidebar button:not([disabled]), #sidebar input:not([disabled])');
+        if (first) first.focus();
+      });
+    },
+
+    dismissSidebar() {
+      this.sidebarOpen = false;
+      this.sidebarReturnFocus = null;
+    },
+
+    closeSidebar() {
+      if (!this.sidebarOpen) return;
+      this.sidebarOpen = false;
+      this.$nextTick(() => {
+        if (this.sidebarReturnFocus && this.sidebarReturnFocus.isConnected) this.sidebarReturnFocus.focus();
+        this.sidebarReturnFocus = null;
+      });
+    },
+
+    trapSidebarFocus(event) {
+      if (!this.sidebarOpen || event.key !== 'Tab' || !window.matchMedia('(max-width: 768px)').matches) return;
+      const controls = Array.from(document.querySelectorAll('#sidebar a[href], #sidebar button:not([disabled]), #sidebar input:not([disabled])'))
+        .filter((el) => el.offsetParent !== null);
+      if (controls.length === 0) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     },
 
     // Label for the search shortcut hint: the command key on Apple platforms,

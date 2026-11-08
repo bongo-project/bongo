@@ -132,7 +132,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 			</form>
 			<a href="/calendar/shares" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.sharesTitle") }</a>
 			<form action="/calendar/search" method="get" class="calendar-sidebar-form">
-				<input type="search" name="q" placeholder={ t(ctx, "calendar.searchEvents") } class="calendar-sidebar-search"/>
+				<input type="search" name="q" placeholder={ t(ctx, "calendar.searchEvents") } aria-label={ t(ctx, "calendar.searchEvents") } class="calendar-sidebar-search"/>
 			</form>
 		</div>
 		<div class="sidebar-group">
@@ -523,6 +523,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 						<a
 							href={ templ.SafeURL(fmt.Sprintf("/calendar/event/new?date=%s&time=%02d:00", day.DateStr, h)) }
 							class="hour-row-link"
+							aria-label={ fmt.Sprintf("%s: %s %02d:00", t(ctx, "calendar.createEvent"), day.DateStr, h) }
 						></a>
 					</div>
 				}
@@ -625,6 +626,7 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 					<a
 						href={ templ.SafeURL(fmt.Sprintf("/calendar/event/new?date=%s&time=%02d:00", col.DateStr, h)) }
 						class="hour-row-link"
+						aria-label={ fmt.Sprintf("%s: %s %02d:00", t(ctx, "calendar.createEvent"), col.DateStr, h) }
 					></a>
 				</div>
 			}

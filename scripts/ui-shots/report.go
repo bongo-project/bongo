@@ -15,6 +15,7 @@ const (
 	KindConsole = "console"
 	KindCSP     = "csp"
 	KindAsset   = "asset"
+	KindA11y    = "a11y"
 )
 
 // Finding is one problem seen while capturing a route.
@@ -86,7 +87,7 @@ func exitCode(results []Result) int {
 // writeSummary prints the per-route table followed by detail lines.
 func writeSummary(w io.Writer, results []Result) {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ROUTE\tVARIANT\tCONSOLE\tCSP\tASSETS\tSTATUS\tSCREENSHOT")
+	fmt.Fprintln(tw, "ROUTE\tVARIANT\tCONSOLE\tCSP\tASSETS\tA11Y\tSTATUS\tSCREENSHOT")
 	for _, r := range results {
 		status := "ok"
 		if r.Err != nil {
@@ -98,8 +99,8 @@ func writeSummary(w io.Writer, results []Result) {
 		if r.Err != nil || shot == "" {
 			shot = "(withheld)"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%s\t%s\n", r.Route, r.Variant,
-			r.count(KindConsole), r.count(KindCSP), r.count(KindAsset), status, shot)
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n", r.Route, r.Variant,
+			r.count(KindConsole), r.count(KindCSP), r.count(KindAsset), r.count(KindA11y), status, shot)
 	}
 	_ = tw.Flush()
 

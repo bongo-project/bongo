@@ -67,7 +67,11 @@ func (c *checker) report() {
 // ---------------------------------------------------------------------------
 
 func baseURL() string {
-	return fmt.Sprintf("https://%s:%d", *host, *webPort)
+	scheme := "https"
+	if *plainHTTP {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s:%d", scheme, *host, *webPort)
 }
 
 // has checks whether a selector exists on the page within the timeout.

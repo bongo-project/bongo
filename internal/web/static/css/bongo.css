@@ -4026,6 +4026,32 @@ html[data-theme="auto"]:not([data-accent]) {
   body { overflow: auto !important; }
 }
 
+@media (forced-colors: active) {
+  :root {
+    --accent: Highlight;
+    --accent-hover: Highlight;
+    --text-primary: CanvasText;
+    --text-secondary: CanvasText;
+    --surface-1: Canvas;
+    --surface-2: Canvas;
+    --border-subtle: ButtonBorder;
+    --border-default: ButtonBorder;
+  }
+  .nav-item.active,
+  .msg-row.keyboard-focus,
+  [role="tab"][aria-selected="true"] {
+    border: 1px solid Highlight;
+  }
+  .unread-badge,
+  .tag-chip,
+  .status-badge {
+    forced-color-adjust: auto;
+  }
+  *:focus-visible {
+    outline-color: Highlight;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

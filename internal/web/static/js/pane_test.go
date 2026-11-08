@@ -147,6 +147,21 @@ func TestMenusAndDialogsRestoreFocusOnKeyboardClose(t *testing.T) {
 	}
 }
 
+func TestMobileDrawerTrapsAndRestoresFocus(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	for _, want := range []string{
+		"this.sidebarReturnFocus = event && event.currentTarget",
+		"this.sidebarReturnFocus.isConnected",
+		"window.matchMedia('(max-width: 768px)').matches",
+		"event.shiftKey && document.activeElement === first",
+		"!event.shiftKey && document.activeElement === last",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("mobile drawer focus management missing %q", want)
+		}
+	}
+}
+
 // theme.js must read the same key appState writes.
 func TestThemeScriptReadsSavedTheme(t *testing.T) {
 	theme := readJS(t, "theme.js")

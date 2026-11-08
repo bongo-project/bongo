@@ -31,14 +31,14 @@ func Topbar(email string) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"topbar\" role=\"banner\"><div class=\"topbar-left\"><button type=\"button\" class=\"hamburger\" x-on:click=\"toggleSidebar()\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"topbar\" role=\"banner\"><div class=\"topbar-left\"><button type=\"button\" class=\"hamburger\" x-on:click=\"toggleSidebar($event)\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.toggleNavMenu"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 8, Col: 112}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 8, Col: 118}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -538,7 +538,7 @@ func Layout(title string, email string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<div class=\"layout\"><div class=\"sidebar-overlay\" x-on:click=\"sidebarOpen = false\" x-bind:class=\"{'open': sidebarOpen}\" aria-hidden=\"true\"></div><aside class=\"sidebar\" id=\"sidebar\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<div class=\"layout\" x-on:keydown=\"trapSidebarFocus($event)\" x-on:keydown.escape.window=\"closeSidebar()\"><div class=\"sidebar-overlay\" x-on:click=\"dismissSidebar()\" x-bind:class=\"{'open': sidebarOpen}\" aria-hidden=\"true\"></div><aside class=\"sidebar\" id=\"sidebar\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -778,7 +778,7 @@ func LayoutWithContent(title string, email string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<div class=\"layout\"><div class=\"sidebar-overlay\" x-on:click=\"sidebarOpen = false\" x-bind:class=\"{'open': sidebarOpen}\" aria-hidden=\"true\"></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<div class=\"layout\" x-on:keydown=\"trapSidebarFocus($event)\" x-on:keydown.escape.window=\"closeSidebar()\"><div class=\"sidebar-overlay\" x-on:click=\"dismissSidebar()\" x-bind:class=\"{'open': sidebarOpen}\" aria-hidden=\"true\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

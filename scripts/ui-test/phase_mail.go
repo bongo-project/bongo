@@ -65,9 +65,9 @@ func phase3Mail(c *checker, page *rod.Page) {
 			c.check("Mail", "Move dropdown exists",
 				boolErr(has(page, "select.move-select")))
 
-			// Quick-add contact button.
-			c.check("Mail", "Add to Contacts button",
-				boolErr(has(page, "form[action*='/contacts/quick-add']")))
+			// Quick-add is omitted when the sender is already in Contacts.
+			c.check("Mail", "Conditional contact action menu",
+				boolErr(has(page, ".msg-more-menu") && (has(page, "form[action*='/contacts/quick-add']") || !pageContains(page, "Add to Contacts"))))
 		}
 	} else if has(page, ".msg-row") {
 		_ = clickFirst(page, ".msg-row")
@@ -85,7 +85,7 @@ func phase3Mail(c *checker, page *rod.Page) {
 	c.check("Compose", "Cc field exists", boolErr(has(page, "input[name='cc']")))
 	c.check("Compose", "Bcc field exists", boolErr(has(page, "input[name='bcc']")))
 	c.check("Compose", "Subject field exists", boolErr(has(page, "input[name='subject']")))
-	c.check("Compose", "Body field exists", boolErr(has(page, "textarea[name='body']")))
+	c.check("Compose", "Body field exists", boolErr(hasAny(page, "textarea[name='body']", ".rich-editor [contenteditable='true'][role='textbox']")))
 	c.check("Compose", "Send button exists", boolErr(hasAny(page, "button.btn-send", "button[type='submit']")))
 	c.check("Compose", "Save Draft button exists",
 		boolErr(hasAny(page, "button[formaction*='/draft']", ".btn-secondary")))
