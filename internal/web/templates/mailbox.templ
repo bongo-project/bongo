@@ -103,7 +103,7 @@ templ MailboxContent(mailbox string, view *store.HeaderView, counts ListCounts, 
 	if warning != "" {
 		@FlashMessage(warning, "warning")
 	}
-	<div class="mail-view" data-mailbox={ mailbox } data-list-url={ listBase(mailbox, listURL) } data-bulk-url={ viewBulkURL(view) } x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
+	<div class="mail-view" data-mailbox={ mailbox } data-list-url={ listBase(mailbox, listURL) } data-bulk-url={ viewBulkURL(mailbox, view) } x-data="messageList" x-bind:class="{'mail-view-panes': layoutMode !== 'list'}" data-selected-format={ t(ctx, "mailbox.selectedCount") }>
 		<div class="mail-head">
 			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
 			<h1 class="mail-head-title">{ mailboxHeading(ctx, mailbox, view) }</h1>
@@ -382,7 +382,7 @@ templ ThreadChildren(children []ThreadChild, mailbox string) {
 // mailboxTitle is the page heading for a mailbox. A tag view is the virtual
 // mailbox "tag:<name>", headed by the tag name alone.
 func mailboxTitle(mailbox string) string {
-	return strings.TrimPrefix(mailbox, "tag:")
+	return strings.TrimPrefix(mailbox, tagViewPrefix)
 }
 
 // listCountsText renders the muted "· N unread · N total" header text.

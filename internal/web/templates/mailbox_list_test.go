@@ -260,6 +260,41 @@ func TestVirtualMailboxRowsNameTheRealMailbox(t *testing.T) {
 	}
 }
 
+// TestTagViewRowsNameTheRealMailbox is the tag view's copy of the virtual
+// mailbox test: a Sent row in "tag:work" names Sent in its actions and pairs
+// its UID with Sent, and no action names "tag:work".
+func TestTagViewRowsNameTheRealMailbox(t *testing.T) {
+	out := renderRows(t, []MessageSummary{{UID: 1, Subject: "s", Mailbox: "Sent", ThreadRoot: "root", ThreadCount: 2}}, "tag:work")
+	for _, want := range []string{
+		`data-sel-key="1:Sent"`,
+		`hx-post="/mail/Sent/1/flags"`,
+		`href="/mail/Sent/1"`,
+		`hx-get="/mail/Sent/thread/root"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s in %s", want, out)
+		}
+	}
+	if strings.Contains(out, "/mail/tag:work/") || strings.Contains(out, "/mail/tag%3Awork/") {
+		t.Errorf("a row action names the tag view: %s", out)
+	}
+}
+
+func TestViewBulkURL(t *testing.T) {
+	tests := []struct{ list, want string }{
+		{"tag:work", "/mail/tag/work/bulk"},
+		{"tag:a b/c", "/mail/tag/a%20b%2Fc/bulk"},
+		{"INBOX", ""},
+		{"all-mail", ""},
+		{"tags", ""},
+	}
+	for _, tt := range tests {
+		if got := viewBulkURL(tt.list, nil); got != tt.want {
+			t.Errorf("viewBulkURL(%q) = %q, want %q", tt.list, got, tt.want)
+		}
+	}
+}
+
 func TestPaginationJoinsQueryBase(t *testing.T) {
 	tests := []struct{ base, want string }{
 		{"/search?q=abc", "/search?q=abc&page=2"},

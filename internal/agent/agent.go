@@ -1473,6 +1473,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			mailH.SetTagStore(store.NewTagStore(a.Store, a))
 			r.Get("/mail/tag/{name}", mailH.ListTagMessages)
+			r.Post("/mail/tag/{name}/bulk", mailH.BulkTagView)
 			// Header-based views live under /mail/view/ and are registered
 			// before /mail/{mailbox}. Only multi-segment paths are static:
 			// /mail/view and /mail/view/bulk stay free for a folder called

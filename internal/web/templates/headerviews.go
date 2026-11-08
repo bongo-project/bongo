@@ -3,6 +3,7 @@ package templates
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/bongo-project/bongo/internal/store"
@@ -18,12 +19,23 @@ type MailingList struct {
 }
 
 // spansMailboxes reports whether a list shows messages from more than one
-// mailbox: the To me, From my contacts and Mailing lists views (view non-nil)
-// and the virtual mailboxes (All Mail, Unread, Starred). In such a list the
-// list mailbox is only a navigation key, and a UID alone does not name a
-// message, because UIDs are only unique within one mailbox.
+// mailbox: the To me, From my contacts and Mailing lists views (view non-nil),
+// the virtual mailboxes (All Mail, Unread, Starred) and the tag views. In such
+// a list the list mailbox is only a navigation key, and a UID alone does not
+// name a message, because UIDs are only unique within one mailbox.
 func spansMailboxes(listMailbox string, view *store.HeaderView) bool {
-	return view != nil || store.VirtualMailboxes[listMailbox]
+	return view != nil || store.VirtualMailboxes[listMailbox] || isTagView(listMailbox)
+}
+
+// tagViewPrefix starts the list mailbox of a tag view, "tag:<name>".
+const tagViewPrefix = "tag:"
+
+// isTagView reports whether listMailbox is a tag view's list mailbox. A folder
+// may really be called "tag:x" (IMAP allows it); its rows carry no real
+// mailbox, so rowRealMailbox falls back to the folder itself, and the tag bulk
+// route acts on its uid:tag:x targets, so treating it as a tag view is safe.
+func isTagView(listMailbox string) bool {
+	return strings.HasPrefix(listMailbox, tagViewPrefix)
 }
 
 // rowActionMailbox is the mailbox an action on a row must target: the
@@ -46,14 +58,18 @@ func rowSelKey(msg MessageSummary, listMailbox string, view *store.HeaderView) s
 	return fmt.Sprintf("%d:%s", msg.UID, rowRealMailbox(msg, listMailbox))
 }
 
-// viewBulkURL is the URL bulk actions are posted to in a header view, or empty
-// in a folder (the client then posts to the folder's own bulk URL). It is built
-// from constants and the validated list id only.
-func viewBulkURL(view *store.HeaderView) string {
-	if view == nil {
-		return ""
+// viewBulkURL is the URL bulk actions are posted to in a header view or a tag
+// view, or empty in a folder or a virtual mailbox (the client then posts to
+// /mail/<list mailbox>/bulk). It is built from constants, the validated list
+// id and the path-escaped tag name only.
+func viewBulkURL(listMailbox string, view *store.HeaderView) string {
+	switch {
+	case view != nil:
+		return view.BulkURL()
+	case isTagView(listMailbox):
+		return "/mail/tag/" + url.PathEscape(strings.TrimPrefix(listMailbox, tagViewPrefix)) + "/bulk"
 	}
-	return view.BulkURL()
+	return ""
 }
 
 // mailboxHeading is the page heading of a list view: the translated name of a
