@@ -59,6 +59,21 @@ func doBulkRequest(h *MailHandler, userID, mailbox, action string, uids ...uint3
 	return w
 }
 
+// doBulkTargetsRequest is doBulkRequest with uid:mailbox targets, as a list
+// that spans mailboxes posts them.
+func doBulkTargetsRequest(h *MailHandler, userID, mailbox, action string, targets ...string) *httptest.ResponseRecorder {
+	form := url.Values{"action": {action}, "targets": targets}
+	r := httptest.NewRequest(http.MethodPost, "/mail/"+mailbox+"/bulk", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("mailbox", mailbox)
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	r = r.WithContext(middleware.WithUserContext(r.Context(), userID, userID+"@example.com"))
+	w := httptest.NewRecorder()
+	h.BulkAction(w, r)
+	return w
+}
+
 func countIn(t *testing.T, env *mailTagsTestEnv, userID, mailbox string) int {
 	t.Helper()
 	msgs, err := env.mailboxes.ListMessages(userID, mailbox)
@@ -80,10 +95,12 @@ func TestArchiveMessage(t *testing.T) {
 		wantArch  int
 	}{
 		{"archive creates Archive when absent", "INBOX", "INBOX", "archive", false, 200, 0, 1},
-		{"archive from a virtual view uses the real mailbox", "INBOX", "starred", "archive", true, 200, 0, 1},
+		// A virtual view's rows post their real mailbox; a virtual mailbox
+		// with a UID names no message and must not be guessed at.
+		{"archive with a virtual mailbox is not found", "INBOX", "starred", "archive", true, 404, 1, 0},
 		{"archive in Archive is rejected", "Archive", "Archive", "archive", false, 400, 0, 1},
 		{"unarchive moves to INBOX", "Archive", "Archive", "unarchive", false, 200, 1, 0},
-		{"unarchive from a virtual view uses the real mailbox", "Archive", "starred", "unarchive", true, 200, 1, 0},
+		{"unarchive with a virtual mailbox is not found", "Archive", "starred", "unarchive", true, 404, 0, 1},
 		{"unarchive outside Archive is rejected", "INBOX", "INBOX", "unarchive", false, 400, 1, 0},
 	}
 	for _, tt := range tests {
@@ -160,8 +177,15 @@ func TestBulkArchive(t *testing.T) {
 		}
 	}
 
-	// Archive from the starred view: the source mailbox is INBOX, not "starred".
-	if rec := doBulkRequest(env.handler, user, "starred", "archive", a, b); rec.Code != http.StatusOK {
+	// Archive from the starred view: each row names its real mailbox, INBOX,
+	// as a uid:mailbox target; a bare UID there is refused.
+	if rec := doBulkRequest(env.handler, user, "starred", "archive", a, b); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bare-UID bulk archive in starred = %d, want 400", rec.Code)
+	}
+	if got := countIn(t, env, user, "INBOX"); got != 2 {
+		t.Fatalf("a refused bulk archive moved messages: INBOX = %d", got)
+	}
+	if rec := doBulkTargetsRequest(env.handler, user, "starred", "archive", fmt.Sprintf("%d:INBOX", a), fmt.Sprintf("%d:INBOX", b)); rec.Code != http.StatusOK {
 		t.Fatalf("bulk archive status = %d (%s)", rec.Code, rec.Body.String())
 	}
 	if got := countIn(t, env, user, "Archive"); got != 2 {

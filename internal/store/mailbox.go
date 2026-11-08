@@ -933,9 +933,34 @@ func pageLocated(all []located, offset, limit int) ([]*bongov1.MailboxMessage, [
 	return msgs, names, total
 }
 
+// virtualExcluded are the folders the virtual mailboxes (All Mail, Unread and
+// Starred) never list. A message in Trash has been deleted and one in Junk was
+// judged spam, so neither belongs in an everyday view: "delete" must take a
+// message out of All Mail, and spam must not raise the Unread count or sit
+// among starred mail. Sent and Drafts stay, unlike in the header views.
+var virtualExcluded = []string{"Junk", "Trash"}
+
+// VirtualExcludes reports whether the virtual mailboxes skip a mailbox: Junk
+// and Trash, and any folder below them.
+func VirtualExcludes(mailbox string) bool {
+	return inOrBelow(mailbox, virtualExcluded)
+}
+
+// inOrBelow reports whether mailbox is one of names or a folder below one.
+// "Trash/Old" is below Trash; "Trashcan" is not.
+func inOrBelow(mailbox string, names []string) bool {
+	for _, name := range names {
+		if mailbox == name || strings.HasPrefix(mailbox, name+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // ListVirtualMessages returns messages matching a virtual folder filter across
-// all mailboxes. The second result holds the real mailbox of each message,
-// index for index, because UIDs are only unique within one mailbox.
+// the user's mailboxes, skipping those VirtualExcludes names. The second result
+// holds the real mailbox of each message, index for index, because UIDs are
+// only unique within one mailbox.
 func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
 	mailboxes, err := ms.ListMailboxes(userID)
 	if err != nil {
@@ -944,6 +969,9 @@ func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limi
 
 	var all []located
 	for _, mb := range mailboxes {
+		if VirtualExcludes(mb.Name) {
+			continue
+		}
 		msgs, err := ms.ListMessages(userID, mb.Name)
 		if err != nil {
 			continue
@@ -959,12 +987,6 @@ func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limi
 					all = append(all, located{msg, mb.Name})
 				}
 			case "all-mail":
-				// All Mail excludes Trash, so a deleted message (moved to
-				// Trash) no longer appears here — matching the expectation that
-				// "delete" removes it from the everyday view.
-				if mb.Name == "Trash" {
-					continue
-				}
 				all = append(all, located{msg, mb.Name})
 			}
 		}
@@ -1010,12 +1032,7 @@ var headerViewExcluded = []string{"Junk", "Trash", "Sent", "Drafts"}
 // HeaderViewExcludes reports whether the header-based views skip a mailbox:
 // Junk, Trash, Sent and Drafts, and any folder below them.
 func HeaderViewExcludes(mailbox string) bool {
-	for _, name := range headerViewExcluded {
-		if mailbox == name || strings.HasPrefix(mailbox, name+"/") {
-			return true
-		}
-	}
-	return false
+	return inOrBelow(mailbox, headerViewExcluded)
 }
 
 // ListViewMessages returns the messages whose MailGuid is in guidSet, from
@@ -1116,42 +1133,6 @@ const (
 	FlagDraft    uint32 = 16
 	FlagRecent   uint32 = 32
 )
-
-// GetMessageVirtual resolves a UID within a virtual mailbox (unread/starred/all-mail)
-// by scanning all real mailboxes. Returns the message and the real mailbox name.
-func (ms *MailboxStore) GetMessageVirtual(userID, virtual string, uid uint32) (*bongov1.MailboxMessage, string, error) {
-	mailboxes, err := ms.ListMailboxes(userID)
-	if err != nil {
-		return nil, "", err
-	}
-	for _, mb := range mailboxes {
-		msgs, err := ms.ListMessages(userID, mb.Name)
-		if err != nil {
-			continue
-		}
-		for _, msg := range msgs {
-			if msg.Uid != uid {
-				continue
-			}
-			switch virtual {
-			case "unread":
-				if msg.Flags&FlagSeen != 0 {
-					continue
-				}
-			case "starred":
-				if msg.Flags&FlagFlagged == 0 {
-					continue
-				}
-			case "all-mail":
-				// all messages qualify
-			default:
-				return nil, "", fmt.Errorf("unknown virtual mailbox: %s", virtual)
-			}
-			return msg, mb.Name, nil
-		}
-	}
-	return nil, "", fmt.Errorf("message uid %d not found in virtual mailbox %s", uid, virtual)
-}
 
 // GetMessage returns a single message by UID.
 func (ms *MailboxStore) GetMessage(userID, mailbox string, uid uint32) (*bongov1.MailboxMessage, error) {

@@ -843,14 +843,15 @@ func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1
 }
 
 // BulkAction handles bulk operations on selected messages.
-// POST /mail/{mailbox}/bulk takes plain UIDs of that folder.
+// POST /mail/{mailbox}/bulk takes plain UIDs of that folder; for a virtual
+// mailbox (unread, starred, all-mail) it takes uid:mailbox targets instead.
 func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	h.bulkAction(w, r, decodeMailbox(chi.URLParam(r, "mailbox")), nil)
 }
 
-// bulkAction applies a bulk operation. In a header view (view non-nil) a UID
-// alone is ambiguous, so the client names each message by its real mailbox in
-// "targets" and bare "uids" are not read.
+// bulkAction applies a bulk operation. In a header view (view non-nil) or a
+// virtual mailbox a UID alone is ambiguous, so the client names each message
+// by its real mailbox in "targets" and bare "uids" are not read.
 func (h *MailHandler) bulkAction(w http.ResponseWriter, r *http.Request, mailbox string, view *store.HeaderView) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
@@ -863,7 +864,7 @@ func (h *MailHandler) bulkAction(w http.ResponseWriter, r *http.Request, mailbox
 	uidStrs := r.Form["uids"]
 	var pairStrs []string
 	requested := len(uidStrs)
-	if view != nil {
+	if view != nil || store.VirtualMailboxes[mailbox] {
 		pairStrs = r.Form["targets"]
 		requested += len(pairStrs)
 		uidStrs = nil
@@ -1049,10 +1050,9 @@ func (h *MailHandler) bulkActionTargets(userID string, sources []bulkMessageTarg
 		mailbox, uid := src.mailbox, src.uid
 
 		if action == "archive" || action == "unarchive" {
-			// A virtual view (starred, unread, all-mail) is not a source
-			// mailbox; resolve the message's real one. An unresolvable
-			// UID is dropped so a request with no valid target fails.
-			if _, realMailbox, err := h.messageForMailboxUID(userID, mailbox, uid); err == nil {
+			// Resolve the message so an unknown UID is dropped and a
+			// request with no valid target fails.
+			if _, realMailbox, err := h.resolveMessage(userID, mailbox, uid); err == nil {
 				addTarget(realMailbox, uid)
 			}
 			continue
@@ -1063,7 +1063,7 @@ func (h *MailHandler) bulkActionTargets(userID string, sources []bulkMessageTarg
 			continue
 		}
 
-		msg, realMailbox, err := h.messageForMailboxUID(userID, mailbox, uid)
+		msg, realMailbox, err := h.resolveMessage(userID, mailbox, uid)
 		if err != nil || msg == nil {
 			addTarget(mailbox, uid)
 			continue
@@ -1083,15 +1083,6 @@ func (h *MailHandler) bulkActionTargets(userID string, sources []bulkMessageTarg
 		}
 	}
 	return targets
-}
-
-func (h *MailHandler) messageForMailboxUID(userID, mailbox string, uid uint32) (*bongov1.MailboxMessage, string, error) {
-	if store.VirtualMailboxes[mailbox] {
-		msg, realMailbox, err := h.mailboxes.GetMessageVirtual(userID, mailbox, uid)
-		return msg, realMailbox, err
-	}
-	msg, err := h.mailboxes.GetMessage(userID, mailbox, uid)
-	return msg, mailbox, err
 }
 
 // EmptyTrash permanently removes every message currently in Trash.
@@ -1643,7 +1634,7 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 	action := r.FormValue("action")
 	flag := r.FormValue("flag")
 
-	// Resolve virtual mailboxes to the real mailbox before writing flags.
+	// A virtual mailbox names no message (see resolveMessage): not found.
 	realMailbox := mailbox
 	if store.VirtualMailboxes[mailbox] {
 		_, rm, err := h.resolveMessage(userID, mailbox, uint32(uid))
@@ -2366,11 +2357,14 @@ func decodeMailbox(encoded string) string {
 	return encoded
 }
 
-// resolveMessage returns the mailbox message and the real mailbox name.
-// For virtual mailboxes (unread/starred/all-mail) it scans all real mailboxes.
+// resolveMessage returns the mailbox message and the mailbox it lives in. A
+// virtual mailbox (unread, starred, all-mail) names no message: it spans every
+// folder and UIDs are only unique within one, so a UID there could mean
+// several messages. Its rows name their real mailbox instead, and a request
+// that still names the virtual one is not found rather than guessed at.
 func (h *MailHandler) resolveMessage(userID, mailbox string, uid uint32) (*bongov1.MailboxMessage, string, error) {
 	if store.VirtualMailboxes[mailbox] {
-		return h.mailboxes.GetMessageVirtual(userID, mailbox, uid)
+		return nil, "", fmt.Errorf("message uid %d in virtual mailbox %s: %w", uid, mailbox, store.ErrNotFound)
 	}
 	msg, err := h.mailboxes.GetMessage(userID, mailbox, uid)
 	return msg, mailbox, err
