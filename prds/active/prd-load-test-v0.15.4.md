@@ -448,4 +448,36 @@ worthwhile.
 - The runbook's certificate command has no IP SAN; add one before any cluster
   stage (dry run finding 16). The report states "The sink received 0 messages"
   on every run until the submission mode exists (dry run finding 17).
+- **Search index size (first VPS run, 2026-11-08).** On a cx23 with ext4, each
+  bulk-loaded message cost about 130 to 200 KB on disk against about 16 KB of mail
+  (size mix 2KB:40,8KB:35,32KB:20,128KB:5). The per-user Bleve index was about
+  85 KB per message: one account's 50 messages, about 800 KB of mail, made a
+  9.8 MB segment. Per-user SQLite WAL files held about 3.4 MB each while open.
+  On a 38 GB root disk this caps a store at about 200,000 to 250,000 messages, and
+  a ramp at 50 messages/s adds about 18 GB an hour, so on that machine disk fills
+  before any throughput limit shows.
+  Cause: mailIndexMapping (internal/store/search.go) uses Bleve's default
+  NewTextFieldMapping for subject and body, which stores the full text and term
+  vectors as well as the index. Search returns only GUIDs and the result page
+  reads subject and sender from Pebble, so stored text is not used for display,
+  and nothing uses highlighting. The stored body is read back in one place:
+  IndexMailPreservingBody, when a tag change re-indexes a message (two call
+  sites in internal/web/handlers/mail.go). Term vectors carry word positions,
+  which Bleve needs for phrase queries; whether IMAP SEARCH or web search relies
+  on them is not yet checked.
+  Plan, in order:
+  1. Measure the split first. Bulk load the same plan with the current mapping
+     and with body Store off, and with term vectors off, and compare index size
+     and load rate. No server change in this step.
+  2. Stop storing the body. A tag change then re-extracts the body text from the
+     blob (one read and MIME parse per tag change) instead of reading it from the
+     index.
+  3. Turn term vectors off only if no search path needs phrase matching; keep
+     them otherwise.
+  4. Existing indexes keep the mapping they were created with, so they need a
+     rebuild. There are no users yet, so only test accounts are affected.
+  5. Rerun the load test stages on the same machine and publish disk per message
+     and message rate before and after.
+  The first VPS run keeps the current mapping as the baseline (operator,
+  2026-11-08).
 
