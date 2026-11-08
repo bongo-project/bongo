@@ -115,9 +115,7 @@ func TestRunnerRescan_AntivirusStageActuallyReRuns(t *testing.T) {
 	if proc.calls != 1 {
 		t.Errorf("expected antivirus stage to run exactly once after rescan, got %d calls", proc.calls)
 	}
-	if !fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("expected envelope in deliver/ after a passing rescan")
-	}
+	assertLeftSpool(t, spool, env.Id)
 }
 
 // TestRunnerRescan_WithoutPrepare_SkipsStage is the paired negative control:
@@ -163,7 +161,7 @@ func TestRunnerRescan_WithoutPrepare_SkipsStage(t *testing.T) {
 
 // TestRunnerRescan_AntispamStageActuallyReRuns proves the same for the
 // antispam stage, and that a stage still returning "quarantine" after
-// rescan puts the message back in quarantine/, not deliver/. This is the
+// rescan puts the message back in quarantine/ instead of completing. This is the
 // regression guard for the corrected task decision: clearing only the
 // antivirus flags would let a spam-quarantined message skip antispam
 // entirely and deliver unscored.
@@ -211,8 +209,8 @@ func TestRunnerRescan_AntispamStageActuallyReRuns(t *testing.T) {
 	if !fileExistsIn(t, spool, "quarantine", env.Id) {
 		t.Error("expected a message still scored as spam to land back in quarantine/")
 	}
-	if fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("message re-quarantined by antispam must not be in deliver/")
+	if where := spoolDirsHolding(t, spool, env.Id); len(where) != 1 {
+		t.Errorf("message re-quarantined by antispam is in %v, want quarantine/ only", where)
 	}
 }
 
@@ -295,7 +293,7 @@ func TestPrepareForRelease(t *testing.T) {
 // TestRunnerRelease_AntispamStageSkipped is the pipeline-package load-bearing
 // test for release: it proves that after PrepareForRelease, the antispam
 // stage that already quarantined the message is NOT re-invoked, and the
-// message proceeds straight through to deliver/. This is the mirror image
+// message proceeds straight through to completion. This is the mirror image
 // of TestRunnerRescan_AntispamStageActuallyReRuns above, and is what makes
 // release different from rescan in practice, not just in the doc comment.
 func TestRunnerRelease_AntispamStageSkipped(t *testing.T) {
@@ -343,18 +341,13 @@ func TestRunnerRelease_AntispamStageSkipped(t *testing.T) {
 	if proc.calls != 0 {
 		t.Errorf("expected antispam stage to be skipped on release, got %d calls", proc.calls)
 	}
-	if !fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("expected released message to reach deliver/ without re-running antispam")
-	}
 	if fileExistsIn(t, spool, "quarantine", env.Id) {
 		t.Error("released message must not be re-quarantined")
 	}
-
-	delivered, err := spool.ReadEnvelope("deliver", env.Id)
-	if err != nil {
-		t.Fatalf("ReadEnvelope deliver: %v", err)
-	}
-	if delivered.TargetMailbox != "INBOX" {
-		t.Errorf("delivered.TargetMailbox = %q, want INBOX (released mail must not be silently filed to Junk)", delivered.TargetMailbox)
+	// Completing removes the envelope, so the check is on the envelope as the
+	// runner read it back from the spool and ran it.
+	assertLeftSpool(t, spool, env.Id)
+	if dequeued.TargetMailbox != "INBOX" {
+		t.Errorf("TargetMailbox = %q, want INBOX (released mail must not be silently filed to Junk)", dequeued.TargetMailbox)
 	}
 }

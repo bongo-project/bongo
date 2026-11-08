@@ -409,9 +409,8 @@ func (h *QuarantineHandler) requeueFromQuarantine(id string, prep func(*bongov1.
 		return fmt.Errorf("write envelope: %w", err)
 	}
 
-	// Move to incoming/ so the runner picks it up for delivery (unlike
-	// deliver/ which is a terminal archive, incoming/ is where the runner
-	// dequeues messages to process).
+	// Move to incoming/, where the runner dequeues messages to process, so
+	// it picks this one up for delivery.
 	if err := h.spool.Move(id, quarantineDir, incomingDir); err != nil {
 		return fmt.Errorf("move to incoming: %w", err)
 	}

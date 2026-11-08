@@ -15,6 +15,8 @@ import (
 
 const envSuffix = ".env"
 
+// deliver/ is no longer written (a completed envelope is removed), but it is
+// still created so an older binary, which moves envelopes there, still runs.
 var spoolDirs = []string{"incoming", "processing", "deliver", "quarantine", "error"}
 
 // WriteEnvelope stages data in a temp file before the atomic rename. The temp
@@ -60,9 +62,12 @@ func (s *SpoolStore) removeStaleTempFiles() (int, error) {
 // SpoolStore manages the filesystem spool queue for the message processing pipeline.
 // Messages flow through directories as they are processed:
 //
-//	incoming/ -> processing/ -> deliver/
+//	incoming/ -> processing/ -> (removed once every stage has run)
 //	                        \-> quarantine/
 //	                        \-> error/
+//
+// deliver/ is legacy: an earlier binary moved completed envelopes there and
+// nothing ever read them. NewSpoolStore deletes any it finds.
 type SpoolStore struct {
 	baseDir string
 	logger  *slog.Logger
@@ -97,7 +102,37 @@ func NewSpoolStore(baseDir string, logger *slog.Logger) (*SpoolStore, error) {
 		logger.Info("spool: recovered crashed messages", "count", n)
 	}
 
+	if n, err := s.removeDeliveredEnvelopes(); err != nil {
+		return nil, err
+	} else if n > 0 {
+		logger.Info("spool: removed delivered envelopes", "count", n)
+	}
+
 	return s, nil
+}
+
+// removeDeliveredEnvelopes deletes the envelopes an earlier binary left in
+// deliver/. Each belongs to a message whose pipeline finished, so nothing will
+// read it again, and while it stays the blob GC counts its blob as referenced
+// even after the mail is deleted. Only envelope files are removed. It returns
+// the number removed.
+func (s *SpoolStore) removeDeliveredEnvelopes() (int, error) {
+	dir := filepath.Join(s.baseDir, "deliver")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, fmt.Errorf("spool: read deliver for cleanup: %w", err)
+	}
+	removed := 0
+	for _, e := range entries {
+		if !isEnvelopeFile(e) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, e.Name())); err != nil && !os.IsNotExist(err) {
+			return removed, fmt.Errorf("spool: remove delivered envelope %s: %w", e.Name(), err)
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 // Enqueue marshals the envelope and writes it atomically to incoming/.

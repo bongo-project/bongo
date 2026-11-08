@@ -2759,7 +2759,8 @@ type spoolLister interface {
 // spoolScanDirs are the spool directories that can hold an envelope, in
 // pipeline order. Every one counts: quarantine/ most obviously, but a deferred
 // message in incoming/ or a parked one in error/ is just as reclaimable and
-// just as wrong to reclaim.
+// just as wrong to reclaim. deliver/ stays although this binary never writes
+// to it: an older binary did, and the startup sweep is not the GC's guarantee.
 var spoolScanDirs = []string{"incoming", "processing", "deliver", "quarantine", "error"}
 
 // spoolScanPasses is 2 deliberately. See collectSpoolBlobs.

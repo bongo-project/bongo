@@ -184,8 +184,8 @@ func envIdentity(env *bongov1.QueueEnvelope) []any {
 
 // processMessage runs the configured pipeline stages sequentially on a single
 // envelope. Stages that have already been recorded in env.Flags are skipped
-// (idempotent). On completion the envelope is moved to deliver/; on quarantine
-// or error it is moved to the appropriate directory.
+// (idempotent). On completion the envelope is removed from the spool; on
+// quarantine or error it is moved to the appropriate directory.
 //
 // The message gets a time budget (messageTimeout) shared by all its stages. The
 // budget derives from context.WithoutCancel(ctx), not ctx: cancelling the Run
@@ -278,12 +278,19 @@ func (r *Runner) processMessage(ctx context.Context, env *bongov1.QueueEnvelope)
 		}
 	}
 
+	// Every stage has run, the deliver stage included, so the envelope has
+	// nothing left to do: removing it keeps the spool from growing and releases
+	// its blob reference (the stored mail and any queued forward hold their
+	// own). If the remove fails the envelope stays in processing/, and the next
+	// start returns it to incoming/; each stage's flag was written to it above
+	// before the next stage ran, so the replay skips every stage, the deliver
+	// stage included, and only removes it.
 	env.CurrentStage = ""
-	if err := r.spool.Move(env.Id, "processing", "deliver"); err != nil {
-		return fmt.Errorf("pipeline: move %s to deliver: %w", env.Id, err)
+	if err := r.spool.Remove("processing", env.Id); err != nil {
+		return fmt.Errorf("pipeline: remove completed envelope %s: %w", env.Id, err)
 	}
 
-	r.logger.Info("pipeline: message ready for delivery", envIdentity(env)...)
+	r.logger.Info("pipeline: message processed", envIdentity(env)...)
 	return nil
 }
 

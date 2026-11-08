@@ -56,8 +56,8 @@ func TestRunnerMessageTimeoutMovesToError(t *testing.T) {
 	if !fileExistsIn(t, spool, "error", env.Id) {
 		t.Error("envelope not moved to error/")
 	}
-	if fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("timed-out envelope must not reach deliver/")
+	if where := spoolDirsHolding(t, spool, env.Id); len(where) != 1 {
+		t.Errorf("timed-out envelope in %v, want error/ only", where)
 	}
 	line := waitForLog(t, buf, "pipeline: message exceeded time budget", time.Second)
 	if line["id"] != env.Id {
@@ -93,9 +93,7 @@ func TestRunnerMessageTimeoutDoesNotAffectQuickMessages(t *testing.T) {
 	if err := runner.processMessage(context.Background(), dequeued); err != nil {
 		t.Fatalf("processMessage: %v", err)
 	}
-	if !fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("envelope not in deliver/")
-	}
+	assertLeftSpool(t, spool, env.Id)
 	if len(deadlines) != 2 || !deadlines[0].Equal(deadlines[1]) {
 		t.Errorf("deadlines %v: want one shared per-message deadline", deadlines)
 	}
@@ -128,9 +126,8 @@ func TestRunnerShutdownDoesNotCancelInFlightMessage(t *testing.T) {
 	if stageCtxErr != nil {
 		t.Errorf("stage saw ctx error %v after shutdown, want nil", stageCtxErr)
 	}
-	if !fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("in-flight message not delivered after shutdown signal")
-	}
+	// Completed, not pushed into error/ or back to incoming/.
+	assertLeftSpool(t, spool, env.Id)
 }
 
 func TestWithMessageTimeoutIgnoresNonPositive(t *testing.T) {
