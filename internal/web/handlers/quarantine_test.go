@@ -156,7 +156,7 @@ func TestReleaseMessage(t *testing.T) {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
 
-	// Released messages move to incoming/ for delivery, not deliver/ (which is a terminal archive).
+	// Released messages move to incoming/ for the pipeline to deliver; nothing writes deliver/ any more.
 	if got := spoolCount(t, spool, "incoming"); got != 1 {
 		t.Errorf("incoming/ count = %d, want 1", got)
 	}
@@ -253,7 +253,7 @@ func TestBulkRelease(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	// Released messages move to incoming/ for delivery, not deliver/ (which is a terminal archive).
+	// Released messages move to incoming/ for the pipeline to deliver; nothing writes deliver/ any more.
 	if got := spoolCount(t, spool, "incoming"); got != 3 {
 		t.Errorf("incoming/ count = %d, want 3", got)
 	}
@@ -835,6 +835,10 @@ type recordingProcessor struct {
 	action  string
 	setFlag uint32 // OR'd into env.Flags when this stage runs, e.g. MsgFlagDelivered.
 	calls   atomic.Int64
+	// last is a copy of the envelope this stage last saw. A completed envelope
+	// is removed from the spool, so the deliver stage's view is the only place
+	// left to check what the runner handed it.
+	last atomic.Pointer[bongov1.QueueEnvelope]
 }
 
 func (p *recordingProcessor) Name() string { return p.name }
@@ -843,6 +847,9 @@ func (p *recordingProcessor) Process(_ context.Context, env *bongov1.QueueEnvelo
 	p.calls.Add(1)
 	if p.setFlag != 0 {
 		env.Flags = pipeline.SetFlag(env.Flags, p.setFlag)
+	}
+	if c, ok := proto.Clone(env).(*bongov1.QueueEnvelope); ok {
+		p.last.Store(c)
 	}
 	return &bongov1.StageResult{Stage: p.name, Action: p.action}, nil
 }
@@ -874,6 +881,57 @@ func waitForSpoolEntry(spool *pipeline.SpoolStore, dir, id string, timeout time.
 		time.Sleep(10 * time.Millisecond)
 	}
 	return false
+}
+
+// waitForCompletion reports whether the deliver stage ran for id and the
+// envelope then left every spool directory before timeout.
+func waitForCompletion(spool *pipeline.SpoolStore, deliver *recordingProcessor, id string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if deliver.calls.Load() > 0 && !inAnySpoolDir(spool, id) {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
+// spoolDirNames are the spool directories a test can find an envelope in.
+var spoolDirNames = []string{"incoming", "processing", "deliver", "quarantine", "error"}
+
+// inAnySpoolDir reports whether id is in a spool directory. A list error
+// counts as present, so a failing read cannot pass for a completed envelope.
+func inAnySpoolDir(spool *pipeline.SpoolStore, id string) bool {
+	for _, d := range spoolDirNames {
+		envs, err := spool.List(d)
+		if err != nil {
+			return true
+		}
+		for _, e := range envs {
+			if e.Id == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// spoolDirsHolding lists the spool directories that hold id, for failure messages.
+func spoolDirsHolding(t *testing.T, spool *pipeline.SpoolStore, id string) []string {
+	t.Helper()
+	var dirs []string
+	for _, d := range spoolDirNames {
+		envs, err := spool.List(d)
+		if err != nil {
+			t.Fatalf("List %s: %v", d, err)
+		}
+		for _, e := range envs {
+			if e.Id == id {
+				dirs = append(dirs, d)
+			}
+		}
+	}
+	return dirs
 }
 
 // TestReleaseAndRescanThroughRunner is the load-bearing test for release-and-rescan:
@@ -991,7 +1049,9 @@ func TestReleaseAndRescanThroughRunner(t *testing.T) {
 				_ = runner.Run(ctx)
 			}()
 
-			reached := waitForSpoolEntry(spool, "deliver", tc.id, 2*time.Second)
+			// A completed envelope leaves the spool. Wait for the deliver stage
+			// to have run and the envelope to be gone from every directory.
+			reached := waitForCompletion(spool, deliverStub, tc.id, 2*time.Second)
 
 			// Cancel and join BEFORE reading counters or failing: Run's
 			// worker goroutines write p.calls concurrently with the poll
@@ -1001,7 +1061,7 @@ func TestReleaseAndRescanThroughRunner(t *testing.T) {
 			<-runDone
 
 			if !reached {
-				t.Fatalf("envelope %s did not reach deliver/ within deadline", tc.id)
+				t.Fatalf("envelope %s was not delivered and removed from the spool within deadline (in %v)", tc.id, spoolDirsHolding(t, spool, tc.id))
 			}
 
 			if got := antispamStub.calls.Load(); got != tc.wantAntispam {
@@ -1011,12 +1071,9 @@ func TestReleaseAndRescanThroughRunner(t *testing.T) {
 				t.Errorf("deliver stage calls = %d, want %d", got, tc.wantDeliver)
 			}
 
-			delivered, err := spool.ReadEnvelope("deliver", tc.id)
-			if err != nil {
-				t.Fatalf("ReadEnvelope deliver: %v", err)
-			}
-			if !pipeline.HasFlag(delivered.Flags, pipeline.MsgFlagDelivered) {
-				t.Error("delivered envelope missing MsgFlagDelivered")
+			delivered := deliverStub.last.Load()
+			if delivered == nil {
+				t.Fatal("deliver stage never saw the envelope")
 			}
 			if tc.checkMailbox && delivered.TargetMailbox != "INBOX" {
 				t.Errorf("TargetMailbox = %q, want INBOX (released mail must not be silently filed to Junk)", delivered.TargetMailbox)

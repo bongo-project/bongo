@@ -70,6 +70,17 @@ func inSpoolDir(spool *pipeline.SpoolStore, dir, id string) bool {
 	return err == nil
 }
 
+// spoolDirsHolding returns every spool directory that holds id's envelope.
+func spoolDirsHolding(spool *pipeline.SpoolStore, id string) []string {
+	var where []string
+	for _, d := range []string{"incoming", "processing", "deliver", "quarantine", "error"} {
+		if inSpoolDir(spool, d, id) {
+			where = append(where, d)
+		}
+	}
+	return where
+}
+
 // unreachableSocketPath returns a unix socket path with no listener, inside
 // a short os.MkdirTemp directory (not t.TempDir(), whose path embeds the
 // full subtest name) so the 108-byte sun_path limit is never at risk.
@@ -83,9 +94,12 @@ func unreachableSocketPath(t *testing.T) string {
 	return filepath.Join(dir, "absent.sock")
 }
 
-// runToCompletion starts runner.Run against spool and blocks until id
-// reaches deliver/, quarantine/, or error/ (or the deadline expires), then
-// cancels the runner and waits for Run to return cleanly.
+// runToCompletion starts runner.Run against spool and blocks until id has
+// left incoming/ and processing/ (or the deadline expires), then cancels the
+// runner and waits for Run to return cleanly. A finished message is then in
+// quarantine/ or error/, or in no directory at all: a completed pipeline
+// removes its envelope. Moves between directories are atomic renames, so an
+// envelope still in flight is always in one of the two.
 func runToCompletion(t *testing.T, spool *pipeline.SpoolStore, procs []pipeline.Processor, id string) {
 	t.Helper()
 
@@ -102,7 +116,7 @@ func runToCompletion(t *testing.T, spool *pipeline.SpoolStore, procs []pipeline.
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if inSpoolDir(spool, "deliver", id) || inSpoolDir(spool, "quarantine", id) || inSpoolDir(spool, "error", id) {
+		if !inSpoolDir(spool, "incoming", id) && !inSpoolDir(spool, "processing", id) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -121,7 +135,7 @@ func runToCompletion(t *testing.T, spool *pipeline.SpoolStore, procs []pipeline.
 
 // TestRunnerQuarantinesOnScannerFailure asserts that an unreachable clamd
 // with the default (quarantine) policy lands the message in quarantine/, and
-// explicitly NOT in error/ or deliver/. Before the wiring fix, a stage error
+// explicitly NOT in error/ and not completed. Before the wiring fix, a stage error
 // took the runner's error/ path — a directory nothing reads or surfaces in
 // any UI, silently stranding inbound mail. This test would have failed
 // against that behaviour, which is what makes it a real regression guard
@@ -144,8 +158,8 @@ func TestRunnerQuarantinesOnScannerFailure(t *testing.T) {
 	if inSpoolDir(spool, "error", env.Id) {
 		t.Error("envelope must not be in error/ — a scanner outage is not a pipeline fault, it is a scan verdict")
 	}
-	if inSpoolDir(spool, "deliver", env.Id) {
-		t.Error("envelope must not be in deliver/ — default policy is quarantine, not deliver-unscanned")
+	if where := spoolDirsHolding(spool, env.Id); len(where) != 1 {
+		t.Errorf("envelope in %v, want quarantine/ only — default policy is quarantine, not deliver-unscanned", where)
 	}
 }
 
@@ -164,11 +178,9 @@ func TestRunnerAcceptsOnScannerFailureWhenConfigured(t *testing.T) {
 
 	runToCompletion(t, spool, []pipeline.Processor{proc}, env.Id)
 
-	if !inSpoolDir(spool, "deliver", env.Id) {
-		t.Error("expected envelope in deliver/ under on_failure=accept")
-	}
-	if inSpoolDir(spool, "quarantine", env.Id) {
-		t.Error("envelope must not be in quarantine/ under on_failure=accept")
+	// Accepted means completed: the envelope is removed, not parked anywhere.
+	if where := spoolDirsHolding(spool, env.Id); len(where) != 0 {
+		t.Errorf("envelope in %v under on_failure=accept, want it completed and removed from the spool", where)
 	}
 }
 
@@ -178,7 +190,7 @@ func TestRunnerAcceptsOnScannerFailureWhenConfigured(t *testing.T) {
 // unreachable clamd, drained via pipeline.PrepareForRescan and re-enqueued,
 // then re-run against a live mock clamd — and must actually be scanned the
 // second time (not skipped by the idempotency check, proven via the mock's
-// connection WaitGroup) and reach deliver/.
+// connection WaitGroup) and complete.
 func TestRunnerRescanRoundTrip(t *testing.T) {
 	spool := newIntegrationSpool(t)
 	env := enqueueTestEnvelope(t, spool, "msg-rescan")
@@ -224,11 +236,8 @@ func TestRunnerRescanRoundTrip(t *testing.T) {
 	runToCompletion(t, spool, []pipeline.Processor{live}, env.Id)
 	waitOrFail(t, wg, "clamd was never connected to on the rescan pass — the antivirus stage was skipped instead of re-running")
 
-	if !inSpoolDir(spool, "deliver", env.Id) {
-		t.Error("expected envelope in deliver/ after rescan against a live clamd")
-	}
-	if inSpoolDir(spool, "quarantine", env.Id) {
-		t.Error("envelope must not remain in quarantine/ after a successful rescan")
+	if where := spoolDirsHolding(spool, env.Id); len(where) != 0 {
+		t.Errorf("envelope in %v after rescan against a live clamd, want it completed and removed from the spool", where)
 	}
 }
 

@@ -1,12 +1,14 @@
 package pipeline
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -543,6 +545,68 @@ func TestNewSpoolStoreRemovesLeftoverTempFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Errorf("real envelope removed: %v", err)
+	}
+}
+
+// TestNewSpoolStoreRemovesDeliveredEnvelopes pins the startup sweep of the
+// backlog an earlier binary left in deliver/: every envelope there belongs to
+// a message whose pipeline finished, and while it stays its blob stays in the
+// GC reference set. Only envelope files go; anything else in deliver/, and
+// every envelope in the other directories, is left alone.
+func TestNewSpoolStoreRemovesDeliveredEnvelopes(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	for _, d := range spoolDirs {
+		if err := os.MkdirAll(filepath.Join(base, d), 0o750); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+	}
+	// Written without NewSpoolStore, so nothing sweeps them before the test.
+	tmp := &SpoolStore{baseDir: base, logger: discardLogger()}
+	delivered := []string{"done-a", "done-b", "done-c"}
+	for _, id := range delivered {
+		if err := tmp.WriteEnvelope("deliver", makeEnvelope(id, "x@x.com")); err != nil {
+			t.Fatalf("WriteEnvelope deliver: %v", err)
+		}
+	}
+	for _, d := range []string{"incoming", "quarantine", "error"} {
+		if err := tmp.WriteEnvelope(d, makeEnvelope("kept-"+d, "x@x.com")); err != nil {
+			t.Fatalf("WriteEnvelope %s: %v", d, err)
+		}
+	}
+	other := filepath.Join(base, "deliver", "notes.txt")
+	if err := os.WriteFile(other, []byte("operator file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	subdir := filepath.Join(base, "deliver", "archive.env")
+	if err := os.Mkdir(subdir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if _, err := NewSpoolStore(base, logger); err != nil {
+		t.Fatalf("NewSpoolStore: %v", err)
+	}
+
+	for _, id := range delivered {
+		if _, err := os.Stat(filepath.Join(base, "deliver", id+envSuffix)); !os.IsNotExist(err) {
+			t.Errorf("delivered envelope %s not removed (err=%v)", id, err)
+		}
+	}
+	for _, p := range []string{other, subdir} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("non-envelope %s removed: %v", p, err)
+		}
+	}
+	for _, d := range []string{"incoming", "quarantine", "error"} {
+		if _, err := os.Stat(filepath.Join(base, d, "kept-"+d+envSuffix)); err != nil {
+			t.Errorf("envelope in %s/ removed: %v", d, err)
+		}
+	}
+	if !strings.Contains(logs.String(), "spool: removed delivered envelopes") || !strings.Contains(logs.String(), "count=3") {
+		t.Errorf("sweep log missing or wrong count:\n%s", logs.String())
 	}
 }
 

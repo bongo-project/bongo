@@ -81,7 +81,106 @@ func fileExistsIn(t *testing.T, spool *SpoolStore, dir, id string) bool {
 	return err == nil
 }
 
-// TestRunnerProcessMessage verifies that a passing stage moves the envelope to deliver/.
+// spoolDirsHolding returns every spool directory that holds id's envelope.
+func spoolDirsHolding(t *testing.T, spool *SpoolStore, id string) []string {
+	t.Helper()
+	var where []string
+	for _, d := range spoolDirs {
+		if fileExistsIn(t, spool, d, id) {
+			where = append(where, d)
+		}
+	}
+	return where
+}
+
+// assertLeftSpool fails unless id's envelope is in no spool directory. A
+// message whose pipeline finished has nothing left to do in the spool, and an
+// envelope left behind keeps its blob referenced by the GC for ever.
+func assertLeftSpool(t *testing.T, spool *SpoolStore, id string) {
+	t.Helper()
+	if where := spoolDirsHolding(t, spool, id); len(where) != 0 {
+		t.Errorf("envelope %s still in %v after the pipeline finished, want it removed from the spool", id, where)
+	}
+}
+
+// TestRunnerCompletedEnvelopeLeavesSpool pins that a message passing every
+// stage ends with no envelope in any spool directory. The envelope used to be
+// moved to deliver/, which nothing ever read or cleaned, so the spool grew by
+// one file per message and every delivered body stayed referenced for the blob
+// GC after the mail itself was deleted.
+func TestRunnerCompletedEnvelopeLeavesSpool(t *testing.T) {
+	spool := newTestSpool(t)
+	env := newTestEnv(t, spool, "msg-complete-7")
+
+	var stages []Processor
+	var procs []*mockProcessor
+	for _, name := range []string{"antispam", "antivirus", "rules", "deliver"} {
+		p := &mockProcessor{name: name, result: &bongov1.StageResult{Stage: name, Action: "pass"}}
+		stages = append(stages, p)
+		procs = append(procs, p)
+	}
+	runner := NewRunner(spool, &mockBlobReader{}, stages, newTestLogger())
+
+	dequeued, err := spool.Dequeue()
+	if err != nil {
+		t.Fatalf("Dequeue: %v", err)
+	}
+	if !fileExistsIn(t, spool, "processing", env.Id) {
+		t.Fatal("envelope not in processing/ before the run; the end-state check below would be vacuous")
+	}
+	if err := runner.processMessage(context.Background(), dequeued); err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	for _, p := range procs {
+		if p.calls != 1 {
+			t.Errorf("stage %s: %d calls, want 1", p.name, p.calls)
+		}
+	}
+	assertLeftSpool(t, spool, env.Id)
+}
+
+// TestRunnerPersistsFlagsBetweenStages pins what makes removing the envelope
+// at the end safe to retry: the flags of every finished stage are written to
+// processing/ before the next stage runs, so an envelope a crash (or a failed
+// remove) leaves in processing/ skips those stages when it is replayed.
+func TestRunnerPersistsFlagsBetweenStages(t *testing.T) {
+	spool := newTestSpool(t)
+	env := newTestEnv(t, spool, "msg-persist-3")
+
+	var seen uint32
+	var readErr error
+	probe := &ctxStage{name: "deliver", fn: func(context.Context) (*bongov1.StageResult, error) {
+		onDisk, err := spool.ReadEnvelope("processing", env.Id)
+		if err != nil {
+			readErr = err
+		} else {
+			seen = onDisk.Flags
+		}
+		return &bongov1.StageResult{Stage: "deliver", Action: "pass"}, nil
+	}}
+	first := &mockProcessor{name: "antispam", result: &bongov1.StageResult{Stage: "antispam", Action: "pass"}}
+	runner := NewRunner(spool, &mockBlobReader{}, []Processor{first, probe}, newTestLogger())
+
+	dequeued, err := spool.Dequeue()
+	if err != nil {
+		t.Fatalf("Dequeue: %v", err)
+	}
+	if err := runner.processMessage(context.Background(), dequeued); err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	if readErr != nil {
+		t.Fatalf("read processing/ envelope during the second stage: %v", readErr)
+	}
+	if !HasFlag(seen, MsgFlagSpamChecked) {
+		t.Errorf("flags on disk before the second stage = %b, want MsgFlagSpamChecked set", seen)
+	}
+	if !HasFlag(dequeued.Flags, MsgFlagDelivered) {
+		t.Error("MsgFlagDelivered not set after the deliver stage")
+	}
+}
+
+// TestRunnerProcessMessage verifies that a passing stage completes the message
+// and removes its envelope from the spool.
 func TestRunnerProcessMessage(t *testing.T) {
 	spool := newTestSpool(t)
 	env := newTestEnv(t, spool, "msg-001")
@@ -106,19 +205,13 @@ func TestRunnerProcessMessage(t *testing.T) {
 		t.Fatalf("processMessage: %v", err)
 	}
 
-	if !fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("expected envelope in deliver/, not found")
-	}
+	assertLeftSpool(t, spool, env.Id)
 	if proc.calls != 1 {
 		t.Errorf("expected 1 stage call, got %d", proc.calls)
 	}
 
 	// Verify flags.
-	delivered, err := spool.ReadEnvelope("deliver", env.Id)
-	if err != nil {
-		t.Fatalf("ReadEnvelope deliver: %v", err)
-	}
-	if !HasFlag(delivered.Flags, MsgFlagSpamChecked) {
+	if !HasFlag(dequeued.Flags, MsgFlagSpamChecked) {
 		t.Error("expected MsgFlagSpamChecked to be set")
 	}
 }
@@ -150,8 +243,8 @@ func TestRunnerQuarantine(t *testing.T) {
 	if !fileExistsIn(t, spool, "quarantine", env.Id) {
 		t.Error("expected envelope in quarantine/, not found")
 	}
-	if fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("envelope should not be in deliver/")
+	if where := spoolDirsHolding(t, spool, env.Id); len(where) != 1 {
+		t.Errorf("envelope in %v, want quarantine/ only", where)
 	}
 
 	quarantined, err := spool.ReadEnvelope("quarantine", env.Id)
@@ -227,9 +320,7 @@ func TestRunnerIdempotent(t *testing.T) {
 	if proc.calls != 0 {
 		t.Errorf("expected stage to be skipped (0 calls), got %d", proc.calls)
 	}
-	if !fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("expected envelope in deliver/, not found")
-	}
+	assertLeftSpool(t, spool, env.Id)
 }
 
 // TestRunnerMultipleStages verifies that two stages run in order.
@@ -263,21 +354,15 @@ func TestRunnerMultipleStages(t *testing.T) {
 	if virus.calls != 1 {
 		t.Errorf("antivirus: expected 1 call, got %d", virus.calls)
 	}
-	if !fileExistsIn(t, spool, "deliver", env.Id) {
-		t.Error("expected envelope in deliver/, not found")
-	}
+	assertLeftSpool(t, spool, env.Id)
 
-	delivered, err := spool.ReadEnvelope("deliver", env.Id)
-	if err != nil {
-		t.Fatalf("ReadEnvelope: %v", err)
+	if len(dequeued.Stages) != 2 {
+		t.Errorf("expected 2 stage results, got %d", len(dequeued.Stages))
 	}
-	if len(delivered.Stages) != 2 {
-		t.Errorf("expected 2 stage results, got %d", len(delivered.Stages))
-	}
-	if !HasFlag(delivered.Flags, MsgFlagSpamChecked) {
+	if !HasFlag(dequeued.Flags, MsgFlagSpamChecked) {
 		t.Error("MsgFlagSpamChecked not set")
 	}
-	if !HasFlag(delivered.Flags, MsgFlagVirusChecked) {
+	if !HasFlag(dequeued.Flags, MsgFlagVirusChecked) {
 		t.Error("MsgFlagVirusChecked not set")
 	}
 }
@@ -431,7 +516,9 @@ func assertIdentity(t *testing.T, line map[string]any, env *bongov1.QueueEnvelop
 
 // runUntil drives the real Run loop until the envelope appears in dir and the
 // line with msg has been logged, then stops it, waits for Run to return and
-// hands back that line.
+// hands back that line. An empty dir means the message completes: the line is
+// logged only after its envelope was removed, and the envelope must then be in
+// no spool directory.
 func runUntil(t *testing.T, spool *SpoolStore, stage Processor, buf *lockedBuffer, dir, id, msg string) map[string]any {
 	t.Helper()
 	runner := NewRunner(spool, &mockBlobReader{}, []Processor{stage}, jsonLogger(buf),
@@ -443,6 +530,11 @@ func runUntil(t *testing.T, spool *SpoolStore, stage Processor, buf *lockedBuffe
 		cancel()
 		<-done
 	}()
+	if dir == "" {
+		line := waitForLog(t, buf, msg, 5*time.Second)
+		assertLeftSpool(t, spool, id)
+		return line
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for !fileExistsIn(t, spool, dir, id) && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
@@ -463,7 +555,7 @@ func TestRunnerTerminalLogsCarryIdentity(t *testing.T) {
 		wantStage bool
 		wantErr   string
 	}{
-		{"pass", &bongov1.StageResult{Stage: "antispam", Action: "pass"}, nil, "deliver", "pipeline: message ready for delivery", false, ""},
+		{"pass", &bongov1.StageResult{Stage: "antispam", Action: "pass"}, nil, "", "pipeline: message processed", false, ""},
 		{"quarantine", &bongov1.StageResult{Stage: "antispam", Action: "quarantine"}, nil, "quarantine", "pipeline: message quarantined", true, ""},
 		{"reject", &bongov1.StageResult{Stage: "antispam", Action: "reject"}, nil, "quarantine", "pipeline: message quarantined", true, ""},
 		{"stage error", nil, fmt.Errorf("boom"), "error", "pipeline: process message failed", false, "boom"},
@@ -757,19 +849,15 @@ func TestRunnerShutdownReturnsUnstartedEnvelopes(t *testing.T) {
 
 	var delivered, incoming int
 	for _, id := range ids {
-		var where []string
-		for _, dir := range []string{"incoming", "processing", "deliver", "error", "quarantine"} {
-			if fileExistsIn(t, spool, dir, id) {
-				where = append(where, dir)
-			}
-		}
-		if len(where) != 1 {
-			t.Fatalf("%s is in %v, want exactly one directory", id, where)
-		}
-		switch where[0] {
-		case "deliver":
+		// A completed message has left the spool; anything else must be
+		// back in incoming/ and nowhere else.
+		where := spoolDirsHolding(t, spool, id)
+		switch {
+		case len(where) == 0:
 			delivered++
-		case "incoming":
+		case len(where) > 1:
+			t.Fatalf("%s is in %v, want at most one directory", id, where)
+		case where[0] == "incoming":
 			incoming++
 		default:
 			t.Fatalf("%s ended in %s", id, where[0])
@@ -842,22 +930,18 @@ func TestRunnerShutdownDrainsAllBufferedEnvelopes(t *testing.T) {
 
 	var delivered, incoming int
 	for _, id := range ids {
-		var where []string
-		for _, dir := range []string{"incoming", "processing", "deliver", "error", "quarantine"} {
-			if fileExistsIn(t, spool, dir, id) {
-				where = append(where, dir)
-			}
-		}
-		if len(where) != 1 {
-			t.Fatalf("%s is in %v, want exactly one directory", id, where)
-		}
-		switch where[0] {
-		case "deliver":
+		// A completed message has left the spool; anything else must be
+		// back in incoming/ and nowhere else.
+		where := spoolDirsHolding(t, spool, id)
+		switch {
+		case len(where) == 0:
 			delivered++
-		case "incoming":
+		case len(where) > 1:
+			t.Fatalf("%s is in %v, want at most one directory", id, where)
+		case where[0] == "incoming":
 			incoming++
 		default:
-			t.Fatalf("%s ended in %s, want deliver or incoming", id, where[0])
+			t.Fatalf("%s ended in %s, want removed or incoming", id, where[0])
 		}
 	}
 	if delivered > 1 || delivered+incoming != len(ids) {
