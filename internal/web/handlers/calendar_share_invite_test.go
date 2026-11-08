@@ -350,6 +350,7 @@ func (e *inviteEnv) form() url.Values {
 
 func TestAcceptAndDecline(t *testing.T) {
 	t.Run("accept makes the grant authorise", func(t *testing.T) {
+		t.Parallel()
 		e := newInviteEnv(t)
 		e.share("alice", e.calID, "bob@d.test")
 		if lvl, _ := e.acl.CalendarAccessLevel("alice", e.calID, "bob"); lvl != "" {
@@ -363,6 +364,7 @@ func TestAcceptAndDecline(t *testing.T) {
 		}
 	})
 	t.Run("decline deletes and the owner sees it disappear", func(t *testing.T) {
+		t.Parallel()
 		e := newInviteEnv(t)
 		e.share("alice", e.calID, "bob@d.test")
 		if rr := e.answer(false, "bob", e.form()); rr.Code != http.StatusOK {
@@ -374,6 +376,7 @@ func TestAcceptAndDecline(t *testing.T) {
 		}
 	})
 	t.Run("another user cannot answer for the grantee", func(t *testing.T) {
+		t.Parallel()
 		for _, accept := range []bool{true, false} {
 			e := newInviteEnv(t)
 			e.share("alice", e.calID, "bob@d.test")
@@ -391,6 +394,7 @@ func TestAcceptAndDecline(t *testing.T) {
 		}
 	})
 	t.Run("absent grant is 404 and writes nothing", func(t *testing.T) {
+		t.Parallel()
 		e := newInviteEnv(t)
 		e.h.acl = store.NewACLStore(e.ps, failingApplier{})
 		for _, accept := range []bool{true, false} {
@@ -400,6 +404,7 @@ func TestAcceptAndDecline(t *testing.T) {
 		}
 	})
 	t.Run("malformed owner or calendar is 404", func(t *testing.T) {
+		t.Parallel()
 		e := newInviteEnv(t)
 		e.share("alice", e.calID, "bob@d.test")
 		for _, f := range []url.Values{{}, {"owner": {"alice"}}, {"owner": {"alice/x"}, "calendar": {e.calID}}} {
@@ -409,6 +414,7 @@ func TestAcceptAndDecline(t *testing.T) {
 		}
 	})
 	t.Run("an accepted grant cannot be declined or re-accepted here", func(t *testing.T) {
+		t.Parallel()
 		e := newInviteEnv(t)
 		e.share("alice", e.calID, "bob@d.test")
 		e.answer(true, "bob", e.form())
@@ -420,6 +426,7 @@ func TestAcceptAndDecline(t *testing.T) {
 		}
 	})
 	t.Run("write failures are 500", func(t *testing.T) {
+		t.Parallel()
 		for _, accept := range []bool{true, false} {
 			e := newInviteEnv(t)
 			e.share("alice", e.calID, "bob@d.test")

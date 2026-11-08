@@ -35,6 +35,7 @@ func TestNewMessagePrefillsToFromQuery(t *testing.T) {
 				name = tt.name + "/partial"
 			}
 			t.Run(name, func(t *testing.T) {
+				t.Parallel()
 				env, uid, email := newPipelineEnv(t)
 				h := env.handler
 				req := httptest.NewRequest(http.MethodGet, "/compose?to="+url.QueryEscape(tt.to), nil)
