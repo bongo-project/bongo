@@ -589,3 +589,7 @@ worthwhile.
   - The memory guard (scripts on the generator, stopping load below 400 MB
     available) should go into the runbook: the server has no swap, so running
     out kills bongo.
+- **Folder bulk ignores targets.** POST /mail/{folder}/bulk reads only bare
+  uids; a request that sends only uid:mailbox targets returns 200 and changes
+  nothing. Found while fixing tag-view actions (PR #184). Refuse a request
+  with no usable UID, or accept targets there too.
