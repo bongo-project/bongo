@@ -748,6 +748,7 @@ document.addEventListener('alpine:init', () => {
     // the template calls one method per event instead of "a(); b = c".
     bulkTagOpen: false,
     bulkTagInput: '',
+    bulkTagTrigger: null,
 
     _updateCount() {
       this.count = Object.keys(this.selected).length;
@@ -825,11 +826,17 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    toggleBulkTag() {
+    toggleBulkTag(event) {
+      this.bulkTagTrigger = event && event.currentTarget;
       this.bulkTagOpen = !this.bulkTagOpen;
     },
 
     closeBulkTag() {
+      this.bulkTagOpen = false;
+      if (this.bulkTagTrigger) this.bulkTagTrigger.focus();
+    },
+
+    dismissBulkTag() {
       this.bulkTagOpen = false;
     },
 
@@ -952,7 +959,7 @@ document.addEventListener('alpine:init', () => {
     openContextMenu(event, uid, mailbox) {
       event.preventDefault();
       const row = event.target && event.target.closest ? event.target.closest('.msg-row') : null;
-      this.$dispatch('ctx-menu', { x: event.clientX, y: event.clientY, uid: uid, mailbox: mailbox, real: actionMailbox(row, mailbox) });
+      this.$dispatch('ctx-menu', { x: event.clientX, y: event.clientY, uid: uid, mailbox: mailbox, real: actionMailbox(row, mailbox), trigger: row });
     }
   }));
 
@@ -1018,6 +1025,10 @@ document.addEventListener('alpine:init', () => {
     permission: typeof Notification !== 'undefined' ? Notification.permission : 'denied',
     promptDismissed: localStorage.getItem('bongo-notification-prompt') === 'dismissed',
     eventSource: null,
+    streamMailbox: '',
+    navigationHandler: null,
+    reconnectTimer: null,
+    resyncOnOpen: false,
 
     get showPrompt() {
       return this.permission === 'default' && !this.promptDismissed;
@@ -1025,6 +1036,8 @@ document.addEventListener('alpine:init', () => {
 
     init() {
       this.connectSSE();
+      this.navigationHandler = () => this.reconnectForMailbox();
+      document.addEventListener('htmx:afterSettle', this.navigationHandler);
     },
 
     requestPermission() {
@@ -1041,9 +1054,30 @@ document.addEventListener('alpine:init', () => {
       localStorage.setItem('bongo-notification-prompt', 'dismissed');
     },
 
+    currentStreamMailbox() {
+      return currentMailbox() || 'INBOX';
+    },
+
+    reconnectForMailbox() {
+      const mailbox = this.currentStreamMailbox();
+      if (this.eventSource && mailbox === this.streamMailbox) return;
+      if (this.eventSource) this.eventSource.close();
+      this.eventSource = null;
+      this.streamMailbox = '';
+      clearTimeout(this.reconnectTimer);
+      this.connectSSE();
+    },
+
     connectSSE() {
       if (this.eventSource) return;
-      this.eventSource = new EventSource('/events?mailbox=INBOX');
+      this.streamMailbox = this.currentStreamMailbox();
+      this.eventSource = new EventSource('/events?mailbox=' + encodeURIComponent(this.streamMailbox));
+
+      this.eventSource.onopen = () => {
+        if (!this.resyncOnOpen) return;
+        this.resyncOnOpen = false;
+        this.resyncVisibleMailbox();
+      };
 
       this.eventSource.addEventListener('newmail', (e) => {
         if (window.refreshUnreadCounts) window.refreshUnreadCounts();
@@ -1071,6 +1105,23 @@ document.addEventListener('alpine:init', () => {
         }
       });
 
+      this.eventSource.addEventListener('mailboxchange', (e) => {
+        try {
+          this.applyMailboxChange(JSON.parse(e.data)).catch(() => showClientStatus('', 'error'));
+        } catch (err) { /* ignore malformed stream data */ }
+      });
+
+      this.eventSource.addEventListener('mailboxcounts', () => {
+        if (window.refreshUnreadCounts) window.refreshUnreadCounts();
+      });
+
+      this.eventSource.addEventListener('resync', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.mailbox === currentMailbox()) this.resyncVisibleMailbox();
+        } catch (err) { /* ignore malformed stream data */ }
+      });
+
       this.eventSource.addEventListener('reminder', (e) => {
         try {
           const data = JSON.parse(e.data);
@@ -1088,11 +1139,71 @@ document.addEventListener('alpine:init', () => {
         // Reconnect after 5 seconds.
         this.eventSource.close();
         this.eventSource = null;
-        setTimeout(() => this.connectSSE(), 5000);
+        this.resyncOnOpen = true;
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = setTimeout(() => this.connectSSE(), 5000);
       };
     },
 
+    resyncVisibleMailbox() {
+      const mailbox = currentMailbox();
+      if (!mailbox) return;
+      const list = document.querySelector('.msg-list');
+      const focused = list && list.querySelector('.msg-row.keyboard-focus');
+      const focusedUID = focused && focused.dataset.uid;
+      const scrollTop = list ? list.scrollTop : 0;
+      htmx.ajax('GET', listReloadURL(mailbox), '#main-content').then(function() {
+        const nextList = document.querySelector('.msg-list');
+        if (nextList) nextList.scrollTop = scrollTop;
+        if (!focusedUID) return;
+        const row = document.getElementById('msg-' + focusedUID);
+        if (row) row.classList.add('keyboard-focus');
+      });
+    },
+
+    async applyMailboxChange(data) {
+      const main = document.getElementById('main-content');
+      if (!main || currentMailbox() !== data.mailbox) return;
+      if (window.refreshUnreadCounts) window.refreshUnreadCounts();
+
+      const oldRow = document.getElementById('msg-' + data.uid);
+      if (data.action === 'remove') {
+        if (!oldRow) return;
+        const next = oldRow.nextElementSibling || oldRow.previousElementSibling;
+        const hadFocus = oldRow.classList.contains('keyboard-focus');
+        oldRow.remove();
+        if (hadFocus && next && next.matches('.msg-row[data-uid]')) moveKeyboardFocus(next);
+        return;
+      }
+      if (data.action !== 'upsert') return;
+
+      const response = await fetch('/api/mail/' + encodeURIComponent(data.mailbox) + '/' + data.uid + '/row');
+      if (!response.ok) return;
+      const holder = document.createElement('div');
+      holder.innerHTML = await response.text();
+      const newRow = holder.firstElementChild;
+      if (!newRow) return;
+
+      if (oldRow) {
+        if (oldRow.classList.contains('keyboard-focus')) newRow.classList.add('keyboard-focus');
+        oldRow.replaceWith(newRow);
+        htmx.process(newRow);
+        return;
+      }
+      const list = main.querySelector('.msg-list');
+      if (!list) {
+        htmx.ajax('GET', listReloadURL(data.mailbox), '#main-content');
+        return;
+      }
+      const before = list.scrollHeight;
+      list.prepend(newRow);
+      htmx.process(newRow);
+      if (list.scrollTop > 0) list.scrollTop += list.scrollHeight - before;
+    },
+
     destroy() {
+      document.removeEventListener('htmx:afterSettle', this.navigationHandler);
+      clearTimeout(this.reconnectTimer);
       if (this.eventSource) {
         this.eventSource.close();
         this.eventSource = null;
@@ -1182,6 +1293,7 @@ document.addEventListener('alpine:init', () => {
     focusedItem: -1,
     tagOpen: false,
     tagInput: '',
+    returnFocus: null,
 
     toggleTag() {
       this.tagOpen = !this.tagOpen;
@@ -1200,12 +1312,13 @@ document.addEventListener('alpine:init', () => {
       this.action('tag-' + op + ':' + name);
     },
 
-    openAt(x, y, uid, mailbox, real) {
+    openAt(x, y, uid, mailbox, real, trigger) {
       this.uid = uid;
       this.mailbox = mailbox;
       // The mailbox the message really lives in. It differs from the list
       // mailbox only in the To me, From my contacts and Mailing lists views.
       this.real = real || mailbox;
+      this.returnFocus = trigger || null;
       // Viewport clamping: keep menu within the visible window.
       const menuW = 200, menuH = 320;
       if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 8;
@@ -1231,6 +1344,14 @@ document.addEventListener('alpine:init', () => {
     close() {
       this.visible = false;
       this.focusedItem = -1;
+      if (this.returnFocus && this.returnFocus.isConnected) this.returnFocus.focus();
+      this.returnFocus = null;
+    },
+
+    dismiss() {
+      this.visible = false;
+      this.focusedItem = -1;
+      this.returnFocus = null;
     },
 
     onKeydown(event) {
@@ -1265,7 +1386,7 @@ document.addEventListener('alpine:init', () => {
       const uid = this.uid;
       const view = this.mailbox;
       const mailbox = this.real || view;
-      this.close();
+      this.dismiss();
       if (!uid || !mailbox) return;
 
       switch (act) {
@@ -2349,6 +2470,30 @@ function deleteRow(row, idx) {
     .catch(() => {});
 }
 
+function toggleReadRow(row, idx) {
+  const mailbox = currentMailbox();
+  if (!mailbox || !row) return;
+  const markRead = row.classList.contains('unread');
+  const params = new URLSearchParams();
+  params.set('action', markRead ? 'mark-read' : 'mark-unread');
+  addSelectionToParams(params, selectionKey(row));
+  fetch(bulkURL(mailbox), { method: 'POST', body: params })
+    .then(function(resp) {
+      if (!resp.ok) return;
+      const view = document.querySelector('.mail-view[data-list-url]');
+      const unreadOnly = mailbox === 'unread' || (view && view.dataset.listUrl.indexOf('unread=1') !== -1);
+      if (markRead && unreadOnly) {
+        const rows = Array.from(document.querySelectorAll('.msg-list .msg-row[data-uid]'));
+        const next = rows[idx + 1] || rows[idx - 1];
+        row.remove();
+        if (next) moveKeyboardFocus(next);
+      } else {
+        row.classList.toggle('unread', !markRead);
+      }
+      if (window.refreshUnreadCounts) window.refreshUnreadCounts();
+    });
+}
+
 // archiveRow archives a message from the list (unarchives it when the list is
 // Archive), reloads the list and highlights the message that took its place.
 function archiveRow(row, idx) {
@@ -2389,6 +2534,40 @@ function archiveOpenMessage() {
 
 // Keyboard shortcut help modal
 var shortcutModalOpen = false;
+var shortcutModalReturnFocus = null;
+
+var keyboardShortcuts = [
+  { action: 'next', keys: ['j'], display: 'j', label: 'js.shortcutNextMessage' },
+  { action: 'previous', keys: ['k'], display: 'k', label: 'js.shortcutPrevMessage' },
+  { action: 'open', keys: ['Enter'], display: 'Enter', label: 'js.shortcutOpenMessage' },
+  { action: 'reply', keys: ['r'], display: 'r', label: 'js.shortcutReply' },
+  { action: 'delete', keys: ['d', '#', 'Delete'], display: 'd / # / Delete', label: 'js.shortcutDelete' },
+  { action: 'archive', keys: ['e'], display: 'e', label: 'js.shortcutArchive' },
+  { action: 'toggle-read', keys: ['u'], display: 'u', label: 'js.shortcutToggleRead' },
+  { action: 'toggle-star', keys: ['s'], display: 's', label: 'js.shortcutToggleStar' },
+  { action: 'search', keys: ['/'], display: '/', label: 'js.shortcutFocusSearch' },
+  { action: 'search-global', keys: [], display: 'Ctrl/\u2318 K', label: 'js.shortcutFocusSearchK' },
+  { action: 'compose', keys: ['c'], display: 'c', label: 'js.shortcutCompose' },
+  { action: 'close', keys: [], display: 'Esc', label: 'js.shortcutCloseModal' },
+  { action: 'help', keys: ['?'], display: '?', label: 'js.shortcutShowHelp' }
+];
+
+function keyboardShortcutAction(key) {
+  const shortcut = keyboardShortcuts.find(function(item) { return item.keys.indexOf(key) !== -1; });
+  return shortcut ? shortcut.action : '';
+}
+
+function keyboardShortcutHelp() {
+  return keyboardShortcuts.map(function(item) {
+    return '<dt><kbd>' + item.display + '</kbd></dt><dd>' + i18n(item.label) + '</dd>';
+  }).join('');
+}
+
+function clickRowControl(row, selector) {
+  if (!row) return;
+  const control = row.querySelector(selector);
+  if (control) control.click();
+}
 
 function toggleShortcutModal() {
   shortcutModalOpen = !shortcutModalOpen;
@@ -2401,20 +2580,7 @@ function toggleShortcutModal() {
     overlay.innerHTML =
       '<div class="shortcut-modal" role="dialog" aria-labelledby="shortcut-modal-title" aria-modal="true">' +
         '<h3 id="shortcut-modal-title">' + i18n('shortcuts.title') + '</h3>' +
-        '<dl>' +
-          '<dt><kbd>j</kbd></dt><dd>' + i18n('js.shortcutNextMessage') + '</dd>' +
-          '<dt><kbd>k</kbd></dt><dd>' + i18n('js.shortcutPrevMessage') + '</dd>' +
-          '<dt><kbd>Enter</kbd></dt><dd>' + i18n('js.shortcutOpenMessage') + '</dd>' +
-          '<dt><kbd>r</kbd></dt><dd>' + i18n('js.shortcutReply') + '</dd>' +
-          '<dt><kbd>d</kbd></dt><dd>' + i18n('js.shortcutDelete') + '</dd>' +
-          '<dt><kbd>e</kbd></dt><dd>' + i18n('js.shortcutArchive') + '</dd>' +
-          '<dt><kbd>s</kbd></dt><dd>' + i18n('js.shortcutToggleStar') + '</dd>' +
-          '<dt><kbd>/</kbd></dt><dd>' + i18n('js.shortcutFocusSearch') + '</dd>' +
-          '<dt><kbd>Ctrl/\u2318 K</kbd></dt><dd>' + i18n('js.shortcutFocusSearchK') + '</dd>' +
-          '<dt><kbd>c</kbd></dt><dd>' + i18n('js.shortcutCompose') + '</dd>' +
-          '<dt><kbd>Esc</kbd></dt><dd>' + i18n('js.shortcutCloseModal') + '</dd>' +
-          '<dt><kbd>?</kbd></dt><dd>' + i18n('js.shortcutShowHelp') + '</dd>' +
-        '</dl>' +
+        '<dl>' + keyboardShortcutHelp() + '</dl>' +
         '<button type="button" class="outline secondary modal-close" id="shortcut-modal-close">' + i18n('js.close') + '</button>' +
       '</div>';
     document.body.appendChild(overlay);
@@ -2426,11 +2592,14 @@ function toggleShortcutModal() {
     });
   }
   if (shortcutModalOpen) {
+    shortcutModalReturnFocus = document.activeElement;
     overlay.hidden = false;
     // Focus trap: focus the close button.
     document.getElementById('shortcut-modal-close').focus();
   } else {
     overlay.hidden = true;
+    if (shortcutModalReturnFocus && shortcutModalReturnFocus.isConnected) shortcutModalReturnFocus.focus();
+    shortcutModalReturnFocus = null;
   }
 }
 
@@ -2508,19 +2677,21 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key === '?') {
+  const shortcutAction = keyboardShortcutAction(e.key);
+
+  if (shortcutAction === 'help') {
     e.preventDefault();
     toggleShortcutModal();
     return;
   }
 
-  if (e.key === 'c') {
+  if (shortcutAction === 'compose') {
     e.preventDefault();
     window.location.href = '/compose';
     return;
   }
 
-  if (e.key === '/') {
+  if (shortcutAction === 'search') {
     if (focusGlobalSearch()) e.preventDefault();
     return;
   }
@@ -2528,7 +2699,7 @@ document.addEventListener('keydown', (e) => {
   // e: archive the open message. This sits before the empty-list return
   // because the full message view has no list rows. With no message open it
   // falls through to the keyboard-focused row below.
-  if (e.key === 'e' && archiveOpenMessage()) {
+  if (shortcutAction === 'archive' && archiveOpenMessage()) {
     e.preventDefault();
     return;
   }
@@ -2539,26 +2710,25 @@ document.addEventListener('keydown', (e) => {
   const current = document.querySelector('.msg-list .msg-row[data-uid].keyboard-focus');
   let idx = current ? Array.from(messageRows).indexOf(current) : -1;
 
-  switch (e.key) {
-    case 'j': // Next message
+  switch (shortcutAction) {
+    case 'next':
       e.preventDefault();
       if (idx < messageRows.length - 1) moveKeyboardFocus(messageRows[idx + 1]);
       break;
 
-    case 'k': // Previous message
+    case 'previous':
       e.preventDefault();
       if (idx > 0) moveKeyboardFocus(messageRows[idx - 1]);
       break;
 
-    case 'Enter': // Open focused message
+    case 'open':
       if (current) {
         e.preventDefault();
-        const link = current.querySelector('a[data-message-link]');
-        if (link) link.click();
+        clickRowControl(current, 'a[data-message-link]');
       }
       break;
 
-    case 'r': // Reply
+    case 'reply':
       if (current) {
         e.preventDefault();
         const uid = current.dataset.uid;
@@ -2569,25 +2739,31 @@ document.addEventListener('keydown', (e) => {
       }
       break;
 
-    case 'd': // Delete
+    case 'delete':
       if (current) {
         e.preventDefault();
         deleteRow(current, idx);
       }
       break;
 
-    case 'e': // Archive (unarchive in Archive) the focused row
+    case 'toggle-read':
+      if (current) {
+        e.preventDefault();
+        toggleReadRow(current, idx);
+      }
+      break;
+
+    case 'archive':
       if (current) {
         e.preventDefault();
         archiveRow(current, idx);
       }
       break;
 
-    case 's': // Star/flag toggle
+    case 'toggle-star':
       if (current) {
         e.preventDefault();
-        const starBtn = current.querySelector('.msg-star');
-        if (starBtn) starBtn.click();
+        clickRowControl(current, '.msg-star');
       }
       break;
 

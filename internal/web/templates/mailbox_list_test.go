@@ -133,7 +133,7 @@ func TestMessageRowKeepsHooks(t *testing.T) {
 	m.ThreadRoot = "r1"
 	out := renderRows(t, []MessageSummary{m}, "INBOX")
 	for _, want := range []string{
-		`class="msg-row msg-row-grid unread"`, `role="listitem"`, `data-uid="42"`, `data-pane-url="/mail/INBOX/42?pane=1"`,
+		`id="msg-42"`, `class="msg-row msg-row-grid unread"`, `role="listitem"`, `data-uid="42"`, `data-pane-url="/mail/INBOX/42?pane=1"`,
 		`data-message-link="true"`, `hx-post="/mail/INBOX/42/flags"`, `hx-swap="outerHTML"`,
 		`x-on:contextmenu`, `x-on:touchstart`, `class="msg-check"`, `id="thread-r1"`,
 	} {

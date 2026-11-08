@@ -268,6 +268,32 @@ func (h *MailHandler) serveList(w http.ResponseWriter, r *http.Request, mailbox 
 	templ.Handler(templates.MailboxPage(mailbox, view, mailboxInfos, sidebarTags, counts, summaries, page, totalPages, email, flash, infiniteScroll, listURL, warning)).ServeHTTP(w, r)
 }
 
+// LiveMessageRow renders one canonical list row for an SSE update. Keeping the
+// rendering in MailHandler means live rows use the same metadata, thread, tag
+// and preview pipeline as an ordinary mailbox request.
+func (h *MailHandler) LiveMessageRow(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
+	uid64, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+	if err != nil || uid64 == 0 {
+		http.Error(w, "Invalid message UID", http.StatusBadRequest)
+		return
+	}
+
+	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid64))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+	summaries := h.buildMessageSummaries(userID, []*bongov1.MailboxMessage{msg}, nil)
+	if len(summaries) == 0 {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+	h.fillPreviews(userID, summaries)
+	templ.Handler(templates.MessageRows(summaries, mailbox, nil)).ServeHTTP(w, r)
+}
+
 // ListTagMessages renders the message list for a tag virtual view.
 // GET /mail/tag/{name}
 func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {

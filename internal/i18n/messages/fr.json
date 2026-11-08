@@ -611,6 +611,7 @@
   "js.shortcutDelete": "Supprimer",
   "js.shortcutArchive": "Archiver",
   "js.shortcutToggleStar": "Marquer / démarquer",
+  "js.shortcutToggleRead": "Marquer comme lu / non lu",
   "js.shortcutFocusSearch": "Aller à la recherche",
   "js.shortcutCompose": "Composer un nouveau message",
   "js.shortcutCloseModal": "Fermer la fenêtre / le menu",

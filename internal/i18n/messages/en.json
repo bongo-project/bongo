@@ -611,6 +611,7 @@
   "js.shortcutDelete": "Delete",
   "js.shortcutArchive": "Archive",
   "js.shortcutToggleStar": "Star / unstar",
+  "js.shortcutToggleRead": "Mark read / unread",
   "js.shortcutFocusSearch": "Focus search",
   "js.shortcutCompose": "Compose new message",
   "js.shortcutCloseModal": "Close modal / menu",

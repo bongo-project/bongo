@@ -61,7 +61,7 @@ func TestKeyboardNavigationOpensInPaneAfterPause(t *testing.T) {
 			t.Errorf("moveKeyboardFocus missing %s", want)
 		}
 	}
-	if !strings.Contains(js, "case 'j': // Next message\n      e.preventDefault();\n      if (idx < messageRows.length - 1) moveKeyboardFocus(") {
+	if !strings.Contains(js, "case 'next':\n      e.preventDefault();\n      if (idx < messageRows.length - 1) moveKeyboardFocus(") || !strings.Contains(js, "action: 'next', keys: ['j']") {
 		t.Error("j must move through moveKeyboardFocus")
 	}
 	if !strings.Contains(js, "if (idx > 0) moveKeyboardFocus(") {
@@ -83,10 +83,66 @@ func TestDeleteKeyMovesToTrash(t *testing.T) {
 	if !strings.Contains(js, "deleteRow(current, idx);") {
 		t.Error("d must call deleteRow")
 	}
+	if !strings.Contains(js, "action: 'delete', keys: ['d', '#', 'Delete']") || !strings.Contains(js, "case 'delete':") {
+		t.Error("delete shortcut registry must map d, # and Delete to the delete action")
+	}
 	del := funcBody(t, js, "deleteRow")
 	for _, want := range []string{"mailbox === 'Trash'", "params.set('action', 'delete')", "'/bulk'"} {
 		if !strings.Contains(del, want) {
 			t.Errorf("deleteRow missing %s", want)
+		}
+	}
+}
+
+func TestUnreadShortcutUsesTheBulkActionPipeline(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	body := funcBody(t, js, "toggleReadRow")
+	for _, want := range []string{
+		"bulkURL(mailbox)", "selectionKey(row)", "'mark-read' : 'mark-unread'",
+		"mailbox === 'unread'", "row.classList.toggle('unread'", "refreshUnreadCounts",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("toggleReadRow missing %s", want)
+		}
+	}
+	for _, want := range []string{"action: 'toggle-read', keys: ['u']", "case 'toggle-read':", "toggleReadRow(current, idx)"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("u shortcut missing %q", want)
+		}
+	}
+	if !strings.Contains(js, "label: 'js.shortcutToggleRead'") {
+		t.Error("shortcut help must list the read/unread shortcut")
+	}
+}
+
+func TestShortcutRegistryDrivesDispatchAndHelp(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	for _, want := range []string{
+		"var keyboardShortcuts = [", "keyboardShortcutAction(e.key)",
+		"keyboardShortcuts.find(", "keyboardShortcuts.map(",
+		"'<dl>' + keyboardShortcutHelp() + '</dl>'",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("central shortcut registry missing %q", want)
+		}
+	}
+	if strings.Contains(js, "'<dt><kbd>j</kbd>") {
+		t.Error("shortcut help still duplicates individual key definitions")
+	}
+}
+
+func TestMenusAndDialogsRestoreFocusOnKeyboardClose(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	for _, want := range []string{
+		"shortcutModalReturnFocus = document.activeElement",
+		"shortcutModalReturnFocus.isConnected",
+		"this.returnFocus = trigger || null",
+		"this.returnFocus.isConnected",
+		"this.bulkTagTrigger = event && event.currentTarget",
+		"this.bulkTagTrigger.focus()",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("focus restoration missing %q", want)
 		}
 	}
 }
@@ -185,12 +241,14 @@ func TestArchiveSwipeAndShortcut(t *testing.T) {
 		t.Error("a swipe still moves to Trash")
 	}
 
-	keydown := js[strings.Index(js, "if (e.key === 'e' && archiveOpenMessage())"):]
+	keydown := js[strings.Index(js, "if (shortcutAction === 'archive' && archiveOpenMessage())"):]
 	if i, j := strings.Index(keydown, "archiveOpenMessage"), strings.Index(keydown, "if (messageRows.length === 0) return;"); i < 0 || j < 0 || i > j {
 		t.Error("e must be handled before the empty-list early return so the open-message view gets it")
 	}
-	if !strings.Contains(js, "case 'e':") || !strings.Contains(js, "<kbd>e</kbd>") || !strings.Contains(js, "js.shortcutArchive") {
-		t.Error("e shortcut or its help entry is missing")
+	for _, want := range []string{"case 'archive':", "action: 'archive', keys: ['e']", "label: 'js.shortcutArchive'"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("e shortcut missing %q", want)
+		}
 	}
 }
 

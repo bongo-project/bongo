@@ -68,9 +68,9 @@ CSS has accumulated as a final override layer over legacy rules.
 
 - [ ] Complete the existing mail reactivity PRD: viewed-folder subscription,
       row insertion/removal/update, count refresh and reconnect resync.
-- [ ] Centralize keyboard shortcut definitions and help rendering.
+- [x] Centralize keyboard shortcut definitions and help rendering.
 - [x] Scope HTMX focus movement to page-level navigation and explicit dialogs.
-- [ ] Restore focus after dialogs and menus close.
+- [x] Restore focus after dialogs and menus close.
 - [ ] Add automated accessibility checks, 200% zoom, forced-colour and
       reduced-motion coverage.
 

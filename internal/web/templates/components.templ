@@ -425,10 +425,10 @@ templ ContextMenu() {
 	<div
 		x-data="contextMenu"
 		x-bind:hidden="!visible"
-		x-on:click.away="close()"
+		x-on:click.away="dismiss()"
 		x-on:keydown.escape.window="close()"
 		x-on:keydown="onKeydown($event)"
-		x-on:ctx-menu.window="openAt($event.detail.x, $event.detail.y, $event.detail.uid, $event.detail.mailbox, $event.detail.real)"
+		x-on:ctx-menu.window="openAt($event.detail.x, $event.detail.y, $event.detail.uid, $event.detail.mailbox, $event.detail.real, $event.detail.trigger)"
 		class="context-menu"
 		role="menu"
 		x-cloak=""

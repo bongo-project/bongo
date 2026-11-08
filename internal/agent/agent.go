@@ -1486,6 +1486,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/mail/view/from-contacts/bulk", mailH.BulkFromContacts)
 			r.Post("/mail/view/lists/{listID}/bulk", mailH.BulkMailingList)
 			r.Get("/api/mail/unread-counts", mailH.UnreadCounts)
+			r.Get("/api/mail/{mailbox}/{uid}/row", mailH.LiveMessageRow)
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
 			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)
