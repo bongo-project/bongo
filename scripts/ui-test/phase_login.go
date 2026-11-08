@@ -30,7 +30,7 @@ func phase1Login(c *checker, browser *rod.Browser) {
 	c.check("Login", "Admin login completes", err)
 	url := currentURL(page)
 	c.check("Login", "Admin redirected after login",
-		boolErr(strings.Contains(url, "/mail") || strings.Contains(url, "/admin")))
+		boolErr(strings.Contains(url, "/mail") || strings.Contains(url, "/admin") || strings.Contains(url, "/summary")))
 
 	// Alice login.
 	page2 := browser.MustPage("")
@@ -39,7 +39,7 @@ func phase1Login(c *checker, browser *rod.Browser) {
 	c.check("Login", "Alice login completes", err)
 	url2 := currentURL(page2)
 	c.check("Login", "Alice redirected after login",
-		boolErr(strings.Contains(url2, "/mail")))
+		boolErr(strings.Contains(url2, "/mail") || strings.Contains(url2, "/summary")))
 
 	// Bad password.
 	page3 := browser.MustPage("")

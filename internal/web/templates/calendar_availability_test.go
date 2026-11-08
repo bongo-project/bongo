@@ -82,6 +82,7 @@ func TestEventAvailabilityLocales(t *testing.T) {
 func TestEventFormHasAvailabilityContainer(t *testing.T) {
 	out := renderToString(t, EventFormPage(&bongov1.Event{Guid: "g1", Title: "T"}, nil, false, "2030-05-06", "me@example.com"))
 	for _, want := range []string{
+		`class="event-editor"`, `class="event-editor-head"`, `class="event-form-actions"`,
 		`hx-get="/calendar/freebusy"`,
 		`hx-include="[name=attendees],[name=start_date],[name=start_time],[name=end_time],[name=all_day]"`,
 		`availability-refresh from:closest form`,

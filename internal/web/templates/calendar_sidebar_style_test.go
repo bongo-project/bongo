@@ -27,7 +27,7 @@ func TestCalendarSidebarStyleHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var fileInputs, settingsLinks, dots int
+	var fileInputs, settingsLinks, dots, namedSearches int
 	walk(doc, func(n *html.Node) {
 		if n.Type != html.ElementNode {
 			return
@@ -54,6 +54,9 @@ func TestCalendarSidebarStyleHooks(t *testing.T) {
 				t.Error("the settings link is not inside .nav-item")
 			}
 		}
+		if n.Data == "input" && hasClass(n, "calendar-sidebar-search") && a["aria-label"] != "" {
+			namedSearches++
+		}
 		if hasClass(n, "cal-color-dot") {
 			dots++
 		}
@@ -63,8 +66,8 @@ func TestCalendarSidebarStyleHooks(t *testing.T) {
 			}
 		}
 	})
-	if fileInputs != 1 || settingsLinks != 1 {
-		t.Errorf("file inputs=%d settings links=%d, want 1 each", fileInputs, settingsLinks)
+	if fileInputs != 1 || settingsLinks != 1 || namedSearches != 1 {
+		t.Errorf("file inputs=%d settings links=%d named searches=%d, want 1 each", fileInputs, settingsLinks, namedSearches)
 	}
 	if dots != len(cals) {
 		t.Errorf("colour dots=%d, want %d", dots, len(cals))

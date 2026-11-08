@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	bongoimap "github.com/bongo-project/bongo/internal/imap"
@@ -38,7 +39,9 @@ func NewSSEHandler(notifier *bongoimap.Notifier, pebble *store.PebbleStore, mail
 	return &SSEHandler{notifier: notifier, pebble: pebble, mailboxes: mailboxes}
 }
 
-// Events streams SSE events for the authenticated user's INBOX.
+// Events streams changes for the mailbox currently rendered by the browser and
+// notification-worthy events from INBOX. Keeping those subscriptions separate
+// prevents browsing Sent (or a nested folder) from disabling desktop alerts.
 func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	if userID == "" {
@@ -50,6 +53,23 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
 		return
+	}
+
+	mailbox := r.URL.Query().Get("mailbox")
+	if mailbox == "" {
+		mailbox = "INBOX"
+	}
+	if len(mailbox) > 255 || strings.ContainsAny(mailbox, "\x00\r\n") {
+		http.Error(w, "Invalid mailbox", http.StatusBadRequest)
+		return
+	}
+
+	viewed := h.notifier.Subscribe(userID, mailbox)
+	defer h.notifier.Unsubscribe(viewed)
+	var inbox chan bongoimap.Notification
+	if mailbox != "INBOX" {
+		inbox = h.notifier.Subscribe(userID, "INBOX")
+		defer h.notifier.Unsubscribe(inbox)
 	}
 
 	// Long-lived stream: opt out of the server's WriteTimeout so the connection
@@ -66,17 +86,18 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, ": ping\n\n")
 	flusher.Flush()
 
-	// Subscribe to INBOX by default.
-	mailbox := r.URL.Query().Get("mailbox")
-	if mailbox == "" {
-		mailbox = "INBOX"
-	}
-
-	ch := h.notifier.Subscribe(userID, mailbox)
-	defer h.notifier.Unsubscribe(ch)
-
 	heartbeat := time.NewTicker(30 * time.Second)
 	defer heartbeat.Stop()
+	var (
+		pending    []bongoimap.Notification
+		burstTimer *time.Timer
+		burstC     <-chan time.Time
+	)
+	defer func() {
+		if burstTimer != nil {
+			burstTimer.Stop()
+		}
+	}()
 
 	ctx := r.Context()
 
@@ -85,54 +106,37 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 
-		case notif, ok := <-ch:
+		case notif, ok := <-viewed:
 			if !ok {
 				return
 			}
-
-			switch notif.Type {
-			case bongoimap.NotifNewMail:
-				from, subject := h.loadMessageInfo(userID, mailbox, notif.UID)
-				writeSSEJSON(w, "newmail", map[string]any{
-					"mailbox": mailbox,
-					"uid":     notif.UID,
-					"exists":  notif.ExistsCount,
-					"from":    from,
-					"subject": subject,
-				})
-
-				// Send OOB badge update for sidebar unread count. Reflects
-				// actionable INBOX mail only, not the sum across all folders
-				// (Sent/Trash/Junk), which would inflate the badge.
-				if h.mailboxes != nil {
-					unread := h.mailboxes.UnreadCount(userID, "INBOX")
-					if unread > 0 {
-						fmt.Fprintf(w, "event: oob\ndata: <span id=\"unread-badge\" class=\"unread-badge\" hx-swap-oob=\"true\">%d</span>\n\n", unread)
-					} else {
-						fmt.Fprintf(w, "event: oob\ndata: <span id=\"unread-badge\" class=\"unread-badge\" hx-swap-oob=\"true\"></span>\n\n")
-					}
-				}
-			case bongoimap.NotifExpunge:
-				// UID only. A sequence number would have to be relative to
-				// some client's view of the mailbox, and a browser tab has no
-				// such view -- it addresses messages by UID throughout.
-				writeSSEJSON(w, "expunge", map[string]any{
-					"mailbox": mailbox,
-					"uid":     notif.UID,
-				})
-			case bongoimap.NotifFlagChange:
-				writeSSEJSON(w, "flagchange", map[string]any{
-					"mailbox": mailbox,
-					"uid":     notif.UID,
-					"flags":   notif.Flags,
-				})
-			case bongoimap.NotifEventReminder:
-				writeSSEJSON(w, "reminder", map[string]any{
-					"title":          notif.EventTitle,
-					"start_time":     notif.EventStart,
-					"minutes_before": notif.MinutesBefore,
-				})
+			if notif.Type == bongoimap.NotifEventReminder {
+				h.writeReminder(w, notif)
+				flusher.Flush()
+				continue
 			}
+			if mailbox == "INBOX" && notif.Type == bongoimap.NotifNewMail {
+				h.writeNewMail(w, userID, notif)
+				flusher.Flush()
+			}
+			pending = append(pending, notif)
+			if burstTimer == nil {
+				burstTimer = time.NewTimer(500 * time.Millisecond)
+				burstC = burstTimer.C
+			}
+
+		case notif, ok := <-inbox:
+			if !ok {
+				return
+			}
+			h.writeInboxEvent(w, userID, notif)
+			flusher.Flush()
+
+		case <-burstC:
+			h.writeMailboxBurst(w, mailbox, pending)
+			pending = nil
+			burstTimer = nil
+			burstC = nil
 			flusher.Flush()
 
 		case <-heartbeat.C:
@@ -140,6 +144,51 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func (h *SSEHandler) writeMailboxBurst(w http.ResponseWriter, mailbox string, notifications []bongoimap.Notification) {
+	if len(notifications) > 20 {
+		writeSSEJSON(w, "resync", map[string]string{"mailbox": mailbox})
+		return
+	}
+	for _, notif := range notifications {
+		action := ""
+		switch notif.Type {
+		case bongoimap.NotifNewMail, bongoimap.NotifFlagChange:
+			action = "upsert"
+		case bongoimap.NotifExpunge:
+			action = "remove"
+		}
+		if action != "" {
+			writeSSEJSON(w, "mailboxchange", map[string]any{"mailbox": mailbox, "uid": notif.UID, "action": action})
+		}
+	}
+}
+
+func (h *SSEHandler) writeInboxEvent(w http.ResponseWriter, userID string, notif bongoimap.Notification) {
+	switch notif.Type {
+	case bongoimap.NotifNewMail:
+		h.writeNewMail(w, userID, notif)
+	case bongoimap.NotifEventReminder:
+		h.writeReminder(w, notif)
+	case bongoimap.NotifFlagChange, bongoimap.NotifExpunge:
+		writeSSEJSON(w, "mailboxcounts", map[string]string{"mailbox": "INBOX"})
+	}
+}
+
+func (h *SSEHandler) writeNewMail(w http.ResponseWriter, userID string, notif bongoimap.Notification) {
+	from, subject := h.loadMessageInfo(userID, "INBOX", notif.UID)
+	writeSSEJSON(w, "newmail", map[string]any{
+		"mailbox": "INBOX", "uid": notif.UID, "exists": notif.ExistsCount,
+		"from": from, "subject": subject,
+	})
+}
+
+func (h *SSEHandler) writeReminder(w http.ResponseWriter, notif bongoimap.Notification) {
+	writeSSEJSON(w, "reminder", map[string]any{
+		"title": notif.EventTitle, "start_time": notif.EventStart,
+		"minutes_before": notif.MinutesBefore,
+	})
 }
 
 func writeSSEJSON(w http.ResponseWriter, event string, payload any) {

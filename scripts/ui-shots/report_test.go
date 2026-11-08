@@ -75,6 +75,7 @@ func TestExitCode(t *testing.T) {
 		{"console", []Result{clean, {Findings: []Finding{{Kind: KindConsole}}}}, 1},
 		{"csp", []Result{{Findings: []Finding{{Kind: KindCSP}}}}, 1},
 		{"asset", []Result{{Findings: []Finding{{Kind: KindAsset}}}}, 1},
+		{"a11y", []Result{{Findings: []Finding{{Kind: KindA11y}}}}, 1},
 		{"capture error", []Result{{Err: errors.New("timeout")}}, 1},
 	}
 	for _, tt := range tests {
@@ -174,7 +175,30 @@ func TestRoutesCoverRequiredScreens(t *testing.T) {
 			t.Errorf("route %q missing", w)
 		}
 	}
-	if len(variants) != 3 {
-		t.Errorf("want 3 variants, got %d", len(variants))
+	if len(variants) != 8 {
+		t.Errorf("want 8 variants, got %d", len(variants))
+	}
+	for _, want := range []string{"mobile-dark", "tablet-light", "desktop-zoom-200", "desktop-forced-colors", "desktop-reduced-motion"} {
+		found := false
+		for _, v := range variants {
+			found = found || v.name == want
+		}
+		if !found {
+			t.Errorf("variant %q missing", want)
+		}
+	}
+}
+
+func TestFocusedAndMobileOnlyRoutes(t *testing.T) {
+	inbox := routeSpec{name: "inbox"}
+	nav := routeSpec{name: "inbox-nav-open", mobileOnly: true}
+	if routeApplies(nav, variants[0]) {
+		t.Error("mobile-only route applies to desktop")
+	}
+	if !routeApplies(nav, variants[2]) {
+		t.Error("mobile-only route does not apply to mobile")
+	}
+	if !routeApplies(inbox, variants[5]) || routeApplies(routeSpec{name: "compose"}, variants[5]) {
+		t.Error("focused zoom variant must capture only inbox")
 	}
 }

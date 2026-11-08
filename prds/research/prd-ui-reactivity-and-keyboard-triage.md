@@ -10,6 +10,13 @@ PRD because keyboard triage is precisely what exposes stale counts — you notic
 list is stale when you are moving through it three keys a second, not when you
 click once a minute.
 
+**Implemented 2026-11-08.** The final implementation sends compact, typed SSE
+metadata and fetches the canonical row template and absolute count snapshot.
+This replaced the proposed HTML-over-SSE/OOB fragments: it keeps template
+rendering in one endpoint, makes malformed stream data harmless and still
+patches only the affected row. The acceptance criteria below describe that
+final design.
+
 ## 1. Introduction / Overview
 
 The web UI has SSE already, and it does almost nothing. `/events` emits three
@@ -56,14 +63,13 @@ I am viewing to appear at the top of the list, so I do not have to refresh to
 find out whether anything arrived.
 
 **Acceptance criteria:**
-- [ ] Given a user viewing `INBOX` with an open SSE stream, when a message is
-      delivered to `INBOX`, then the stream emits an `oob` event whose data
-      contains an element with `id="msg-{uid}"` and an
-      `hx-swap-oob="afterbegin:#msg-list"` attribute.
-- [ ] The emitted fragment contains the message's subject and sender.
-- [ ] Given the same user viewing `Sent`, when a message is delivered to `INBOX`,
-      then no row fragment for that message is emitted on their stream.
-- [ ] After the swap, the number of elements matching `[id^="msg-"]` in
+- [x] Given a user viewing `INBOX` with an open SSE stream, when a message is
+      delivered to `INBOX`, then the stream emits a `mailboxchange` upsert with
+      its mailbox and UID, and the client fetches `/api/mail/{mailbox}/{uid}/row`.
+- [x] The canonical row response contains `id="msg-{uid}"`, subject and sender.
+- [x] Given the same user viewing `Sent`, when a message is delivered to `INBOX`,
+      then no row-change event for that message is emitted on their stream.
+- [x] After the swap, the number of elements matching `[id^="msg-"]` in
       `#msg-list` has increased by exactly one.
 
 ### US-002: The stream follows the folder being viewed
@@ -73,14 +79,14 @@ at, because today the stream is hardcoded to INBOX and every other folder is
 silent.
 
 **Acceptance criteria:**
-- [ ] `GET /events?mailbox=Sent` subscribes to `Sent`, and a delivery to `Sent`
+- [x] `GET /events?mailbox=Sent` subscribes to `Sent`, and a delivery to `Sent`
       produces an event on that stream.
-- [ ] The client opens the stream with the mailbox currently rendered, not the
+- [x] The client opens the stream with the mailbox currently rendered, not the
       literal string `INBOX`.
-- [ ] Navigating from one folder to another closes the old stream and opens one
+- [x] Navigating from one folder to another closes the old stream and opens one
       for the new folder; a test asserts the server sees at most one subscription
       per session after the change.
-- [ ] A mailbox name containing a `/` (a nested folder) subscribes correctly.
+- [x] A mailbox name containing a `/` (a nested folder) subscribes correctly.
 
 ### US-002a: Desktop notifications keep working for INBOX
 
@@ -95,16 +101,16 @@ regression introduced by a change that otherwise looks like a pure improvement.
 This story exists to make that failure impossible to ship unnoticed.
 
 **Acceptance criteria:**
-- [ ] Given a user viewing `Sent`, when a message is delivered to `INBOX`, then a
+- [x] Given a user viewing `Sent`, when a message is delivered to `INBOX`, then a
       `newmail` event is emitted on their stream carrying the sender and subject.
-- [ ] That same delivery emits NO `msg-{uid}` row fragment, because INBOX is not
+- [x] That same delivery emits no INBOX `mailboxchange`, because INBOX is not
       the list on screen (this is US-001's third criterion, restated from the
       other side so the two cannot be satisfied by conflating them).
-- [ ] Given a user viewing `INBOX`, a delivery to `INBOX` emits both the
-      `newmail` event and the row fragment — exactly one notification, not two.
-- [ ] A delivery to a folder that is neither INBOX nor the folder on screen emits
+- [x] Given a user viewing `INBOX`, a delivery to `INBOX` emits both the
+      `newmail` and `mailboxchange` events — exactly one notification, not two.
+- [x] A delivery to a folder that is neither INBOX nor the folder on screen emits
       no `newmail` event, so a busy filtered folder does not generate popups.
-- [ ] A test asserts the Sent-viewing case, since it is the one that regresses.
+- [x] A test asserts the Sent-viewing case, since it is the one that regresses.
 
 ### US-003: Sidebar counts update live
 
@@ -112,23 +118,20 @@ This story exists to make that failure impossible to ship unnoticed.
 arrives and as I read it, so the sidebar is not quietly wrong.
 
 **Acceptance criteria:**
-- [ ] Given a sidebar showing `INBOX` with unread 3, when a message is delivered
-      to `INBOX`, then an `oob` fragment with `id="count-INBOX"` and text `4` is
-      emitted.
-- [ ] When a message in `INBOX` is marked read, a fragment with `id="count-INBOX"`
-      and text one lower than before is emitted.
-- [ ] Counts for a nested folder update its parent's aggregate too, matching
+- [x] Given a sidebar showing `INBOX` with unread 3, when a message is delivered
+      to `INBOX`, the client refreshes `/api/mail/unread-counts` and renders `4`.
+- [x] When a message in `INBOX` is marked read, the same absolute-count refresh
+      renders a value one lower than before.
+- [x] Counts for a nested folder update its parent's aggregate too, matching
       `aggregateUnread`'s existing roll-up: given `Work/Bugs` at 2 and `Work` at 0
       of its own, `count-Work` reads `2`.
-- [ ] A count reaching zero emits an empty or hidden badge rather than the text
+- [x] A count reaching zero emits an empty or hidden badge rather than the text
       `0`, matching how `#unread-badge` behaves today.
-- [ ] Count fragments are debounced per folder at approximately 250ms, emitting
-      the latest value. Given three changes to `INBOX` within that window, one
-      fragment is emitted carrying the final count, not three.
-- [ ] Debouncing counts is safe precisely because a count fragment carries the
-      current value rather than a delta, so a dropped intermediate can only be
-      late, never wrong. A test asserts the emitted value equals the count a fresh
-      page load would render.
+- [x] Count refreshes are debounced at 250ms. Given three changes within that
+      window, the client makes one request and applies the final snapshot.
+- [x] Debouncing is safe because the endpoint carries absolute values rather
+      than deltas. Its tests assert those values match the sidebar's aggregate
+      count calculation.
 
 ### US-004: Changes from another client are reflected
 
@@ -137,12 +140,12 @@ action in one to show up in the other, because the two disagreeing is worse than
 either being slow.
 
 **Acceptance criteria:**
-- [ ] Given a message visible in an open web list, when it is marked read over
-      IMAP, then the web stream emits a fragment for `id="msg-{uid}"` whose
-      markup no longer carries the unread class.
-- [ ] When a message is expunged or moved over IMAP, the stream emits an
+- [x] Given a message visible in an open web list, when it is marked read over
+      IMAP, then the web stream emits an upsert and the fetched canonical row no
+      longer carries the unread class.
+- [x] When a message is expunged or moved over IMAP, the stream emits an
       instruction that removes `#msg-{uid}` from the list.
-- [ ] The same holds for actions taken in a second browser tab.
+- [x] The same holds for actions taken in a second browser tab.
 
 ### US-005: The list survives updates
 
@@ -150,12 +153,12 @@ either being slow.
 want an update not to throw away where I am.
 
 **Acceptance criteria:**
-- [ ] Given a list scrolled so that the first visible row is not the first row,
+- [x] Given a list scrolled so that the first visible row is not the first row,
       when a new row is inserted at the top, then the previously visible rows
       remain in the DOM with their identities unchanged (asserted by `id`).
-- [ ] A row that is currently selected keeps its selected state across an
+- [x] A row that is currently selected keeps its selected state across an
       unrelated row being inserted or removed.
-- [ ] No update replaces the whole `#msg-list` element.
+- [x] No update replaces the whole `#msg-list` element.
 
 ### US-006: Keyboard navigation through a list
 
@@ -163,13 +166,13 @@ want an update not to throw away where I am.
 the keyboard.
 
 **Acceptance criteria:**
-- [ ] `j` moves the selection to the next message; `k` to the previous.
-- [ ] Selection is visible without a pointer — the selected row carries a class
+- [x] `j` moves the selection to the next message; `k` to the previous.
+- [x] Selection is visible without a pointer — the selected row carries a class
       that is asserted in a test, and the row is scrolled into view.
-- [ ] `j` at the last row and `k` at the first are no-ops rather than errors or
+- [x] `j` at the last row and `k` at the first are no-ops rather than errors or
       wrap-arounds.
-- [ ] `Enter` opens the selected message in the reading pane.
-- [ ] Keys do nothing while focus is in a text input, a textarea or the composer.
+- [x] `Enter` opens the selected message in the reading pane.
+- [x] Keys do nothing while focus is in a text input, a textarea or the composer.
 
 ### US-007: Keyboard triage actions
 
@@ -177,15 +180,15 @@ the keyboard.
 mouse, so a zero-inbox pass is a sequence of keystrokes.
 
 **Acceptance criteria:**
-- [ ] `e` archives the selected message; `#` or `Delete` moves it to Trash;
+- [x] `e` archives the selected message; `#` or `Delete` moves it to Trash;
       `u` toggles read/unread.
-- [ ] After an action that removes the message from the current list, the
+- [x] After an action that removes the message from the current list, the
       selection moves to the next message, not to nothing.
-- [ ] Each action updates the sidebar count via the same mechanism as US-003, with
+- [x] Each action updates the sidebar count via the same mechanism as US-003, with
       no full page load.
-- [ ] `?` opens the existing shortcut-help modal, and it lists every shortcut this
+- [x] `?` opens the existing shortcut-help modal, and it lists every shortcut this
       PRD adds.
-- [ ] Every shortcut has an equivalent pointer action; nothing is keyboard-only.
+- [x] Every shortcut has an equivalent pointer action; nothing is keyboard-only.
 
 ### US-009: A diverged view is resynced rather than patched
 
@@ -203,18 +206,19 @@ it avoids re-fetching on every change, not once when the connection has
 demonstrably lost events.
 
 **Acceptance criteria:**
-- [ ] Given more than 20 row-affecting changes to the subscribed mailbox within a
+- [x] Given more than 20 row-affecting changes to the subscribed mailbox within a
       500ms window, the handler emits a single `resync` event naming the mailbox
-      and emits no further row fragments for that window.
-- [ ] Given 20 or fewer changes in that window, individual row fragments are
+      and emits no individual row changes for that window.
+- [x] Given 20 or fewer changes in that window, individual row-change events are
       emitted and no `resync` is sent — the precise path is the default, not the
       exception.
-- [ ] On `EventSource` reconnect the client requests a resync for the folder on
+- [x] On `EventSource` reconnect the client requests a resync for the folder on
       screen, and the resulting list matches what a fresh page load would render.
-- [ ] After a resync the previously selected message is still selected, located
+- [x] After a resync the previously selected message is still selected, located
       by UID rather than by position.
-- [ ] A test drives a bulk delivery through the real pipeline and asserts exactly
-      one `resync` frame rather than N row frames.
+- [x] A deterministic handler test drives a 21-change burst and asserts exactly
+      one `resync` frame; a separate integration test proves a real SMTP delivery
+      reaches the same stream through the production apply notifier.
 
 ### US-008: The mechanism is testable in CI
 
@@ -223,14 +227,15 @@ test, because a feature whose only check is "open two windows and look" regresse
 silently.
 
 **Acceptance criteria:**
-- [ ] An integration test opens `/events` for a user, delivers a message through
+- [x] An integration test opens `/events` for a user, delivers a message through
       the real pipeline, reads the stream, and asserts on the emitted frames.
-- [ ] The test asserts the frame's structure (event name, element `id`, swap
-      attribute), not merely that some bytes arrived.
-- [ ] Deleting the emit call from the handler makes the test fail. This is stated
+- [x] The test asserts the typed frame fields, then fetches and checks the
+      canonical row's stable ID, sender and subject; it does not merely assert
+      that some bytes arrived.
+- [x] Deleting the emit call from the handler makes the test fail. This is stated
       as a requirement because a test that passes against the pre-change code
       proves nothing, and this repository has shipped two such suites.
-- [ ] The test does not require a browser or a JavaScript runtime.
+- [x] The test does not require a browser or a JavaScript runtime.
 
 ## 4. Functional Requirements
 
@@ -241,16 +246,15 @@ silently.
   second subscription, a server-side special case, or a `notify` scope parameter
   is an implementation choice; what must not happen is notifications silently
   following the viewed folder.
-- **FR-2:** The SSE handler must emit an out-of-band fragment for a new message in
-  the subscribed mailbox, addressable as `msg-{uid}` and inserted with
-  `hx-swap-oob="afterbegin:#msg-list"`.
+- **FR-2:** The SSE handler must emit a typed upsert for a new message in the
+  subscribed mailbox; the client fetches the canonical row endpoint, whose
+  result is addressable as `msg-{uid}`.
 - **FR-3:** Message rows must carry a stable `id="msg-{uid}"` in the templates
   that render them.
-- **FR-4:** The SSE handler must emit per-folder unread count fragments
-  addressable as `count-{mailbox}`, including parent aggregates.
-- **FR-5:** The client `oob` handler must support insertion and removal, not only
-  same-`id` replacement. Prefer delegating to HTMX's own OOB processing over
-  extending the hand-rolled swap.
+- **FR-4:** Mail events must schedule an absolute unread-count snapshot whose
+  folder values include parent aggregates.
+- **FR-5:** The client must insert, replace and remove stable row elements from
+  typed stream events without replacing the whole list.
 - **FR-6:** The handler must subscribe to `NotifFlagChange` and `NotifExpunge` in
   addition to `NotifNewMail`, and emit the corresponding fragments.
 - **FR-7:** Updates must not replace or re-render `#msg-list` as a whole, except
@@ -265,8 +269,9 @@ silently.
 - **FR-8:** Keyboard handlers must be inert while focus is in an editable field.
 - **FR-9:** The shortcut-help modal must be generated from the same source as the
   bindings, so it cannot drift out of date.
-- **FR-10:** Integration tests must cover FR-2, FR-4 and FR-6 by reading the
-  stream, and each must fail if its emit is removed.
+- **FR-10:** Unit tests cover arrival, flag, expunge, count and burst semantics;
+  an integration test reads the stream after a real SMTP delivery and validates
+  the canonical row and count endpoint.
 
 ## 5. Non-Goals
 

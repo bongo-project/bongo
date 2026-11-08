@@ -5,7 +5,7 @@ package templates
 templ Topbar(email string) {
 	<header class="topbar" role="banner">
 		<div class="topbar-left">
-			<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+			<button type="button" class="hamburger" x-on:click="toggleSidebar($event)" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" x-bind:aria-expanded="sidebarOpen" aria-controls="sidebar">&#9776;</button>
 			<a href="/mail/INBOX" class="brand" aria-label="BongoMail">
 				@Icon("logo", "brand-glyph")
 				<span class="wordmark">Bongo<em>&middot;</em>mail</span>
@@ -67,6 +67,20 @@ templ Topbar(email string) {
 	</header>
 }
 
+templ NotificationPrompt() {
+	<div x-data="notifications" x-init="init()">
+		<div class="notification-prompt" x-bind:hidden="!showPrompt" x-cloak="" role="region" aria-label={ t(ctx, "settings.enableNotifications") }>
+			<span>{ t(ctx, "settings.notificationPrompt") }</span>
+			<button type="button" class="notification-prompt-enable" x-on:click="requestPermission()">{ t(ctx, "settings.enableNotifications") }</button>
+			<button type="button" class="notification-prompt-close" x-on:click="dismissPrompt()" aria-label={ t(ctx, "common.close") }>@Icon("x", "")</button>
+		</div>
+	</div>
+}
+
+templ ClientStatus() {
+	<div id="client-status" class="client-status" role="status" aria-live="polite" hidden></div>
+}
+
 templ Layout(title string, email string) {
 	<!DOCTYPE html>
 	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-theme="auto" data-accent="bongo" data-sidebar="dark">
@@ -81,6 +95,10 @@ templ Layout(title string, email string) {
 			<link rel="apple-touch-icon" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
 			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-mail.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-apps.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-utilities.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-components.css?v=" + assetVersion() }/>
 			<link rel="stylesheet" href={ "/static/css/generated_geometry.css?v=" + assetVersion() }/>
 		</head>
 		<body hx-headers={ csrfHeaders(ctx) }>
@@ -100,8 +118,8 @@ templ Layout(title string, email string) {
 					</div>
 				</div>
 			}
-			<div class="layout">
-				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
+			<div class="layout" x-on:keydown="trapSidebarFocus($event)" x-on:keydown.escape.window="closeSidebar()">
+				<div class="sidebar-overlay" x-on:click="dismissSidebar()" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
 				<aside class="sidebar" id="sidebar" aria-label={ t(ctx, "nav.mailboxNav") } x-bind:class="{'open': sidebarOpen}">
 					{ children... }
 				</aside>
@@ -109,22 +127,16 @@ templ Layout(title string, email string) {
 				</main>
 			</div>
 			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>
-			<div x-data="notifications" x-init="init()">
-				<button
-					type="button"
-					class="notification-prompt outline secondary"
-					x-bind:hidden="permission !== 'default'"
-					x-on:click="requestPermission()"
-					x-cloak=""
-				>
-					{ t(ctx, "settings.enableNotifications") }
-				</button>
-			</div>
+			@ClientStatus()
+			@NotificationPrompt()
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
 			<script src={ "/static/js/richeditor.js?v=" + assetVersion() }></script>
 			<script src="/static/js/alpine-csp.min.js" defer></script>
 			<script src={ "/static/js/bongo.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-components.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-mail.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-pages.js?v=" + assetVersion() }></script>
 		</body>
 	</html>
 }
@@ -143,6 +155,10 @@ templ LayoutWithContent(title string, email string) {
 			<link rel="apple-touch-icon" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
 			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-mail.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-apps.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-utilities.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-components.css?v=" + assetVersion() }/>
 			<link rel="stylesheet" href={ "/static/css/generated_geometry.css?v=" + assetVersion() }/>
 		</head>
 		<body hx-headers={ csrfHeaders(ctx) }>
@@ -162,27 +178,21 @@ templ LayoutWithContent(title string, email string) {
 					</div>
 				</div>
 			}
-			<div class="layout">
-				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
+			<div class="layout" x-on:keydown="trapSidebarFocus($event)" x-on:keydown.escape.window="closeSidebar()">
+				<div class="sidebar-overlay" x-on:click="dismissSidebar()" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
 				{ children... }
 			</div>
 			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>
-			<div x-data="notifications" x-init="init()">
-				<button
-					type="button"
-					class="notification-prompt outline secondary"
-					x-bind:hidden="permission !== 'default'"
-					x-on:click="requestPermission()"
-					x-cloak=""
-				>
-					{ t(ctx, "settings.enableNotifications") }
-				</button>
-			</div>
+			@ClientStatus()
+			@NotificationPrompt()
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
 			<script src={ "/static/js/richeditor.js?v=" + assetVersion() }></script>
 			<script src="/static/js/alpine-csp.min.js" defer></script>
 			<script src={ "/static/js/bongo.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-components.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-mail.js?v=" + assetVersion() }></script>
+			<script src={ "/static/js/bongo-pages.js?v=" + assetVersion() }></script>
 		</body>
 	</html>
 }
@@ -200,6 +210,10 @@ templ LoginLayout(title string) {
 			<link rel="apple-touch-icon" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
 			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-mail.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-apps.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-utilities.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/bongo-components.css?v=" + assetVersion() }/>
 		</head>
 		<body class="login-page">
 			{ children... }

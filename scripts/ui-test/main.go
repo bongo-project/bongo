@@ -9,6 +9,7 @@
 //
 //	-host       Server hostname          (default "localhost")
 //	-web-port   HTTPS web port           (default 8080)
+//	-plain-http Connect without TLS       (default false; use with serve --dev)
 //	-headed     Run with visible browser  (default false)
 //	-slow       Slow-motion delay in ms   (default 0)
 //	-admin-user Admin email               (default "admin@localhost")
@@ -32,6 +33,7 @@ var (
 	slowMotion = flag.Int("slow", 0, "Slow-motion delay in milliseconds")
 	adminUser  = flag.String("admin-user", "admin@localhost", "Admin email")
 	adminPass  = flag.String("admin-pass", "admin", "Admin password")
+	plainHTTP  = flag.Bool("plain-http", false, "connect without TLS (for serve --dev)")
 )
 
 // Default timeout for element lookups.
@@ -110,6 +112,9 @@ func main() {
 
 	// Phase 12: Mailbox spam scan UI
 	phase12Scan(c, browser)
+
+	// Phase 13: Responsive and keyboard-only interaction contracts
+	phase13Interactions(c, alicePage)
 
 	c.report()
 

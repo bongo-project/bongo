@@ -32,3 +32,22 @@ func TestSettingsSidebarsLinkToVacation(t *testing.T) {
 		}
 	}
 }
+
+func TestSettingsTabsExposeKeyboardTabSemantics(t *testing.T) {
+	ctx, _ := csrfRenderCtx(t)
+	var buf bytes.Buffer
+	if err := SettingsPage(store.DefaultPreferences(), "u@example.com", "", ForwardView{}).Render(ctx, &buf); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		`x-data="settingsTabs(5)"`, `role="tablist"`,
+		`id="settings-tab-appearance"`, `aria-controls="settings-panel-appearance"`,
+		`id="settings-panel-appearance"`, `role="tabpanel"`,
+		`x-bind:tabindex="activeTab === 0 ? 0 : -1"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("settings tabs missing %s", want)
+		}
+	}
+}

@@ -30,8 +30,8 @@ func phase8Admin(c *checker, browser *rod.Browser) {
 
 	// Stats cards.
 	c.check("Admin", "Stat cards exist",
-		boolErr(has(page, ".stat-card")))
-	nStats := countEls(page, ".stat-card")
+		boolErr(has(page, ".kpi-row .kpi")))
+	nStats := countEls(page, ".kpi-row .kpi")
 	c.check("Admin", fmt.Sprintf("Dashboard stat cards (%d)", nStats), boolErr(nStats >= 3))
 
 	for _, section := range []string{"Users", "Domain", "Queue", "Cluster", "Log"} {
@@ -77,7 +77,7 @@ func phase8Admin(c *checker, browser *rod.Browser) {
 		c.check("Admin", "New user form loads",
 			boolErr(strings.Contains(currentURL(page), "/users/new")))
 		c.check("Admin", "User email field",
-			boolErr(has(page, "input[name='email']")))
+			boolErr(has(page, "input[name='email']") || (has(page, "input[name='username']") && has(page, "select[name='domain']"))))
 		c.check("Admin", "User display name field",
 			boolErr(has(page, "input[name='display_name']")))
 		c.check("Admin", "User password field",

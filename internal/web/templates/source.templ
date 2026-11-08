@@ -25,7 +25,7 @@ type MessageSourceDetail struct {
 templ MessageSourceFullPage(src MessageSourceDetail, email string) {
 	@LayoutWithContent(t(ctx, "mail.sourceTitle"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-			<nav>
+			<nav class="sidebar-scroll" aria-label={ t(ctx, "nav.mailboxNav") }>
 				<ul class="nav-list">
 					<li>
 						<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(src.Mailbox), src.UID)) }>
@@ -34,6 +34,7 @@ templ MessageSourceFullPage(src MessageSourceDetail, email string) {
 					</li>
 				</ul>
 			</nav>
+			@AppSwitcher("mail")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="msg-source-page u-p-20">

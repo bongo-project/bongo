@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+var applicationScripts = []string{
+	"bongo.js",
+	"bongo-components.js",
+	"bongo-mail.js",
+	"bongo-pages.js",
+}
+
 // A message link carries hx-get for the full view, and htmx handles the click
 // on the link itself. The reading-pane interceptor therefore has to run in the
 // capture phase, or htmx swaps the whole view before it sees the click.
@@ -33,11 +40,49 @@ func TestReadingPaneClickIsCaptured(t *testing.T) {
 
 func readJS(t *testing.T, name string) string {
 	t.Helper()
-	data, err := os.ReadFile(name)
-	if err != nil {
-		t.Fatalf("read %s: %v", name, err)
+	if name == "bongo.js" {
+		var combined strings.Builder
+		for _, script := range applicationScripts {
+			combined.Write(mustReadScript(t, script))
+			combined.WriteByte('\n')
+		}
+		return combined.String()
 	}
-	return string(data)
+	data, err := os.ReadFile(name)
+	if err == nil {
+		return string(data)
+	}
+	t.Fatalf("cannot load JavaScript fixture %s: %v", name, err)
+	return ""
+}
+
+func mustReadScript(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(name)
+	if err == nil {
+		return data
+	}
+	t.Fatalf("cannot load JavaScript fixture %s: %v", name, err)
+	return nil
+}
+
+func TestApplicationJavaScriptIsSplitBySubsystem(t *testing.T) {
+	for _, script := range applicationScripts {
+		info, err := os.Stat(script)
+		if err != nil {
+			t.Fatalf("stat %s: %v", script, err)
+		}
+		if info.Size() == 0 {
+			t.Errorf("%s is empty", script)
+		}
+	}
+	core, err := os.Stat("bongo.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if core.Size() > 20_000 {
+		t.Errorf("bongo.js grew back into a monolith: %d bytes", core.Size())
+	}
 }
 
 // funcBody returns the source of a top-level function in bongo.js.
@@ -61,7 +106,7 @@ func TestKeyboardNavigationOpensInPaneAfterPause(t *testing.T) {
 			t.Errorf("moveKeyboardFocus missing %s", want)
 		}
 	}
-	if !strings.Contains(js, "case 'j': // Next message\n      e.preventDefault();\n      if (idx < messageRows.length - 1) moveKeyboardFocus(") {
+	if !strings.Contains(js, "case 'next':\n      e.preventDefault();\n      if (idx < messageRows.length - 1) moveKeyboardFocus(") || !strings.Contains(js, "action: 'next', keys: ['j']") {
 		t.Error("j must move through moveKeyboardFocus")
 	}
 	if !strings.Contains(js, "if (idx > 0) moveKeyboardFocus(") {
@@ -83,10 +128,81 @@ func TestDeleteKeyMovesToTrash(t *testing.T) {
 	if !strings.Contains(js, "deleteRow(current, idx);") {
 		t.Error("d must call deleteRow")
 	}
+	if !strings.Contains(js, "action: 'delete', keys: ['d', '#', 'Delete']") || !strings.Contains(js, "case 'delete':") {
+		t.Error("delete shortcut registry must map d, # and Delete to the delete action")
+	}
 	del := funcBody(t, js, "deleteRow")
 	for _, want := range []string{"mailbox === 'Trash'", "params.set('action', 'delete')", "'/bulk'"} {
 		if !strings.Contains(del, want) {
 			t.Errorf("deleteRow missing %s", want)
+		}
+	}
+}
+
+func TestUnreadShortcutUsesTheBulkActionPipeline(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	body := funcBody(t, js, "toggleReadRow")
+	for _, want := range []string{
+		"bulkURL(mailbox)", "selectionKey(row)", "'mark-read' : 'mark-unread'",
+		"mailbox === 'unread'", "row.classList.toggle('unread'", "refreshUnreadCounts",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("toggleReadRow missing %s", want)
+		}
+	}
+	for _, want := range []string{"action: 'toggle-read', keys: ['u']", "case 'toggle-read':", "toggleReadRow(current, idx)"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("u shortcut missing %q", want)
+		}
+	}
+	if !strings.Contains(js, "label: 'js.shortcutToggleRead'") {
+		t.Error("shortcut help must list the read/unread shortcut")
+	}
+}
+
+func TestShortcutRegistryDrivesDispatchAndHelp(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	for _, want := range []string{
+		"var keyboardShortcuts = [", "keyboardShortcutAction(e.key)",
+		"keyboardShortcuts.find(", "keyboardShortcuts.map(",
+		"'<dl>' + keyboardShortcutHelp() + '</dl>'",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("central shortcut registry missing %q", want)
+		}
+	}
+	if strings.Contains(js, "'<dt><kbd>j</kbd>") {
+		t.Error("shortcut help still duplicates individual key definitions")
+	}
+}
+
+func TestMenusAndDialogsRestoreFocusOnKeyboardClose(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	for _, want := range []string{
+		"shortcutModalReturnFocus = document.activeElement",
+		"shortcutModalReturnFocus.isConnected",
+		"this.returnFocus = trigger || null",
+		"this.returnFocus.isConnected",
+		"this.bulkTagTrigger = event && event.currentTarget",
+		"this.bulkTagTrigger.focus()",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("focus restoration missing %q", want)
+		}
+	}
+}
+
+func TestMobileDrawerTrapsAndRestoresFocus(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	for _, want := range []string{
+		"this.sidebarReturnFocus = event && event.currentTarget",
+		"this.sidebarReturnFocus.isConnected",
+		"window.matchMedia('(max-width: 768px)').matches",
+		"event.shiftKey && document.activeElement === first",
+		"!event.shiftKey && document.activeElement === last",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("mobile drawer focus management missing %q", want)
 		}
 	}
 }
@@ -185,12 +301,14 @@ func TestArchiveSwipeAndShortcut(t *testing.T) {
 		t.Error("a swipe still moves to Trash")
 	}
 
-	keydown := js[strings.Index(js, "if (e.key === 'e' && archiveOpenMessage())"):]
+	keydown := js[strings.Index(js, "if (shortcutAction === 'archive' && archiveOpenMessage())"):]
 	if i, j := strings.Index(keydown, "archiveOpenMessage"), strings.Index(keydown, "if (messageRows.length === 0) return;"); i < 0 || j < 0 || i > j {
 		t.Error("e must be handled before the empty-list early return so the open-message view gets it")
 	}
-	if !strings.Contains(js, "case 'e':") || !strings.Contains(js, "<kbd>e</kbd>") || !strings.Contains(js, "js.shortcutArchive") {
-		t.Error("e shortcut or its help entry is missing")
+	for _, want := range []string{"case 'archive':", "action: 'archive', keys: ['e']", "label: 'js.shortcutArchive'"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("e shortcut missing %q", want)
+		}
 	}
 }
 

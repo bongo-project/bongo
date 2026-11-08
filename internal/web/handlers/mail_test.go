@@ -1315,3 +1315,44 @@ func TestListHeaderCountsOnEveryRenderPath(t *testing.T) {
 		})
 	}
 }
+
+func TestLiveMessageRowUsesCanonicalRowRendering(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ps.Close() })
+	applier := &directApplierTags{ps: ps}
+	mailboxes := store.NewMailboxStore(ps, applier)
+	applier.mailboxes = mailboxes
+	if err := mailboxes.CreateMailbox("u1", "Projects/Alpha"); err != nil {
+		t.Fatal(err)
+	}
+	uid, err := mailboxes.DeliverMessage("u1", "Projects/Alpha", &bongov1.MailMeta{
+		Guid: "live-row", From: "sender@example.test", Subject: "Live update",
+		ReceivedAt: time.Now().Unix(),
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := NewMailHandler(ps, nil, mailboxes, discardLogger())
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, req.WithContext(middleware.WithUserContext(req.Context(), "u1", "u1@example.test")))
+		})
+	})
+	r.Get("/api/mail/{mailbox}/{uid}/row", h.LiveMessageRow)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/mail/Projects%%2FAlpha/%d/row", uid), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{fmt.Sprintf(`id="msg-%d"`, uid), "sender@example.test", "Live update", `data-real-mailbox="Projects/Alpha"`} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("live row missing %q: %s", want, rec.Body.String())
+		}
+	}
+}

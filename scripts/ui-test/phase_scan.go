@@ -31,7 +31,7 @@ func phase12Scan(c *checker, browser *rod.Browser) {
 
 	// --- Scan button exists in toolbar ---
 	c.check("Scan", "Toolbar exists",
-		boolErr(has(page, `div.toolbar[role="toolbar"]`)))
+		boolErr(has(page, `.mail-head-tools[role="toolbar"]`)))
 
 	// The scan button is rendered by Alpine x-text, so check for the
 	// container with spamScan Alpine data binding.
@@ -47,17 +47,17 @@ func phase12Scan(c *checker, browser *rod.Browser) {
 
 	// Button text should show "Scan for spam" when not scanning
 	// (Alpine.js sets x-text dynamically).
-	btnText := evalStr(page, `button[title="Scan mailbox for spam"]`, `() => this.textContent.trim()`)
+	btnText := evalStr(page, `button[title="Scan mailbox for spam"]`, `() => this.innerText.trim()`)
 	c.check("Scan", "Scan button text",
 		boolErr(btnText == "Scan for spam"))
 
 	// Progress spans exist (hidden via x-show/x-cloak when not scanning).
 	c.check("Scan", "Progress indicator element",
-		boolErr(has(page, `[x-data*="spamScan"] [x-show="scanning"]`)))
+		boolErr(has(page, `[x-data*="spamScan"] [x-bind\:hidden="!scanning"]`)))
 
 	// Result element (shown after scan completes).
 	c.check("Scan", "Result display element",
-		boolErr(has(page, `[x-data*="spamScan"] [x-show*="result"]`)))
+		boolErr(has(page, `[x-data*="spamScan"] [x-bind\:hidden*="result"]`)))
 
 	// --- Verify scan button on another mailbox ---
 	if err := nav(page, "/mail/Sent"); err == nil {

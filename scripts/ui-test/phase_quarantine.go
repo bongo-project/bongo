@@ -42,7 +42,7 @@ func phase11Quarantine(c *checker, browser *rod.Browser) {
 	// Table headers.
 	for _, col := range []string{"Date", "Sender", "Subject", "Reason", "Score", "Actions"} {
 		c.check("Quarantine", fmt.Sprintf("Column header: %s", col),
-			boolErr(pageContains(page, col)))
+			boolErr(evalPage(page, fmt.Sprintf(`Array.from(document.querySelectorAll('thead th')).some(function(el){ return el.textContent.trim() === %q; })`, col)) == "true"))
 	}
 
 	// Select-all checkbox in header.
