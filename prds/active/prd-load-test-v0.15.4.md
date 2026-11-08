@@ -480,4 +480,79 @@ worthwhile.
      and message rate before and after.
   The first VPS run keeps the current mapping as the baseline (operator,
   2026-11-08).
-
+- **Delivery limit, mail only (stage 7.1, first VPS run, 2026-11-08).** Server
+  cx23 (2 vCPU, 4 GB), v0.15.3-2-g27d4650, ClamAV off, holding 1,500 accounts
+  and 75,000 bulk-loaded messages. SMTP accepted every message offered (27,923
+  in 14 minutes, no 4xx, 5xx or timeouts). At 25 messages/s delivery kept up,
+  but the search index backlog grew from the first minute. At 50 messages/s the
+  pipeline stored about 11 messages/s and drained the 12,952-message backlog at
+  15.7/s; CPU was 97% busy with 5 to 8% iowait, and the indexer queue sat at
+  4,095 of 4,096, so the FSM indexed inline 5,372 times. The probe lost no mail
+  (435 of 436 seen once the backlog cleared), but 306 of its messages were not
+  found by search within its timeout. Search indexing is the first limit on
+  this machine, at about 16 messages/s delivered. Resident memory stayed
+  between 540 and 740 MB throughout, so dry run finding 12 (3.2 GB) did not
+  repeat here.
+- **Delivery limit, mixed traffic (stage 7.3, same run).** 750 IMAP IDLE, 75
+  active IMAP, 30 DAV and 15 POP3 clients (5% of accounts active) put the
+  server at 36% CPU before any mail. The SMTP ramp (5 messages/s, plus 5 every
+  5 minutes) kept up fully to 10 messages/s; the search backlog grew from 15
+  messages/s, and at 25 messages/s delivery stored 17/s at 98.6% CPU. Clients
+  ran 34,345 operations over 43 minutes with no errors and no IDLE reconnects.
+  IMAP login p50 0.5 s, p99 2.1 s; DAV PROPFIND and REPORT p50 0.5 s, p99 2.1 s;
+  POP3 login p50 1.0 s (latency buckets are powers of two). Login cost is
+  bcrypt on a saturated CPU. Probe delivery delay p50 0.9 s, p95 47 s, max
+  about 8 minutes. After the ramp stopped, delivery caught up in 202 s and
+  search in 385 s.
+- **Bulk loader on the VPS.** 75,000 messages (1.25 GB) for 1,500 accounts in
+  4,209 s (17.8 messages/s), of which 704 s was draining indexes at the end; the
+  indexer queue filled 7,389 times. The data directory was 17 GB, 13.6 times the
+  mail, 16 GB of it the search index. A zstd -3 tar of it was 8.9 GB and took
+  3.5 minutes.
+- **Startup opens every user database.** bongo_user_dbs_open read 1,500 just
+  after start, before any client connected, so something at startup (usage
+  recompute, the header backfill or the orphan GC) opens every account's
+  SQLite database. With the default storage.max_open_user_dbs of 256 that
+  would evict and reopen in a loop on a store above 256 accounts. Find the
+  caller and make it iterate without holding each database open.
+- **Spool kept every delivered envelope (fixed in v0.15.5, PR #176).** Found in
+  stage 7.1: 28,270 envelopes in spool/deliver/ after one ramp, and each one
+  pinned its blob in the GC reference set, so deleted SMTP mail was never freed.
+- **A failed forward enqueue leaves no blob reference.** The deliver stage logs
+  a QueueStore.Enqueue failure as a warning and succeeds (internal/pipeline/
+  deliver/deliver.go, the forward and SRS bounce paths). With the deliver/
+  envelope gone, a message whose only reference was that forward has none, and
+  its blob is collectable after the GC grace period. No live mail is affected,
+  since the forward was already lost, but the failure is silent to the user.
+  Decide whether a failed forward enqueue should fail the stage (and retry) or
+  record a bounce.
+- **bongo_raft_commit_lag_entries cannot show an FSM backlog.** It is last log
+  index minus applied index, and hashicorp/raft v1.8.0 advances the applied
+  index when it hands a batch to the FSM channel, not when the FSM has applied
+  it. It read 0 throughout stages 7.1 and 7.3 while the FSM indexed inline and
+  delivery fell 13,000 messages behind. Either record the index the FSM last
+  finished applying and use that, or reword the help text and the runbook to
+  say what it measures; bongo_raft_fsm_apply_seconds is the metric that shows
+  FSM pressure today.
+- **bongo_dav_requests_in_flight read 0 in all 360 scrapes of stage 7.3,**
+  while the server-side DAV request times (bongo_protocol_command_seconds)
+  imply about 0.7 requests in flight on average. In isolation the gauge works:
+  30 DAV clients with a scrape every second gave 26 non-zero readings of 40.
+  Cause not found. One possibility is that a scrape on the CPU-bound server
+  was served only between requests; check whether /metrics gathering waits on
+  anything a DAV request holds.
+- **egress-check counts any connect error as blocked.** A probe address with
+  nothing listening on port 25 is refused and reported as blocked, so the check
+  passes without proving anything. The first run skipped the probe (operator
+  decision) because no approved host listening on port 25 was at hand. Report
+  "refused" apart from "timed out" and fail on refused, or document that a
+  probe must be a host known to accept connections on port 25.
+- **Runbook and test config gaps from the first run.** The bulk loader's state
+  file works as --probe-state-file and --clients-state-file; the runbook only
+  names seed.state. The runbook's client counts (5,000 IDLE and so on) assume
+  10,000 accounts; state them as a share of accounts. The test config leaves
+  postmaster@ and abuse@ unresolvable, so the server warns at every start; set
+  smtp.postmaster_account to a test account.
+- **CI lint downloads fail with 504.** golangci-lint-action failed to download
+  the linter binary three times on 2026-11-08 (PRs #172, #174, #176), each time
+  passing on a rerun. Cache the binary or pin an install that retries.
