@@ -1,5 +1,11 @@
 # Dev Mode Quick Start
 
+`make generate` regenerates both templ output and
+`internal/web/static/css/generated_geometry.css`. The geometry stylesheet is a
+finite set of CSP-safe positioning classes used by mail gestures, context menus
+and calendar events; edit `scripts/gen-geometry` when its ranges or increments
+need to change, never the generated CSS directly.
+
 ## Build and Run
 
 ```bash

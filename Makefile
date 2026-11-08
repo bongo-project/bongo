@@ -25,6 +25,7 @@ dist:
 	scripts/package-release.sh
 
 generate:
+	go run ./scripts/gen-geometry
 	@touch internal/web/templates/*.templ
 	templ generate
 
