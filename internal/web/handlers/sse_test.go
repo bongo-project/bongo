@@ -140,3 +140,38 @@ func TestSSELargeBurstEmitsOneResync(t *testing.T) {
 		t.Fatal("SSE handler did not stop after cancellation")
 	}
 }
+
+func TestSSEEmitsFlagUpdatesAndExpunges(t *testing.T) {
+	notifier := bongoimap.NewNotifier()
+	h := NewSSEHandler(notifier, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	req := httptest.NewRequest(http.MethodGet, "/events?mailbox=INBOX", nil).WithContext(ctx)
+	req = req.WithContext(middleware.WithUserContext(req.Context(), "u1", "u1@example.test"))
+	w := newSSETestWriter()
+	done := make(chan struct{})
+	go func() {
+		h.Events(w, req)
+		close(done)
+	}()
+	waitSSEContains(t, w, ": ping")
+
+	notifier.Notify("u1", "INBOX", bongoimap.Notification{Type: bongoimap.NotifFlagChange, UID: 4})
+	notifier.Notify("u1", "INBOX", bongoimap.Notification{Type: bongoimap.NotifExpunge, UID: 8})
+	body := waitSSEContains(t, w, `"uid":8`)
+	for _, want := range []string{
+		"event: mailboxchange\ndata: {\"action\":\"upsert\",\"mailbox\":\"INBOX\",\"uid\":4}",
+		"event: mailboxchange\ndata: {\"action\":\"remove\",\"mailbox\":\"INBOX\",\"uid\":8}",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("SSE body missing %q: %s", want, body)
+		}
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SSE handler did not stop after cancellation")
+	}
+}
