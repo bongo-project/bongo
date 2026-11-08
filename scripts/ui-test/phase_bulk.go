@@ -97,6 +97,18 @@ func phase4Bulk(c *checker, page *rod.Page) {
 	}
 
 	// --- Keyboard shortcuts ---
+	pressAndWait := func(key string, delay time.Duration) {
+		pressKey(page, key)
+		time.Sleep(delay)
+	}
+	navigateInbox := func(delay time.Duration) {
+		_ = nav(page, "/mail/INBOX")
+		time.Sleep(delay)
+	}
+	navigateInboxAndSelect := func() {
+		navigateInbox(400 * time.Millisecond)
+		pressKey(page, "j")
+	}
 	// Blur any focused element.
 	evalPage(page, `document.activeElement ? document.activeElement.blur() : null`)
 	time.Sleep(200 * time.Millisecond)
@@ -105,11 +117,23 @@ func phase4Bulk(c *checker, page *rod.Page) {
 	pressKey(page, "?")
 	time.Sleep(500 * time.Millisecond)
 	c.check("Keyboard", "? opens shortcuts modal",
-		boolErr(has(page, "#shortcut-modal-overlay")))
+		boolErr(isVisible(page, "#shortcut-modal-overlay")))
 
 	// Escape closes it.
 	pressKey(page, "Escape")
 	time.Sleep(300 * time.Millisecond)
+	c.check("Keyboard", "Escape closes shortcuts modal",
+		boolErr(!isVisible(page, "#shortcut-modal-overlay")))
+
+	// Every documented key, including the shifted forms emitted by some Mac
+	// browsers, resolves through the central registry before action dispatch.
+	mapped := evalPage(page, `(function(){ var events = [
+  {key:'j'}, {key:'k'}, {key:'Enter'}, {key:'r'}, {key:'d'},
+  {key:'3', shiftKey:true}, {key:'Delete'}, {key:'e'}, {key:'u'},
+  {key:'s'}, {key:'/'}, {key:'c'}, {key:'/', shiftKey:true}
+]; return events.map(function(event){ return keyboardShortcutAction(keyboardShortcutKey(event)); }).join(','); })()`)
+	c.check("Keyboard", "All documented keys map to their actions", boolErr(mapped ==
+		"next,previous,open,reply,delete,delete,delete,archive,toggle-read,toggle-star,search,compose,help"))
 
 	// c opens compose.
 	pressKey(page, "c")
@@ -118,31 +142,61 @@ func phase4Bulk(c *checker, page *rod.Page) {
 		boolErr(strings.Contains(currentURL(page), "/compose") || has(page, ".compose-form")))
 
 	// Navigate back.
-	_ = nav(page, "/mail/INBOX")
-	time.Sleep(500 * time.Millisecond)
+	navigateInbox(500 * time.Millisecond)
 
-	// / focuses search — handler uses querySelector('.search-input input, .search-input').
-	// The actual class may be .search-box; if the selector doesn't match, focus stays on body.
+	// / focuses the global search.
 	evalPage(page, `document.activeElement ? document.activeElement.blur() : null`)
 	time.Sleep(100 * time.Millisecond)
 	pressKey(page, "/")
 	time.Sleep(300 * time.Millisecond)
-	activeTag := evalPage(page, `document.activeElement ? document.activeElement.tagName.toLowerCase() : ''`)
-	// Accept either 'input' (shortcut worked) or any other element (selector mismatch in bongo.js).
-	c.check("Keyboard", fmt.Sprintf("/ shortcut fires (activeElement tag=%s)", activeTag),
-		boolErr(activeTag != ""))
+	activeID := evalPage(page, `document.activeElement ? document.activeElement.id : ''`)
+	c.check("Keyboard", fmt.Sprintf("/ focuses global search (activeElement id=%s)", activeID),
+		boolErr(activeID == "global-search"))
 
 	// Blur and test j/k navigation.
 	evalPage(page, `document.activeElement ? document.activeElement.blur() : null`)
 	time.Sleep(200 * time.Millisecond)
+	selectedUID := func() string {
+		return evalPage(page, `document.querySelector('.msg-row.keyboard-focus')?.dataset.uid || ''`)
+	}
 
-	pressKey(page, "j")
-	time.Sleep(300 * time.Millisecond)
-	c.check("Keyboard", "j moves focus (keyboard-focus class exists)",
-		boolErr(has(page, ".msg-row.keyboard-focus")))
+	pressAndWait("j", 300*time.Millisecond)
+	firstUID := selectedUID()
+	c.check("Keyboard", "j selects the first message", boolErr(firstUID != ""))
 
-	pressKey(page, "k")
-	time.Sleep(300 * time.Millisecond)
-	c.check("Keyboard", "k moves focus",
-		boolErr(has(page, ".msg-row.keyboard-focus")))
+	pressAndWait("j", 300*time.Millisecond)
+	secondUID := selectedUID()
+	c.check("Keyboard", "j advances to the next message", boolErr(secondUID != "" && secondUID != firstUID))
+
+	pressAndWait("k", 300*time.Millisecond)
+	backUID := selectedUID()
+	c.check("Keyboard", "k returns to the previous message", boolErr(backUID == firstUID))
+
+	assertToggles := func(key, expression, label string) {
+		before := evalPage(page, expression)
+		pressAndWait(key, 500*time.Millisecond)
+		after := evalPage(page, expression)
+		c.check("Keyboard", label, boolErr(after != before))
+	}
+	assertToggles("s", `document.querySelector('.msg-row.keyboard-focus .msg-star')?.classList.contains('flagged') ? 'yes' : 'no'`, "s toggles the selected message star")
+	assertToggles("u", `document.querySelector('.msg-row.keyboard-focus')?.classList.contains('unread') ? 'yes' : 'no'`, "u toggles the selected message read state")
+
+	assertNavigates := func(key, path, label string) {
+		pressAndWait(key, 500*time.Millisecond)
+		c.check("Keyboard", label, boolErr(strings.Contains(currentURL(page), path)))
+	}
+	assertNavigates("Enter", "/mail/INBOX/", "Enter opens the selected message")
+
+	navigateInboxAndSelect()
+	assertNavigates("r", "/compose/reply/", "r opens reply for the selected message")
+
+	assertRemovesRow := func(key, label string) {
+		pressKey(page, "j")
+		before := countEls(page, ".msg-row[data-uid]")
+		pressAndWait(key, 800*time.Millisecond)
+		c.check("Keyboard", label, boolErr(countEls(page, ".msg-row[data-uid]") == before-1))
+	}
+	navigateInbox(400 * time.Millisecond)
+	assertRemovesRow("e", "e archives the selected message")
+	assertRemovesRow("d", "d deletes the selected message")
 }

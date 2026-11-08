@@ -81,8 +81,40 @@ func newViewFixture(t *testing.T) *viewFixture {
 	r.Post("/mail/view/lists/{listID}/bulk", h.BulkMailingList)
 	r.Get("/mail/{mailbox}", h.ListMessages)
 	r.Post("/mail/{mailbox}/bulk", h.BulkAction)
+	r.Post("/mail/{mailbox}/{uid}/flags", h.ToggleFlags)
 
 	return &viewFixture{t: t, router: r, mailboxes: mailboxes, metadata: meta, contacts: contacts, prefs: prefs, logs: logs}
+}
+
+func TestToggleFlagsReturnsReusableMessageStarButton(t *testing.T) {
+	f := newViewFixture(t)
+	uid := f.deliver(seedMsg{mailbox: "INBOX", guid: "star-response", to: []string{"user1@example.com"}, at: 100})
+	path := fmt.Sprintf("/mail/INBOX/%d/flags", uid)
+
+	tests := []struct {
+		name   string
+		action string
+		want   []string
+	}{
+		{"add", "add", []string{`<button`, `class="msg-star flagged"`, `aria-label="Unstar message"`, `&#34;action&#34;:&#34;remove&#34;`}},
+		{"remove", "remove", []string{`<button`, `class="msg-star"`, `aria-label="Star message"`, `&#34;action&#34;:&#34;add&#34;`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, body := f.post(path, "user1", url.Values{"action": {tt.action}, "flag": {"flagged"}})
+			if status != http.StatusOK {
+				t.Fatalf("status = %d, body = %q", status, body)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(body, want) {
+					t.Errorf("response missing %q: %s", want, body)
+				}
+			}
+			if strings.Contains(body, "flag-star") {
+				t.Errorf("response returned legacy star markup: %s", body)
+			}
+		})
+	}
 }
 
 type seedMsg struct {

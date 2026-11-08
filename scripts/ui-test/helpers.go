@@ -283,8 +283,17 @@ func isVisible(page *rod.Page, selector string) bool {
 
 // pressKey dispatches a keyboard keydown event via JS (for shortcut testing).
 func pressKey(page *rod.Page, key string) {
+	eventKey := key
+	shiftKey := false
+	if key == "?" {
+		eventKey = "/"
+		shiftKey = true
+	} else if key == "#" {
+		eventKey = "3"
+		shiftKey = true
+	}
 	evalPage(page, fmt.Sprintf(
-		`document.dispatchEvent(new KeyboardEvent('keydown', {key: '%s', bubbles: true}))`, key))
+		`document.dispatchEvent(new KeyboardEvent('keydown', {key: '%s', shiftKey: %t, bubbles: true}))`, eventKey, shiftKey))
 }
 
 // evalPage runs JS on the page and returns the string result.
