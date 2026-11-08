@@ -253,9 +253,12 @@ func loadRate(t testing.TB, spec PlanSpec) *bulkResult {
 	return res
 }
 
-// TestBulkLoadRate reports the load and end-to-end rates. It asserts only a
-// floor far below what the loader reaches, so a regression to the old range
-// fails while a slow CI disk does not.
+// TestBulkLoadRate reports the load and end-to-end rates. Without the race
+// detector it asserts a floor far below what the loader reaches, so a
+// regression to per-message indexing fails while a slow CI disk does not.
+// Under the race detector it only logs: there the batched loader measured
+// 26-37 messages/s and per-message indexing 27, so no floor separates the two,
+// and one on a shared CI runner failed at 14.2.
 func TestBulkLoadRate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("rate test")
@@ -264,10 +267,10 @@ func TestBulkLoadRate(t *testing.T) {
 	total := float64(res.Messages) / (res.Seconds + res.IndexDrain)
 	t.Logf("rate: %.1f messages/s loading (%.1fs), %.1f messages/s end to end (%.1fs draining indexes), %.2f MB/s, warnings %d",
 		res.MessagesPerSec, res.Seconds, total, res.IndexDrain, res.BytesPerSec/(1<<20), res.Warnings)
-	floor := 100.0 // measured 200-330 without the race detector
 	if raceEnabled {
-		floor = 15 // measured 26-37; per-message indexing gave 27
+		return
 	}
+	const floor = 100.0 // measured 200-330
 	if total < floor {
 		t.Errorf("end-to-end rate %.1f messages/s is below the floor of %.0f", total, floor)
 	}
