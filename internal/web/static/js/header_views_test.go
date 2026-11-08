@@ -29,7 +29,7 @@ func TestHeaderViewActionsTargetTheRowsRealMailbox(t *testing.T) {
 	for name, body := range map[string]string{
 		"deleteRow":       funcBody(t, js, "deleteRow"),
 		"context menu":    js[strings.Index(js, "openContextMenu(event"):],
-		"keyboard reply":  js[strings.Index(js, "case 'r': // Reply"):],
+		"keyboard reply":  js[strings.Index(js, "case 'reply':"):],
 		"drag and drop":   funcBody(t, js, "initDragDrop"),
 		"swipe to delete": js[strings.Index(js, "var row2 = this.swipeTarget;"):],
 	} {
@@ -51,7 +51,7 @@ func TestHeaderViewActionsTargetTheRowsRealMailbox(t *testing.T) {
 
 	// The message list keys its selection by data-sel-key.
 	list := js[strings.Index(js, "Alpine.data('messageList'"):]
-	list = list[:strings.Index(list, "toggleBulkTag() {")]
+	list = list[:strings.Index(list, "toggleBulkTag(event) {")]
 	for _, want := range []string{"selectionKey(row)", "selectionKey(r)", "isSelected(uid, el)", "addSelectionToParams(params, key)"} {
 		if !strings.Contains(list, want) {
 			t.Errorf("messageList selection lacks %s", want)

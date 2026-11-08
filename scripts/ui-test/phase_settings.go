@@ -57,8 +57,8 @@ func phase7Settings(c *checker, page *rod.Page) {
 
 	c.check("Settings", "Default reply mode select exists",
 		boolErr(has(page, "select[name='default_reply']")))
-	c.check("Settings", "Signature textarea exists",
-		boolErr(has(page, "textarea[name='signature']")))
+	c.check("Settings", "Signature editor exists",
+		boolErr(hasAny(page, `.rich-editor input[name="signature_html"]`, `.rich-editor [contenteditable="true"][role="textbox"]`)))
 
 	// --- Localization tab ---
 	if countEls(page, ".settings-tab") >= 4 {

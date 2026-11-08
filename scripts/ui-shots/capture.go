@@ -16,26 +16,40 @@ import (
 	"github.com/go-rod/rod/lib/utils"
 )
 
-// variant is one viewport and colour-scheme combination.
+// variant is one viewport and accessibility-media combination. onlyRoute keeps
+// focused checks such as 200% zoom from multiplying the complete route matrix.
 type variant struct {
-	name   string
-	width  int
-	height int
-	mobile bool
-	dark   bool
+	name          string
+	width         int
+	height        int
+	mobile        bool
+	dark          bool
+	scale         float64
+	forcedColors  bool
+	reducedMotion bool
+	onlyRoute     string
 }
 
 var variants = []variant{
 	{name: "desktop-light", width: 1440, height: 900},
 	{name: "desktop-dark", width: 1440, height: 900, dark: true},
 	{name: "mobile-light", width: 390, height: 844, mobile: true},
+	{name: "mobile-dark", width: 390, height: 844, mobile: true, dark: true},
+	{name: "tablet-light", width: 768, height: 1024, mobile: true},
+	// At 200% browser zoom a 1440x900 device exposes a 720x450 CSS viewport.
+	// Combining that reflow width with page scale exercises both layout and the
+	// visual viewport instead of producing a desktop-sized false positive.
+	{name: "desktop-zoom-200", width: 720, height: 450, scale: 2, onlyRoute: "inbox"},
+	{name: "desktop-forced-colors", width: 1440, height: 900, forcedColors: true, onlyRoute: "inbox"},
+	{name: "desktop-reduced-motion", width: 1440, height: 900, reducedMotion: true, onlyRoute: "inbox"},
 }
 
 // routeSpec is one page to capture. Path is empty for the message route until
 // a message URL has been scraped from the inbox.
 type routeSpec struct {
-	name string
-	path string
+	name       string
+	path       string
+	mobileOnly bool
 	// anon routes are captured before login.
 	anon bool
 }
@@ -47,6 +61,7 @@ func routeSpecs(now time.Time) []routeSpec {
 	return []routeSpec{
 		{name: "login", path: "/login", anon: true},
 		{name: "inbox", path: "/mail/INBOX"},
+		{name: "inbox-nav-open", path: "/mail/INBOX", mobileOnly: true},
 		{name: "message"},
 		{name: "compose", path: "/compose"},
 		{name: "calendar-month", path: "/calendar"},
@@ -198,14 +213,14 @@ func capturePage(ctx context.Context, b *rod.Browser, route, path string, v vari
 			res.Err = fmt.Errorf("panic: %v", r)
 		}
 	}()
-	if err := capture(ctx, b, path, v, shot, o, &res); err != nil {
+	if err := capture(ctx, b, route, path, v, shot, o, &res); err != nil {
 		res.Err = err
 		res.Screenshot = ""
 	}
 	return res
 }
 
-func capture(parent context.Context, b *rod.Browser, path string, v variant, shot string, o captureOpts, res *Result) error {
+func capture(parent context.Context, b *rod.Browser, route, path string, v variant, shot string, o captureOpts, res *Result) error {
 	page, err := b.Page(proto.TargetCreateTarget{URL: "about:blank"})
 	if err != nil {
 		return fmt.Errorf("open page: %w", err)
@@ -226,12 +241,29 @@ func capture(parent context.Context, b *rod.Browser, path string, v variant, sho
 			return fmt.Errorf("enable touch: %w", err)
 		}
 	}
+	if v.scale > 0 {
+		if err := (proto.EmulationSetPageScaleFactor{PageScaleFactor: v.scale}).Call(p); err != nil {
+			return fmt.Errorf("set page scale: %w", err)
+		}
+	}
 	scheme := "light"
 	if v.dark {
 		scheme = "dark"
 	}
+	features := []*proto.EmulationMediaFeature{{Name: "prefers-color-scheme", Value: scheme}}
+	for _, media := range []struct {
+		enabled     bool
+		name, value string
+	}{
+		{v.forcedColors, "forced-colors", "active"},
+		{v.reducedMotion, "prefers-reduced-motion", "reduce"},
+	} {
+		if media.enabled {
+			features = append(features, &proto.EmulationMediaFeature{Name: media.name, Value: media.value})
+		}
+	}
 	if err := (proto.EmulationSetEmulatedMedia{
-		Features: []*proto.EmulationMediaFeature{{Name: "prefers-color-scheme", Value: scheme}},
+		Features: features,
 	}).Call(p); err != nil {
 		return fmt.Errorf("emulate colour scheme: %w", err)
 	}
@@ -264,6 +296,16 @@ func capture(parent context.Context, b *rod.Browser, path string, v variant, sho
 		return fmt.Errorf("timed out after %s waiting for %s", o.timeout, path)
 	}
 	utils.Sleep(o.settle.Seconds())
+	if route == "inbox-nav-open" {
+		hamburger, err := p.Element(".hamburger")
+		if err != nil {
+			return fmt.Errorf("open mobile navigation: %w", err)
+		}
+		if err := hamburger.Click(proto.InputMouseButtonLeft, 1); err != nil {
+			return fmt.Errorf("open mobile navigation: %w", err)
+		}
+		utils.Sleep(0.1)
+	}
 
 	if v.dark {
 		st, err := readThemeState(p)
@@ -279,8 +321,13 @@ func capture(parent context.Context, b *rod.Browser, path string, v variant, sho
 	if err != nil {
 		return err
 	}
+	a11y, err := readAccessibilityFindings(p)
+	if err != nil {
+		return err
+	}
+	res.Findings = append(res.Findings, a11y...)
 
-	png, err := p.Screenshot(false, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
+	png, err := p.Screenshot(true, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
 	if err != nil {
 		return fmt.Errorf("screenshot: %w", err)
 	}
@@ -301,6 +348,58 @@ func capture(parent context.Context, b *rod.Browser, path string, v variant, sho
 		}
 	}
 	return nil
+}
+
+// readAccessibilityFindings catches structural failures that are reliable to
+// detect without an external audit runtime. Visual and interaction checks stay
+// in the screenshot matrix and browser tests respectively.
+func readAccessibilityFindings(p *rod.Page) ([]Finding, error) {
+	v, err := p.Eval(`() => {
+  const visible = (el) => {
+    const style = getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden' && el.getClientRects().length > 0;
+  };
+  const text = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+  const named = (el) => {
+    if ((el.getAttribute('aria-label') || '').trim()) return true;
+    const ids = (el.getAttribute('aria-labelledby') || '').trim().split(/\s+/).filter(Boolean);
+    if (ids.some((id) => { const ref = document.getElementById(id); return ref && text(ref); })) return true;
+    if (el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]')) return true;
+    if (el.closest('label')) return true;
+    if (el.tagName === 'IMG') return el.hasAttribute('alt');
+    if (el.tagName === 'INPUT' && ['button', 'submit', 'reset'].includes(el.type)) return !!el.value;
+    return !!text(el) || !!(el.getAttribute('title') || '').trim();
+  };
+  const describe = (el) => {
+    const id = el.id ? '#' + el.id : '';
+    const cls = typeof el.className === 'string' && el.className.trim()
+      ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '';
+    return el.tagName.toLowerCase() + id + cls;
+  };
+  const issues = [];
+  const ids = new Map();
+  document.querySelectorAll('[id]').forEach((el) => ids.set(el.id, (ids.get(el.id) || 0) + 1));
+  ids.forEach((count, id) => { if (count > 1) issues.push('duplicate id #' + id + ' (' + count + ')'); });
+  document.querySelectorAll('button, a[href], input, select, textarea, img').forEach((el) => {
+    if (visible(el) && !named(el)) issues.push('missing accessible name: ' + describe(el));
+  });
+  if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) {
+    issues.push('horizontal page overflow: ' + document.documentElement.scrollWidth + 'px > ' + document.documentElement.clientWidth + 'px');
+  }
+  return JSON.stringify(issues);
+}`)
+	if err != nil {
+		return nil, fmt.Errorf("accessibility audit: %w", err)
+	}
+	var issues []string
+	if err := json.Unmarshal([]byte(v.Value.String()), &issues); err != nil {
+		return nil, fmt.Errorf("decode accessibility audit: %w", err)
+	}
+	findings := make([]Finding, 0, len(issues))
+	for _, issue := range issues {
+		findings = append(findings, Finding{Kind: KindA11y, Detail: issue})
+	}
+	return findings, nil
 }
 
 func readCSP(p *rod.Page) ([]Finding, error) {

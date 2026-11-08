@@ -9,7 +9,13 @@ import (
 
 func readStatic(t *testing.T, name string) string {
 	t.Helper()
-	data, err := os.ReadFile(name)
+	var data []byte
+	var err error
+	if name == "bongo.css" {
+		data, err = readApplicationCSS()
+	} else {
+		data, err = os.ReadFile(name)
+	}
 	if err != nil {
 		t.Fatalf("read %s: %v", name, err)
 	}
@@ -51,12 +57,12 @@ func TestCalendarSidebarRules(t *testing.T) {
 }
 
 func TestCalendarImportAutoSubmitSelector(t *testing.T) {
-	js := readStatic(t, "../js/bongo.js")
+	js := readStatic(t, "../js/bongo-pages.js")
 	if !strings.Contains(js, `input[name="ics"]`) {
-		t.Error(`bongo.js does not auto-submit the calendar import (input[name="ics"])`)
+		t.Error(`page initialisers do not auto-submit the calendar import (input[name="ics"])`)
 	}
 	if !strings.Contains(js, `input[name="vcf"]`) {
-		t.Error("bongo.js lost the contacts vCard auto-submit")
+		t.Error("page initialisers lost the contacts vCard auto-submit")
 	}
 }
 

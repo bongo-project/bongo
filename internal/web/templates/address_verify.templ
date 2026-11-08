@@ -11,15 +11,7 @@ type UserAddressInfo struct {
 templ AddressVerifyPage(addresses []UserAddressInfo, email, flash, errMsg string) {
 	@LayoutWithContent(t(ctx, "settings.sendAsAddresses"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
-					<li><a href="/settings">{ t(ctx, "nav.settings") }</a></li>
-					<li><a href="/settings/vacation">{ t(ctx, "settings.vacation") }</a></li>
-					<li><a href="/settings/security">{ t(ctx, "settings.security") }</a></li>
-					<li><a href="/settings/addresses" class="active">{ t(ctx, "settings.sendAsAddresses") }</a></li>
-				</ul>
-			</nav>
+			@SettingsSidebar("addresses")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">

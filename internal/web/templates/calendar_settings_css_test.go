@@ -63,7 +63,15 @@ func TestCalendarSettingsClassesHaveCSSRules(t *testing.T) {
 	}
 
 	var css strings.Builder
-	for _, p := range []string{"../static/css/bongo.css", "../static/css/componentlib/colors_and_type.css", "../static/css/generated_geometry.css"} {
+	for _, p := range []string{
+		"../static/css/componentlib/colors_and_type.css",
+		"../static/css/bongo.css",
+		"../static/css/bongo-mail.css",
+		"../static/css/bongo-apps.css",
+		"../static/css/bongo-utilities.css",
+		"../static/css/bongo-components.css",
+		"../static/css/generated_geometry.css",
+	} {
 		b, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatalf("read %s: %v", p, err)
@@ -105,6 +113,16 @@ func TestCalendarSettingsUsesSharedStyles(t *testing.T) {
 	for _, b := range buttons {
 		if !regexp.MustCompile(`class="[^"]*(btn-primary|btn-secondary|btn-danger|tool-btn)`).MatchString(b) {
 			t.Errorf("button with no shared style: %s", b)
+		}
+	}
+}
+
+func TestCalendarPublishingDestructiveActionsConfirm(t *testing.T) {
+	out := renderToString(t, CalendarPublishSection(PublishSettings{Calendar: "cal1", Published: true, HasPassword: true}))
+	for _, class := range []string{"publish-regenerate-form", "publish-unpublish-form", "publish-password-remove-form"} {
+		form := regexp.MustCompile(`<form[^>]*hx-confirm="[^"]+"[^>]*class="` + class + `"`).FindString(out)
+		if form == "" {
+			t.Errorf("%s has no confirmation", class)
 		}
 	}
 }

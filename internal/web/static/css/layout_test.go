@@ -1,17 +1,12 @@
 package css_test
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
 
 func TestMailLayoutModesHaveCSSRules(t *testing.T) {
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatalf("read bongo.css: %v", err)
-	}
-	css := string(data)
+	css := mustApplicationCSS(t)
 
 	for _, selector := range []string{
 		".mail-layout",
@@ -27,11 +22,7 @@ func TestMailLayoutModesHaveCSSRules(t *testing.T) {
 }
 
 func TestMobileMailWorkflowHasDedicatedRules(t *testing.T) {
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatalf("read bongo.css: %v", err)
-	}
-	css := string(data)
+	css := mustApplicationCSS(t)
 
 	for _, selector := range []string{
 		"@media (max-width: 768px)",
@@ -45,11 +36,7 @@ func TestMobileMailWorkflowHasDedicatedRules(t *testing.T) {
 }
 
 func TestCompactDensityHidesMessagePreview(t *testing.T) {
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatalf("read bongo.css: %v", err)
-	}
-	css := string(data)
+	css := mustApplicationCSS(t)
 	const sel = `[data-density="compact"] .msg-preview`
 	i := strings.Index(css, sel)
 	if i < 0 {
@@ -62,12 +49,9 @@ func TestCompactDensityHidesMessagePreview(t *testing.T) {
 }
 
 func TestMessageRowsHaveNoFixedHeight(t *testing.T) {
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatalf("read bongo.css: %v", err)
-	}
+	css := mustApplicationCSS(t)
 	for _, old := range []string{".density-compact .msg-row { height", ".density-comfortable .msg-row { height", ".density-spacious .msg-row { height"} {
-		if strings.Contains(string(data), old) {
+		if strings.Contains(css, old) {
 			t.Errorf("fixed row height %q clips the four-line message row", old)
 		}
 	}
@@ -89,11 +73,7 @@ func ruleBody(t *testing.T, css, sel string) string {
 // produced the same layout. Two-pane stacks the list above the reading pane;
 // three-pane puts them side by side next to the sidebar.
 func TestTwoAndThreePaneLayoutsDiffer(t *testing.T) {
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatalf("read bongo.css: %v", err)
-	}
-	css := string(data)
+	css := mustApplicationCSS(t)
 	if two := ruleBody(t, css, ".mail-layout.layout-two-pane"); !strings.Contains(two, "flex-direction: column") {
 		t.Errorf("two-pane must stack the list above the reading pane: %s", two)
 	}

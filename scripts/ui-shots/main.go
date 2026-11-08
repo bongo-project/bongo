@@ -3,8 +3,9 @@
 //
 // It builds the server into a temporary directory, starts a dev server on free
 // ports with ephemeral storage, seeds it (validate-server plus testdata/demo),
-// logs in as the dev admin and captures each route at 1440x900 light,
-// 1440x900 dark and 390x844 light with headless Chrome. Screenshots are named
+// logs in as the dev admin and captures each route at desktop, phone and tablet
+// sizes in light and dark modes. Focused inbox captures also exercise 200% zoom,
+// forced colours and reduced motion. Screenshots are named
 // <route>-<variant>.png and written outside the repository.
 //
 // Usage:
@@ -180,7 +181,7 @@ func captureVariant(ctx context.Context, b *rod.Browser, v variant, outDir strin
 	specs := routeSpecs(time.Now())
 	// Anonymous routes first, then log in.
 	for _, s := range specs {
-		if s.anon {
+		if s.anon && routeApplies(s, v) {
 			results = append(results, capturePage(ctx, ic, s.name, s.path, v, shot(s.name), o))
 		}
 	}
@@ -189,7 +190,7 @@ func captureVariant(ctx context.Context, b *rod.Browser, v variant, outDir strin
 	}
 	msgPath, msgErr := findMessagePath(ctx, ic, o)
 	for _, s := range specs {
-		if s.anon {
+		if s.anon || !routeApplies(s, v) {
 			continue
 		}
 		if s.name == "message" {
@@ -202,6 +203,13 @@ func captureVariant(ctx context.Context, b *rod.Browser, v variant, outDir strin
 		results = append(results, capturePage(ctx, ic, s.name, s.path, v, shot(s.name), o))
 	}
 	return results, nil
+}
+
+func routeApplies(s routeSpec, v variant) bool {
+	if s.mobileOnly && !v.mobile {
+		return false
+	}
+	return v.onlyRoute == "" || v.onlyRoute == s.name
 }
 
 // findMessagePath scrapes the first message link from the inbox.

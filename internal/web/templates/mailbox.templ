@@ -180,8 +180,8 @@ templ MailboxContent(mailbox string, view *store.HeaderView, counts ListCounts, 
 				} else {
 					<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>{ t(ctx, "mail.markAsSpam") }</button>
 				}
-				<div class="bulk-tag-dropdown u-relative u-inline-block" x-on:click.away="closeBulkTag()">
-				<button type="button" class="tool-btn" x-on:click="toggleBulkTag()" aria-haspopup="true" x-bind:aria-expanded="bulkTagOpen">{ t(ctx, "tag.applyMenu") }</button>
+				<div class="bulk-tag-dropdown u-relative u-inline-block" x-on:click.away="dismissBulkTag()">
+				<button type="button" class="tool-btn" x-on:click="toggleBulkTag($event)" aria-haspopup="true" x-bind:aria-expanded="bulkTagOpen">{ t(ctx, "tag.applyMenu") }</button>
 				<div
 					x-bind:hidden="!bulkTagOpen"
 					x-on:keydown.escape.window="closeBulkTag()"
@@ -267,6 +267,7 @@ func rowRealMailbox(msg MessageSummary, listMailbox string) string {
 templ MessageRows(messages []MessageSummary, mailbox string, view *store.HeaderView) {
 	for _, msg := range messages {
 		<div
+			id={ fmt.Sprintf("msg-%d", msg.UID) }
 			class={ "msg-row", "msg-row-grid", templ.KV("unread", !msg.Seen) }
 			role="listitem"
 			tabindex="0"

@@ -90,6 +90,13 @@ func TestDayViewDayHeaderWithoutAllDay(t *testing.T) {
 	}
 }
 
+func TestEmptyHourLinksNameTheCreateAction(t *testing.T) {
+	out := renderWeekHeader(t, "en", weekColumns(-1))
+	if got := strings.Count(out, `class="hour-row-link" aria-label="Create Event:`); got != 7*24 {
+		t.Errorf("named hour links = %d, want %d", got, 7*24)
+	}
+}
+
 func TestDayHeaderLocalised(t *testing.T) {
 	cases := []struct{ locale, want, notWant string }{
 		{"de", ">Mo<", ">Mon<"},

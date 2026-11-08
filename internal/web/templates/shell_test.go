@@ -88,7 +88,7 @@ func TestSidebarShell(t *testing.T) {
 		out := renderSidebar(t, admin)
 		// Group order.
 		last := -1
-		for _, g := range []string{`data-group="mail"`, `data-group="folders"`, `data-group="tags"`, `data-group="workspace"`} {
+		for _, g := range []string{`data-group="mail"`, `data-group="more"`, `data-group="views"`, `data-group="folders"`, `data-group="tags"`} {
 			i := strings.Index(out, g)
 			if i < 0 || i < last {
 				t.Fatalf("admin=%v: group %s missing or out of order", admin, g)
@@ -113,7 +113,7 @@ func TestSidebarShell(t *testing.T) {
 		if n := strings.Count(out, `class="unread"`); n != 1 {
 			t.Errorf("unread pill count = %d, want 1 (INBOX only)", n)
 		}
-		// Mail/Folders split: system mailboxes in Mail, custom ones in Folders.
+		// Primary mailboxes remain immediately visible; custom mailboxes live in Folders.
 		mailAt := strings.Index(out, `data-group="mail"`)
 		foldersAt := strings.Index(out, `data-group="folders"`)
 		for _, name := range []string{"INBOX", "Sent"} {
@@ -144,6 +144,11 @@ func TestSidebarShell(t *testing.T) {
 		if got := strings.Contains(out, `href="/admin"`); got != admin {
 			t.Errorf("admin link = %v, want %v", got, admin)
 		}
+		for _, want := range []string{`class="sidebar-apps"`, `href="/summary"`, `href="/mail/INBOX"`, `href="/calendar"`, `href="/tasks"`, `href="/contacts"`, `href="/settings"`, `aria-current`} {
+			if !strings.Contains(out, want) {
+				t.Errorf("admin=%v: application switcher missing %s", admin, want)
+			}
+		}
 		// Every nav link that navigates via htmx targets #main-content.
 		for _, a := range regexp.MustCompile(`<a [^>]*hx-get=[^>]*>`).FindAllString(out, -1) {
 			if !strings.Contains(a, `hx-target="#main-content"`) {
@@ -160,6 +165,11 @@ func TestLayoutsHaveVariantAttrsAndSearch(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), `id="global-search"`) {
 		t.Error("Layout missing global-search")
+	}
+	for _, want := range []string{`x-bind:aria-expanded="sidebarOpen"`, `id="client-status"`, `aria-live="polite"`, `x-on:click="dismissPrompt()"`} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("Layout missing %s", want)
+		}
 	}
 }
 

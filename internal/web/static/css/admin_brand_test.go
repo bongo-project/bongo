@@ -1,7 +1,6 @@
 package css_test
 
 import (
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -17,11 +16,7 @@ type cssRule struct {
 // selector. Rules inside @media blocks are indented and so are skipped.
 func topLevelRules(t *testing.T, want *regexp.Regexp) []cssRule {
 	t.Helper()
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	src := cssCommentRe.ReplaceAllString(string(data), "")
+	src := cssCommentRe.ReplaceAllString(mustApplicationCSS(t), "")
 	re := regexp.MustCompile(`(?m)^([^\s@}/][^{}]*)\{([^{}]*)\}`)
 	var out []cssRule
 	for _, m := range re.FindAllStringSubmatch(src, -1) {
@@ -94,11 +89,7 @@ func TestAdminWordmarkReadableOnAdminTopbar(t *testing.T) {
 }
 
 func TestAdminChromeRulesExist(t *testing.T) {
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css := string(data)
+	css := mustApplicationCSS(t)
 	for _, sel := range []string{".admin-footer", ".admin-sidebar-footer", ".admin-back-link", ".admin-back-link:hover"} {
 		if body := ruleBody(t, css, sel); strings.TrimSpace(body) == "" {
 			t.Errorf("%s rule is empty", sel)

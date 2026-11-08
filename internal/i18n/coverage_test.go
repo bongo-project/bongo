@@ -73,8 +73,13 @@ func TestKnownUserFacingStringsAreLocalized(t *testing.T) {
 		{filepath.Join("..", "web", "templates", "components.templ"), "Add</button>"},
 		{filepath.Join("..", "web", "templates", "components.templ"), "Remove</button>"},
 		{filepath.Join("..", "web", "templates", "rules.templ"), "Press Enter or comma to add each tag."},
-		{filepath.Join("..", "web", "static", "js", "bongo.js"), "Keyboard Shortcuts"},
-		{filepath.Join("..", "web", "static", "js", "bongo.js"), "Failed to create tag."},
+	}
+	for _, script := range []string{"bongo.js", "bongo-components.js", "bongo-mail.js", "bongo-pages.js"} {
+		path := filepath.Join("..", "web", "static", "js", script)
+		checks = append(checks,
+			struct{ path, text string }{path, "Keyboard Shortcuts"},
+			struct{ path, text string }{path, "Failed to create tag."},
+		)
 	}
 
 	var hardcoded []string

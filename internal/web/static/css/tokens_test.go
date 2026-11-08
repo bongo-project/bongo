@@ -14,7 +14,9 @@ func TestBongoCSSVarsResolve(t *testing.T) {
 	defRe := regexp.MustCompile(`(--[A-Za-z0-9_-]+)\s*:`)
 	useRe := regexp.MustCompile(`var\(\s*(--[A-Za-z0-9_-]+)`)
 	defined := map[string]bool{}
-	for _, f := range []string{"componentlib/colors_and_type.css", "bongo.css", "generated_geometry.css"} {
+	stylesheets := append([]string{"componentlib/colors_and_type.css"}, applicationStyles...)
+	stylesheets = append(stylesheets, "generated_geometry.css")
+	for _, f := range stylesheets {
 		data, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
@@ -23,10 +25,7 @@ func TestBongoCSSVarsResolve(t *testing.T) {
 			defined[m[1]] = true
 		}
 	}
-	data, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := []byte(mustApplicationCSS(t))
 	// Properties that bongo.css reads with a literal fallback and never
 	// defines. Defining them would change today's appearance, so they stay
 	// undefined until the screen story that restyles them (rules editor tag
@@ -103,12 +102,12 @@ func TestFontFacePerWeight(t *testing.T) {
 }
 
 func TestDensityAttributeIsApplied(t *testing.T) {
-	data, err := os.ReadFile("../js/bongo.js")
+	data, err := os.ReadFile("../js/bongo-components.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "setAttribute('data-density', this.density)") {
-		t.Error("bongo.js applyDensity must set data-density on <html>")
+		t.Error("appState applyDensity must set data-density on <html>")
 	}
 }
 
@@ -117,16 +116,10 @@ func TestDensityAttributeIsApplied(t *testing.T) {
 // the alias silently keeps the light value in dark mode.
 func TestIntroducedAliasesDefinedInBothThemes(t *testing.T) {
 	introduced := []string{"--bongo-amber"}
-	lib, err := os.ReadFile("componentlib/colors_and_type.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	app, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	light := regexp.MustCompile(`:root:not\(\[data-theme="dark"\]\)\s*\{([^}]*)\}`).FindStringSubmatch(string(lib))
-	dark := regexp.MustCompile(`\[data-theme="dark"\]\s*\{([^}]*)\}`).FindStringSubmatch(string(lib))
+	lib := mustReadCSSFile(t, "componentlib/colors_and_type.css")
+	app := []byte(mustApplicationCSS(t))
+	light := regexp.MustCompile(`:root:not\(\[data-theme="dark"\]\)\s*\{([^}]*)\}`).FindStringSubmatch(lib)
+	dark := regexp.MustCompile(`\[data-theme="dark"\]\s*\{([^}]*)\}`).FindStringSubmatch(lib)
 	if light == nil || dark == nil {
 		t.Fatal("could not locate light and dark token blocks")
 	}
@@ -238,15 +231,9 @@ func specAtLeast(a, b [2]int) bool {
 // repeated for the auto state; this guards against drift and against the auto
 // selector losing the cascade to the light blocks (which also match "auto").
 func TestAutoThemeFollowsDarkPreference(t *testing.T) {
-	libB, err := os.ReadFile("componentlib/colors_and_type.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	appB, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	lib, app := string(libB), string(appB)
+	lib := mustReadCSSFile(t, "componentlib/colors_and_type.css")
+	appB := []byte(mustApplicationCSS(t))
+	app := string(appB)
 
 	mediaRe := regexp.MustCompile(`@media \(prefers-color-scheme: dark\)\s*\{`)
 	loc := mediaRe.FindStringIndex(app)
@@ -328,10 +315,7 @@ func TestAutoThemeFollowsDarkPreference(t *testing.T) {
 // :root[data-theme="auto"] rule wins for the missing ones (for example
 // --brand-text turning white on the amber accent).
 func TestAutoDarkAccentCoversExplicitDark(t *testing.T) {
-	appB, err := os.ReadFile("bongo.css")
-	if err != nil {
-		t.Fatal(err)
-	}
+	appB := []byte(mustApplicationCSS(t))
 	app := string(appB)
 
 	want := map[string]bool{}

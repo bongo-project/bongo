@@ -51,14 +51,8 @@ func tagSettingsPaletteJS() string {
 
 templ TagSettingsPage(data TagSettingsData) {
 	@LayoutWithContent(t(ctx, "nav.tags"), data.Email) {
-		<aside class="sidebar" id="sidebar">
-			<nav>
-				<ul class="nav-list">
-					<li><a href="/settings">{ t(ctx, "nav.settings") }</a></li>
-					<li><a href="/settings/vacation">{ t(ctx, "settings.vacation") }</a></li>
-					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
-				</ul>
-			</nav>
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("tags")
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
