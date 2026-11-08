@@ -427,7 +427,10 @@ worthwhile.
 - TestRunWithPeersOpensPeerListener (internal/agent) can fail with "address
   already in use": it picks a free port and binds it later, and another test can
   take the port in between. Seen once in the full suite on 2026-11-07; passed
-  three times alone.
+  three times alone. The same race hit TestEmailReminderHourlySeries in CI on
+  2026-11-08 (PR #179, "web listen: bind: address already in use"); it passed
+  on a rerun. Fix the pattern once: listen on port 0 and hand the listener in,
+  rather than picking a port and binding it later.
 - No outbound mail generator: add an authenticated submission mode to loadgen
   (seeded credentials, 587 or 465) so the sink, bongo_queue_* and the submission
   connection metric are driven (dry run finding 9).
@@ -556,3 +559,33 @@ worthwhile.
 - **CI lint downloads fail with 504.** golangci-lint-action failed to download
   the linter binary three times on 2026-11-08 (PRs #172, #174, #176), each time
   passing on a rerun. Cache the binary or pin an install that retries.
+- **Connection limit (stage 7.4, same run).** Server cx23 (2 vCPU, 4 GB, no
+  swap) holding 1,500 accounts, IMAP IDLE over TLS on 993, one generator source
+  address with the local port range widened to 1024-65535.
+  - 5,000 connections (ramp 10 minutes): no errors; login p50 131 ms, max
+    0.55 s. Bongo RSS went from 704 to 1,196 MB.
+  - 15,000 connections (ramp 15 minutes, about 16 logins/s): held 25 minutes,
+    45,000 operations, no errors, no reconnects. Login p50 131 ms, p99 1 s, max
+    3.2 s. Once logged in, CPU was 9.5%, heap 716 MB after GC, RSS 2,010 MB,
+    about 100 KB per connection; 31,694 goroutines and 21,336 open files
+    (6,000 of them the 1,500 user databases opened at start).
+  - 25,000 connections (ramp 20 minutes, about 21 logins/s): collapsed. Every
+    error was a timeout: 39,326 connects, 7,854 logins and 7,042 established
+    IDLE connections. Clients reconnected 40,632 times, the open count peaked at
+    14,628, below what the previous step held, and the generator's memory guard
+    stopped the run at 395 MB available with about 12,000 to 14,000 open. Bongo
+    stayed up, with no OOM kill and no ERROR lines.
+  - Holding connections is cheap; accepting them is not. Each new connection
+    is a TLS handshake plus a bcrypt comparison, and on 2 vCPU the server keeps
+    up with about 16 logins/s. Above that, timeouts turn into immediate
+    reconnects, each adding a handshake and a login, and the load feeds itself.
+    A reconnect wave after a restart or a network blip would do the same: 15,000
+    clients at 16 logins/s take about 15 minutes to return. Candidates: cap
+    concurrent authentications (or TLS handshakes) so excess attempts wait or
+    are refused early instead of all timing out; check the bcrypt cost for
+    protocol logins; and give loadgen clients a reconnect backoff with jitter,
+    as real clients have, so the test separates server capacity from a retry
+    storm the generator creates.
+  - The memory guard (scripts on the generator, stopping load below 400 MB
+    available) should go into the runbook: the server has no swap, so running
+    out kills bongo.
