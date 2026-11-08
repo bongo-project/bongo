@@ -17,22 +17,30 @@ type MailingList struct {
 	Count int
 }
 
-// rowActionMailbox is the mailbox an action on a row must target. In the To
-// me, From my contacts and Mailing lists views the list mailbox is only a
-// navigation key, so the message's real mailbox is used; in a folder it is the
-// list mailbox, exactly as before. view is nil for everything but those views.
+// spansMailboxes reports whether a list shows messages from more than one
+// mailbox: the To me, From my contacts and Mailing lists views (view non-nil)
+// and the virtual mailboxes (All Mail, Unread, Starred). In such a list the
+// list mailbox is only a navigation key, and a UID alone does not name a
+// message, because UIDs are only unique within one mailbox.
+func spansMailboxes(listMailbox string, view *store.HeaderView) bool {
+	return view != nil || store.VirtualMailboxes[listMailbox]
+}
+
+// rowActionMailbox is the mailbox an action on a row must target: the
+// message's real mailbox in a list that spans mailboxes, and otherwise the
+// list mailbox, exactly as before.
 func rowActionMailbox(msg MessageSummary, listMailbox string, view *store.HeaderView) string {
-	if view != nil {
+	if spansMailboxes(listMailbox, view) {
 		return rowRealMailbox(msg, listMailbox)
 	}
 	return listMailbox
 }
 
-// rowSelKey is the bulk-selection key of a row in a header view: UIDs are only
-// unique within one mailbox, so it pairs the UID with the real mailbox. It is
-// empty in every other view, which keeps keying selections by UID.
+// rowSelKey is the bulk-selection key of a row in a list that spans mailboxes:
+// it pairs the UID with the real mailbox. It is empty in a folder, which keeps
+// keying selections by UID.
 func rowSelKey(msg MessageSummary, listMailbox string, view *store.HeaderView) string {
-	if view == nil {
+	if !spansMailboxes(listMailbox, view) {
 		return ""
 	}
 	return fmt.Sprintf("%d:%s", msg.UID, rowRealMailbox(msg, listMailbox))

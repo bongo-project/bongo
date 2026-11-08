@@ -139,7 +139,7 @@ const maxFilterAddress = 320
 
 // messageSender returns the bare sender address of the user's message at
 // mailbox/uid, or "" when the message is missing or its From does not parse.
-// Virtual mailboxes (unread, starred, all-mail) resolve to the real one.
+// A virtual mailbox (unread, starred, all-mail) gives "".
 func (h *RulesHandler) messageSender(userID, mailbox, uidStr string) string {
 	if mailbox == "" || uidStr == "" || h.mailboxes == nil || h.pebble == nil {
 		return ""
@@ -148,12 +148,13 @@ func (h *RulesHandler) messageSender(userID, mailbox, uidStr string) string {
 	if err != nil {
 		return ""
 	}
-	var msg *bongov1.MailboxMessage
+	// A virtual mailbox names no message: UIDs are only unique within one
+	// folder, so a UID there could mean several. Prefill nothing rather than
+	// guess; the list and message views link here with the real mailbox.
 	if store.VirtualMailboxes[mailbox] {
-		msg, _, err = h.mailboxes.GetMessageVirtual(userID, mailbox, uint32(uid))
-	} else {
-		msg, err = h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+		return ""
 	}
+	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
 	if err != nil || msg == nil {
 		return ""
 	}

@@ -62,7 +62,9 @@ func TestNewRuleFromMessage(t *testing.T) {
 		name, user, query, wantConds, wantName string
 	}{
 		{"own message", "u1", fmt.Sprintf("mailbox=INBOX&uid=%d", ann), `[{"field":"from","operator":"contains","value":"ann@example.com"}]`, `value="Mail from ann@example.com"`},
-		{"virtual mailbox", "u1", fmt.Sprintf("mailbox=unread&uid=%d", ann), `"value":"ann@example.com"`, "Mail from ann@example.com"},
+		// A virtual mailbox and a UID can name several messages, so nothing
+		// is prefilled even when only one matches; the UI sends the real one.
+		{"virtual mailbox", "u1", fmt.Sprintf("mailbox=unread&uid=%d", ann), empty, ""},
 		{"unparseable from", "u1", fmt.Sprintf("mailbox=INBOX&uid=%d", bad), empty, ""},
 		{"missing uid", "u1", "mailbox=INBOX&uid=999", empty, ""},
 		{"bad uid", "u1", "mailbox=INBOX&uid=x", empty, ""},

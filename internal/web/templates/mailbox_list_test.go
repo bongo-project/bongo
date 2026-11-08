@@ -229,6 +229,37 @@ func TestMessageRowsRealMailboxAttribute(t *testing.T) {
 	}
 }
 
+// TestVirtualMailboxRowsNameTheRealMailbox renders a row of each virtual
+// mailbox for a Sent message. Every action URL and the message link must name
+// Sent, and the selection key must pair the UID with Sent: UIDs are only
+// unique within one mailbox, so "all-mail" plus a UID could mean an INBOX
+// message with the same UID.
+func TestVirtualMailboxRowsNameTheRealMailbox(t *testing.T) {
+	for _, list := range []string{"all-mail", "unread", "starred"} {
+		t.Run(list, func(t *testing.T) {
+			out := renderRows(t, []MessageSummary{{UID: 1, Subject: "s", Mailbox: "Sent", ThreadRoot: "root", ThreadCount: 2}}, list)
+			for _, want := range []string{
+				`data-sel-key="1:Sent"`,
+				`hx-post="/mail/Sent/1/flags"`,
+				`href="/mail/Sent/1"`,
+				`hx-get="/mail/Sent/thread/root"`,
+			} {
+				if !strings.Contains(out, want) {
+					t.Errorf("missing %s in %s", want, out)
+				}
+			}
+			if strings.Contains(out, "/mail/"+list+"/") {
+				t.Errorf("a row action names the virtual mailbox %s: %s", list, out)
+			}
+		})
+	}
+	// A folder keeps keying by UID and acting on itself.
+	out := renderRows(t, []MessageSummary{{UID: 1, Subject: "s", Mailbox: "Sent"}}, "Sent")
+	if strings.Contains(out, "data-sel-key") {
+		t.Errorf("a folder row carries data-sel-key: %s", out)
+	}
+}
+
 func TestPaginationJoinsQueryBase(t *testing.T) {
 	tests := []struct{ base, want string }{
 		{"/search?q=abc", "/search?q=abc&page=2"},

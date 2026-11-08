@@ -106,7 +106,8 @@ function listReloadURL(mailbox) {
 // bulkURL is where a bulk action on the list on screen is posted. A header
 // view (To me, From my contacts, Mailing lists) names its own in data-bulk-url,
 // because its mailbox is only a navigation key and a folder may be called
-// "to-me"; a folder posts to its own URL.
+// "to-me"; a folder, and a virtual mailbox such as All Mail, posts to its own
+// URL.
 function bulkURL(mailbox) {
   const view = document.querySelector('.mail-view[data-mailbox]');
   if (view && view.dataset.mailbox === mailbox && view.dataset.bulkUrl) {
@@ -115,16 +116,18 @@ function bulkURL(mailbox) {
   return '/mail/' + encodeURIComponent(mailbox) + '/bulk';
 }
 
-// actionMailbox is the mailbox an action on a row must target. In the To me,
-// From my contacts and Mailing lists views a row carries data-sel-key and the
-// list mailbox is only a view name, so the message's real mailbox is used.
-// Everywhere else the list mailbox is returned unchanged.
+// actionMailbox is the mailbox an action on a row must target. In a list that
+// spans mailboxes (To me, From my contacts, Mailing lists, All Mail, Unread,
+// Starred) a row carries data-sel-key and the list mailbox is only a view
+// name, so the message's real mailbox is used. Everywhere else the list
+// mailbox is returned unchanged.
 function actionMailbox(row, mailbox) {
   return (row && row.dataset.selKey && row.dataset.realMailbox) || mailbox;
 }
 
 // selectionKey identifies a row in the bulk selection. UIDs are only unique
-// within one mailbox, so the header views key a row by "uid:mailbox".
+// within one mailbox, so a list that spans mailboxes keys a row by
+// "uid:mailbox".
 function selectionKey(row) {
   return row.dataset.selKey || String(row.dataset.uid);
 }

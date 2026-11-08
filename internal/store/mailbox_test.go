@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -563,72 +564,6 @@ func TestSanitizeMailMeta(t *testing.T) {
 	}
 }
 
-func TestGetMessageVirtual(t *testing.T) {
-	ms := newMailboxTestEnv(t)
-	userID := "user1"
-
-	metaUnread := &bongov1.MailMeta{
-		Guid: "unread-guid",
-	}
-	metaRead := &bongov1.MailMeta{
-		Guid: "read-guid",
-	}
-	metaStarred := &bongov1.MailMeta{
-		Guid: "starred-guid",
-	}
-
-	uidUnread, err := ms.DeliverMessage(userID, "INBOX", metaUnread, 0)
-	if err != nil {
-		t.Fatalf("DeliverMessage unread: %v", err)
-	}
-	uidRead, err := ms.DeliverMessage(userID, "INBOX", metaRead, FlagSeen)
-	if err != nil {
-		t.Fatalf("DeliverMessage read: %v", err)
-	}
-	uidStarred, err := ms.DeliverMessage(userID, "INBOX", metaStarred, FlagFlagged)
-	if err != nil {
-		t.Fatalf("DeliverMessage starred: %v", err)
-	}
-
-	tests := []struct {
-		name        string
-		virtual     string
-		uid         uint32
-		wantGUID    string
-		wantMailbox string
-		wantErr     bool
-	}{
-		{"unread finds unread message", "unread", uidUnread, "unread-guid", "INBOX", false},
-		{"unread does not find read message", "unread", uidRead, "", "", true},
-		{"starred finds starred message", "starred", uidStarred, "starred-guid", "INBOX", false},
-		{"starred does not find unread message", "starred", uidUnread, "", "", true},
-		{"all-mail finds read message", "all-mail", uidRead, "read-guid", "INBOX", false},
-		{"all-mail finds unread message", "all-mail", uidUnread, "unread-guid", "INBOX", false},
-		{"unknown uid returns error", "all-mail", 9999, "", "", true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			msg, mb, err := ms.GetMessageVirtual(userID, tc.virtual, tc.uid)
-			if tc.wantErr {
-				if err == nil {
-					t.Errorf("expected error, got msg %v in mailbox %q", msg, mb)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("GetMessageVirtual: %v", err)
-			}
-			if msg.MailGuid != tc.wantGUID {
-				t.Errorf("mail_guid = %q, want %q", msg.MailGuid, tc.wantGUID)
-			}
-			if mb != tc.wantMailbox {
-				t.Errorf("mailbox = %q, want %q", mb, tc.wantMailbox)
-			}
-		})
-	}
-}
-
 func TestSanitizeMailMeta_ValidUTF8Unchanged(t *testing.T) {
 	meta := &bongov1.MailMeta{
 		Subject:   "Valid UTF-8 subject",
@@ -647,38 +582,79 @@ func TestSanitizeMailMeta_ValidUTF8Unchanged(t *testing.T) {
 	}
 }
 
-func TestListVirtualMessagesAllMailExcludesTrash(t *testing.T) {
+// TestListVirtualMessagesExclusions pins which folders the three virtual
+// mailboxes read. The Junk and Trash messages, and those in folders below them,
+// are starred and unread, so each of the three filters would accept them on
+// the flags alone: only the folder exclusion keeps them out.
+func TestListVirtualMessagesExclusions(t *testing.T) {
 	ms := newMailboxTestEnv(t)
 	userID := "user1"
-	_ = ms.CreateMailbox(userID, "Trash")
-
-	if _, err := ms.DeliverMessage(userID, "INBOX", &bongov1.MailMeta{Guid: "inbox-guid"}, 0); err != nil {
-		t.Fatalf("deliver inbox: %v", err)
-	}
-	if _, err := ms.DeliverMessage(userID, "Trash", &bongov1.MailMeta{Guid: "trash-guid"}, 0); err != nil {
-		t.Fatalf("deliver trash: %v", err)
-	}
-
-	msgs, _, total, err := ms.ListVirtualMessages(userID, "all-mail", 0, 100)
-	if err != nil {
-		t.Fatalf("ListVirtualMessages: %v", err)
-	}
-	for _, m := range msgs {
-		if m.MailGuid == "trash-guid" {
-			t.Errorf("all-mail included a Trash message; it should be excluded")
+	for _, name := range []string{"Sent", "Drafts", "Junk", "Junk/x", "Trash", "Trash/Old", "Trashcan", "Archive"} {
+		if err := ms.CreateMailbox(userID, name); err != nil {
+			t.Fatalf("CreateMailbox %s: %v", name, err)
 		}
 	}
-	var sawInbox bool
-	for _, m := range msgs {
-		if m.MailGuid == "inbox-guid" {
-			sawInbox = true
+	deliver := func(mailbox, guid string, flags uint32) {
+		t.Helper()
+		if _, err := ms.DeliverMessage(userID, mailbox, &bongov1.MailMeta{Guid: guid}, flags); err != nil {
+			t.Fatalf("DeliverMessage %s: %v", mailbox, err)
 		}
 	}
-	if !sawInbox {
-		t.Errorf("all-mail should still include the INBOX message")
+	unreadStarred := uint32(FlagFlagged)
+	deliver("INBOX", "inbox-unread-starred", unreadStarred)
+	deliver("INBOX", "inbox-read", FlagSeen)
+	deliver("Archive", "archive-unread", 0)
+	deliver("Sent", "sent-read", FlagSeen)
+	deliver("Drafts", "drafts-unread-starred", unreadStarred)
+	deliver("Trashcan", "trashcan-unread-starred", unreadStarred)
+	for _, mb := range []string{"Junk", "Junk/x", "Trash", "Trash/Old"} {
+		deliver(mb, "excluded-"+mb, unreadStarred)
 	}
-	if total != 1 {
-		t.Errorf("all-mail total = %d, want 1 (Trash excluded)", total)
+
+	tests := []struct {
+		virtual string
+		want    []string
+	}{
+		{"all-mail", []string{"inbox-unread-starred", "inbox-read", "archive-unread", "sent-read", "drafts-unread-starred", "trashcan-unread-starred"}},
+		{"unread", []string{"inbox-unread-starred", "archive-unread", "drafts-unread-starred", "trashcan-unread-starred"}},
+		{"starred", []string{"inbox-unread-starred", "drafts-unread-starred", "trashcan-unread-starred"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.virtual, func(t *testing.T) {
+			msgs, names, total, err := ms.ListVirtualMessages(userID, tc.virtual, 0, 100)
+			if err != nil {
+				t.Fatalf("ListVirtualMessages: %v", err)
+			}
+			got := make(map[string]string, len(msgs))
+			for i, m := range msgs {
+				got[m.MailGuid] = names[i]
+			}
+			for _, guid := range tc.want {
+				if _, ok := got[guid]; !ok {
+					t.Errorf("%s is missing %s", tc.virtual, guid)
+				}
+			}
+			for guid, mb := range got {
+				if strings.HasPrefix(guid, "excluded-") {
+					t.Errorf("%s lists %s from %s", tc.virtual, guid, mb)
+				}
+			}
+			if total != len(tc.want) || len(got) != len(tc.want) {
+				t.Errorf("%s total = %d (%d listed), want %d: %v", tc.virtual, total, len(got), len(tc.want), got)
+			}
+		})
+	}
+}
+
+func TestVirtualExcludes(t *testing.T) {
+	for name, want := range map[string]bool{
+		"INBOX": false, "Archive": false, "Sent": false, "Drafts": false,
+		"Projects/Junk": false, "Trashcan": false, "Junkmail": false,
+		"Junk": true, "Trash": true, "Trash/Old": true, "Junk/x": true,
+	} {
+		if got := VirtualExcludes(name); got != want {
+			t.Errorf("VirtualExcludes(%q) = %v, want %v", name, got, want)
+		}
 	}
 }
 
