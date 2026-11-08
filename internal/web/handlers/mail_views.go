@@ -65,13 +65,13 @@ func (h *MailHandler) ListMailingList(w http.ResponseWriter, r *http.Request) {
 // BulkToMe applies a bulk action to messages of the To me view, which are named
 // as uid:mailbox targets. POST /mail/view/to-me/bulk
 func (h *MailHandler) BulkToMe(w http.ResponseWriter, r *http.Request) {
-	h.bulkAction(w, r, toMeView.URL(), &toMeView)
+	h.bulkAction(w, r, toMeView.URL(), true)
 }
 
 // BulkFromContacts is BulkToMe for the From my contacts view.
 // POST /mail/view/from-contacts/bulk
 func (h *MailHandler) BulkFromContacts(w http.ResponseWriter, r *http.Request) {
-	h.bulkAction(w, r, fromContactsView.URL(), &fromContactsView)
+	h.bulkAction(w, r, fromContactsView.URL(), true)
 }
 
 // BulkMailingList is BulkToMe for one mailing list's view.
@@ -82,7 +82,7 @@ func (h *MailHandler) BulkMailingList(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	h.bulkAction(w, r, view.URL(), &view)
+	h.bulkAction(w, r, view.URL(), true)
 }
 
 // ListMailingLists renders the Mailing lists overview: each list with its name

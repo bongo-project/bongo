@@ -144,4 +144,23 @@ func TestFoldersNamedLikeViewsReachableThroughAgent(t *testing.T) {
 	if code := post("/mail/view/to-me/bulk", url.Values{"action": {"flag"}, "targets": {"1:INBOX"}}); code != http.StatusOK {
 		t.Errorf("targets on the To me view's bulk route = %d, want 200", code)
 	}
+
+	// A tag view's bulk route is registered and, like a view's, wants
+	// targets. A folder called "tag:work" keeps its own plain-UID bulk route.
+	deliver("tag:work", "f-tagfolder", "FolderTagSubject", other)
+	if code := post("/mail/tag/work/bulk", url.Values{"action": {"mark-read"}, "uids": {"1"}}); code != http.StatusBadRequest {
+		t.Errorf("uids on the tag view's bulk route = %d, want 400", code)
+	}
+	if code := post("/mail/tag/work/bulk", url.Values{"action": {"mark-read"}, "targets": {"1:INBOX"}}); code != http.StatusOK {
+		t.Errorf("targets on the tag view's bulk route = %d, want 200", code)
+	}
+	if m, err := a.Mailboxes.GetMessage(userID, "INBOX", 1); err != nil || m.Flags&store.FlagSeen == 0 {
+		t.Errorf("tag view bulk target not marked read: %v", err)
+	}
+	if code := post("/mail/"+url.PathEscape("tag:work")+"/bulk", url.Values{"action": {"flag"}, "uids": {"1"}}); code != http.StatusOK {
+		t.Errorf("uids on the folder tag:work's bulk route = %d, want 200", code)
+	}
+	if m, err := a.Mailboxes.GetMessage(userID, "tag:work", 1); err != nil || m.Flags&store.FlagFlagged == 0 || m.Flags&store.FlagSeen != 0 {
+		t.Errorf("folder tag:work message flags wrong: %v", err)
+	}
 }

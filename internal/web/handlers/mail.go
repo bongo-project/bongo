@@ -294,6 +294,17 @@ func (h *MailHandler) LiveMessageRow(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.MessageRows(summaries, mailbox, nil)).ServeHTTP(w, r)
 }
 
+// BulkTagView applies a bulk action to messages of a tag view, which span
+// mailboxes and are named as uid:mailbox targets; a bare UID is refused.
+// POST /mail/tag/{name}/bulk. It is a route of its own rather than
+// /mail/tag:<name>/bulk because a folder may really be called "tag:<name>".
+// The name is not validated as a tag: nothing is looked up by it, every
+// target is checked against the user's own mailboxes, and the page of such a
+// folder posts here too (the templates know a tag view only by its prefix).
+func (h *MailHandler) BulkTagView(w http.ResponseWriter, r *http.Request) {
+	h.bulkAction(w, r, "tag:"+decodeMailbox(chi.URLParam(r, "name")), true)
+}
+
 // ListTagMessages renders the message list for a tag virtual view.
 // GET /mail/tag/{name}
 func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
@@ -317,7 +328,8 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build virtual mailbox name used in template URLs (e.g. /mail/tag:work/uid).
+	// The list mailbox of a tag view: a navigation key only. Its rows name
+	// their real mailbox, and its bulk URL is /mail/tag/{name}/bulk.
 	virtualMailbox := "tag:" + tagName
 
 	// Query GUIDs from SQLite tag index.
@@ -846,13 +858,15 @@ func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1
 // POST /mail/{mailbox}/bulk takes plain UIDs of that folder; for a virtual
 // mailbox (unread, starred, all-mail) it takes uid:mailbox targets instead.
 func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
-	h.bulkAction(w, r, decodeMailbox(chi.URLParam(r, "mailbox")), nil)
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
+	h.bulkAction(w, r, mailbox, store.VirtualMailboxes[mailbox])
 }
 
-// bulkAction applies a bulk operation. In a header view (view non-nil) or a
-// virtual mailbox a UID alone is ambiguous, so the client names each message
-// by its real mailbox in "targets" and bare "uids" are not read.
-func (h *MailHandler) bulkAction(w http.ResponseWriter, r *http.Request, mailbox string, view *store.HeaderView) {
+// bulkAction applies a bulk operation. In a list that spans mailboxes (a
+// header view, a tag view or a virtual mailbox; targetsOnly) a UID alone is
+// ambiguous, so the client names each message by its real mailbox in
+// "targets" and bare "uids" are not read.
+func (h *MailHandler) bulkAction(w http.ResponseWriter, r *http.Request, mailbox string, targetsOnly bool) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
 	if err := r.ParseForm(); err != nil {
@@ -864,7 +878,7 @@ func (h *MailHandler) bulkAction(w http.ResponseWriter, r *http.Request, mailbox
 	uidStrs := r.Form["uids"]
 	var pairStrs []string
 	requested := len(uidStrs)
-	if view != nil || store.VirtualMailboxes[mailbox] {
+	if targetsOnly {
 		pairStrs = r.Form["targets"]
 		requested += len(pairStrs)
 		uidStrs = nil
@@ -1634,15 +1648,13 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 	action := r.FormValue("action")
 	flag := r.FormValue("flag")
 
-	// A virtual mailbox names no message (see resolveMessage): not found.
-	realMailbox := mailbox
-	if store.VirtualMailboxes[mailbox] {
-		_, rm, err := h.resolveMessage(userID, mailbox, uint32(uid))
-		if err != nil {
-			http.Error(w, "Message not found", http.StatusNotFound)
-			return
-		}
-		realMailbox = rm
+	// A missing message is not found, and so is one under a list mailbox
+	// that names no message (a virtual mailbox, or a tag view's "tag:<name>"
+	// when no folder has that name; see resolveMessage).
+	_, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
 	}
 
 	var flagBit uint32
@@ -1696,14 +1708,13 @@ func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	realMailbox := mailbox
-	if store.VirtualMailboxes[mailbox] {
-		_, rm, err := h.resolveMessage(userID, mailbox, uint32(uid))
-		if err != nil {
-			http.Error(w, "Message not found", http.StatusNotFound)
-			return
-		}
-		realMailbox = rm
+	// A missing message is not found, and so is one under a list mailbox
+	// that names no message (a virtual mailbox, or a tag view's "tag:<name>"
+	// when no folder has that name; see resolveMessage).
+	_, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
 	}
 
 	if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), dest); err != nil {
@@ -2141,14 +2152,13 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
-	realMailbox := mailbox
-	if store.VirtualMailboxes[mailbox] {
-		_, rm, err := h.resolveMessage(userID, mailbox, uint32(uid))
-		if err != nil {
-			http.Error(w, "Message not found", http.StatusNotFound)
-			return
-		}
-		realMailbox = rm
+	// A missing message is not found, and so is one under a list mailbox
+	// that names no message (a virtual mailbox, or a tag view's "tag:<name>"
+	// when no folder has that name; see resolveMessage).
+	_, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
 	}
 
 	flash := flashMessageTrashed
@@ -2361,7 +2371,10 @@ func decodeMailbox(encoded string) string {
 // virtual mailbox (unread, starred, all-mail) names no message: it spans every
 // folder and UIDs are only unique within one, so a UID there could mean
 // several messages. Its rows name their real mailbox instead, and a request
-// that still names the virtual one is not found rather than guessed at.
+// that still names the virtual one is not found rather than guessed at. A tag
+// view's list mailbox, "tag:<name>", gets no such branch: it is looked up as a
+// folder, because a folder may really have that name, and is otherwise not
+// found. Tag view rows name their real mailbox too.
 func (h *MailHandler) resolveMessage(userID, mailbox string, uid uint32) (*bongov1.MailboxMessage, string, error) {
 	if store.VirtualMailboxes[mailbox] {
 		return nil, "", fmt.Errorf("message uid %d in virtual mailbox %s: %w", uid, mailbox, store.ErrNotFound)

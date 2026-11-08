@@ -233,9 +233,9 @@ func MailboxContent(mailbox string, view *store.HeaderView, counts ListCounts, m
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
-		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(viewBulkURL(view))
+		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(viewBulkURL(mailbox, view))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/mailbox.templ`, Line: 106, Col: 127}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/mailbox.templ`, Line: 106, Col: 136}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -248,7 +248,7 @@ func MailboxContent(mailbox string, view *store.HeaderView, counts ListCounts, m
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mailbox.selectedCount"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/mailbox.templ`, Line: 106, Col: 263}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/mailbox.templ`, Line: 106, Col: 272}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -1850,7 +1850,7 @@ func ThreadChildren(children []ThreadChild, mailbox string) templ.Component {
 // mailboxTitle is the page heading for a mailbox. A tag view is the virtual
 // mailbox "tag:<name>", headed by the tag name alone.
 func mailboxTitle(mailbox string) string {
-	return strings.TrimPrefix(mailbox, "tag:")
+	return strings.TrimPrefix(mailbox, tagViewPrefix)
 }
 
 // listCountsText renders the muted "· N unread · N total" header text.
