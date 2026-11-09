@@ -116,8 +116,19 @@ func phase4Bulk(c *checker, page *rod.Page) {
 	// ? opens shortcuts modal.
 	pressKey(page, "?")
 	time.Sleep(500 * time.Millisecond)
-	c.check("Keyboard", "? opens shortcuts modal",
-		boolErr(isVisible(page, "#shortcut-modal-overlay")))
+	modalState := evalPage(page, `(function(){
+  var overlay = document.getElementById('shortcut-modal-overlay');
+  var modal = overlay && overlay.querySelector('.shortcut-modal');
+  if (!overlay || !modal) return 'missing';
+  var rect = modal.getBoundingClientRect();
+  var style = getComputedStyle(overlay);
+  var items = modal.querySelectorAll('dt').length;
+  var onScreen = rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight;
+  if (style.position === 'fixed' && style.display === 'flex' && onScreen && items === keyboardShortcuts.length) return 'ok';
+  return 'position=' + style.position + ',display=' + style.display + ',rect=' + [rect.left, rect.top, rect.right, rect.bottom].join('/') + ',viewport=' + innerWidth + 'x' + innerHeight + ',items=' + items;
+})()`)
+	c.check("Keyboard", fmt.Sprintf("? opens full shortcut modal on screen (%s)", modalState),
+		boolErr(modalState == "ok"))
 
 	// Escape closes it.
 	pressKey(page, "Escape")
