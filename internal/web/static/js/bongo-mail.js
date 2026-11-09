@@ -288,7 +288,7 @@ function toggleShortcutModal() {
       '<div class="shortcut-modal" role="dialog" aria-labelledby="shortcut-modal-title" aria-modal="true">' +
         '<h3 id="shortcut-modal-title">' + i18n('shortcuts.title') + '</h3>' +
         '<dl>' + keyboardShortcutHelp() + '</dl>' +
-        '<button type="button" class="outline secondary modal-close" id="shortcut-modal-close">' + i18n('js.close') + '</button>' +
+        '<button type="button" class="btn-secondary modal-close" id="shortcut-modal-close">' + i18n('js.close') + '</button>' +
       '</div>';
     document.body.appendChild(overlay);
     overlay.addEventListener('click', function(ev) {
