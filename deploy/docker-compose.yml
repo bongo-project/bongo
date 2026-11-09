@@ -18,7 +18,7 @@ services:
   bongo:
     # A version tag publishes this image through .github/workflows/publish-image.yml.
     # Each release bumps the pin below and TestComposeImageTag together.
-    image: ghcr.io/bongo-project/bongo:0.15.7
+    image: ghcr.io/bongo-project/bongo:0.15.8
     container_name: bongo
     restart: unless-stopped
     mem_limit: 512m
