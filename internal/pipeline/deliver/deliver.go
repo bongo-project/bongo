@@ -5,6 +5,7 @@ package deliver
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,11 +15,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/raft"
 	"google.golang.org/protobuf/proto"
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/cluster"
 	"github.com/bongo-project/bongo/internal/imip"
 	bongomail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/mimesafe"
@@ -320,6 +323,50 @@ func NewDeliverProcessor(applier RaftApplier, resolver RecipientResolver, logger
 	}
 }
 
+// Backoff between attempts of a delivery write that never reached the Raft log.
+const (
+	deliverRetryInitial = 250 * time.Millisecond
+	deliverRetryMax     = 5 * time.Second
+)
+
+// neverEnteredLog reports whether a failed apply provably left no entry in the
+// Raft log, so repeating the same command cannot store the message twice.
+// raft.ErrEnqueueTimeout means the entry was never queued; both not-leader
+// errors are returned before an entry is created. Everything else, notably
+// raft.ErrLeadershipLost and FSM errors, may have committed, and is left to fail
+// the stage as before.
+func neverEnteredLog(err error) bool {
+	return errors.Is(err, raft.ErrEnqueueTimeout) ||
+		errors.Is(err, raft.ErrNotLeader) ||
+		errors.Is(err, cluster.ErrNotLeader)
+}
+
+// deliverMail applies one delivery write, retrying it while it fails with an
+// error that proves it was never applied. Without this, a brief Raft overload
+// or leader change would move mail already accepted with a 250 to error/,
+// which nothing reads back. Each retry repeats only the command that failed,
+// so no destination is written twice. Waiting stops when the per-message
+// budget in ctx ends, so a retry never carries delivery beyond it.
+func (p *DeliverProcessor) deliverMail(ctx context.Context, id, rcpt, userID, mailbox string, meta *bongov1.MailMeta, flags uint32) error {
+	wait := deliverRetryInitial
+	for attempt := 1; ; attempt++ {
+		err := store.DeliverMail(p.applier, userID, mailbox, meta, flags)
+		if err == nil || !neverEnteredLog(err) {
+			return err
+		}
+		p.logger.Warn("deliver: delivery write not accepted by raft, retrying",
+			"id", id, "recipient", rcpt, "attempt", attempt, "backoff", wait, "error", err)
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("%w (gave up after %d attempts: %w)", err, attempt, context.Cause(ctx))
+		case <-timer.C:
+		}
+		wait = min(wait*2, deliverRetryMax)
+	}
+}
+
 // Name returns the stage identifier used by the pipeline runner.
 func (p *DeliverProcessor) Name() string {
 	return "deliver"
@@ -524,7 +571,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// Honour the per-message time budget once, before the first Raft write, and
 	// never inside the loop: stopping part-way through a multi-recipient delivery
 	// would leave some recipients delivered, and the retry from error/ would then
-	// deliver to them a second time.
+	// deliver to them a second time. deliverMail's retry waits do watch ctx, but
+	// only to give up on the one write that failed: a write it gives up on was
+	// never applied, so the loop then fails exactly as an apply error always has.
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("deliver: message %s abandoned before delivery: %w", env.Id, err)
 	}
@@ -716,13 +765,13 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			p.logger.Info("deliver: normal destination skipped (delete rule)",
 				"recipient", rcpt, "user", userID, "id", env.Id)
 		} else {
-			applyErr = store.DeliverMail(p.applier, userID, targetMailbox, meta, env.PendingFlags)
+			applyErr = p.deliverMail(ctx, env.Id, rcpt, userID, targetMailbox, meta, env.PendingFlags)
 		}
 		for _, c := range copyMetas {
 			if applyErr != nil {
 				break
 			}
-			applyErr = store.DeliverMail(p.applier, userID, c.mailbox, c.meta, env.PendingFlags)
+			applyErr = p.deliverMail(ctx, env.Id, rcpt, userID, c.mailbox, c.meta, env.PendingFlags)
 			if applyErr == nil {
 				p.logger.Info("deliver: copy stored",
 					"recipient", rcpt, "user", userID, "guid", c.meta.Guid, "id", env.Id, "target_mailbox", c.mailbox)
