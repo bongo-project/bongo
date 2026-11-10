@@ -6363,11 +6363,4 @@ func userQuota(u *AdminUserInfo) int64 {
 	return u.QuotaBytes
 }
 
-func disableButtonClass(disabled bool) string {
-	if disabled {
-		return "outline"
-	}
-	return "outline secondary"
-}
-
 var _ = templruntime.GeneratedTemplate
