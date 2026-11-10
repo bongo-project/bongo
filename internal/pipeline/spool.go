@@ -1,7 +1,9 @@
 package pipeline
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -71,6 +73,11 @@ func (s *SpoolStore) removeStaleTempFiles() (int, error) {
 type SpoolStore struct {
 	baseDir string
 	logger  *slog.Logger
+
+	// beforeListRead, when set, runs in List between the directory read and
+	// each envelope's file read. Tests use it to move an envelope inside that
+	// window, which cannot otherwise be hit deterministically.
+	beforeListRead func(dir, id string)
 }
 
 // NewSpoolStore creates the spool directory structure and returns a SpoolStore.
@@ -190,6 +197,16 @@ func (s *SpoolStore) Move(id string, from string, to string) error {
 }
 
 // List returns all envelopes in the named directory, sorted by filename.
+//
+// The listing is a snapshot, not a lock: the runner renames envelopes between
+// directories and removes them on completion while List runs. An envelope that
+// vanishes between the directory read and its file read is therefore skipped,
+// exactly as if it had gone a moment before the directory read, which List has
+// always tolerated. Every caller reads the result that way (the blob GC's
+// reference scan, the error and quarantine purges, the quarantine page), and
+// failing instead aborted the blob GC on most passes under load. Any other
+// read or unmarshal failure is still an error: that envelope is present and
+// its contents are unknown.
 func (s *SpoolStore) List(dir string) ([]*bongov1.QueueEnvelope, error) {
 	entries, err := os.ReadDir(filepath.Join(s.baseDir, dir))
 	if err != nil {
@@ -202,7 +219,13 @@ func (s *SpoolStore) List(dir string) ([]*bongov1.QueueEnvelope, error) {
 			continue
 		}
 		id := e.Name()[:len(e.Name())-len(envSuffix)]
+		if s.beforeListRead != nil {
+			s.beforeListRead(dir, id)
+		}
 		env, err := s.ReadEnvelope(dir, id)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("spool: list read %s/%s: %w", dir, id, err)
 		}

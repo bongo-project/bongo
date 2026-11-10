@@ -2790,6 +2790,16 @@ const spoolScanPasses = 2
 // that is genuinely empty, and the difference is whether the sweep deletes
 // live mail.
 //
+// An envelope that vanishes between List's directory read and its file read is
+// not a read failure: SpoolStore.List skips it, as it would one gone before the
+// directory read. Aborting on it stopped the GC on most passes under load. The
+// skip loses no reference: a renamed envelope is at rest in another directory by
+// the second pass, and a removed one is finished, its body referenced from
+// Pebble mail if it was delivered. A reference missed in a single scan is not
+// enough to delete anyway: planBlobSweep needs the blob unreferenced on two
+// consecutive passes and older than orphanGCMinAge, and deleteSweptBlobs
+// re-checks every candidate against a fresh scan just before deleting.
+//
 // KNOWN GAP, deliberately not fixed here: this reads only the NODE-LOCAL
 // spool, and the spool is not replicated. Blob GC is leader-only, so on a
 // multi-node cluster the leader would build a reference set blind to every
