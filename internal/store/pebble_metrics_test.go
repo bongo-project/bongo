@@ -72,8 +72,19 @@ func TestPebbleStallAndCompactionMetricsMove(t *testing.T) {
 			t.Fatalf("Set: %v", err)
 		}
 	}
-	if got := scrape(t, "bongo_pebble_wal_fsync_seconds_count"); got < fsync0+20 {
-		t.Errorf("fsync count grew by %v, want at least 20", got-fsync0)
+	// Pebble wakes the writer (syncQ.pop in flushPending) before the flush loop
+	// records the fsync latency, so the last Set can return before its fsync is
+	// counted. Wait for the count rather than reading it once.
+	var fsyncGrowth float64
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		fsyncGrowth = scrape(t, "bongo_pebble_wal_fsync_seconds_count") - fsync0
+		if fsyncGrowth >= 20 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if fsyncGrowth < 20 {
+		t.Errorf("fsync count grew by %v, want at least 20", fsyncGrowth)
 	}
 	// Nanosecond to second: a real fsync is far below 20s each. An unconverted
 	// sum would be in the millions.
