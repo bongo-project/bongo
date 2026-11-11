@@ -53,6 +53,10 @@ func init() {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
+	// Flags are parsed by now. Any error from here on is a runtime failure
+	// (config, startup, shutdown), and printing the usage text after it only
+	// buries the message.
+	cmd.SilenceUsage = true
 	// Resolve role only if explicitly provided: --dev takes precedence, then
 	// --role. If neither is given, the role comes from the config file (falling
 	// back to the "dev" default when there is no config). This prevents a
