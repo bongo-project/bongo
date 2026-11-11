@@ -240,7 +240,7 @@ func TestRaftSnapshotAndJoin(t *testing.T) {
 	node4.raftNode = r4
 
 	t.Cleanup(func() {
-		r4.Shutdown()
+		_ = r4.Shutdown().Error() // wait before Pebble closes
 		if node4.search != nil {
 			node4.search.Close()
 		}

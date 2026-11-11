@@ -362,7 +362,10 @@ func createTestClusterN(t *testing.T, n int) []*testNode {
 			if node.httpSrv != nil {
 				node.httpSrv.Close()
 			}
-			node.raftNode.Shutdown()
+			// Wait for Raft's goroutines: without .Error() a replication
+			// goroutine can still read the log after Pebble closes, which
+			// panics with "pebble: closed".
+			_ = node.raftNode.Shutdown().Error()
 			if node.search != nil {
 				node.search.Close()
 			}
