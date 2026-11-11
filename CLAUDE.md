@@ -98,7 +98,12 @@ The `Agent` struct is the central orchestrator. Config is loaded and validated i
 `NewAgent` runs. Startup order:
 1. `NewAgent`: storage (Pebble, BlobStore, MetadataManager per-user SQLite, SearchManager
    per-user Bleve), then Raft for `server` and `dev` (dev: in-memory transport and snapshots,
-   Pebble-backed log in a temp dir). The `agent` role returns before storage.
+   Pebble-backed log in a temp dir). The `agent` role returns before storage. Before raft
+   starts, `NewRaftNode` skips raft's snapshot restore unless Pebble is behind the newest
+   snapshot, and rebuilds SQLite and Bleve from Pebble unless the last run left the
+   clean-shutdown marker `{data_dir}/derived-indexes.clean` at the current applied index
+   (`internal/cluster/startup.go`). The start removes the marker; `Shutdown` writes it after
+   the index worker drains and the index stores close.
 2. `Run`: HTTP router built, wait for a Raft leader, gossip, FSM indexer, blob sync, then SMTP,
    queue worker, reminders, IMAP, POP3 (protocols only when Raft is running), dev admin user,
    orphan GC and usage recompute, control listener, and finally the public web server.

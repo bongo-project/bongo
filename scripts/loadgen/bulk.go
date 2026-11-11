@@ -28,9 +28,12 @@ import (
 //	    store and no snapshot. The first start of a server on it bootstraps a
 //	    new single-node cluster and has nothing to Restore. A snapshot
 //	    predating the load is the one thing that would undo it:
-//	    FSM.Restore runs DeleteRange over every "/" key. That is why a
-//	    directory with any Raft state is refused, and why
-//	    TestBulkDemonstrationSnapshotDiscardsDirectWrites shows the loss.
+//	    FSM.Restore runs DeleteRange over every "/" key. A start skips the
+//	    restore while Pebble is past the snapshot, but a follower installing
+//	    that snapshot, or a restore after Pebble falls behind, still drops
+//	    the load. That is why a directory with any Raft state is refused,
+//	    and why TestBulkDemonstrationSnapshotDiscardsDirectWrites shows the
+//	    loss.
 //	(b) Every write goes through the FSM's own apply code (cluster.FSM.Apply
 //	    with Index 0, the same synthetic mailbox-deliver path a Raft entry
 //	    takes), so key layout, UID allocation, attachment splitting and the
@@ -71,6 +74,9 @@ import (
 // Blobs are content-addressed files and are not part of Raft, so they need no
 // such argument. An interrupted load leaves the marker file below and
 // unreferenced blobs; delete the directory and run again. There is no resume.
+// A complete load also leaves the server's clean-shutdown marker
+// (cluster.DerivedIndexMarkerName), so the first start trusts the indexes the
+// load drained instead of rebuilding them.
 const bulkMarker = "bulkload.incomplete"
 
 func init() {
