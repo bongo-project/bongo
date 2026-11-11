@@ -60,7 +60,7 @@ func TestMinimumVersions(t *testing.T) {
 		min     string
 		why     string
 	}{
-		{"go directive", `(?m)^go (\S+)$`, "1.27.3", "latest stable Go"},
+		{"go directive", `(?m)^go (\S+)$`, "1.27.4", "GO-2026-6859 (net/http MaxBytesReader panic)"},
 		{"go-chi/chi", `(?m)^\s*github\.com/go-chi/chi/v5 (\S+)`, "5.3.0", "GO-2026-5774, GO-2026-5775, GO-2026-5777"},
 		{"hashicorp/raft", `(?m)^\s*github\.com/hashicorp/raft (\S+)`, "1.8.0", "raft, memberlist and go-metrics move together"},
 		{"hashicorp/memberlist", `(?m)^\s*github\.com/hashicorp/memberlist (\S+)`, "0.7.0", "raft, memberlist and go-metrics move together"},
