@@ -288,9 +288,18 @@ func bulkLoad(ctx context.Context, spec PlanSpec, o bulkOptions, statePath strin
 	start := time.Now()
 	loadErr := l.run(ctx, o.Workers, progress)
 	elapsed := time.Since(start)
+	// Every apply has returned, so this is the index the server will find
+	// (0: the loader applies at index 0). Read before drain closes Pebble.
+	applied := cluster.AppliedIndex(ls.ps)
 	drain, closeErr := ls.drain(time.Hour)
 	if err := errors.Join(loadErr, closeErr); err != nil {
 		return nil, err
+	}
+	// The indexes drained and their stores closed cleanly, which is what the
+	// server's clean shutdown records too. Without the marker the first start
+	// would rebuild every index the load just wrote.
+	if err := cluster.WriteDerivedIndexMarker(o.DataDir, applied); err != nil {
+		return nil, fmt.Errorf("record derived indexes complete: %w", err)
 	}
 	if err := os.Remove(marker); err != nil {
 		return nil, fmt.Errorf("remove marker: %w", err)

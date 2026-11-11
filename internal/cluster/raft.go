@@ -40,7 +40,13 @@ func NewRaftNode(
 	blobs *store.BlobStore,
 	metadata *store.MetadataManager,
 	logger *slog.Logger,
+	opts ...RaftNodeOption,
 ) (*RaftNode, error) {
+	var o raftNodeOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	raftCfg := raft.DefaultConfig()
 	raftCfg.LocalID = raft.ServerID(cfg.Server.Name)
 
@@ -172,8 +178,14 @@ func NewRaftNode(
 		return nil, fmt.Errorf("raft not supported for role %q", cfg.Server.Role)
 	}
 
+	if err := prepareFSMForStart(raftCfg, fsm, raftStore, snaps, pebbleStore, blobs, metadata, o, logger); err != nil {
+		closeTransport(transport, logger)
+		return nil, err
+	}
+
 	r, err := raft.NewRaft(raftCfg, fsm, raftStore, raftStore, snaps, transport)
 	if err != nil {
+		closeTransport(transport, logger)
 		return nil, fmt.Errorf("creating raft node: %w", err)
 	}
 
@@ -200,6 +212,68 @@ func NewRaftNode(
 	logger.Info("raft node created", "role", cfg.Server.Role, "id", string(raftCfg.LocalID), "addr", string(raftAddr))
 
 	return node, nil
+}
+
+// prepareFSMForStart decides, before raft starts, whether raft restores its
+// newest snapshot into the FSM, and (with WithDerivedIndexCheck) whether the
+// derived indexes need rebuilding.
+//
+// hashicorp/raft restores the newest snapshot into the FSM on every start
+// (Raft.restoreSnapshot in api.go, called from NewRaft). Our FSM.Restore
+// clears Pebble, reloads every key and rebuilds every index, which took 28
+// minutes for 75,000 messages and grows with the store. It is unnecessary when
+// Pebble already holds the snapshot's state: Pebble is the FSM state, it is
+// persistent and written with pebble.Sync, and the applied-index watermark
+// makes the log replay skip what is already applied. So the restore is
+// skipped unless Pebble is behind (snapshotRestoreNeeded).
+//
+// With NoSnapshotRestoreOnStart, raft still takes the configuration, the
+// applied index and the last snapshot index and term from the snapshot
+// metadata: tryRestoreSingleSnapshot returns true without opening the
+// snapshot, and restoreSnapshot then calls setLastApplied, setLastSnapshot and
+// setCommittedConfiguration/setLatestConfiguration as before (raft v1.8.0
+// api.go restoreSnapshot and tryRestoreSingleSnapshot; config.go documents the
+// field the same way). raft therefore replays only entries after the snapshot,
+// and FSM.Apply skips those Pebble already has. The flag is read only there:
+// a snapshot installed from a leader (Raft.installSnapshot in raft.go sends a
+// restoreFuture to runFSM in fsm.go) still calls FSM.Restore.
+func prepareFSMForStart(raftCfg *raft.Config, fsm *FSM, logs raft.LogStore, snaps raft.SnapshotStore,
+	ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.MetadataManager,
+	o raftNodeOptions, logger *slog.Logger,
+) error {
+	applied := AppliedIndex(ps)
+	restore, snapIndex, err := snapshotRestoreNeeded(applied, logs, snaps)
+	if err != nil {
+		return err
+	}
+	raftCfg.NoSnapshotRestoreOnStart = !restore
+	if restore {
+		logger.Info("raft: restoring snapshot on start: pebble is behind the newest snapshot",
+			"applied_index", applied, "snapshot_index", snapIndex)
+	} else {
+		logger.Info("raft: skipping snapshot restore on start: pebble already holds the snapshot state",
+			"applied_index", applied, "snapshot_index", snapIndex)
+	}
+
+	if !o.indexCheck {
+		return nil
+	}
+	// Set before raft starts so the restore on start, and entries applied
+	// before Agent.Run wires the search manager, index Bleve too.
+	if o.search != nil {
+		fsm.SetSearchManager(o.search)
+	}
+	return checkDerivedIndexes(o.dataDir, ps, blobs, metadata, o.search, logger, restore)
+}
+
+// closeTransport releases a transport NewRaftNode created but will not hand
+// to a running raft.
+func closeTransport(t raft.Transport, logger *slog.Logger) {
+	if c, ok := t.(raft.WithClose); ok {
+		if err := c.Close(); err != nil {
+			logger.Warn("raft: failed to close transport", "error", err)
+		}
+	}
 }
 
 // applyRaftTuning copies the configured snapshot and log-retention settings

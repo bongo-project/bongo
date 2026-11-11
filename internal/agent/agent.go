@@ -517,7 +517,13 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 			logger.Info("orphan users rows removed at startup", "removed", n)
 		}
 
-		raftNode, err := cluster.NewRaftNode(cfg, pebbleStore, blobStore, metaMgr, logger)
+		// The derived-index check runs inside NewRaftNode, after the stores
+		// are open and before raft applies anything: it rebuilds SQLite and
+		// Bleve from Pebble unless the last run shut down cleanly (see
+		// cluster.DerivedIndexMarkerName), and it knows whether a snapshot
+		// restore will do that rebuild anyway.
+		raftNode, err := cluster.NewRaftNode(cfg, pebbleStore, blobStore, metaMgr, logger,
+			cluster.WithDerivedIndexCheck(dataDir, searchMgr))
 		if err != nil {
 			closeErr := errors.Join(searchMgr.Close(), metaMgr.Close(), pebbleStore.Close())
 			return nil, fmt.Errorf("creating raft node: %w", errors.Join(err, closeErr))
@@ -4959,12 +4965,19 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
+	// indexesClean tracks whether this shutdown may record the derived indexes
+	// as complete (cluster.DerivedIndexMarkerName). Any step below that could
+	// leave them behind clears it, and the next start then rebuilds. The dev
+	// role is skipped: its directory is deleted below.
+	indexesClean := a.Raft != nil && a.Store != nil && a.tmpDir == ""
+
 	// 5. Raft.
 	if a.Raft != nil {
 		if a.unhookRaftIndexes != nil {
 			a.unhookRaftIndexes()
 		}
 		if err := a.Raft.Shutdown(); err != nil {
+			indexesClean = false
 			errs = append(errs, fmt.Errorf("shutting down raft: %w", err))
 		} else {
 			a.logger.Info("raft node shut down")
@@ -4983,9 +4996,17 @@ func (a *Agent) Shutdown() error {
 		a.logger.Info("fsm: derived index worker stopped")
 	}
 
+	// Raft has stopped and the worker has drained, so nothing applies or
+	// indexes any more and this is the index the derived stores reflect.
+	var markerIndex uint64
+	if indexesClean {
+		markerIndex = cluster.AppliedIndex(a.Store)
+	}
+
 	// 6. Search manager.
 	if a.Search != nil {
 		if err := a.Search.Close(); err != nil {
+			indexesClean = false
 			errs = append(errs, fmt.Errorf("closing search manager: %w", err))
 		} else {
 			a.logger.Info("search manager closed")
@@ -4995,9 +5016,21 @@ func (a *Agent) Shutdown() error {
 	// 7. Metadata (per-user SQLite + system.db).
 	if a.Metadata != nil {
 		if err := a.Metadata.Close(); err != nil {
+			indexesClean = false
 			errs = append(errs, fmt.Errorf("closing metadata manager: %w", err))
 		} else {
 			a.logger.Info("metadata manager closed")
+		}
+	}
+
+	// 7b. Derived-index marker, written only once both index stores have
+	// closed cleanly. A failure is not a shutdown error: the next start finds
+	// no marker and rebuilds, which costs time but loses nothing.
+	if indexesClean {
+		if err := cluster.WriteDerivedIndexMarker(a.dataDir, markerIndex); err != nil {
+			a.logger.Warn("fsm: could not record derived indexes as complete; the next start will rebuild them", "error", err)
+		} else {
+			a.logger.Info("fsm: derived indexes recorded as complete", "applied_index", markerIndex)
 		}
 	}
 

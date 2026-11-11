@@ -252,11 +252,7 @@ func (f *FSM) mailboxNotifier() store.MailboxNotifier {
 
 // appliedIndex returns the highest Raft index already applied to Pebble, or 0.
 func (f *FSM) appliedIndex() uint64 {
-	v, err := f.store.Get([]byte(raftAppliedIndexKey))
-	if err != nil || len(v) != 8 {
-		return 0
-	}
-	return binary.BigEndian.Uint64(v)
+	return AppliedIndex(f.store)
 }
 
 // setAppliedIndex records the highest Raft index applied to Pebble.

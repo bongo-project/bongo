@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/raft"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/auth"
@@ -26,6 +27,7 @@ import (
 // onto loaded data and would prove nothing.
 type raftNodeUnderTest struct {
 	t      *testing.T
+	dir    string
 	ps     *store.PebbleStore
 	blobs  *store.BlobStore
 	meta   *store.MetadataManager
@@ -50,7 +52,7 @@ func startRaftNode(t *testing.T, dir string, port int) *raftNodeUnderTest {
 	cfg.Cluster.Raft.Port = port
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	n := &raftNodeUnderTest{t: t}
+	n := &raftNodeUnderTest{t: t, dir: dir}
 	var err error
 	if n.ps, err = store.NewPebbleStore(filepath.Join(dir, "pebble")); err != nil {
 		t.Fatal(err)
@@ -64,7 +66,7 @@ func startRaftNode(t *testing.T, dir string, port int) *raftNodeUnderTest {
 	if n.search, err = store.NewSearchManager(dir); err != nil {
 		t.Fatal(err)
 	}
-	if n.node, err = cluster.NewRaftNode(cfg, n.ps, n.blobs, n.meta, logger); err != nil {
+	if n.node, err = cluster.NewRaftNode(cfg, n.ps, n.blobs, n.meta, logger, cluster.WithDerivedIndexCheck(dir, n.search)); err != nil {
 		t.Fatalf("NewRaftNode: %v", err)
 	}
 	n.node.FSM.SetSearchManager(n.search)
@@ -74,13 +76,23 @@ func startRaftNode(t *testing.T, dir string, port int) *raftNodeUnderTest {
 	return n
 }
 
+// stop shuts down in Agent.Shutdown's order, including the clean-shutdown
+// derived-index marker, so the next start trusts the indexes as a server's
+// would.
 func (n *raftNodeUnderTest) stop() {
 	n.t.Helper()
 	if err := n.node.Shutdown(); err != nil {
 		n.t.Fatalf("raft shutdown: %v", err)
 	}
-	if err := errors.Join(n.search.Close(), n.meta.Close(), n.ps.Close()); err != nil {
+	idx := cluster.AppliedIndex(n.ps)
+	if err := errors.Join(n.search.Close(), n.meta.Close()); err != nil {
 		n.t.Fatalf("close stores: %v", err)
+	}
+	if err := cluster.WriteDerivedIndexMarker(n.dir, idx); err != nil {
+		n.t.Fatalf("write marker: %v", err)
+	}
+	if err := n.ps.Close(); err != nil {
+		n.t.Fatalf("close pebble: %v", err)
 	}
 }
 
@@ -203,9 +215,42 @@ func TestBulkLoadSurvivesRestartsAndSnapshots(t *testing.T) {
 	}
 }
 
+// A freshly loaded store must not rebuild its indexes on its first start: the
+// loader drained them, so it leaves the clean-shutdown marker at the applied
+// index the server will find (0: the loader applies at index 0).
+func TestBulkLoadLeavesDerivedIndexMarker(t *testing.T) {
+	spec := bulkTestSpec(t, bulkTestOptions())
+	dir, _ := loadBulk(t, spec)
+
+	idx, ok, err := cluster.ReadDerivedIndexMarker(dir)
+	if err != nil || !ok {
+		t.Fatalf("no derived-index marker after a complete load: ok=%v err=%v", ok, err)
+	}
+	ps, err := store.NewPebbleStore(filepath.Join(dir, "pebble"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied := cluster.AppliedIndex(ps)
+	if err := ps.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if idx != applied {
+		t.Fatalf("marker index = %d, applied index = %d: the first start would rebuild", idx, applied)
+	}
+
+	n := startRaftNode(t, dir, testutil.FreePorts(t, 1)[0])
+	defer n.stop()
+	if _, ok, _ := cluster.ReadDerivedIndexMarker(dir); ok {
+		t.Error("the first start did not consume the marker")
+	}
+	assertLoaded(t, n, spec, nil)
+}
+
 // Writing through the loader into a directory that already has a snapshot
-// loses the data at the next start. This is why the load refuses such a
-// directory.
+// puts data outside Raft. The node itself keeps it, because a start no longer
+// restores a snapshot Pebble is already past, but the snapshot does not hold
+// it: a follower that installs the snapshot, or a restore after Pebble falls
+// behind, discards it. This is why the load refuses such a directory.
 func TestBulkDemonstrationSnapshotDiscardsDirectWrites(t *testing.T) {
 	spec := bulkTestSpec(t, bulkTestOptions())
 	dir, _ := loadBulk(t, spec)
@@ -238,14 +283,52 @@ func TestBulkDemonstrationSnapshotDiscardsDirectWrites(t *testing.T) {
 
 	n = startRaftNode(t, dir, port)
 	defer n.stop()
-	d, err := dumpStore(storeView{ps: n.ps, blobs: n.blobs})
+	local, err := dumpStore(storeView{ps: n.ps, blobs: n.blobs})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, ok := local.Users["ghost@bulk.test"]; !ok {
+		t.Fatal("the direct write is gone locally: the start restored the snapshot although Pebble was past it")
+	}
+
+	// What the snapshot reproduces elsewhere: restore it into an empty store.
+	d := restoreLatestSnapshot(t, dir, n.blobs)
 	if _, ok := d.Users["ghost@bulk.test"]; ok {
-		t.Fatal("a direct write survived Restore; the refusal is not needed (or this test no longer exercises Restore)")
+		t.Fatal("a direct write is in the snapshot; the refusal is not needed (or this test no longer reads the pre-write snapshot)")
 	}
 	if len(d.Users) != spec.Users {
-		t.Errorf("%d users after Restore, want the %d from the snapshot", len(d.Users), spec.Users)
+		t.Errorf("%d users in the restored snapshot, want %d", len(d.Users), spec.Users)
 	}
+}
+
+// restoreLatestSnapshot restores dir's newest Raft snapshot into a new, empty
+// store, as a follower installing it would, and dumps the result.
+func restoreLatestSnapshot(t *testing.T, dir string, blobs *store.BlobStore) *storeDump {
+	t.Helper()
+	snaps, err := raft.NewFileSnapshotStore(filepath.Join(dir, "raft-snapshots"), 2, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := snaps.List()
+	if err != nil || len(list) == 0 {
+		t.Fatalf("no snapshot to restore: %d listed, err=%v", len(list), err)
+	}
+	_, rc, err := snaps.Open(list[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, err := store.NewPebbleStore(filepath.Join(t.TempDir(), "pebble"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ps.Close()
+	fsm := cluster.NewFSM(ps, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := fsm.Restore(rc); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	d, err := dumpStore(storeView{ps: ps, blobs: blobs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
 }

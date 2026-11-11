@@ -688,10 +688,13 @@ elected itself and served all of the data. The steps that worked:
 4. In the config change `storage.data_dir`, and `server.advertise_addr` if the
    machine has a new address. Raft and gossip bind the advertise address
    (`cluster.bind_addr` if set), so it must be an address of the new machine.
-5. Start the server. Expect the start to take longer than a normal restart,
-   because Raft restores its latest snapshot into Pebble first (about 20
-   seconds for 44,000 keys on a busy laptop). Wait for the log line
-   `raft: leadership acquired`. If it does not appear within a minute, stop and
+5. Start the server. A moved store that was stopped cleanly starts as fast as
+   a normal restart: the log says `raft: skipping snapshot restore on start`
+   and `fsm: derived indexes complete, skipping rebuild`. If it says
+   `raft: restoring snapshot on start` or `fsm: rebuilding derived indexes`
+   instead, Pebble or the clean-shutdown marker (`derived-indexes.clean`) did
+   not move with the rest, and the start takes as long as a full re-index.
+   Wait for the log line `raft: leadership acquired`. If it does not appear within a minute, stop and
    report; do not edit the Raft state by hand.
 6. Check the data: one IMAP login per account for the message counts, one
    `SEARCH TEXT` for a word you know is in the bodies, and one delivery by
