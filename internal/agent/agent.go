@@ -5329,9 +5329,13 @@ func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // newHTTPServer builds the web/health listener. ErrorLog routes net/http's
-// own messages (TLS handshake failures, handler panics) into slog.
+// own messages (TLS handshake failures, handler panics) into slog. Every
+// request context carries a channel that closes when Shutdown starts
+// (middleware.ServerShutdown), so SSE streams end at once instead of holding
+// the drain for its full timeout.
 func newHTTPServer(addr string, h http.Handler, logger *slog.Logger) *http.Server {
-	return &http.Server{
+	shutdown := make(chan struct{})
+	srv := &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -5339,7 +5343,13 @@ func newHTTPServer(addr string, h http.Handler, logger *slog.Logger) *http.Serve
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		ErrorLog:          observability.HTTPLibraryLogger(logger),
+		BaseContext: func(net.Listener) context.Context {
+			return middleware.WithServerShutdown(context.Background(), shutdown)
+		},
 	}
+	var once sync.Once
+	srv.RegisterOnShutdown(func() { once.Do(func() { close(shutdown) }) })
+	return srv
 }
 
 // newRedirectServer builds the plain-HTTP to HTTPS redirect listener.

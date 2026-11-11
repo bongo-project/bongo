@@ -2458,7 +2458,8 @@ func (h *AdminHandler) LogStream(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "data: %s [INFO] web: Log stream connected\n\n", time.Now().Format("15:04:05.000"))
 	flusher.Flush()
 
-	ctx := r.Context()
+	ctx, cancel := streamContext(r)
+	defer cancel()
 	for {
 		select {
 		case <-ctx.Done():
