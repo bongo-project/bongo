@@ -376,9 +376,28 @@ func (n *RaftNode) WaitForLeader(timeout time.Duration) (raft.ServerAddress, err
 	}
 }
 
-// Shutdown shuts down the Raft node, transferring leadership first if this node is leader.
+// hasOtherVoter reports whether the cluster configuration holds a voter
+// besides this node. When the configuration cannot be read it answers true,
+// so the transfer is still attempted.
+func (n *RaftNode) hasOtherVoter() bool {
+	f := n.Raft.GetConfiguration()
+	if err := f.Error(); err != nil {
+		return true
+	}
+	voters := 0
+	for _, s := range f.Configuration().Servers {
+		if s.Suffrage == raft.Voter {
+			voters++
+		}
+	}
+	return voters > 1
+}
+
+// Shutdown shuts down the Raft node, transferring leadership first if this
+// node is leader and another voter exists. A single node has no one to
+// transfer to; trying only logs "cannot find peer" on every stop.
 func (n *RaftNode) Shutdown() error {
-	if n.Raft.State() == raft.Leader {
+	if n.Raft.State() == raft.Leader && n.hasOtherVoter() {
 		n.logger.Info("raft: transferring leadership before shutdown")
 		transferFuture := n.Raft.LeadershipTransfer()
 		errCh := make(chan error, 1)

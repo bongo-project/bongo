@@ -251,3 +251,47 @@ func TestNewRaftNodeRejectsInvalidTuning(t *testing.T) {
 		t.Errorf("NewRaftNode() error = %q, want it to name trailing_logs", err.Error())
 	}
 }
+
+// A single node has no peer to hand leadership to. Shutdown must not try:
+// the attempt logged "raft: leadership transfer failed: cannot find peer" at
+// WARN on every stop in production.
+func TestSingleNodeShutdownSkipsLeadershipTransfer(t *testing.T) {
+	dir := t.TempDir()
+	var logs strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	defer ps.Close()
+	bs, err := store.NewBlobStore(dir)
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	mm, err := store.NewMetadataManager(dir)
+	if err != nil {
+		t.Fatalf("NewMetadataManager: %v", err)
+	}
+	defer mm.Close()
+
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Server.Name = "solo"
+	node, err := NewRaftNode(cfg, ps, bs, mm, logger)
+	if err != nil {
+		t.Fatalf("NewRaftNode: %v", err)
+	}
+	if _, err := node.WaitForLeader(5 * time.Second); err != nil {
+		t.Fatalf("WaitForLeader: %v", err)
+	}
+	if node.Raft.State() != raft.Leader {
+		t.Fatalf("state = %s, want Leader", node.Raft.State())
+	}
+	if err := node.Shutdown(); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	if strings.Contains(logs.String(), "leadership transfer") || strings.Contains(logs.String(), "transferring leadership") {
+		t.Fatalf("single node attempted a leadership transfer:\n%s", logs.String())
+	}
+}
