@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -149,25 +149,43 @@ func (s *SpoolStore) Enqueue(env *bongov1.QueueEnvelope) error {
 
 // Dequeue reads the oldest envelope from incoming/, moves it atomically to processing/,
 // and returns it. Returns nil, nil if the queue is empty.
+//
+// Oldest means the earliest file modification time, ties broken by name.
+// Envelope IDs are random (uuid.New) or derived from a web send ID, so name
+// order is arbitrary: picking by name processed a backlog in random order, and
+// a message whose ID sorted late waited until the whole queue had drained
+// (hours, in the load-test soak). Enqueue writes by rename, so the time is when
+// the message was queued; RecoverCrashed and the shutdown return also move by
+// rename and keep it.
 func (s *SpoolStore) Dequeue() (*bongov1.QueueEnvelope, error) {
 	entries, err := os.ReadDir(filepath.Join(s.baseDir, "incoming"))
 	if err != nil {
 		return nil, fmt.Errorf("spool: read incoming: %w", err)
 	}
 
-	// Collect .env files and sort by name (lexicographic = chronological for UUID v7 or timestamp-prefixed IDs).
-	var names []string
+	var (
+		oldest    string
+		oldestMod time.Time
+	)
 	for _, e := range entries {
-		if isEnvelopeFile(e) {
-			names = append(names, e.Name())
+		if !isEnvelopeFile(e) {
+			continue
+		}
+		info, err := e.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("spool: stat incoming/%s: %w", e.Name(), err)
+		}
+		mod := info.ModTime()
+		if oldest == "" || mod.Before(oldestMod) || (mod.Equal(oldestMod) && e.Name() < oldest) {
+			oldest, oldestMod = e.Name(), mod
 		}
 	}
-	if len(names) == 0 {
+	if oldest == "" {
 		return nil, nil
 	}
-
-	sort.Strings(names)
-	oldest := names[0]
 	id := oldest[:len(oldest)-len(envSuffix)]
 
 	src := filepath.Join(s.baseDir, "incoming", oldest)
