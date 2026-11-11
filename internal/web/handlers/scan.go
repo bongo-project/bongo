@@ -174,7 +174,8 @@ func (h *ScanHandler) ScanProgress(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, ": ping\n\n")
 	flusher.Flush()
 
-	ctx := r.Context()
+	ctx, cancel := streamContext(r)
+	defer cancel()
 
 	for {
 		select {

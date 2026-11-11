@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -25,6 +26,28 @@ func disableStreamTimeouts(w http.ResponseWriter) {
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
 	_ = rc.SetReadDeadline(time.Time{})
+}
+
+// streamContext returns the context a long-lived stream should watch: it ends
+// when the client goes away or when the server starts shutting down.
+// http.Server.Shutdown waits for active requests and does not cancel them, so
+// a stream that watched only r.Context() held every shutdown for the full
+// drain timeout while a browser tab was open. Container runtimes give 10s
+// before SIGKILL, which then landed before Raft and the stores were closed.
+func streamContext(r *http.Request) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(r.Context())
+	done := middleware.ServerShutdown(r.Context())
+	if done == nil {
+		return ctx, cancel
+	}
+	go func() {
+		select {
+		case <-done:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
 }
 
 // SSEHandler handles Server-Sent Events for real-time updates.
@@ -99,7 +122,8 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	ctx := r.Context()
+	ctx, cancel := streamContext(r)
+	defer cancel()
 
 	for {
 		select {
