@@ -593,3 +593,132 @@ worthwhile.
   uids; a request that sends only uid:mailbox targets returns 200 and changes
   nothing. Found while fixing tag-view actions (PR #184). Refuse a request
   with no usable UID, or accept targets there too.
+- **Account scale (stage 7.5, 2026-11-10).** Server cx23 (2 vCPU, 4 GB, no
+  swap), v0.15.9, a new store of 10,000 accounts with five 4 KB messages each
+  (50,000 messages), bulk loaded in 18 minutes plus 12 minutes for search to
+  catch up. The data directory was 4.5 GB, 3.4 GB of it search index (about
+  340 KB per account; about 45 GB at 100,000 accounts). Client mix as stage 7.3
+  scaled to the account count (50% IMAP IDLE, 5% active IMAP, 2% DAV, 1% POP3),
+  SMTP at 5 messages/s, 30 minutes per step.
+
+  | Accounts | Clients | Operations | Errors | IMAP and DAV login p50 | CPU |
+  |---|---|---|---|---|---|
+  | 1,500 | 870 | 24,002 | 0 | 0.5 s | 92% |
+  | 3,000 | 1,740 | 46,855 | 0 | 0.26 s | 84% |
+  | 6,000 | 3,480 | 87,124 | 6 | 16.8 s | 100% |
+
+  The 10,000 step was not run: the 6,000 step had met the stop condition. The
+  limit is login CPU, not the account count. CPU profiles: bcrypt 39% of CPU
+  during the 3,000 ramp, 55% once steady (23% from 60 DAV clients alone) and
+  82% at 6,000 (37% from 120 DAV clients); charset detection 10 to 16%; Bleve
+  indexing and segment merging 11 to 18%. The probe lost no mail.
+  Candidates:
+  - **bcrypt on every DAV request.** CalDAV and CardDAV use Basic auth, so
+    every request costs a full bcrypt comparison. A short-lived verified
+    credential cache (keyed on a hash of the credential, cleared on password,
+    app-password or epoch change) or a DAV session would remove most of it.
+  - **The preview backfill walks every account every 30 minutes,** driving
+    CPU to 98% and user database evictions to 95/s at 10,000 accounts.
+  - **Startup still opens every user database** (the earlier finding): 7,952
+    evictions before any client connected, against the 2,048 limit.
+  - Fixed during the stage (PR #190, v0.15.10): accepted mail was parked in
+    spool/error/ after a Raft write timeout (5 messages already answered 250),
+    and blob GC aborted when an envelope moved during its scan.
+- **Storage scale (stage 7.6, 2026-11-10 to 11).** v0.15.9, data on the
+  network volume. At 75,000 messages for 1,000 accounts: tar and zstd backup of
+  the 4.3 GB data directory in 146 s (2.1 GB archive); start 4.9 s with 528
+  user databases open; first blob GC pass 1.0 s for 75,000 blobs. A restart
+  after a forced Raft snapshot took 28 minutes, because every start restored
+  the snapshot and rebuilt SQLite (and silently skipped Bleve); fixed in PR
+  #191 (v0.15.10), which skips the restore when Pebble is current, rebuilds
+  only without the clean-shutdown marker, and includes Bleve. The 750,000 step
+  was stopped (operator decision, go to the soak): 1,000 accounts of 750
+  messages made the bulk loader reach 3.5 GB and be OOM-killed after 37,000
+  messages; 10,000 accounts of 75 slowed from about 70 to about 10 messages/s
+  at 132,750 messages, with the server CPU-bound (75% user, 16% iowait) and the
+  volume 73% busy. Storage scale is reported at 75,000 messages only.
+  Candidate: the bulk loader's memory and speed scale with messages per
+  account; batch per account in bounded chunks.
+- **Soak (stage 7.7, 2026-11-11 10:06 to 2026-11-12 10:36 UTC).** v0.15.10, the
+  10,000-account store, about 820 client connections (7.3 mix).
+  - 10 messages/s to 4 mailboxes (58 minutes): 28,527 accepted, CPU about 98%
+    (32% with clients only), delivery about 7.75/s, spool queue 7,094, the
+    indexer queue at its 4,096 cap within 20 minutes (12,165 warnings).
+  - 5 messages/s to 200 mailboxes (7 h 46 min): 139,980 accepted with no
+    errors. CPU reached 98% after about 3 hours, the search backlog grew from
+    119 to the 4,096 cap, and delivery fell to about 4.4/s; probe p99 rose from
+    1.3 s to 4 minutes. Profile: IMAP logins 17% and DAV 17% (bcrypt), then
+    search indexing.
+  - 3 messages/s to 200 mailboxes (15 h 20 min): 165,599 accepted, no
+    rejections, timeouts or connection errors, worst acceptance 11 s. The spool
+    drained to empty; no ERROR lines; disk 27%; RSS about 1.0 GB after a
+    1.17 GB peak.
+  - No mail was lost in any phase. The sustained limit on this machine is
+    about 3 to 4 messages/s with 200 active mailboxes and about 820 clients.
+  - Fixed (PR #199, v0.15.12): the spool delivered the message whose random ID
+    sorted first, not the oldest, so some mail waited hours under backlog.
+  - Candidates: the 4,096 indexer queue cap and its WARN per message (the
+    earlier finding); bcrypt cost for IMAP and DAV (above); the spool dequeue
+    lists the whole directory for each message, so its cost grows with the
+    backlog.
+  - Generator: the probe stops on its 30 s connect timeout when the server is
+    saturated (it died twice, leaving a 47 minute gap and no timings for the
+    last 13 hours); smtp and probe have no reconnect and no SMTP auth. Give both
+    a reconnect with backoff, and make the probe timeout a flag.
+- **Failure cases (stage 7.8, 2026-11-13).** v0.15.12, the 10,000-account
+  store restored from a clean snapshot before each case, stage 7.3 load (750
+  IMAP IDLE, 75 active IMAP, 30 DAV, 15 POP3), SMTP at 3 messages/s to 200
+  mailboxes and the probe every 5 s.
+  - **Restart under load.** systemctl stop took 5.0 s (exit 0); SMTP, IMAP and
+    POP3 accepted 2.8 s after start. 9,835 SMTP messages accepted, 9,835
+    stored; the 64 in flight at the stop were refused, not accepted. All 653
+    probe messages arrived and were found by search. All 750 IDLE clients
+    reconnected (2,968 refused connects during the outage). No ERROR lines.
+  - **Web starts 40 s after mail.** The listener on 8443 (web, CalDAV,
+    CardDAV, /metrics) accepted 42.9 s after start, because the address index
+    migration runs synchronously on every start before the web server, walking
+    every account. Run it in the background, or once behind a done marker like
+    the other migrations.
+  - **Index rebuild after an unclean stop.** Without the clean-shutdown marker
+    the 10,000-account store (50,000 messages) rebuilt every index in 68
+    minutes on one core, with no listener open. Profile: Bleve per-user
+    indexing (vellum), charset detection and GC. Open the listeners first and
+    rebuild in the background, or rebuild accounts in parallel.
+  - **Near-full and full disk.** Free space was cut to 800 MB (threshold
+    1,024 MB) for 10 minutes and then to 0 for 5 minutes. "storage low" was
+    logged within 2 s and "storage recovered" within 1 s of release; the
+    process never restarted. SMTP deferred exactly the 2,700 messages offered
+    in the window with 452 and accepted 5,399; 5,759 accepted, 5,759 stored.
+    The 180 probe sends in the window were deferred; the 360 accepted all
+    arrived and were found by search.
+    23 of 46 DAV PUTs failed with a 5xx (507 is the storage-low answer;
+    loadgen records the class only); 44,475 client operations succeeded and no
+    IDLE client reconnected. No ERROR lines.
+    Candidate: at 0 bytes free, 150 IMAP flag changes still went through. The
+    storage-low gate covers new mail and DAV writes only, so metadata writes
+    (Raft log, Pebble) continue into a full disk; five minutes produced no
+    error, a longer period was not tested. Decide whether the gate should
+    refuse all non-essential writes or reserve space for them.
+  - **Outbound queue backlog.** Authenticated submission (50 senders, one
+    message every 2 s, 85 minutes, by a stand-in script: loadgen has no
+    submission mode) relayed to the sink, with the sink stopped for 30
+    minutes. 2,250 accepted; the sink received 2,250, none missing and none
+    twice. The queue peaked at 795 and drained 16 minutes after the sink came
+    back; delivery delay was p50 2.4 s outside the outage and at most 30
+    minutes inside it, following the 2, 4, 8, 16 minute retry backoff. 2,588
+    retries, no bounces. Inbound at the same time: 16,199 SMTP and 1,080 probe
+    messages, all stored; 87,366 client operations, 0 errors.
+  - Fixed (PR #201): bongo_queue_oldest_pending_seconds and the admin "oldest
+    pending" figure took the first pending key, which sorts by next retry,
+    so they read about 3 s while the backlog was 30 minutes old.
+  - **An over-long line gets 451.** A submitted line over the SMTP limit makes
+    go-smtp return "too long a line"; dataFailure (internal/smtp/server.go)
+    logs it at ERROR and answers 451 4.3.0, so the sender retries a message
+    that can never be accepted. Answer 500 5.5.2 (or 552) for it and log at
+    INFO.
+  - Candidate: after the relay recovers, queued mail waits for its next retry,
+    up to the current backoff interval; only "retry now" shortens it. Consider
+    retrying the queue soon after the first success following a run of
+    connection failures to the same relay.
+  - Every single-node start logs "raft: heartbeat timeout reached, starting
+    election" at WARN. It is expected on one node; log it at INFO there.
