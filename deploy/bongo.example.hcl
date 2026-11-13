@@ -770,6 +770,16 @@ telemetry {
     # max_backups  = 5    # rotated files to keep
     # max_age_days = 30   # delete rotated files older than this
     # compress     = true # gzip rotated files
+
+    # Per-component levels override `level` for one feature, so you can turn
+    # detail up where you are looking and leave the rest quiet. The component
+    # is the prefix of the log message ("imap: login succeeded" is imap); see
+    # deploy/LOGGING.md for the list. Levels are debug | info | warn | error;
+    # errors are always logged. Hot: change it and reload (SIGHUP), no restart.
+    # components = {
+    #   imap = "debug"
+    #   smtp = "info"
+    # }
   }
 }
 

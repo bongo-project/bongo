@@ -44,6 +44,7 @@ import (
 	"github.com/bongo-project/bongo/internal/diskspace"
 	"github.com/bongo-project/bongo/internal/i18n"
 	bongoimap "github.com/bongo-project/bongo/internal/imap"
+	"github.com/bongo-project/bongo/internal/logfilter"
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/netx"
 	"github.com/bongo-project/bongo/internal/observability"
@@ -221,6 +222,10 @@ type Agent struct {
 	// it is read without a lock; a reloader must call Set on this LevelVar and
 	// never replace the pointer.
 	LogLevel *slog.LevelVar
+
+	// LogComponents holds the per-component log levels. Like LogLevel it is
+	// assigned before Run; a reloader calls SetComponents on it.
+	LogComponents *logfilter.Filter
 
 	// AgentGRPC is the gRPC client used to register with and heartbeat the server.
 	// In agent mode this is the primary registration client. For processor roles

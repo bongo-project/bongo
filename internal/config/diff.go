@@ -51,6 +51,7 @@ type KeyChange struct {
 // applying them as a pair (built from the new config) is the reloader's job.
 var hotKeys = []string{
 	"telemetry.log.level",
+	"telemetry.log.components",
 	"antispam.builtin.threshold",
 	"antispam.builtin.high_threshold",
 	"smtp.trusted_networks",
@@ -223,6 +224,11 @@ func diffValue(path string, a, b reflect.Value, out map[string]struct{}) {
 			return
 		}
 		if !reflect.DeepEqual(normaliseSlice(a), normaliseSlice(b)) {
+			out[path] = struct{}{}
+		}
+	case reflect.Map:
+		// A nil map and an empty one mean the same: nothing configured.
+		if (a.Len() != 0 || b.Len() != 0) && !reflect.DeepEqual(a.Interface(), b.Interface()) {
 			out[path] = struct{}{}
 		}
 	default:

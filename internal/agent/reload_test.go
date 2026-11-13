@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/logfilter"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
 	pipelineantivirus "github.com/bongo-project/bongo/internal/pipeline/antivirus"
@@ -88,6 +89,8 @@ type confVals struct {
 	GossipKey     string
 	// RawSessionSecret, when set, is written verbatim (quotes included).
 	RawSessionSecret string
+	// Components, when set, is written verbatim inside the log block.
+	Components string
 }
 
 func defaultConf() confVals {
@@ -250,10 +253,11 @@ telemetry {
   log {
     level  = %q
     format = "json"
+    %s
   }
 }
 `, c.Role, c.GossipKey, c.Port, strings.Join(nets, ", "), c.RelayUser, c.RelayPass,
-		secret, c.Threshold, c.High, socket, c.OnFailure, c.Level)
+		secret, c.Threshold, c.High, socket, c.OnFailure, c.Level, c.Components)
 }
 
 type reloadFixture struct {
@@ -267,6 +271,7 @@ type reloadFixture struct {
 	backend *bongosmtp.Backend
 	clam    *pipelineantivirus.ClamAVProcessor
 	lv      *slog.LevelVar
+	filter  *logfilter.Filter
 }
 
 // newReloadFixture writes the initial config, starts an Agent from it the way
@@ -301,13 +306,15 @@ func newReloadFixture(t *testing.T, initial confVals, prep func(v *viper.Viper))
 
 	f.lv = new(slog.LevelVar)
 	f.lv.Set(cfg.Telemetry.Log.SlogLevel())
-	f.logger = slog.New(slog.NewJSONHandler(f.logs, &slog.HandlerOptions{Level: f.lv}))
+	f.filter = logfilter.New(f.lv)
+	f.filter.SetComponents(cfg.Telemetry.Log.ComponentLevels())
+	f.logger = slog.New(f.filter.Handler(slog.NewJSONHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	holder, err := newSpamThresholdHolder(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.a = &Agent{Config: cfg, logger: f.logger, LogLevel: f.lv, spamThresholds: holder}
+	f.a = &Agent{Config: cfg, logger: f.logger, LogLevel: f.lv, LogComponents: f.filter, spamThresholds: holder}
 
 	f.backend = bongosmtp.NewBackend(nil, nil, f.logger)
 	nets, err := cfg.SMTP.ParseTrustedNetworks()
@@ -355,6 +362,13 @@ func (f *reloadFixture) action() string {
 
 func (f *reloadFixture) debugOn() bool {
 	return f.logger.Enabled(context.Background(), slog.LevelDebug)
+}
+
+// logsDebug reports whether a debug line from component reaches the output.
+func (f *reloadFixture) logsDebug(component string) bool {
+	marker := fmt.Sprintf("%s: probe-%d", component, time.Now().UnixNano())
+	f.logger.Debug(marker)
+	return strings.Contains(f.logs.String(), marker)
 }
 
 // ---------------------------------------------------------------------------
@@ -674,6 +688,15 @@ func TestReload_HotKeysReachConsumers(t *testing.T) {
 			},
 		},
 		{
+			name:   "log components",
+			mutate: func(c *confVals) { c.Components = `components = { imap = "debug" }` },
+			check: func(t *testing.T, f *reloadFixture) {
+				if !f.logsDebug("imap") || f.logsDebug("smtp") {
+					t.Error("imap debug must log and smtp debug must not")
+				}
+			},
+		},
+		{
 			name:   "trusted networks",
 			mutate: func(c *confVals) { c.Nets = []string{"203.0.113.0/24"} },
 			check: func(t *testing.T, f *reloadFixture) {
@@ -974,5 +997,34 @@ func TestReloadCompleteLogsFileStamp(t *testing.T) {
 	}
 	if want := later.UTC().Format(time.RFC3339); mt2 != want {
 		t.Errorf("file_mtime = %q, want %q", mt2, want)
+	}
+}
+
+// Removing a component returns it to the global level; an unknown component
+// fails the reload and applies nothing.
+func TestReload_LogComponentsClearAndReject(t *testing.T) {
+	start := defaultConf()
+	start.Components = `components = { imap = "debug" }`
+	f := newReloadFixture(t, start, nil)
+	if !f.logsDebug("imap") {
+		t.Fatal("startup components not applied")
+	}
+
+	bad := defaultConf()
+	bad.Components = `components = { imap = "info", nosuch = "debug" }`
+	f.write(bad)
+	if err := f.reload(); err == nil {
+		t.Fatal("reload with an unknown component succeeded")
+	}
+	if !f.logsDebug("imap") {
+		t.Error("a rejected reload changed the component levels")
+	}
+
+	f.write(defaultConf())
+	if err := f.reload(); err != nil {
+		t.Fatal(err)
+	}
+	if f.logsDebug("imap") {
+		t.Error("removing the component did not return it to the global level")
 	}
 }

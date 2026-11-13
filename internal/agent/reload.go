@@ -84,6 +84,7 @@ func safeErr(err error) string {
 // published, so the apply step cannot fail halfway.
 type prepared struct {
 	level  slog.Level
+	comps  map[string]slog.Level
 	nets   []*net.IPNet
 	thresh pipeline.SpamThresholds
 	policy pipelineantivirus.OnFailure
@@ -171,6 +172,9 @@ func (a *Agent) reloadLocked(r *Reloader) error {
 	if hotSet["telemetry.log.level"] {
 		a.LogLevel.Set(p.level)
 	}
+	if hotSet["telemetry.log.components"] {
+		a.LogComponents.SetComponents(p.comps)
+	}
 	if hotSet["antispam.builtin.threshold"] || hotSet["antispam.builtin.high_threshold"] {
 		if err := a.spamThresholds.Store(p.thresh); err != nil {
 			// Unreachable: prepare validated the pair.
@@ -219,6 +223,9 @@ func (a *Agent) reloadLocked(r *Reloader) error {
 	if hotSet["telemetry.log.level"] {
 		nb.Telemetry.Log.Level = merged.Telemetry.Log.Level
 	}
+	if hotSet["telemetry.log.components"] {
+		nb.Telemetry.Log.Components = config.Clone(merged).Telemetry.Log.Components
+	}
 	if hotSet["antispam.builtin.threshold"] || hotSet["antispam.builtin.high_threshold"] {
 		nb.Antispam.Builtin.Threshold = merged.Antispam.Builtin.Threshold
 		nb.Antispam.Builtin.HighThreshold = merged.Antispam.Builtin.HighThreshold
@@ -241,6 +248,7 @@ func (a *Agent) dropUnheld(hot []config.KeyChange) []config.KeyChange {
 	for _, k := range hot {
 		switch {
 		case k.Key == "telemetry.log.level" && a.LogLevel == nil,
+			k.Key == "telemetry.log.components" && a.LogComponents == nil,
 			(k.Key == "antispam.builtin.threshold" || k.Key == "antispam.builtin.high_threshold") && a.spamThresholds == nil:
 			a.logger.Warn("config reload: key has no live consumer, not applied", "key", k.Key)
 			continue
@@ -266,6 +274,7 @@ func prepare(cfg *config.Config) (prepared, error) {
 	}
 
 	p.level = cfg.Telemetry.Log.SlogLevel()
+	p.comps = cfg.Telemetry.Log.ComponentLevels()
 
 	p.policy = pipelineantivirus.OnFailure(cfg.Antivirus.ClamAV.FailurePolicy())
 	if p.policy != pipelineantivirus.OnFailureAccept && p.policy != pipelineantivirus.OnFailureQuarantine {
