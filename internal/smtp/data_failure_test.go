@@ -210,3 +210,46 @@ func assertGeneric451(t *testing.T, err error, logs func() []string) {
 	}
 	t.Errorf("detail not logged at ERROR; logs: %v", logs())
 }
+
+// A line over go-smtp's MaxLineLength is the sender's fault and will fail the
+// same way on every retry, so it must be a permanent 5xx, not the generic 451
+// that makes the sender queue it for days, and not an ERROR log.
+func TestDataTooLongLineIsPermanent(t *testing.T) {
+	wrapped := fmt.Errorf("storing raw message blob: %w", gosmtp.ErrTooLongLine)
+	tests := []struct {
+		name  string
+		setup func(*Session, *fakeSplitDeliverer)
+		body  func() io.Reader
+	}{
+		{"submission header check", func(*Session, *fakeSplitDeliverer) {}, func() io.Reader { return &failingLongHeader{} }},
+		{"store blob", func(_ *Session, d *fakeSplitDeliverer) { d.storeErr = wrapped }, func() io.Reader { return strings.NewReader(authedMsg) }},
+		{"plain deliverer", func(s *Session, _ *fakeSplitDeliverer) { s.backend.deliverer = plainFailDeliverer{wrapped} }, func() io.Reader { return strings.NewReader(authedMsg) }},
+		{"spf deliverer", func(s *Session, _ *fakeSplitDeliverer) { s.backend.deliverer = spfFailDeliverer{wrapped} }, func() io.Reader { return strings.NewReader(authedMsg) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, d, _, logs := newDataSession(t, "staff@example.com")
+			tt.setup(s, d)
+
+			err := s.Data(tt.body())
+			var se *gosmtp.SMTPError
+			if !errors.As(err, &se) {
+				t.Fatalf("err = %v, want *SMTPError", err)
+			}
+			if se.Code != 500 || se.EnhancedCode != (gosmtp.EnhancedCode{5, 5, 2}) {
+				t.Errorf("status = %d %v, want 500 5.5.2", se.Code, se.EnhancedCode)
+			}
+			for _, l := range logs() {
+				if strings.HasPrefix(l, "ERROR") {
+					t.Errorf("logged at ERROR: %s", l)
+				}
+			}
+		})
+	}
+}
+
+// failingLongHeader fails inside the header block, where the submission From
+// check reads before any deliverer sees the message.
+type failingLongHeader struct{}
+
+func (failingLongHeader) Read([]byte) (int, error) { return 0, gosmtp.ErrTooLongLine }

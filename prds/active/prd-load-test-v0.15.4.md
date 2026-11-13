@@ -711,11 +711,10 @@ worthwhile.
   - Fixed (PR #201): bongo_queue_oldest_pending_seconds and the admin "oldest
     pending" figure took the first pending key, which sorts by next retry,
     so they read about 3 s while the backlog was 30 minutes old.
-  - **An over-long line gets 451.** A submitted line over the SMTP limit makes
-    go-smtp return "too long a line"; dataFailure (internal/smtp/server.go)
-    logs it at ERROR and answers 451 4.3.0, so the sender retries a message
-    that can never be accepted. Answer 500 5.5.2 (or 552) for it and log at
-    INFO.
+  - Fixed: a submitted line over the SMTP limit made go-smtp return "too
+    long a line", which dataFailure (internal/smtp/server.go) logged at ERROR
+    and answered 451 4.3.0, so the sender retried a message that could never
+    be accepted. It now answers 500 5.5.2 and logs a warning.
   - Candidate: after the relay recovers, queued mail waits for its next retry,
     up to the current backoff interval; only "retry now" shortens it. Consider
     retrying the queue soon after the first success following a run of
