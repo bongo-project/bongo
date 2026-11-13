@@ -159,7 +159,9 @@ func (qs *QueueStore) Stats() (*bongov1.QueueStats, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scanning pending: %w", err)
 	}
-	oldestSet := false
+	// Keys sort by next retry time, not creation, so a backed-off old message
+	// can sit behind newer ones: take the oldest CreatedAt over the whole scan.
+	var oldest int64
 	for iter.Next() {
 		val, err := iter.Value()
 		if err != nil {
@@ -171,10 +173,12 @@ func (qs *QueueStore) Stats() (*bongov1.QueueStats, error) {
 			continue
 		}
 		stats.PendingCount++
-		if !oldestSet {
-			stats.OldestPendingSeconds = now - msg.CreatedAt
-			oldestSet = true
+		if msg.CreatedAt > 0 && (oldest == 0 || msg.CreatedAt < oldest) {
+			oldest = msg.CreatedAt
 		}
+	}
+	if oldest != 0 {
+		stats.OldestPendingSeconds = now - oldest
 	}
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("closing pending iterator: %w", err)

@@ -235,6 +235,41 @@ func TestStats(t *testing.T) {
 	}
 }
 
+// TestStatsOldestPendingIgnoresRetryOrder: pending keys sort by next retry
+// time, so during a relay outage a message created long ago but backed off to
+// a later retry sorts after a new one. The oldest-pending age must still be
+// the oldest message's, or the stuck-queue gauge reads a few seconds while the
+// backlog is half an hour old.
+func TestStatsOldestPendingIgnoresRetryOrder(t *testing.T) {
+	qs := newTestQueueStore(t)
+	now := time.Now().Unix()
+
+	msgs := []*bongov1.OutboundMessage{
+		{Id: "new", CreatedAt: now - 5, NextRetryAt: now},
+		{Id: "old", CreatedAt: now - 1800, NextRetryAt: now + 1800},
+		{Id: "mid", CreatedAt: now - 600, NextRetryAt: now + 120},
+	}
+	for _, m := range msgs {
+		m.SenderEmail = "alice@example.com"
+		m.Recipients = []string{"bob@external.com"}
+		m.BlobHash = "abc123"
+		if err := qs.Enqueue(m); err != nil {
+			t.Fatalf("Enqueue %s: %v", m.Id, err)
+		}
+	}
+
+	stats, err := qs.Stats()
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	if stats.PendingCount != 3 {
+		t.Errorf("pending = %d, want 3", stats.PendingCount)
+	}
+	if got := stats.OldestPendingSeconds; got < 1800 || got > 1810 {
+		t.Errorf("oldest pending = %ds, want about 1800s (the oldest message's age)", got)
+	}
+}
+
 func TestRetryNow(t *testing.T) {
 	qs := newTestQueueStore(t)
 
