@@ -363,7 +363,7 @@ func (s *session) handlePass(args string) {
 	s.appPassword = appPassword
 	s.userID = userID
 	s.authenticated = true
-	s.logger.Debug("pop3: auth succeeded", "username", auth.LogUsername(s.username), "user_id", userID)
+	s.logger.Info("pop3: auth succeeded", "username", auth.LogUsername(s.username), "user_id", userID, "ip", ip)
 
 	if err := s.loadInboxSnapshot(); err != nil {
 		s.logger.Error("pop3: failed to load inbox", "error", err)
