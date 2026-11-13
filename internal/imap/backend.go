@@ -347,7 +347,7 @@ func (s *session) Login(username, password string) error {
 	if appPassword == "" {
 		s.authLimiter.Succeed(ip, username)
 	}
-	s.logger.Debug("imap: login succeeded", "username", auth.LogUsername(username), "user_id", userID)
+	s.logger.Info("imap: login succeeded", "username", auth.LogUsername(username), "user_id", userID, "ip", ip)
 	return nil
 }
 

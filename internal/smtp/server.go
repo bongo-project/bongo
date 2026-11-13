@@ -502,7 +502,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	if appPassword == "" {
 		s.backend.authFail.Succeed(ip, username)
 	}
-	s.logger.Debug("smtp: auth succeeded", "username", auth.LogUsername(username))
+	s.logger.Info("smtp: auth succeeded", "username", auth.LogUsername(username), "user_id", s.userID, "ip", s.remoteIP)
 	return nil
 }
 
