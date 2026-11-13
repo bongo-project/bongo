@@ -335,6 +335,7 @@ The queue worker runs on the Raft leader only, so the four `queue.*` limits abov
 |---|---|---|---|
 | `telemetry.prometheus.enabled`, `.port` | none (metrics are served on the web router at `/metrics`, `agent.go:408`) | none | NO-OP |
 | `telemetry.log.level` | `cmd/bongo/agent.go` `runServe` (`parseLogLevel`) -> `newServeLogger`, which holds it in a `*slog.LevelVar` stored on `Agent.LogLevel` (16.7) | ctor | HOT-1 |
+| `telemetry.log.components` | `newServeLogger` -> `logfilter.Filter` stored on `Agent.LogComponents`; reload calls `SetComponents` with a fresh map (Phase 38) | ctor | HOT |
 | `telemetry.log.format` | `cmd/bongo/agent.go:186-190` | ctor, picks the handler type | RESTART |
 | `telemetry.log.file` | `cmd/bongo/agent.go:129` | ctor, opens a lumberjack writer | RESTART |
 | `telemetry.log.max_size_mb`, `.max_backups`, `.max_age_days`, `.compress` | `cmd/bongo/agent.go:130-135` | ctor | RESTART |

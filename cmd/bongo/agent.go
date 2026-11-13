@@ -17,6 +17,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/agent"
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/logfilter"
 	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/web/handlers"
 )
@@ -153,7 +154,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logOut = io.MultiWriter(os.Stdout, rotator)
 	}
 
-	logger, logLevelVar := newServeLogger(cfg.Telemetry.Log.Format, logLevel, logOut, logSink)
+	logger, logLevelVar, logFilter := newServeLogger(cfg.Telemetry.Log.Format, logLevel, logOut, logSink)
+	logFilter.SetComponents(cfg.Telemetry.Log.ComponentLevels())
 
 	if configFile != "" {
 		logConfigLoaded(logger, configFile, configStamp, cfg)
@@ -172,6 +174,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	a.LogSink = logSink
 	a.LogLevel = logLevelVar
+	a.LogComponents = logFilter
 	if reloadBaseline != nil {
 		a.EnableReload(v, reloadFile, servePlainHTTP, reloadBaseline)
 	}
@@ -236,21 +239,26 @@ func watchSignals(ctx context.Context, cancel context.CancelFunc, reload func(co
 // through it. It must run before agent.NewAgent creates any gRPC server or
 // client, because grpclog.SetLoggerV2 is not goroutine-safe.
 //
-// The returned LevelVar is the live level: Set on it changes the logger, the
-// admin log sink and every With child at once.
-func newServeLogger(format string, level slog.Level, out io.Writer, sink *handlers.LogSink) (*slog.Logger, *slog.LevelVar) {
+// The returned LevelVar is the live global level and the Filter holds the
+// per-component levels; changing either changes the logger, the admin log
+// sink and every With child at once. The filter sits outermost, so the admin
+// log viewer shows the same lines as the log output.
+func newServeLogger(format string, level slog.Level, out io.Writer, sink *handlers.LogSink) (*slog.Logger, *slog.LevelVar, *logfilter.Filter) {
 	lv := new(slog.LevelVar)
 	lv.Set(level)
+	// The base handlers accept everything: the filter decides.
+	opts := &slog.HandlerOptions{Level: slog.LevelDebug}
 	var base slog.Handler
 	if format == "text" {
-		base = slog.NewTextHandler(out, &slog.HandlerOptions{Level: lv})
+		base = slog.NewTextHandler(out, opts)
 	} else {
-		base = slog.NewJSONHandler(out, &slog.HandlerOptions{Level: lv})
+		base = slog.NewJSONHandler(out, opts)
 	}
-	// Wrap base handler so log entries are also sent to the admin log viewer.
-	logger := slog.New(sink.SlogHandler(base))
+	filter := logfilter.New(lv)
+	// The sink wraps base so entries also reach the admin log viewer.
+	logger := slog.New(filter.Handler(sink.SlogHandler(base)))
 	observability.InstallGRPCLogger(logger)
-	return logger, lv
+	return logger, lv, filter
 }
 
 // loadServeConfig loads the merged configuration and validates it. Serve is

@@ -896,6 +896,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := c.Telemetry.Log.validateComponents(); err != nil {
+		return err
+	}
+
 	if err := c.validateSourceURL(); err != nil {
 		return err
 	}
@@ -1357,6 +1361,10 @@ type PrometheusConfig struct {
 type LogConfig struct {
 	Level  string `hcl:"level,optional" mapstructure:"level"`
 	Format string `hcl:"format,optional" mapstructure:"format"`
+	// Components sets a level per component, overriding Level for messages
+	// from that component (see LogComponents). Hot on reload. A component
+	// can be quieter than Level but never quieter than "error".
+	Components map[string]string `hcl:"components,optional" mapstructure:"components"`
 	// File, when set, writes logs to this path in addition to stdout. Useful
 	// for shipping logs off a server for later analysis.
 	File string `hcl:"file,optional" mapstructure:"file"`

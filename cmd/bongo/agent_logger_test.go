@@ -21,7 +21,7 @@ func TestNewServeLoggerInstallsGRPCLogger(t *testing.T) {
 	restoreGRPCLog(t)
 
 	var buf bytes.Buffer
-	logger, _ := newServeLogger("json", slog.LevelInfo, &buf, handlers.NewLogSink())
+	logger, _, _ := newServeLogger("json", slog.LevelInfo, &buf, handlers.NewLogSink())
 	if logger == nil {
 		t.Fatal("nil logger")
 	}
@@ -75,7 +75,7 @@ func TestNewServeLoggerStartupLevel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			logger, lv := newServeLogger("json", config.LogConfig{Level: tt.in}.SlogLevel(), io.Discard, handlers.NewLogSink())
+			logger, lv, _ := newServeLogger("json", config.LogConfig{Level: tt.in}.SlogLevel(), io.Discard, handlers.NewLogSink())
 			if lv.Level() != tt.want {
 				t.Fatalf("lv.Level() = %v, want %v", lv.Level(), tt.want)
 			}
@@ -95,7 +95,7 @@ func TestNewServeLoggerLevelFollows(t *testing.T) {
 			restoreGRPCLog(t)
 			ctx := context.Background()
 			var buf bytes.Buffer
-			logger, lv := newServeLogger(format, slog.LevelInfo, &buf, handlers.NewLogSink())
+			logger, lv, _ := newServeLogger(format, slog.LevelInfo, &buf, handlers.NewLogSink())
 			child := logger.With("component", "x")
 
 			assertAll := func(l slog.Level, want bool) {
@@ -136,7 +136,7 @@ func TestNewServeLoggerLevelFollows(t *testing.T) {
 
 func TestNewServeLoggerConcurrentSet(t *testing.T) {
 	restoreGRPCLog(t)
-	logger, lv := newServeLogger("json", slog.LevelInfo, io.Discard, handlers.NewLogSink())
+	logger, lv, _ := newServeLogger("json", slog.LevelInfo, io.Discard, handlers.NewLogSink())
 	child := logger.With("component", "x")
 
 	var wg sync.WaitGroup

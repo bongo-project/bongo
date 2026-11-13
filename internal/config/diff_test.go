@@ -53,7 +53,8 @@ func configLeaves(t *testing.T) []string {
 				walk(path, ft.Elem())
 			case ft.Kind() == reflect.String, ft.Kind() == reflect.Int, ft.Kind() == reflect.Bool,
 				ft.Kind() == reflect.Float64,
-				ft.Kind() == reflect.Slice && ft.Elem().Kind() == reflect.String:
+				ft.Kind() == reflect.Slice && ft.Elem().Kind() == reflect.String,
+				ft.Kind() == reflect.Map && ft.Key().Kind() == reflect.String && ft.Elem().Kind() == reflect.String:
 				leaves = append(leaves, path)
 			default:
 				t.Errorf("%s has unsupported kind %s; extend the walkers", path, ft)
@@ -150,6 +151,8 @@ func setLeaf(t *testing.T, v reflect.Value, parts []string) {
 			fv.SetFloat(fv.Float() + 0.125)
 		case reflect.Slice:
 			fv.Set(reflect.Append(fv, reflect.ValueOf("diff-sentinel")))
+		case reflect.Map:
+			fv.Set(reflect.ValueOf(map[string]string{"diff-sentinel": "diff-sentinel"}))
 		default:
 			t.Fatalf("cannot set kind %s", fv.Kind())
 		}
@@ -326,7 +329,7 @@ func TestDiffSeveralChangesSorted(t *testing.T) {
 func TestDiffIncrementOneClasses(t *testing.T) {
 	want := map[ReloadClass][]string{
 		ClassHot: {
-			"telemetry.log.level", "antispam.builtin.threshold", "antispam.builtin.high_threshold",
+			"telemetry.log.level", "telemetry.log.components", "antispam.builtin.threshold", "antispam.builtin.high_threshold",
 			"smtp.trusted_networks", "antivirus.clamav.on_failure",
 		},
 		ClassRestart: {
@@ -356,8 +359,8 @@ func TestDiffIncrementOneClasses(t *testing.T) {
 			noopCount++
 		}
 	}
-	if hotCount != 5 || noopCount != 10 {
-		t.Errorf("hot=%d noop=%d, want 5 and 10", hotCount, noopCount)
+	if hotCount != 6 || noopCount != 10 {
+		t.Errorf("hot=%d noop=%d, want 6 and 10", hotCount, noopCount)
 	}
 }
 
@@ -394,5 +397,26 @@ func TestEveryKeyHasExactlyOneClass(t *testing.T) {
 			}
 			seen[k] = name
 		}
+	}
+}
+
+// A nil and an empty components map are the same configuration; a changed
+// level is a hot change; Clone copies the map instead of sharing it.
+func TestLogComponentsDiffAndClone(t *testing.T) {
+	a, b := Defaults(), Defaults()
+	a.Telemetry.Log.Components = nil
+	b.Telemetry.Log.Components = map[string]string{}
+	if hot, restart, noop := Diff(a, b); len(hot)+len(restart)+len(noop) != 0 {
+		t.Errorf("nil vs empty map reported as a change: %v %v %v", hot, restart, noop)
+	}
+	a.Telemetry.Log.Components = map[string]string{"imap": "debug"}
+	b.Telemetry.Log.Components = map[string]string{"imap": "info"}
+	if hot, _, _ := Diff(a, b); len(hot) != 1 || hot[0].Key != "telemetry.log.components" {
+		t.Errorf("hot = %v, want telemetry.log.components", hot)
+	}
+	c := Clone(a)
+	c.Telemetry.Log.Components["imap"] = "error"
+	if a.Telemetry.Log.Components["imap"] != "debug" {
+		t.Error("Clone shares the components map")
 	}
 }

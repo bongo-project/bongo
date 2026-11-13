@@ -18,7 +18,7 @@ func Clone(c *Config) *Config {
 }
 
 // deepCopy copies src into dst (both the same type, dst settable). Config
-// holds structs, pointers, slices and scalars only.
+// holds structs, pointers, slices, maps of scalars and scalars.
 func deepCopy(dst, src reflect.Value) {
 	switch src.Kind() {
 	case reflect.Struct:
@@ -41,6 +41,16 @@ func deepCopy(dst, src reflect.Value) {
 			deepCopy(s.Index(i), src.Index(i))
 		}
 		dst.Set(s)
+	case reflect.Map:
+		if src.IsNil() {
+			return
+		}
+		m := reflect.MakeMapWithSize(src.Type(), src.Len())
+		iter := src.MapRange()
+		for iter.Next() {
+			m.SetMapIndex(iter.Key(), iter.Value())
+		}
+		dst.Set(m)
 	default:
 		dst.Set(src)
 	}
