@@ -160,6 +160,7 @@ with no listener open.
 | #195, #196 | v0.15.11 | Stop waited on open web connections and was force-killed, losing the clean-shutdown marker | production restart |
 | #199 | v0.15.12 | The spool delivered by random ID, not arrival order | 7.7 |
 | #201 | next | The queue's oldest-pending age read the next message due, not the oldest | 7.8 |
+| #204 | next | A line over the SMTP limit got a temporary 451 and an ERROR log instead of a permanent 500 | 7.8 |
 
 ## 5. Users per node
 
