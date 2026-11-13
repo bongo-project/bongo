@@ -189,6 +189,6 @@ telemetry {
 
 # MEMORY LIMIT
 #   The compose template (deploy/docker-compose.yml) limits the bongo
-#   container with "mem_limit: 512m". A config file cannot raise it. Raise it
+#   container with "mem_limit: 2g". A config file cannot raise it. Raise it
 #   in the compose file, to the machine's RAM less what the operating system
 #   and clamd need, or run the binary directly.

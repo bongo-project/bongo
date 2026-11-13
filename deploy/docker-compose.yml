@@ -25,7 +25,9 @@ services:
     # and storage. Docker's default 10s would SIGKILL it first, and the next
     # start would rebuild every index.
     stop_grace_period: 45s
-    mem_limit: 512m
+    # The load test measured about 1 GB with 820 connected clients, plus about
+    # 100 KB per open IMAP connection. Raise this on a larger machine.
+    mem_limit: 2g
 
     # Hardening: the container runs as uid/gid 10001 from the start (the image
     # has no root entrypoint), with every Linux capability dropped and

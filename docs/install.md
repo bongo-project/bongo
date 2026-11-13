@@ -73,8 +73,8 @@ conditions.
 - **Memory.** Plan for about 1 GB with several hundred clients, plus about
   100 KB per open IMAP connection. The server has no memory ceiling of its own;
   without swap, running out stops it. The container in
-  `deploy/docker-compose.yml` is limited to 512 MB (`mem_limit`); raise it for
-  more than a few hundred clients.
+  `deploy/docker-compose.yml` is limited to 2 GB (`mem_limit`); raise it on a
+  larger machine.
 - **Disk.** The search index takes several times the space of the mail it
   indexes: about 85 KB per message, or about 340 KB for an account holding
   five small messages. Keep the data directory on local SSD or NVMe; Bongo

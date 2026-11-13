@@ -417,6 +417,11 @@ worthwhile.
     is reserved for testing (RFC 6761), never resolves, and cannot receive real mail.
     No public CA issues certificates for it, so the server uses a self-signed
     certificate and the generator connects by IP with its insecure-TLS flags.
+15. (operator, 2026-11-13) Antivirus was off in every stage of the first run, so
+    stage 7.2 (ramp, scanning off) had no separate run: stage 7.1 is that ramp, and
+    the effect of scanning is not measured. The next run turns ClamAV on.
+16. (operator, 2026-11-13) The compose template's memory limit goes from 512 MB to
+    2 GB: the server used about 1 GB with 820 connected clients.
 
 ### 8.2 Candidates for the next release
 

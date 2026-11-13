@@ -162,14 +162,14 @@ Notes:
   filtering; use it only if the check shows the mail is refused for that
   reason, and record that you did.
 - **Memory.** The compose template (`deploy/docker-compose.yml`) limits the
-  bongo container with `mem_limit: 512m`. A config file cannot raise it. Raise
+  bongo container with `mem_limit: 2g`. A config file cannot raise it. Raise
   it in the compose file to the machine's RAM less what the operating system
   and clamd need, or run the binary directly. Raise the open-file limit of the
   server process too (`ulimits` in compose, `LimitNOFILE` in systemd).
   Each open user database holds about three file descriptors. In the dry run
   (no memory limit, 20 accounts) the resident size reached 3.2 GB after 22,000
   messages while the delivery pipeline was backlogged, so a run inside the
-  512 MB limit would be killed by the kernel (OOM) long before a rate limit
+  2 GB limit would be killed by the kernel (OOM) long before a rate limit
   shows. Raise the limit first.
 - Run clamd on the server and check that its socket exists at the configured
   path before the first run. With `on_failure = "quarantine"` a stopped clamd
