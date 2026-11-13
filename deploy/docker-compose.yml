@@ -18,7 +18,7 @@ services:
   bongo:
     # A version tag publishes this image through .github/workflows/publish-image.yml.
     # Each release bumps the pin below and TestComposeImageTag together.
-    image: ghcr.io/bongo-project/bongo:0.15.12
+    image: ghcr.io/bongo-project/bongo:0.15.13
     container_name: bongo
     restart: unless-stopped
     # Shutdown waits up to 30s for a message in delivery before it closes Raft
