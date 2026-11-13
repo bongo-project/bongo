@@ -1048,12 +1048,19 @@ func (d *declaredSizeReader) Read(p []byte) (int, error) {
 // detail (paths, store errors) and make the sender give up on a transient
 // fault. A deliberate *SMTPError, wrapped or not, is passed through unchanged
 // so permanent policy rejections stay permanent (552 too large, 550 From not
-// owned). Anything else is logged here, never with the subject, and answered
-// with a generic temporary failure so the sender retries.
+// owned). A line over go-smtp's MaxLineLength is the sender's fault and fails
+// the same way on every retry, so it is a permanent 500 (RFC 5321 section
+// 4.2.4, "Line too long") logged as a warning. Anything else is logged here,
+// never with the subject, and answered with a generic temporary failure so
+// the sender retries.
 func (s *Session) dataFailure(stage string, err error) error {
 	var se *gosmtp.SMTPError
 	if errors.As(err, &se) {
 		return se
+	}
+	if errors.Is(err, gosmtp.ErrTooLongLine) {
+		s.logger.Warn("smtp: message line too long", "stage", stage, "from", s.from, "ip", s.remoteIP)
+		return &gosmtp.SMTPError{Code: 500, EnhancedCode: gosmtp.EnhancedCode{5, 5, 2}, Message: "Line too long"}
 	}
 	s.logger.Error("smtp: data phase failed", "stage", stage, "from", s.from, "ip", s.remoteIP, "error", err)
 	return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Temporary local error, please try again later"}
