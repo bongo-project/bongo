@@ -591,7 +591,7 @@ func TestParseUploadFormSpools(t *testing.T) {
 // The default per-message cap must stay bounded, or one huge message can
 // exhaust the container's memory.
 func TestImportMboxMessageCapIsBounded(t *testing.T) {
-	const lo, hi = 34 << 20, 64 << 20 // above compose's 33 MiB, well below the 512 MB container
+	const lo, hi = 34 << 20, 64 << 20 // above compose's 33 MiB, well below the 2 GB container
 	if importMboxMaxMessageBytes < lo || importMboxMaxMessageBytes > hi {
 		t.Fatalf("importMboxMaxMessageBytes = %d, want within [%d, %d]", importMboxMaxMessageBytes, lo, hi)
 	}

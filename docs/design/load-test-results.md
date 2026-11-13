@@ -143,7 +143,7 @@ with no listener open.
 | Open user databases | Confirmed, as a cost rather than a ceiling | Start opens every account's database (7,952 evictions before any client at 10,000 accounts, limit 2,048); the preview backfill walks every account every 30 minutes (95 evictions/s). Neither stopped service |
 | Search indexing | Confirmed | First limit in 7.1, 7.3 and 7.7: one worker, CPU-bound, about 16 messages/s alone and 3 to 4 with clients; also most of the disk used (about 85 KB per message) and most of a rebuild |
 | Outbound queue | Not reached | 2,250 messages at 0.5/s and a 795-message backlog drained without errors; the drain was paced by the retry backoff, not by `queue.concurrency` |
-| Memory | Confirmed for the compose template | RSS about 1.0 GB with 820 clients and 2.0 GB at 15,000 connections; the template's 512 MB container limit is too low for either |
+| Memory | Confirmed for the compose template | RSS about 1.0 GB with 820 clients and 2.0 GB at 15,000 connections; the template's 512 MB container limit was too low for either, and is now 2 GB |
 | Connections | Not confirmed | 15,000 open IMAP connections held at 9.5% CPU and about 100 KB each; the limit was the login rate, not the count or open files |
 | Blob files | Not reached | About 384,000 messages by the end of the soak, with no file-system effect seen; well short of the millions per directory where it would show |
 | Blob garbage collection | Not reached | 1.0 s per pass at 75,000 blobs; not timed at the soak's size |
