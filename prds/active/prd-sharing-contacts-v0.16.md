@@ -629,10 +629,13 @@ is unexported (line 166) and its port rules are for HTTP; only
       shares the safe client's address check (the same `Control` hook and
       `IsForbiddenAddr`): private, loopback and link-local addresses are
       refused after resolution, on every connection.
-- [ ] Passwords are encrypted at rest with AES-GCM under
-      `DeriveKey(session_secret, "bongo/fetch-credentials/v1")` and never
-      returned to the browser; rotating the session secret makes the user
-      re-enter them (shown as an error on the settings page).
+- [ ] Passwords are encrypted at rest with AES-GCM under a separate
+      configured secret, `fetch.credentials_key` (decision 19), and never
+      returned to the browser. Fetching does not start without the key.
+      Each stored password records the id of the key that encrypted it, so
+      the key can be rotated; a password under an unknown key makes the
+      user re-enter it (shown as an error on the settings page). The key is
+      never stored in the data directory or in backups.
 - [ ] A leader-only worker fetches due accounts. Fetched messages go through
       the local inbound pipeline (rules, antispam, quota); seen messages are
       tracked by UID (IMAP) or UIDL (POP3) at
@@ -824,7 +827,7 @@ Open:
 7. US-016: decision 7 asks for "a dedicated key". Is a key derived from the
    session secret with its own purpose string enough, or should it be a
    separate configured secret, so that rotating the session secret does not
-   invalidate stored passwords?
+   invalidate stored passwords? Resolved by decision 19.
 
 ### 8.1 Decisions
 
@@ -892,6 +895,12 @@ Open:
 18. (operator, 2026-11-14) Open question 6: members an admin adds to a
     shared inbox get access straight away. Their grants are created
     `accepted`, with no invitation email; removing a member revokes them.
+19. (operator, 2026-11-14) Open question 7: stored fetch passwords are
+    encrypted under a separate configured secret, `fetch.credentials_key`,
+    not a key derived from the session secret, so the session secret can be
+    rotated without breaking fetch. Fetching stays off until it is set, each
+    stored password carries its key id, and the key never lives in the data
+    directory.
 
 ### 8.2 Candidates for the next release
 

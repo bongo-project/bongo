@@ -280,4 +280,4 @@ PRD: [prd-sharing-contacts-v0.16.md](active/prd-sharing-contacts-v0.16.md). Phas
 
 | ID | Task | Source | Status | Notes |
 |----|------|--------|--------|-------|
-| 41.1 | US-016: scheduled POP3 and IMAP fetch: settings page, TLS only, raw-TCP safe dialer in `internal/netx`, AES-GCM credentials, leader worker through the inbound pipeline, fetchseen records, limits, pause after 5 auth failures, nothing secret logged | [prd-sharing-contacts-v0.16.md](active/prd-sharing-contacts-v0.16.md) | BLOCKED | Needs: none. Waiting on open question 7 (derived or separate key) and a security review before release |
+| 41.1 | US-016: scheduled POP3 and IMAP fetch: settings page, TLS only, raw-TCP safe dialer in `internal/netx`, AES-GCM credentials, leader worker through the inbound pipeline, fetchseen records, limits, pause after 5 auth failures, nothing secret logged | [prd-sharing-contacts-v0.16.md](active/prd-sharing-contacts-v0.16.md) | TODO | Needs: none. Decision 19: separate `fetch.credentials_key`. Ships only after its own security review (decision 7) |
