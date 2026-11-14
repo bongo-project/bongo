@@ -27,22 +27,23 @@ It is not:
   separate work.
 
 A run describes the release it ran against. Only a final run on a tagged
-release is published. Runs on an untagged build, and runs on a shared-CPU
-machine, are preliminary: they show what breaks first, and their numbers are
-not headline figures.
+release is published, and only when two runs agree within 10%. Runs on an
+untagged build are preliminary: they show what breaks first, and their numbers
+are not headline figures.
 
 ## 2. Machines
 
 A run uses two machines in the same region: the server and the generator.
 
-The first run is on a VPS. If its CPU is shared, the run is preliminary
-(decision 13). Later runs follow these rules (PRD section 6.1.1):
+Runs follow these rules (PRD section 6.1.1):
 
-1. Start on a small dedicated-CPU machine, then repeat on one or two larger
+1. Start on a small shared-vCPU machine, then repeat on one or two larger
    sizes. If the limit does not move when CPU and memory double, it is not CPU
    or memory. Report results per machine size.
-2. Use dedicated CPU only. Shared CPU varies with other tenants, which breaks
-   the rule that two runs agree within 10%.
+2. The headline numbers come from shared-vCPU VMs, because most installations
+   run on a VM or in a container (decision 17). Shared CPU varies with other
+   tenants, so repeat the run until two agree within 10%. A run on dedicated
+   hardware is the last test of the series and is reported separately.
 3. Use local disk for the account, message rate and connection stages. It is
    the best case and what a one-server installation most likely runs.
 4. Use a mounted volume for the storage scale stage. Load it once, snapshot it,
