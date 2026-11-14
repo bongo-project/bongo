@@ -1838,3 +1838,9 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [tests] A fake that accepts what the real server refuses hides integration bugs; the dry run against the real server is what found the DAV discovery failure.
 - PATTERN: [git] When the main checkout has someone else's unstaged edits, stage by explicit path, commit the index only, and run the gate in a separate worktree at the commit.
 
+
+## 2026-11-14: Import of the v0.16 sharing and contacts PRD
+
+- PRD moved to prds/backlog/. Phase 39 (v0.16.0, US-001 to US-010, 17 rows), Phase 40 (v0.16.1, US-011 to US-015, 6 rows), Phase 41 (v0.17, US-016, 1 row), following the release split in decision 15.
+- 39.1 (US-003) recorded DONE from PR #213; its remaining LSUB SelectRecursiveMatch case moved into 39.3.
+- BLOCKED on the operator: 39.17 (open question 6 and shared-inbox member storage) and 41.1 (open question 7, plus its own security review).
