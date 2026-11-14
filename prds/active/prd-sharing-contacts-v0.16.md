@@ -922,6 +922,19 @@ Found while building v0.16.0 (2026-11-15):
 - **There is no web folder create or rename form**; only mbox import creates
   a folder from a user-supplied name, and it refuses the namespace prefixes.
   A future folder form must call `store.IMAPNamespaces.Reserves`.
+- **The orphan sweep repeats the mailbox-id resolver.** `mailboxGone` in
+  `aclcommand.go` re-implements `MailboxNameByID`'s checks because the ACL
+  store cannot call it; if they drift, the sweep could delete live grants.
+  Candidate: one package-level helper for both.
+- **STATUS SIZE has no test of its own**, and a corrupt `MailMeta` counts
+  as 0 bytes without a log line. The QUOTA wiring test matches " QUOTA" as a
+  substring, which `QUOTA=RES-STORAGE` also satisfies.
+- **Address writers other than groups are check-then-act.** CreateUser,
+  admin AddAddress, alias create and send-as verification can still
+  overwrite a group's `/system/address/` record in the window between the
+  check and the Put; only group create is a compare-and-set.
+- **No sweep for group member ids whose user is gone.** User deletion
+  removes them best-effort; expansion must skip a member without a profile.
 
 Audit corrections found while writing this PRD (2026-10-26):
 

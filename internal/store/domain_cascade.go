@@ -17,11 +17,12 @@ type DomainDependents struct {
 	Aliases    int // /system/alias/ keys on the domain
 	Addresses  int // /system/address/ records on the domain whose user still exists
 	Identities int // subset of Addresses with kind "identity" (send-as)
+	Groups     int // subset of Addresses with kind "group" whose group exists
 }
 
 // Any reports whether the domain still has dependents.
 func (d DomainDependents) Any() bool {
-	return d.Users > 0 || d.Aliases > 0 || d.Addresses > 0
+	return d.Users > 0 || d.Aliases > 0 || d.Addresses > 0 || d.Groups > 0
 }
 
 // DomainDependentCounts scans for users, aliases and live address records on
@@ -90,6 +91,9 @@ func DomainDependentCounts(ps *PebbleStore, domain string) (DomainDependents, er
 		if r.kind == "identity" {
 			out.Identities++
 		}
+		if r.kind == AddressKindGroup {
+			out.Groups++
+		}
 	}
 	return out, nil
 }
@@ -121,10 +125,23 @@ func domainAddressRecords(ps *PebbleStore, suffix string) (out []domainAddressRe
 		if uErr := proto.Unmarshal(val, &rec); uErr != nil {
 			return nil, fmt.Errorf("domain addresses: decode %q: %w", addr, uErr)
 		}
+		// A group record has no user; it is live while its group exists, so
+		// the purge never removes the address of a group that is still there.
+		live := userProfileExists(ps, rec.UserId)
+		if rec.Kind == AddressKindGroup {
+			live = false
+			if rec.GroupId != "" {
+				ok, gErr := present(ps.Get, GroupKey(rec.GroupId))
+				if gErr != nil {
+					return nil, fmt.Errorf("domain addresses: read group of %q: %w", addr, gErr)
+				}
+				live = ok
+			}
+		}
 		out = append(out, domainAddressRecord{
 			key:  append([]byte(nil), it.Key()...),
 			kind: rec.Kind,
-			live: userProfileExists(ps, rec.UserId),
+			live: live,
 		})
 	}
 	return out, nil

@@ -338,6 +338,29 @@ func TestAdminRemoveAddress_PrimaryKindGuard(t *testing.T) {
 	}
 }
 
+// TestAdminRemoveAddress_GroupGuard refuses to remove a group's address from
+// a user's page: the group and its member keys would be left behind.
+func TestAdminRemoveAddress_GroupGuard(t *testing.T) {
+	h, as, mgr, ps := newAddressAdminHandler(t)
+	applier := &directApplierTags{ps: ps}
+	insertTestUserWithProfile(t, ps, mgr, applier, "user1", "alice@example.com")
+	if err := as.Put("team@example.com", &bongov1.AddressRecord{
+		Domain:  "example.com",
+		Kind:    store.AddressKindGroup,
+		GroupId: "0123456789abcdef0123456789abcdef",
+	}); err != nil {
+		t.Fatalf("pre-seeding group address: %v", err)
+	}
+
+	w := postRemoveAddress(t, h, "user1", "team@example.com")
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "belongs to a group") {
+		t.Fatalf("RemoveAddress on a group address = %d %q, want 409 naming the group", w.Code, w.Body.String())
+	}
+	if _, ok, err := as.Get("team@example.com"); err != nil || !ok {
+		t.Fatalf("group address after refused removal: ok=%v err=%v, want it kept", ok, err)
+	}
+}
+
 // TestAdminRemoveAddress_ProfileEmailGuard refuses to remove an address that
 // equals the user's profile email (even if Kind is not "primary").
 func TestAdminRemoveAddress_ProfileEmailGuard(t *testing.T) {

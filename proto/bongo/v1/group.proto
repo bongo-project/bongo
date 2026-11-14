@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
+
+// Group is a distribution group: one address that fans out to local users.
+// Key: /system/group/{group_id}
+// The address record lives at /system/address/{address} with kind "group",
+// and each member is indexed at /system/groupmember/{user_id}/{group_id}.
+// Written only by the composite /__group__/ command.
+message Group {
+  // id is the group's stable identifier, chosen by the caller.
+  string id = 1;
+
+  // address is the group's lowercased email address. It never changes.
+  string address = 2;
+
+  // display_name is a free-form label for lists and the address book.
+  string display_name = 3;
+
+  // domain is the domain part of address, lowercased. It never changes.
+  string domain = 4;
+
+  // member_ids are local user IDs. At most 1000, no duplicates, never a group.
+  repeated string member_ids = 5;
+
+  // owner_ids are local user IDs allowed to manage the group. Owners need not
+  // be members and are not in the member index.
+  repeated string owner_ids = 6;
+
+  // posting_policy says who may send to the group: "anyone", "domain",
+  // "members" or "owners".
+  string posting_policy = 7;
+
+  // created_at and updated_at are Unix seconds taken from the command.
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}

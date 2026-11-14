@@ -132,14 +132,63 @@ func (s *DomainQuotaStore) IsOverStorageQuota(domain string) (bool, error) {
 	return s.wouldExceedStorageQuota(domain, 0)
 }
 
-// wouldExceedStorageQuota is the single quota computation. It reports whether
-// the domain is at or over its limit, or whether adding addBytes would push it
-// past the limit (usage+addBytes > max; an exact fit is allowed). A negative
-// addBytes counts as zero. The addition is overflow-safe.
-func (s *DomainQuotaStore) wouldExceedStorageQuota(domain string, addBytes int64) (bool, error) {
+// storageWouldExceed is the one piece of quota arithmetic, shared by the domain
+// and the per-user check. A limit of zero or less means no limit. Otherwise it
+// reports whether usage is already at or over the limit, or whether adding
+// addBytes would push it past (an exact fit is allowed). A negative add counts
+// as zero. The subtraction form cannot overflow when usage is clamped to
+// MaxInt64.
+func storageWouldExceed(limit, usage, addBytes int64) bool {
+	if limit <= 0 {
+		return false
+	}
 	if addBytes < 0 {
 		addBytes = 0
 	}
+	if usage >= limit {
+		return true
+	}
+	return addBytes > limit-usage
+}
+
+// UserStorageQuota returns a user's own storage limit (UserProfile.quota_bytes,
+// 0 for none) and their last recomputed usage. A missing profile, or a zero or
+// negative limit, gives (0, 0, nil). It reads Pebble on every call, so IMAP
+// QUOTA and the delivery check never disagree. It ignores the domain quota.
+func UserStorageQuota(ps *PebbleStore, userID string) (limit, usage int64, err error) {
+	profile, err := loadQuotaProfile(ps, userID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if profile == nil || profile.QuotaBytes <= 0 {
+		return 0, 0, nil
+	}
+	usage, err = GetUserUsage(ps, userID)
+	if err != nil {
+		return 0, 0, err
+	}
+	return profile.QuotaBytes, usage, nil
+}
+
+// loadQuotaProfile returns the user's profile, or nil when there is none.
+func loadQuotaProfile(ps *PebbleStore, userID string) (*bongov1.UserProfile, error) {
+	data, err := ps.Get([]byte("/user/" + userID + "/profile"))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("domain quota recipient check: load profile %q: %w", userID, err)
+	}
+	var profile bongov1.UserProfile
+	if err := proto.Unmarshal(data, &profile); err != nil {
+		return nil, fmt.Errorf("domain quota recipient check: unmarshal profile %q: %w", userID, err)
+	}
+	return &profile, nil
+}
+
+// wouldExceedStorageQuota reports whether the domain is at or over its limit,
+// or whether adding addBytes would push it past the limit.
+func (s *DomainQuotaStore) wouldExceedStorageQuota(domain string, addBytes int64) (bool, error) {
 	q, err := s.GetQuota(domain)
 	if err != nil {
 		return false, fmt.Errorf("domain quota: check storage quota %q: %w", domain, err)
@@ -151,10 +200,7 @@ func (s *DomainQuotaStore) wouldExceedStorageQuota(domain string, addBytes int64
 	if err != nil {
 		return false, fmt.Errorf("domain quota: get usage %q: %w", domain, err)
 	}
-	if usage >= q.MaxStorageBytes {
-		return true, nil
-	}
-	return addBytes > q.MaxStorageBytes-usage, nil
+	return storageWouldExceed(q.MaxStorageBytes, usage, addBytes), nil
 }
 
 // RecipientOverQuota is RecipientWouldExceedQuota with addBytes == 0. Production
@@ -173,21 +219,35 @@ func (s *DomainQuotaStore) RecipientOverQuota(userID string) (bool, error) {
 }
 
 // RecipientWouldExceedQuota is the size-aware form of RecipientOverQuota: it
-// reports true when the user's domain is already at or over quota, or when
-// storing addBytes more would exceed it. With addBytes == 0 it is exactly
-// RecipientOverQuota. Usage is the last recompute (about ten minutes stale), so
-// this is a best-effort guard and concurrent writers can still overshoot.
+// reports true when the user is already at or over a limit, or when storing
+// addBytes more would exceed it. With addBytes == 0 it is exactly
+// RecipientOverQuota.
+//
+// Two limits apply: the user's own (UserProfile.quota_bytes, 0 for none) and
+// the domain's max_storage_bytes. Either one refuses. Both compare against the
+// figure the leader's usage recompute last wrote, which runs every
+// usageRecomputeInterval (10 minutes), so a figure can be about that old, or
+// one pass older when a pass is split over more than 5000 users. A user who
+// frees space stays refused until the next pass, and a new user counts as 0
+// until the first one. Concurrent writers can overshoot. This is a best-effort
+// guard with no per-message Raft write. A user under their own limit can still
+// be refused because the domain is full.
 func (s *DomainQuotaStore) RecipientWouldExceedQuota(userID string, addBytes int64) (bool, error) {
-	data, err := s.pebble.Get([]byte("/user/" + userID + "/profile"))
+	profile, err := loadQuotaProfile(s.pebble, userID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return false, nil // no profile = no quota enforcement (edge case)
-		}
-		return false, fmt.Errorf("domain quota recipient check: load profile %q: %w", userID, err)
+		return false, err
 	}
-	var profile bongov1.UserProfile
-	if err := proto.Unmarshal(data, &profile); err != nil {
-		return false, fmt.Errorf("domain quota recipient check: unmarshal profile %q: %w", userID, err)
+	if profile == nil {
+		return false, nil // no profile = no quota enforcement (edge case)
+	}
+	if profile.QuotaBytes > 0 {
+		usage, err := GetUserUsage(s.pebble, userID)
+		if err != nil {
+			return false, fmt.Errorf("domain quota recipient check: %w", err)
+		}
+		if storageWouldExceed(profile.QuotaBytes, usage, addBytes) {
+			return true, nil
+		}
 	}
 	domain := strings.ToLower(DomainFromEmail(profile.Email))
 	return s.wouldExceedStorageQuota(domain, addBytes)

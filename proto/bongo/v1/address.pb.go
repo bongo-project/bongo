@@ -30,12 +30,17 @@ type AddressRecord struct {
 	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	// domain is the domain part of the address (e.g. "example.com"), lowercased.
 	Domain string `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"`
-	// kind classifies the address role: "primary", "alias", or "identity".
+	// kind classifies the address role: "primary", "alias", "identity" or
+	// "group". A group record has an empty user_id and names its group in
+	// group_id.
 	Kind string `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
 	// can_send indicates the user may send outbound mail from this address.
 	CanSend bool `protobuf:"varint,4,opt,name=can_send,json=canSend,proto3" json:"can_send,omitempty"`
 	// verified indicates the address ownership has been verified.
-	Verified      bool `protobuf:"varint,5,opt,name=verified,proto3" json:"verified,omitempty"`
+	Verified bool `protobuf:"varint,5,opt,name=verified,proto3" json:"verified,omitempty"`
+	// group_id is the Group this address belongs to when kind is "group".
+	// Empty for every other kind. A node that predates the field keeps it.
+	GroupId       string `protobuf:"bytes,6,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -103,6 +108,13 @@ func (x *AddressRecord) GetVerified() bool {
 		return x.Verified
 	}
 	return false
+}
+
+func (x *AddressRecord) GetGroupId() string {
+	if x != nil {
+		return x.GroupId
+	}
+	return ""
 }
 
 // AddressVerification stores a pending email verification challenge.
@@ -237,13 +249,14 @@ var File_proto_bongo_v1_address_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_address_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/bongo/v1/address.proto\x12\bbongo.v1\"\x8b\x01\n" +
+	"\x1cproto/bongo/v1/address.proto\x12\bbongo.v1\"\xa6\x01\n" +
 	"\rAddressRecord\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x16\n" +
 	"\x06domain\x18\x02 \x01(\tR\x06domain\x12\x12\n" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x19\n" +
 	"\bcan_send\x18\x04 \x01(\bR\acanSend\x12\x1a\n" +
-	"\bverified\x18\x05 \x01(\bR\bverified\"m\n" +
+	"\bverified\x18\x05 \x01(\bR\bverified\x12\x19\n" +
+	"\bgroup_id\x18\x06 \x01(\tR\agroupId\"m\n" +
 	"\x13AddressVerification\x12\x1b\n" +
 	"\tcode_hash\x18\x01 \x01(\fR\bcodeHash\x12\x1d\n" +
 	"\n" +

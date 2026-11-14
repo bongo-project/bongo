@@ -10,8 +10,9 @@ option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
 // together with it by the composite /__acl__/ Raft command.
 message Grant {
   // level is the permission level. Calendars: freebusy, read, write.
+  // Address books: read, write. Mailbox grants carry no level.
   string level = 1;
-  // rights is reserved for mailbox rights (RFC 4314 letters).
+  // rights holds the RFC 4314 letters of a mailbox grant; empty otherwise.
   string rights = 2;
   // state is pending or accepted. Only an accepted grant authorises.
   string state = 3;

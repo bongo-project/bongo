@@ -150,9 +150,6 @@ func (h *CalendarHandler) ShareLimiter() shareRateLimiter { return h.shareLimite
 // FreeBusyLimiter returns the per-user availability limiter, or nil.
 func (h *CalendarHandler) FreeBusyLimiter() shareRateLimiter { return h.freeBusyLimiter }
 
-// maxCalendarShares caps how many users one calendar can be shared with.
-const maxCalendarShares = 50
-
 // shareTargetResolver maps an address to the user ID of an existing, enabled
 // local account. It must not resolve through catch-alls.
 type shareTargetResolver interface {
@@ -712,12 +709,11 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 	// change to an existing grantee is the same refusal. Pending grants past
 	// their 30 days do not count. One clock reading serves the whole request.
 	now := h.clock()
-	count, err := h.acl.CountActiveCalendarGrants(userID, calID, now)
+	full, err := h.acl.GrantCapReached(store.ACLKindCalendar, userID, calID, now)
 	if err != nil {
 		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
 		return
 	}
-	full := count >= maxCalendarShares
 	// The level is validated before resolving too, so a bad level cannot be
 	// used to tell a valid address from an invalid one. A plain share is
 	// free/busy, which is what sharing meant before levels existed.

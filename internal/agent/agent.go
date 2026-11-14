@@ -4185,7 +4185,7 @@ func (a *Agent) sweepOrphanedGrants(prev map[string]bool) map[string]bool {
 		if !orphaned {
 			continue
 		}
-		id := string(store.ACLKey(ref.Kind, ref.Owner, ref.Resource, ref.Grantee))
+		id := string(store.ACLKey(ref.Kind, ref.Owner, ref.Resource, ref.Principal))
 		current[id] = true
 		if !prev[id] {
 			continue // first sighting: wait one more interval

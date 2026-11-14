@@ -542,6 +542,9 @@ func (s *SystemIndex) createSchema() error {
 	-- addresses is the global address index (FR-3 / US-RECV-2).
 	-- DERIVED INDEX — rebuildable from Pebble (/system/address/{addr}).
 	-- Addresses are stored lowercase. kind is one of: primary, alias, identity.
+	-- A group address (kind group) is never written here: the FSM does not
+	-- maintain this table, and a row with an empty user_id would read as free
+	-- to the address checks that compare user_id with the caller.
 	-- can_send/verified are stored as 0/1 integers (SQLite boolean convention).
 	CREATE TABLE IF NOT EXISTS addresses (
 		address    TEXT PRIMARY KEY,

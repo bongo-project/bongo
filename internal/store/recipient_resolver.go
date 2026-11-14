@@ -15,6 +15,28 @@ import (
 // "not local", or an authenticated session would relay the mail out.
 var ErrRecipientUnavailable = errors.New("recipient unavailable")
 
+// ErrRecipientGroup matches the error ResolveRecipient and ResolveAccount
+// return for a distribution group's address. It also matches
+// ErrRecipientUnavailable, so a caller that does not know about groups fails
+// closed: no delivery to a user, no fall-through to the catch-all, no relay.
+// A caller that expands groups uses errors.As with GroupRecipientError.
+var ErrRecipientGroup = errors.New("recipient is a group")
+
+// GroupRecipientError is returned for an address that belongs to a group.
+type GroupRecipientError struct {
+	Email   string
+	GroupID string
+}
+
+func (e *GroupRecipientError) Error() string {
+	return fmt.Sprintf("resolve recipient: %s: group address", e.Email)
+}
+
+// Is makes the error match ErrRecipientGroup and ErrRecipientUnavailable.
+func (e *GroupRecipientError) Is(target error) bool {
+	return target == ErrRecipientGroup || target == ErrRecipientUnavailable
+}
+
 // RecipientResolver resolves an email address to a local user ID.
 //
 // Lookup tiers (explicit tiers run first; catch-all is always last):
@@ -24,6 +46,9 @@ var ErrRecipientUnavailable = errors.New("recipient unavailable")
 //     by the server (migration, CreateUser, CreateAlias, admin AddAddress).
 //     Identity (send-as) records never route at this tier, because anyone can
 //     claim one through the self-serve flow. Skipped when addresses is nil.
+//
+//     A record of Kind "group" ends resolution with a GroupRecipientError (it
+//     matches ErrRecipientUnavailable), in strict mode too.
 //
 //  2. Legacy Pebble /system/alias/{addr} key (2a), then direct users-table
 //     lookup (2b). Covers accounts and aliases not yet in the address index.
@@ -260,6 +285,12 @@ func (r *RecipientResolver) resolveOnce(email string, strict, allowRewrite bool)
 	var identityOwner string
 	if r.addresses != nil {
 		rec, ok, err := r.addresses.Get(email)
+		// A group record has no user_id, so it must be decided before the
+		// guard below: skipping it would fall through to the catch-all and
+		// hand the group's mail to that owner (or relay it out).
+		if err == nil && ok && rec.Kind == AddressKindGroup {
+			return "", &GroupRecipientError{Email: email, GroupID: rec.GroupId}
+		}
 		if err == nil && ok && rec.UserId != "" {
 			switch {
 			case rec.Kind == "primary" || rec.Kind == "alias":

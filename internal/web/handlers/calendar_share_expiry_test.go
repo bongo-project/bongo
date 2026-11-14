@@ -139,7 +139,7 @@ func TestExpiredPendingGrantsDoNotCountTowardsCap(t *testing.T) {
 			e := newInviteEnv(t)
 			e.clockAt(e.now)
 			calID := e.fullID2(t)
-			for i := range maxCalendarShares {
+			for i := range store.MaxGrantsPerResource {
 				state, at := store.GrantStateAccepted, e.now.Add(-2*shareTTL)
 				if i < tc.expired {
 					state = store.GrantStatePending
