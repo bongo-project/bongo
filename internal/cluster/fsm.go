@@ -404,6 +404,19 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 		return nil
 	}
 
+	// Per-user usage from the leader's recompute arrives as one composite
+	// command so every value of a pass commits in one Pebble batch. Each entry
+	// is conditional on the user's profile existing, so a pass that scanned
+	// before a delete cannot bring a deleted user's usage key back. Like the
+	// others it skips derived-index updates.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsUserUsageSyntheticCommand(cmd.Key) {
+		if err := store.ApplyUserUsageCommand(f.store, cmd); err != nil {
+			f.logger.Error("fsm: user usage synthetic command failed", "error", err)
+			return err
+		}
+		return nil
+	}
+
 	// Grant changes arrive as one composite command so a grant and its reverse
 	// marker commit in one Pebble batch. Like Bayes and the queue it skips
 	// derived-index updates. The payload carries its own timestamp: the FSM

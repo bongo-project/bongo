@@ -300,6 +300,7 @@
   "import.uploadDescription": "Suba un archivo mbox para importar mensajes a un buzón.",
   "import.mboxFile": "Archivo Mbox",
   "import.targetMailbox": "Buzón de destino",
+  "import.errReservedMailbox": "No se puede crear una carpeta con los nombres reservados para los buzones de otros usuarios y los buzones compartidos. Elija otro nombre.",
   "import.import": "Importar",
   "import.importComplete": "Importación completada",
   "import.messagesImportedTo": "mensajes importados a",

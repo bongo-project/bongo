@@ -300,6 +300,7 @@
   "import.uploadDescription": "Upload an mbox file to import messages into a mailbox.",
   "import.mboxFile": "Mbox File",
   "import.targetMailbox": "Target Mailbox",
+  "import.errReservedMailbox": "A folder cannot be created under the reserved names used for other users' and shared mailboxes. Choose a different name.",
   "import.import": "Import",
   "import.importComplete": "Import Complete",
   "import.messagesImportedTo": "messages imported to",

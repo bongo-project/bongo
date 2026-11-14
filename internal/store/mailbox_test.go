@@ -41,6 +41,10 @@ func (a *directApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) 
 		return ApplyACLCommand(a.store, cmd)
 	}
 
+	if cmd.Op == bongov1.Op_OP_PUT && IsUserUsageSyntheticCommand(cmd.Key) {
+		return ApplyUserUsageCommand(a.store, cmd)
+	}
+
 	if cmd.Op == bongov1.Op_OP_PUT && IsAppPasswordSyntheticCommand(cmd.Key) {
 		return ApplyAppPasswordTouch(a.store, cmd)
 	}

@@ -904,6 +904,25 @@ Open:
 
 ### 8.2 Candidates for the next release
 
+Found while building v0.16.0 (2026-11-15):
+
+- **Rename does not move child folders.** `applyMailboxRename` renames one
+  mailbox; `A/x` stays when `A` moves (RFC 3501 says inferiors follow). Each
+  folder keeps its own id and lookup key, so grants are safe, but folder
+  sharing makes the gap more visible.
+- **CreateMailbox is check-then-PUT.** An id assigned between the check and
+  the PUT is overwritten, leaving a lookup key that resolves to nothing and
+  is never deleted. Fix: a conditional create in the FSM, or a sweep.
+- **User deletion can race a usage pass.** `DeleteUser` lists `/user/{id}/`
+  and deletes key by key; a usage command committed in between writes
+  `/user/{id}/usage` after the listing. The ghost-tree sweep reclaims it two
+  passes later.
+- **The admin usage test mounts its own router**, not the agent's
+  `/admin/users` route.
+- **There is no web folder create or rename form**; only mbox import creates
+  a folder from a user-supplied name, and it refuses the namespace prefixes.
+  A future folder form must call `store.IMAPNamespaces.Reserves`.
+
 Audit corrections found while writing this PRD (2026-10-26):
 
 - #13 and #14: go-imap v2 cannot serve ACL or QUOTA without a library

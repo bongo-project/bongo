@@ -300,6 +300,7 @@
   "import.uploadDescription": "Laden Sie eine Mbox-Datei hoch, um Nachrichten in ein Postfach zu importieren.",
   "import.mboxFile": "Mbox-Datei",
   "import.targetMailbox": "Zielpostfach",
+  "import.errReservedMailbox": "Ein Ordner kann nicht unter den reservierten Namen für Postfächer anderer Benutzer und gemeinsame Postfächer angelegt werden. Wählen Sie einen anderen Namen.",
   "import.import": "Importieren",
   "import.importComplete": "Import abgeschlossen",
   "import.messagesImportedTo": "Nachrichten importiert nach",

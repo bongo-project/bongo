@@ -1,6 +1,8 @@
 package store
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,7 +47,36 @@ const (
 	mailboxRenamePrefix  = "/__mailbox_rename__/"
 
 	mailboxSubscribePrefix = "/__mailbox_subscribe__/"
+
+	// mailboxAssignIDPrefix gives a mailbox its stable id and writes the
+	// lookup key in one batch.
+	mailboxAssignIDPrefix = "/__mailbox_assignid__/"
 )
+
+// mailboxIDLen is the length of a mailbox id: 16 random bytes, hex encoded.
+const mailboxIDLen = 32
+
+// validMailboxID reports whether s is exactly 32 lowercase hex characters.
+// Ids reach Pebble key segments and later come from untrusted input, so
+// nothing else may be used to build a key.
+func validMailboxID(s string) bool {
+	if len(s) != mailboxIDLen {
+		return false
+	}
+	for i := range len(s) {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// mailboxAssignIDPayload carries the id. The caller generates it: the FSM
+// must never read randomness or the clock, or replicas would diverge.
+type mailboxAssignIDPayload struct {
+	ID string `json:"id"`
+}
 
 type mailboxTransferPayload struct {
 	SrcMailbox string `json:"src_mailbox"`
@@ -153,6 +184,17 @@ func mailboxRenameKey(userID string) []byte {
 	return []byte(mailboxRenamePrefix + userID)
 }
 
+// mailboxIDKey is the lookup key from a mailbox id to its name. Its value is
+// the raw mailbox name, not a protobuf. The id is validated hex, so it needs
+// no escaping. It sits outside mailboxPrefix, so mailbox listings never see it.
+func mailboxIDKey(userID, id string) []byte {
+	return []byte("/user/" + userID + "/mailboxid/" + id)
+}
+
+func mailboxAssignIDKey(userID, mailbox string) []byte {
+	return []byte(mailboxAssignIDPrefix + userID + "/" + mailbox)
+}
+
 func mailboxSubscribeKey(userID, mailbox string) []byte {
 	return []byte(mailboxSubscribePrefix + userID + "/" + mailbox)
 }
@@ -174,7 +216,8 @@ func IsMailboxSyntheticCommand(key []byte) bool {
 		strings.HasPrefix(keyStr, mailboxExpungePrefix) ||
 		strings.HasPrefix(keyStr, mailboxMovePrefix) ||
 		strings.HasPrefix(keyStr, mailboxRenamePrefix) ||
-		strings.HasPrefix(keyStr, mailboxSubscribePrefix)
+		strings.HasPrefix(keyStr, mailboxSubscribePrefix) ||
+		strings.HasPrefix(keyStr, mailboxAssignIDPrefix)
 }
 
 // ApplyMailboxCommand applies a synthetic mailbox command directly to the
@@ -197,6 +240,8 @@ func ApplyMailboxCommand(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCom
 		return nil, applyMailboxRename(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxSubscribePrefix):
 		return nil, applyMailboxSubscribe(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxAssignIDPrefix):
+		return nil, applyMailboxAssignID(ps, cmd)
 	default:
 		return nil, fmt.Errorf("not a synthetic mailbox command")
 	}
@@ -353,11 +398,36 @@ func applyMailboxDelete(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		return fmt.Errorf("cannot delete INBOX")
 	}
 
+	// A missing meta is tolerated (the delete then only clears stray
+	// messages); any other read failure must not silently strand the id key.
+	var id string
+	meta, err := readMailboxMeta(ps, userID, mailbox)
+	switch {
+	case err == nil:
+		id = meta.Id
+	case !errors.Is(err, ErrNotFound):
+		return fmt.Errorf("reading mailbox for delete: %w", err)
+	}
+
 	msgs, err := listMailboxMessages(ps, userID, mailbox)
 	if err != nil {
 		return fmt.Errorf("listing messages for delete: %w", err)
 	}
+	var removeIDKey bool
+	if validMailboxID(id) {
+		// Only remove the key while it still names this mailbox.
+		if v, err := ps.Get(mailboxIDKey(userID, id)); err == nil {
+			removeIDKey = string(v) == mailbox
+		} else if !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("reading mailbox id key for delete: %w", err)
+		}
+	}
 	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
+		if removeIDKey {
+			if err := batch.Delete(mailboxIDKey(userID, id), nil); err != nil {
+				return fmt.Errorf("deleting mailbox id key: %w", err)
+			}
+		}
 		for _, msg := range msgs {
 			if err := batch.Delete(mailboxMsgKey(userID, mailbox, msg.Uid), nil); err != nil {
 				return fmt.Errorf("deleting message %d: %w", msg.Uid, err)
@@ -487,6 +557,9 @@ func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		// Carried over so a rename does not silently resubscribe a folder the
 		// user had unsubscribed. It is the same mailbox under a new name.
 		Unsubscribed: oldMeta.Unsubscribed,
+		// The id is the stable handle grants hold; keeping it is what makes
+		// a rename need no grant change.
+		Id: oldMeta.Id,
 	}
 	msgs, err := listMailboxMessages(ps, userID, payload.OldName)
 	if err != nil {
@@ -495,6 +568,12 @@ func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		if err := writeMailboxMetaBatch(batch, userID, payload.NewName, newMeta); err != nil {
 			return err
+		}
+		if validMailboxID(newMeta.Id) {
+			// Keyed by id, so moving it is an overwrite of the value.
+			if err := batch.Set(mailboxIDKey(userID, newMeta.Id), []byte(payload.NewName), nil); err != nil {
+				return fmt.Errorf("moving mailbox id key: %w", err)
+			}
 		}
 		for _, msg := range msgs {
 			if err := writeMailboxMessageBatch(batch, userID, payload.NewName, msg.Uid, msg); err != nil {
@@ -536,6 +615,48 @@ func applyMailboxSubscribe(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 
 	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		return writeMailboxMetaBatch(batch, userID, mailbox, meta)
+	})
+}
+
+// applyMailboxAssignID gives a mailbox an id once. The first id wins: when the
+// mailbox already has one the command is a no-op, which is how concurrent
+// assigns end up with a single id. The check lives here, inside the serialised
+// apply, not in the caller.
+func applyMailboxAssignID(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+	userID, mailbox, err := parseMailboxScopedKey(cmd.Key, mailboxAssignIDPrefix)
+	if err != nil {
+		return err
+	}
+	var payload mailboxAssignIDPayload
+	if err := json.Unmarshal(cmd.Value, &payload); err != nil {
+		return fmt.Errorf("parsing mailbox assign id payload: %w", err)
+	}
+	if !validMailboxID(payload.ID) {
+		return fmt.Errorf("invalid mailbox id")
+	}
+
+	meta, err := readMailboxMeta(ps, userID, mailbox)
+	if err != nil {
+		return fmt.Errorf("reading mailbox for id assignment: %w", err)
+	}
+	if meta.Id != "" {
+		return nil
+	}
+	if _, err := ps.Get(mailboxIDKey(userID, payload.ID)); err == nil {
+		return fmt.Errorf("mailbox id already in use")
+	} else if !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("checking mailbox id: %w", err)
+	}
+
+	meta.Id = payload.ID
+	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
+		if err := writeMailboxMetaBatch(batch, userID, mailbox, meta); err != nil {
+			return err
+		}
+		if err := batch.Set(mailboxIDKey(userID, payload.ID), []byte(mailbox), nil); err != nil {
+			return fmt.Errorf("writing mailbox id key: %w", err)
+		}
+		return nil
 	})
 }
 
@@ -811,6 +932,69 @@ func (ms *MailboxStore) SetSubscribed(userID, name string, subscribed bool) erro
 		Value: payload,
 	}
 	return ms.applier.ApplyCommand(cmd, 5*time.Second)
+}
+
+// EnsureMailboxID returns the stable id of a mailbox, assigning one first when
+// it has none. The GetMailbox check is only a fast path: the FSM keeps the first
+// id, so a caller that loses a race re-reads and gets the winner's id.
+func (ms *MailboxStore) EnsureMailboxID(userID, name string) (string, error) {
+	meta, err := ms.GetMailbox(userID, name)
+	if err != nil {
+		return "", err
+	}
+	if meta.Id != "" {
+		return meta.Id, nil
+	}
+
+	raw := make([]byte, mailboxIDLen/2)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generating mailbox id: %w", err)
+	}
+	payload, err := json.Marshal(mailboxAssignIDPayload{ID: hex.EncodeToString(raw)})
+	if err != nil {
+		return "", fmt.Errorf("marshaling mailbox assign id payload: %w", err)
+	}
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   mailboxAssignIDKey(userID, name),
+		Value: payload,
+	}
+	if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return "", fmt.Errorf("assigning id to mailbox %q: %w", name, err)
+	}
+
+	meta, err = ms.GetMailbox(userID, name)
+	if err != nil {
+		return "", err
+	}
+	if meta.Id == "" {
+		return "", fmt.Errorf("mailbox %q has no id after assignment", name)
+	}
+	return meta.Id, nil
+}
+
+// MailboxNameByID resolves a mailbox id to its current name with two point
+// reads and no scan. The id comes from untrusted input, so anything that is
+// not valid hex is ErrNotFound. The second read checks the mailbox still
+// carries the id, which turns a stale lookup key (left by a node on an older
+// binary, or a CreateMailbox race) into ErrNotFound.
+func (ms *MailboxStore) MailboxNameByID(userID, id string) (string, error) {
+	if !validMailboxID(id) {
+		return "", ErrNotFound
+	}
+	v, err := ms.store.Get(mailboxIDKey(userID, id))
+	if err != nil {
+		return "", fmt.Errorf("mailbox id %s: %w", id, err)
+	}
+	name := string(v)
+	meta, err := ms.GetMailbox(userID, name)
+	if err != nil {
+		return "", err
+	}
+	if meta.Id != id {
+		return "", fmt.Errorf("mailbox id %s: %w", id, ErrNotFound)
+	}
+	return name, nil
 }
 
 // EnsureDefaultMailboxes idempotently creates the standard IMAP mailboxes.

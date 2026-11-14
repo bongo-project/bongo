@@ -48,6 +48,9 @@ type Server struct {
 	// storage is read the same way as quota.
 	storage atomic.Pointer[storageGate]
 
+	// namespaces is read the same way; nil means the defaults.
+	namespaces atomic.Pointer[store.IMAPNamespaces]
+
 	// newSession is the factory handed to go-imap; kept so tests can build a
 	// session exactly as an accepted connection would.
 	newSession func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error)
@@ -72,6 +75,10 @@ func NewServer(
 		imap.CapIdle:      {},
 		imap.CapUIDPlus:   {},
 		imap.CapMove:      {},
+		// Needs session.Namespace: go-imap panics at connection start when
+		// the capability is advertised without it (see the assertion in
+		// backend.go).
+		imap.CapNamespace: {},
 	}
 
 	// Shared across all connections so per-IP failure counts survive reconnects
@@ -99,7 +106,12 @@ func NewServer(
 		if p := s.storage.Load(); p != nil {
 			sg = *p
 		}
+		ns := store.DefaultIMAPNamespaces()
+		if p := s.namespaces.Load(); p != nil {
+			ns = *p
+		}
 		sess := &session{
+			namespaces:  ns,
 			quota:       qc,
 			storage:     sg,
 			auth:        authenticator,
@@ -170,6 +182,15 @@ func (s *Server) SetStorageGate(g storageGate) {
 		return
 	}
 	s.storage.Store(&g)
+}
+
+// SetNamespacePrefixes sets the NAMESPACE prefixes for other users' and shared
+// mailboxes, and with them the folder names CREATE and RENAME refuse. An empty
+// value falls back to its default. Like SetQuotaChecker it applies to sessions
+// created afterwards, so call it before the first connection is accepted.
+func (s *Server) SetNamespacePrefixes(otherUsers, shared string) {
+	ns := store.IMAPNamespaces{OtherUsers: otherUsers, Shared: shared}.OrDefaults()
+	s.namespaces.Store(&ns)
 }
 
 // SetConnectionLimits sets the per-listener concurrent connection cap and the

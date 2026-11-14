@@ -39,6 +39,10 @@ type storageGate interface {
 
 // session implements imapserver.Session and imapserver.SessionMove.
 type session struct {
+	// namespaces holds the other-users and shared prefixes: NAMESPACE reports
+	// them and CREATE and RENAME refuse personal folders under them.
+	namespaces store.IMAPNamespaces
+
 	auth      profileAuthenticator
 	pebble    *store.PebbleStore
 	blobs     *store.BlobStore
@@ -125,6 +129,9 @@ func (s *session) dropReported(uid uint32) {
 var (
 	_ imapserver.Session     = (*session)(nil)
 	_ imapserver.SessionMove = (*session)(nil)
+	// NAMESPACE is advertised in server.go; without this method go-imap
+	// panics on every new connection.
+	_ imapserver.SessionNamespace = (*session)(nil)
 )
 
 // Close is called when the connection is closed.
@@ -168,6 +175,15 @@ var errNoSuchMailbox = &imap.Error{
 	Type: imap.StatusResponseTypeNo,
 	Code: imap.ResponseCodeNonExistent,
 	Text: "No such mailbox",
+}
+
+// errReservedMailboxName answers CREATE or RENAME naming a personal folder that
+// would sit on a NAMESPACE prefix. Fixed text, like the others, so the name is
+// never echoed.
+var errReservedMailboxName = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Code: imap.ResponseCodeCannot,
+	Text: "Mailbox name is reserved",
 }
 
 // errAlreadyExists answers CREATE or RENAME naming a mailbox that already
@@ -403,6 +419,11 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
+	// Before any store read: the check consults configuration only, so it
+	// reveals nothing about existing mailboxes.
+	if s.namespaces.Reserves(mailbox) {
+		return errReservedMailboxName
+	}
 	if err := s.requireNoMailbox(mailbox); err != nil {
 		return err
 	}
@@ -412,6 +433,18 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 	}
 	s.logger.Info("imap: mailbox created", "mailbox", mailbox, "user", s.userID)
 	return nil
+}
+
+// Namespace reports the personal, other-users and shared namespaces (RFC 2342).
+func (s *session) Namespace() (*imap.NamespaceData, error) {
+	if err := s.checkAccount(); err != nil {
+		return nil, err
+	}
+	return &imap.NamespaceData{
+		Personal: []imap.NamespaceDescriptor{{Prefix: "", Delim: '/'}},
+		Other:    []imap.NamespaceDescriptor{{Prefix: s.namespaces.OtherUsers + "/", Delim: '/'}},
+		Shared:   []imap.NamespaceDescriptor{{Prefix: s.namespaces.Shared + "/", Delim: '/'}},
+	}, nil
 }
 
 // Delete deletes a mailbox.
@@ -437,6 +470,11 @@ func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) e
 	defer observability.IMAPRename.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
+	}
+	// Only the new name is checked: an existing folder that already carries a
+	// reserved name stays usable and can be renamed away.
+	if s.namespaces.Reserves(newName) {
+		return errReservedMailboxName
 	}
 	if err := s.requireMailbox(mailbox, errNoSuchMailbox); err != nil {
 		return err
@@ -519,13 +557,13 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 		// option list subscribed names "rather than the existing mailboxes",
 		// so an unsubscribed mailbox is dropped here rather than reported
 		// without \Subscribed. This path is also how LSUB is served — go-imap
-		// dispatches LSUB as List with SelectSubscribed set
-		// (imapserver/list.go) — so getting it wrong returns every folder to
-		// an LSUB, which is what it used to do.
+		// dispatches LSUB as List with SelectSubscribed and
+		// SelectRecursiveMatch set (imapserver/list.go) — so getting it wrong
+		// returns every folder to an LSUB, which is what it used to do.
 		//
-		// SelectRecursiveMatch is not implemented: such a LIST gets the plain
-		// subscribed set with no CHILDINFO annotations on unsubscribed
-		// parents.
+		// SelectRecursiveMatch is ignored: no CHILDINFO is produced and an
+		// unsubscribed parent of a subscribed folder is not listed with
+		// \Noselect, so LSUB returns exactly the subscribed set.
 		subscribed := !mb.Unsubscribed
 		if options != nil && options.SelectSubscribed && !subscribed {
 			continue
