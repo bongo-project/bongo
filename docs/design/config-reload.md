@@ -252,6 +252,8 @@ TLS as well as raft transport.
 | `imap.proxy_protocol` | `agent.go:1345` | ctor (`IMAP.Listen`) | RESTART |
 | `imap.max_connections` | `imap/server.go` `SetConnectionLimits` | `netutil.LimitListener` per listener, fixed at `Listen` | RESTART |
 | `imap.max_connections_per_ip` | `imap/server.go` `SetConnectionLimits` | `netx.PerIPLimiter` shared by plain and TLS | RESTART |
+| `imap.other_users_prefix` | `imap/server.go` `SetNamespacePrefixes`, `MailHandler.SetNamespacePrefixes` | Open sessions hold the namespace; folder-name checks read it | RESTART |
+| `imap.shared_prefix` | `imap/server.go` `SetNamespacePrefixes`, `MailHandler.SetNamespacePrefixes` | Open sessions hold the namespace; folder-name checks read it | RESTART |
 | `pop3.max_connections` | `pop3/server.go` `SetConnectionLimits` | `netutil.LimitListener` per listener, fixed at `Listen` | RESTART |
 | `pop3.max_connections_per_ip` | `pop3/server.go` `SetConnectionLimits` | `netx.PerIPLimiter` shared by plain and TLS | RESTART |
 | `pop3.enabled` | `agent.go:1357` | ctor | RESTART |

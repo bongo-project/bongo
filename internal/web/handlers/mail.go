@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/imip"
 	internalmail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/mimesafe"
@@ -86,6 +87,9 @@ func (h *MailHandler) ensureArchive(userID string) error {
 
 // MailHandler handles mail browsing endpoints.
 type MailHandler struct {
+	// namespaces are the IMAP namespace prefixes; the zero value means the
+	// defaults. A folder the web UI creates may not take either name.
+	namespaces   store.IMAPNamespaces
 	pebble       *store.PebbleStore
 	blobs        *store.BlobStore
 	mailboxes    *store.MailboxStore
@@ -1177,6 +1181,14 @@ func (h *MailHandler) ImportPage(w http.ResponseWriter, r *http.Request) {
 // SetQuotaChecker enables the domain storage-quota check on mbox import.
 func (h *MailHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 
+// SetNamespacePrefixes sets the IMAP namespace prefixes that folder names
+// created from the web must not collide with. Empty values mean the defaults.
+// The web has no folder rename form; a future one must use the same check
+// (store.IMAPNamespaces.Reserves) on the new name.
+func (h *MailHandler) SetNamespacePrefixes(otherUsers, shared string) {
+	h.namespaces = store.IMAPNamespaces{OtherUsers: otherUsers, Shared: shared}
+}
+
 // ImportMbox processes an uploaded mbox file and imports messages.
 //
 // The upload is streamed: the multipart form spools anything over
@@ -1209,6 +1221,14 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+
+	// A target that does not exist is created below, so a reserved name is
+	// refused here, before the quota check and any write. The message is fixed
+	// text: the posted name is never echoed.
+	if _, err := h.mailboxes.GetMailbox(userID, targetMailbox); err != nil && h.namespaces.OrDefaults().Reserves(targetMailbox) {
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "import.errReservedMailbox"), http.StatusBadRequest)
+		return
+	}
 
 	// Quota: all or nothing. Refuse up front when the whole upload would not
 	// fit, before the target mailbox, any blob or any MailMeta is written. The

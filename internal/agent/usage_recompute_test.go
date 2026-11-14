@@ -2,6 +2,7 @@ package agent
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 )
 
 // newRecomputeTestEnv creates an isolated Pebble + DomainQuotaStore for
-// testing the computeAndWriteDomainUsage function.
+// testing the computeAndWriteUsage function.
 func newRecomputeTestEnv(t *testing.T) (*store.PebbleStore, *store.DomainQuotaStore, *testApplier) {
 	t.Helper()
 	dir := t.TempDir()
@@ -27,11 +28,24 @@ func newRecomputeTestEnv(t *testing.T) (*store.PebbleStore, *store.DomainQuotaSt
 }
 
 // testApplier applies Raft commands directly to Pebble for tests (no Raft).
+//
+// Applies are serialised, as the FSM does, and the per-user usage command is
+// dispatched to the real handler: stored as a literal key it would record
+// nothing and negative assertions would pass vacuously. usageCmds counts the
+// usage commands seen.
 type testApplier struct {
-	store *store.PebbleStore
+	store     *store.PebbleStore
+	mu        sync.Mutex
+	usageCmds int
 }
 
 func (a *testApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsUserUsageSyntheticCommand(cmd.Key) {
+		a.usageCmds++
+		return store.ApplyUserUsageCommand(a.store, cmd)
+	}
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
 		return a.store.Set(cmd.Key, cmd.Value)
@@ -73,7 +87,7 @@ func writeMailMeta(t *testing.T, ps *store.PebbleStore, userID, guid string, raw
 // TestComputeAndWriteDomainUsage_BasicAggregation verifies that the recompute
 // function sums raw_message.size per primary domain from seeded mail metadata.
 func TestComputeAndWriteDomainUsage_BasicAggregation(t *testing.T) {
-	ps, dqs, _ := newRecomputeTestEnv(t)
+	ps, dqs, applier := newRecomputeTestEnv(t)
 
 	// Seed two users in example.com and one in other.com.
 	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
@@ -88,7 +102,7 @@ func TestComputeAndWriteDomainUsage_BasicAggregation(t *testing.T) {
 	// carol has 1 message: 4000 bytes.
 	writeMailMeta(t, ps, "u3", "msg4", 4000)
 
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	// example.com: 3000 + 500 = 3500 bytes.
 	usage, err := dqs.GetUsage("example.com")
@@ -113,7 +127,7 @@ func TestComputeAndWriteDomainUsage_BasicAggregation(t *testing.T) {
 // attachment blob sizes are NOT summed (they are embedded in the raw message;
 // summing both would double-count).
 func TestComputeAndWriteDomainUsage_AttachmentsNotDoubleCount(t *testing.T) {
-	ps, dqs, _ := newRecomputeTestEnv(t)
+	ps, dqs, applier := newRecomputeTestEnv(t)
 
 	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
 
@@ -134,7 +148,7 @@ func TestComputeAndWriteDomainUsage_AttachmentsNotDoubleCount(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	usage, err := dqs.GetUsage("example.com")
 	if err != nil {
@@ -148,10 +162,10 @@ func TestComputeAndWriteDomainUsage_AttachmentsNotDoubleCount(t *testing.T) {
 // TestComputeAndWriteDomainUsage_EmptyPebble verifies that with no mail, no
 // usage is written (no crash on empty store).
 func TestComputeAndWriteDomainUsage_EmptyPebble(t *testing.T) {
-	ps, dqs, _ := newRecomputeTestEnv(t)
+	ps, dqs, applier := newRecomputeTestEnv(t)
 
 	// No data seeded.
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	// No usage should be set (GetUsage returns 0).
 	usage, err := dqs.GetUsage("example.com")
@@ -166,15 +180,15 @@ func TestComputeAndWriteDomainUsage_EmptyPebble(t *testing.T) {
 // TestComputeAndWriteDomainUsage_Idempotent verifies that running the recompute
 // twice produces consistent results (overwrites, not accumulates).
 func TestComputeAndWriteDomainUsage_Idempotent(t *testing.T) {
-	ps, dqs, _ := newRecomputeTestEnv(t)
+	ps, dqs, applier := newRecomputeTestEnv(t)
 
 	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
 	writeMailMeta(t, ps, "u1", "msg1", 1000)
 
 	// First pass.
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 	// Second pass (idempotent).
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	usage, err := dqs.GetUsage("example.com")
 	if err != nil {
@@ -189,7 +203,7 @@ func TestComputeAndWriteDomainUsage_Idempotent(t *testing.T) {
 // toward domain usage by len(ical_raw)/len(vcard_raw). Otherwise a user could
 // dodge the quota through CalDAV/CardDAV.
 func TestComputeAndWriteDomainUsage_CountsEventsAndContacts(t *testing.T) {
-	ps, dqs, _ := newRecomputeTestEnv(t)
+	ps, dqs, applier := newRecomputeTestEnv(t)
 	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
 	writeRecomputeProfile(t, ps, "u2", "bob@other.com")
 
@@ -211,7 +225,7 @@ func TestComputeAndWriteDomainUsage_CountsEventsAndContacts(t *testing.T) {
 		stored[key] = int64(len(b))
 	}
 
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	// Events and contacts count as their stored (marshalled) size; mail counts
 	// once as raw_message.size.
@@ -249,7 +263,7 @@ func TestComputeAndWriteDomainUsage_CountsFormEventWithoutRaw(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	got, _ := dqs.GetUsage("example.com")
 	if got == 0 || got != int64(len(val)) {
@@ -272,7 +286,7 @@ func TestRecordSizeEstimateMatchesRecompute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	if got, _ := dqs.GetUsage("example.com"); got != want {
 		t.Errorf("usage = %d, estimate = %d", got, want)
@@ -282,7 +296,7 @@ func TestRecordSizeEstimateMatchesRecompute(t *testing.T) {
 // IMAP COPY/MOVE write a second MailboxMessage that points at the same
 // MailGuid. No MailMeta and no blob is added, so usage must not move.
 func TestComputeAndWriteDomainUsage_CopyDoesNotCount(t *testing.T) {
-	ps, dqs, _ := newRecomputeTestEnv(t)
+	ps, dqs, applier := newRecomputeTestEnv(t)
 	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
 	writeMailMeta(t, ps, "u1", "m1", 1234)
 
@@ -300,7 +314,7 @@ func TestComputeAndWriteDomainUsage_CopyDoesNotCount(t *testing.T) {
 		}
 	}
 
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	if got, _ := dqs.GetUsage("example.com"); got != 1234 {
 		t.Errorf("usage with copied references = %d, want 1234", got)
@@ -329,7 +343,7 @@ func TestComputeAndWriteDomainUsage_CountsTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	if got, _ := dqs.GetUsage("example.com"); got != want1 || got < 490 {
 		t.Errorf("example.com usage = %d, want %d (tasks must count)", got, want1)
@@ -354,9 +368,108 @@ func TestComputeAndWriteDomainUsage_ExcludesScheduleInbox(t *testing.T) {
 		t.Fatalf("inbox holds %d items, %v; the test needs one", len(items), err)
 	}
 
-	computeAndWriteDomainUsage(ps, dqs, testLogger())
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
 
 	if got, _ := dqs.GetUsage("example.com"); got != 1000 {
 		t.Errorf("example.com usage = %d, want 1000 (mail only)", got)
 	}
+}
+
+func setRecord(t *testing.T, ps *store.PebbleStore, key string, val []byte) {
+	t.Helper()
+	if err := ps.Set([]byte(key), val); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Per-user totals cover all four record kinds, a profile-only user gets 0, a
+// user with an empty domain is still counted, and the users of a domain add up
+// to the domain total.
+func TestComputeAndWriteUsage_PerUser(t *testing.T) {
+	ps, dqs, applier := newRecomputeTestEnv(t)
+	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
+	writeRecomputeProfile(t, ps, "u2", "bob@example.com")
+	writeRecomputeProfile(t, ps, "u3", "carol@other.com")
+	writeRecomputeProfile(t, ps, "u4", "no-domain")
+	writeRecomputeProfile(t, ps, "empty", "dave@example.com")
+
+	writeMailMeta(t, ps, "u1", "m1", 1000)
+	setRecord(t, ps, "/user/u1/event/e1", []byte(strings.Repeat("e", 100)))
+	setRecord(t, ps, "/user/u1/contact/c1", []byte(strings.Repeat("c", 50)))
+	setRecord(t, ps, "/user/u1/task/t1", []byte(strings.Repeat("t", 7)))
+	setRecord(t, ps, "/user/u1/schedinbox/1-a", []byte(strings.Repeat("s", 999)))
+	writeMailMeta(t, ps, "u2", "m2", 500)
+	writeMailMeta(t, ps, "u3", "m3", 4000)
+	writeMailMeta(t, ps, "u4", "m4", 300)
+
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
+
+	want := map[string]int64{"u1": 1157, "u2": 500, "u3": 4000, "u4": 300, "empty": 0}
+	for id, w := range want {
+		got, err := store.GetUserUsage(ps, id)
+		if err != nil || got != w {
+			t.Errorf("%s usage = %d, %v; want %d", id, got, err, w)
+		}
+		if _, err := ps.Get(store.UserUsageKey(id)); err != nil {
+			t.Errorf("%s: usage key must exist (also for 0): %v", id, err)
+		}
+	}
+	if _, err := ps.Get([]byte("/__user_usage__/0")); err == nil {
+		t.Error("command stored as a literal key")
+	}
+	if applier.usageCmds != 1 {
+		t.Errorf("usage commands = %d, want exactly 1 per pass", applier.usageCmds)
+	}
+
+	example, _ := dqs.GetUsage("example.com")
+	if sum := want["u1"] + want["u2"] + want["empty"]; example != sum {
+		t.Errorf("example.com = %d, users sum to %d", example, sum)
+	}
+	if other, _ := dqs.GetUsage("other.com"); other != want["u3"] {
+		t.Errorf("other.com = %d, want %d", other, want["u3"])
+	}
+
+	// A second pass over unchanged data changes nothing.
+	computeAndWriteUsage(ps, dqs, applier, testLogger())
+	if got, _ := store.GetUserUsage(ps, "u1"); got != 1157 {
+		t.Errorf("second pass u1 = %d", got)
+	}
+	if applier.usageCmds != 2 {
+		t.Errorf("usage commands after two passes = %d, want 2", applier.usageCmds)
+	}
+}
+
+// A user removed between the scan and the apply must not get a usage key back.
+func TestComputeAndWriteUsage_RemovedUserGetsNoKey(t *testing.T) {
+	ps, dqs, applier := newRecomputeTestEnv(t)
+	writeRecomputeProfile(t, ps, "u1", "alice@example.com")
+	writeRecomputeProfile(t, ps, "gone", "gone@example.com")
+	writeMailMeta(t, ps, "gone", "m", 10)
+
+	racer := &removeOnUsage{testApplier: applier, ps: ps, userID: "gone"}
+	computeAndWriteUsage(ps, dqs, racer, testLogger())
+
+	if _, err := ps.Get(store.UserUsageKey("gone")); err == nil {
+		t.Error("usage key written for a user removed after the scan")
+	}
+	if _, err := ps.Get(store.UserUsageKey("u1")); err != nil {
+		t.Errorf("u1 usage key missing: %v", err)
+	}
+}
+
+// removeOnUsage drops a user's profile just before the usage command lands,
+// standing in for an admin delete racing the pass.
+type removeOnUsage struct {
+	*testApplier
+	ps     *store.PebbleStore
+	userID string
+}
+
+func (d *removeOnUsage) ApplyCommand(cmd *bongov1.RaftCommand, to time.Duration) error {
+	if store.IsUserUsageSyntheticCommand(cmd.Key) {
+		if err := d.ps.Delete([]byte("/user/" + d.userID + "/profile")); err != nil {
+			return err
+		}
+	}
+	return d.testApplier.ApplyCommand(cmd, to)
 }

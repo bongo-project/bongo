@@ -31,6 +31,12 @@ message MailboxMeta {
   // folder of every user on upgrade — LSUB would go empty and clients would
   // stop showing mail.
   bool unsubscribed = 4;
+
+  // A stable handle that grants reference, so renaming a folder needs no
+  // grant change. Empty means not yet assigned. It is set once by the assign
+  // command and copied across a rename; the lookup key
+  // /user/{user_id}/mailboxid/{id} points back at the name.
+  string id = 5;
 }
 
 message MailboxMessage {

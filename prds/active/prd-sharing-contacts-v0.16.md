@@ -629,10 +629,13 @@ is unexported (line 166) and its port rules are for HTTP; only
       shares the safe client's address check (the same `Control` hook and
       `IsForbiddenAddr`): private, loopback and link-local addresses are
       refused after resolution, on every connection.
-- [ ] Passwords are encrypted at rest with AES-GCM under
-      `DeriveKey(session_secret, "bongo/fetch-credentials/v1")` and never
-      returned to the browser; rotating the session secret makes the user
-      re-enter them (shown as an error on the settings page).
+- [ ] Passwords are encrypted at rest with AES-GCM under a separate
+      configured secret, `fetch.credentials_key` (decision 19), and never
+      returned to the browser. Fetching does not start without the key.
+      Each stored password records the id of the key that encrypted it, so
+      the key can be rotated; a password under an unknown key makes the
+      user re-enter it (shown as an error on the settings page). The key is
+      never stored in the data directory or in backups.
 - [ ] A leader-only worker fetches due accounts. Fetched messages go through
       the local inbound pipeline (rules, antispam, quota); seen messages are
       tracked by UID (IMAP) or UIDL (POP3) at
@@ -820,11 +823,11 @@ Open:
 
 6. US-010: members of a shared inbox are assigned by an admin. Do their
    folder grants go through the invitation flow like any share, or are
-   admin-assigned grants created `accepted`?
+   admin-assigned grants created `accepted`? Resolved by decision 18.
 7. US-016: decision 7 asks for "a dedicated key". Is a key derived from the
    session secret with its own purpose string enough, or should it be a
    separate configured secret, so that rotating the session secret does not
-   invalidate stored passwords?
+   invalidate stored passwords? Resolved by decision 19.
 
 ### 8.1 Decisions
 
@@ -889,8 +892,36 @@ Open:
     trailers, so the upstream change is prepared as a branch and written
     and opened by the operator, QUOTA first as a small pull request, raised
     in #emersion on Libera beforehand.
+18. (operator, 2026-11-14) Open question 6: members an admin adds to a
+    shared inbox get access straight away. Their grants are created
+    `accepted`, with no invitation email; removing a member revokes them.
+19. (operator, 2026-11-14) Open question 7: stored fetch passwords are
+    encrypted under a separate configured secret, `fetch.credentials_key`,
+    not a key derived from the session secret, so the session secret can be
+    rotated without breaking fetch. Fetching stays off until it is set, each
+    stored password carries its key id, and the key never lives in the data
+    directory.
 
 ### 8.2 Candidates for the next release
+
+Found while building v0.16.0 (2026-11-15):
+
+- **Rename does not move child folders.** `applyMailboxRename` renames one
+  mailbox; `A/x` stays when `A` moves (RFC 3501 says inferiors follow). Each
+  folder keeps its own id and lookup key, so grants are safe, but folder
+  sharing makes the gap more visible.
+- **CreateMailbox is check-then-PUT.** An id assigned between the check and
+  the PUT is overwritten, leaving a lookup key that resolves to nothing and
+  is never deleted. Fix: a conditional create in the FSM, or a sweep.
+- **User deletion can race a usage pass.** `DeleteUser` lists `/user/{id}/`
+  and deletes key by key; a usage command committed in between writes
+  `/user/{id}/usage` after the listing. The ghost-tree sweep reclaims it two
+  passes later.
+- **The admin usage test mounts its own router**, not the agent's
+  `/admin/users` route.
+- **There is no web folder create or rename form**; only mbox import creates
+  a folder from a user-supplied name, and it refuses the namespace prefixes.
+  A future folder form must call `store.IMAPNamespaces.Reserves`.
 
 Audit corrections found while writing this PRD (2026-10-26):
 

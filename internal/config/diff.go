@@ -97,7 +97,7 @@ var restartKeys = []string{
 	"smtp.limits.flood_threshold", "smtp.limits.messages_per_minute",
 	"smtp.limits.max_connections_per_ip", "smtp.limits.outbound_messages_per_minute",
 	"smtp.limits.outbound_recipients_per_hour", "smtp.limits.send_as_verify_max_per_hour",
-	"imap.max_connections", "imap.max_connections_per_ip", "pop3.max_connections", "pop3.max_connections_per_ip",
+	"imap.max_connections", "imap.max_connections_per_ip", "imap.other_users_prefix", "imap.shared_prefix", "pop3.max_connections", "pop3.max_connections_per_ip",
 	"smtp.relay.enabled", "smtp.relay.host", "smtp.relay.username", "smtp.relay.password",
 	"smtp.relay.allow_insecure_auth", "smtp.relay.mta_sts_enabled", "smtp.relay.dane_enabled",
 	"smtp.relay.dnssec_resolver",

@@ -300,6 +300,7 @@
   "import.uploadDescription": "Téléchargez un fichier mbox pour importer des messages dans une boîte aux lettres.",
   "import.mboxFile": "Fichier Mbox",
   "import.targetMailbox": "Boîte de destination",
+  "import.errReservedMailbox": "Un dossier ne peut pas être créé sous les noms réservés aux boîtes d'autres utilisateurs et aux boîtes partagées. Choisissez un autre nom.",
   "import.import": "Importer",
   "import.importComplete": "Importation terminée",
   "import.messagesImportedTo": "messages importés dans",

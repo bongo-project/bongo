@@ -382,6 +382,10 @@ imap {
   # max_connections        = 1024   # concurrent connections per listener (plain and TLS each)
   # max_connections_per_ip = 50     # per source IP, both listeners (0 = off). Set 0 or high behind a
   #                                 # TCP proxy WITHOUT proxy_protocol: all clients share the proxy IP
+  # other_users_prefix = "Other Users"   # NAMESPACE prefix for other users' mailboxes
+  # shared_prefix      = "Shared"        # NAMESPACE prefix for shared mailboxes
+  #   Personal folders may not be created or renamed to either name or below it
+  #   ("Shared/x"). Restart required. Not empty, no "/", not INBOX, and the two must differ.
 }
 
 

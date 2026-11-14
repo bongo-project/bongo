@@ -3022,8 +3022,15 @@ func (h *AdminHandler) loadUsers(query string) []templates.AdminUserInfo {
 			continue
 		}
 
+		// Display only: a read error shows 0 rather than failing the page.
+		used, uErr := store.GetUserUsage(h.store, uid)
+		if uErr != nil {
+			h.logger.Warn("admin: reading user usage failed", "user_id", uid, "error", uErr)
+		}
+
 		users = append(users, templates.AdminUserInfo{
 			UserID:      uid,
+			UsedBytes:   used,
 			Email:       uname,
 			DisplayName: dname,
 			IsAdmin:     profile.IsAdmin,

@@ -1844,3 +1844,14 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PRD moved to prds/backlog/. Phase 39 (v0.16.0, US-001 to US-010, 17 rows), Phase 40 (v0.16.1, US-011 to US-015, 6 rows), Phase 41 (v0.17, US-016, 1 row), following the release split in decision 15.
 - 39.1 (US-003) recorded DONE from PR #213; its remaining LSUB SelectRecursiveMatch case moved into 39.3.
 - BLOCKED on the operator: 39.17 (open question 6 and shared-inbox member storage) and 41.1 (open question 7, plus its own security review).
+
+## 2026-11-15: Phase 39 batch 1 (39.2, 39.3, 39.7)
+
+- Workflow: advisor plan, worker in its own worktree (golang-pro, tests first), advisor review. 39.3 plan REVISE (applied in the worker brief): no Raft or key change needed. All three reviews MINOR.
+- Merged as patches onto feat/v016-batch1; one CLAUDE.md conflict (synthetic-prefix list and guardrails), both sides kept.
+- Orchestrator fixes at merge: gofmt on user_usage_test.go (make fmt-check would have failed); leader drops invalid user ids before building the usage command, so one stray key cannot block every user's figure (test added; the FSM backstop test now builds its bad payloads by hand); namespace prefixes also refuse leading or trailing white space, `*`, `%`, `"`, `\` and control characters (table cases added).
+- go.mod requires go 1.27.4, so the config.md lint line now names go1.27.4.
+- Review follow-ups to PRD 8.2: child folders do not follow a rename; CreateMailbox PUT race can orphan a lookup key; DeleteUser can race a usage pass; admin usage test uses its own router; no web folder form exists.
+- PATTERN: [store] A composite command that refuses the whole batch over one bad entry lets one bad record block every user; filter on the leader and keep the FSM refusal as the backstop.
+- PATTERN: [store] Prefix-list-then-delete user removal can race leader-written keys; a profile check inside the FSM covers only keys present when the list was taken.
+- PATTERN: [workflow] Run gofmt -l on a worker's untracked files before trusting its DONE; a worker's test-all can pass before a late edit.

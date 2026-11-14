@@ -1459,6 +1459,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			mailH = handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes, a.logger)
 			a.mailHandler = mailH
 			mailH.SetApplier(a)
+			mailH.SetNamespacePrefixes(a.Config.IMAP.OtherUsersPrefix, a.Config.IMAP.SharedPrefix)
 			if a.DomainQuota != nil {
 				mailH.SetQuotaChecker(a.DomainQuota)
 			}
@@ -2237,6 +2238,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		a.IMAP.SetStorageGate(a.storageGate())
 		a.IMAP.SetConnectionLimits(a.Config.IMAP.MaxConnections, a.Config.IMAP.MaxConnectionsPerIP)
+		a.IMAP.SetNamespacePrefixes(a.Config.IMAP.OtherUsersPrefix, a.Config.IMAP.SharedPrefix)
 		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol, a.proxyTrust); err != nil {
 			return fmt.Errorf("imap listen: %w", err)
 		}
@@ -3434,16 +3436,16 @@ func (a *Agent) runUsageRecompute(ctx context.Context, interval time.Duration) {
 }
 
 // recomputeDomainUsage is one pass of the usage-recompute job. It scans all
-// user profiles in Pebble, sums mail blob sizes per primary domain, and writes
-// the result via Raft. Leader-only; exits immediately on non-leader nodes.
+// user records in Pebble, sums stored sizes per primary domain and per user,
+// and writes the results via Raft. Leader-only; exits immediately on non-leader nodes.
 func (a *Agent) recomputeDomainUsage() {
 	if a.Raft == nil || !a.IsLeader() || a.Store == nil || a.DomainQuota == nil {
 		return
 	}
-	computeAndWriteDomainUsage(a.Store, a.DomainQuota, a.logger)
+	computeAndWriteUsage(a.Store, a.DomainQuota, a, a.logger)
 }
 
-// computeAndWriteDomainUsage scans the /user/{id}/mail/{guid} MailMeta keys in
+// computeAndWriteUsage scans the /user/{id}/mail/{guid} MailMeta keys in
 // pebble and sums raw_message.size per primary domain (derived from the owner's
 // /user/{id}/profile). It also adds the stored (marshalled) size of each
 // /user/{id}/event/{guid}, /user/{id}/contact/{guid} and /user/{id}/task/{guid} record: those live
@@ -3452,6 +3454,15 @@ func (a *Agent) recomputeDomainUsage() {
 // web-form records have no raw field. The per-domain totals are written via
 // quotaStore.SetUsage.
 //
+// The same scan sums each user's bytes with exactly the same filters, so the
+// users of a domain add up to its total, and writes /user/{id}/usage for every
+// user with a profile (0 for a user with no data) through applier as one
+// composite command per pass (chunked only beyond store.MaxUserUsageEntries).
+// A user whose domain is empty still gets a per-user figure; only the domain
+// map skips them. The per-user write is best-effort: a failure is logged and
+// the next pass retries, and the FSM drops entries for users deleted since the
+// scan.
+//
 // IMAP COPY/MOVE add a MailboxMessage, not a MailMeta, so they are not counted.
 //
 // Extracted from recomputeDomainUsage so it can be called directly in tests
@@ -3459,7 +3470,7 @@ func (a *Agent) recomputeDomainUsage() {
 //
 // Only raw_message.size is summed — attachments are extracted blobs embedded in
 // the raw message and summing both would double-count.
-func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.DomainQuotaStore, logger *slog.Logger) {
+func computeAndWriteUsage(pebble *store.PebbleStore, quotaStore *store.DomainQuotaStore, applier store.RaftApplier, logger *slog.Logger) {
 	iter, err := pebble.PrefixScan([]byte("/user/"))
 	if err != nil {
 		logger.Warn("usage-recompute: scan failed", "error", err)
@@ -3471,6 +3482,9 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 	// profileCache caches the primary domain per userID to avoid re-reading the
 	// profile for every mail key of the same user.
 	profileCache := make(map[string]string)
+	// userBytes accumulates bytes per user, seeded with 0 for every profile so
+	// a user with no data gets an explicit 0.
+	userBytes := make(map[string]int64)
 
 	for iter.Next() {
 		key := string(iter.Key())
@@ -3479,6 +3493,12 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 		// mail that is already counted, and Place never adds to usage.
 		rest := strings.TrimPrefix(key, "/user/")
 		parts := strings.SplitN(rest, "/", 3)
+		if len(parts) == 2 && parts[1] == "profile" {
+			if _, ok := userBytes[parts[0]]; !ok {
+				userBytes[parts[0]] = 0
+			}
+			continue
+		}
 		if len(parts) != 3 {
 			continue
 		}
@@ -3487,6 +3507,31 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 			continue
 		}
 		userID := parts[0]
+
+		// Size of this record: mail counts the raw message only (NOT attachments,
+		// which are embedded in the raw message; summing both would double-count).
+		// Events, contacts and tasks live inline in Pebble and carry no blobs, so
+		// their stored size is the marshalled record. Counting the raw iCal/vCard
+		// alone would score a web-form record (no raw) as zero.
+		val, vErr := iter.Value()
+		if vErr != nil {
+			continue
+		}
+		var size int64
+		if kind == "mail" {
+			var meta bongov1.MailMeta
+			if uErr := proto.Unmarshal(val, &meta); uErr != nil {
+				continue
+			}
+			if meta.RawMessage != nil {
+				size = meta.RawMessage.Size
+			}
+		} else {
+			size = int64(len(val))
+		}
+
+		// Per-user figure first: it does not depend on the domain.
+		userBytes[userID] += size
 
 		// Derive the primary domain from the profile. Use cached value if available.
 		domain, ok := profileCache[userID]
@@ -3507,28 +3552,7 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 		if domain == "" {
 			continue
 		}
-
-		// Read the MailMeta value and sum raw_message.size (NOT attachments,
-		// which are embedded in the raw message; summing both would double-count).
-		val, vErr := iter.Value()
-		if vErr != nil {
-			continue
-		}
-		switch kind {
-		case "mail":
-			var meta bongov1.MailMeta
-			if uErr := proto.Unmarshal(val, &meta); uErr != nil {
-				continue
-			}
-			if meta.RawMessage != nil {
-				domainBytes[domain] += meta.RawMessage.Size
-			}
-		case "event", "contact", "task":
-			// Events, contacts and tasks live inline in Pebble and carry no blobs, so
-			// their stored size is the marshalled record. Counting the raw
-			// iCal/vCard alone would score a web-form record (no raw) as zero.
-			domainBytes[domain] += int64(len(val))
-		}
+		domainBytes[domain] += size
 	}
 	iter.Close()
 
@@ -3566,6 +3590,21 @@ func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.Dom
 	}
 	if written > 0 {
 		logger.Info("usage-recompute: updated domain usage", "domains", written)
+	}
+
+	cmds, err := store.BuildUserUsageCommands(userBytes)
+	if err != nil {
+		logger.Warn("usage-recompute: building user usage failed", "error", err)
+		return
+	}
+	for i, cmd := range cmds {
+		if err := applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+			logger.Warn("usage-recompute: set user usage failed; next pass retries", "chunk", i, "chunks", len(cmds), "error", err)
+			return
+		}
+	}
+	if len(cmds) > 0 {
+		logger.Info("usage-recompute: updated user usage", "users", len(userBytes), "commands", len(cmds))
 	}
 }
 

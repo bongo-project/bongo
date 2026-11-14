@@ -1,10 +1,8 @@
 package store
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -28,7 +26,9 @@ func DomainQuotaKey(domain string) []byte {
 // /system/domain/{domain}/usage stores a little-endian int64 byte count
 // (raw_message bytes of all mail plus inline ical_raw and vcard_raw bytes of all
 // events and contacts, for users whose primary domain is {domain}).
-// Written only by the leader-only usage-recompute job; read by the SMTP RCPT,
+// Written only by the leader-only usage-recompute job (which also writes
+// /user/{id}/usage from the same scan, so the users of a domain sum to its
+// total); read by the SMTP RCPT,
 // IMAP APPEND and CalDAV/CardDAV PUT paths.
 func DomainUsageKey(domain string) []byte {
 	return []byte("/system/domain/" + strings.ToLower(domain) + "/usage")
@@ -99,20 +99,7 @@ func (s *DomainQuotaStore) GetUsage(domain string) (int64, error) {
 		}
 		return 0, fmt.Errorf("domain quota store get usage %q: %w", domain, err)
 	}
-	if len(data) < 8 {
-		return 0, nil
-	}
-	// The value is stored as a little-endian uint64. A raw value above
-	// MaxInt64 would convert to a NEGATIVE int64, and IsOverStorageQuota
-	// compares `usage >= MaxStorageBytes` — so a negative usage silently
-	// disables the quota for that domain rather than enforcing it. Clamp
-	// instead, failing closed: an implausibly large stored value is treated
-	// as "at the ceiling", never as "no usage".
-	raw := binary.LittleEndian.Uint64(data[:8])
-	if raw > math.MaxInt64 {
-		return math.MaxInt64, nil
-	}
-	return int64(raw), nil
+	return decodeUsage(data), nil
 }
 
 // SetUsage writes the aggregate storage usage for a domain via Raft.
@@ -125,12 +112,10 @@ func (s *DomainQuotaStore) SetUsage(domain string, bytes int64) error {
 	if bytes < 0 {
 		bytes = 0
 	}
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], uint64(bytes))
 	cmd := &bongov1.RaftCommand{
 		Op:    bongov1.Op_OP_PUT,
 		Key:   DomainUsageKey(domain),
-		Value: buf[:],
+		Value: encodeUsage(bytes),
 	}
 	if err := s.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
 		return fmt.Errorf("domain quota store set usage %q: raft: %w", domain, err)

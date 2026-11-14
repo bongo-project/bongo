@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/hashicorp/hcl/v2/hclsimple"
 	"github.com/spf13/viper"
@@ -385,6 +386,47 @@ type IMAPConfig struct {
 	// both listeners. 0 disables it. Behind a TCP proxy without proxy_protocol
 	// every client shares the proxy's IP, so set this to 0 or a high value.
 	MaxConnectionsPerIP int `hcl:"max_connections_per_ip,optional" mapstructure:"max_connections_per_ip"`
+	// OtherUsersPrefix and SharedPrefix are the NAMESPACE prefixes for other
+	// users' and shared mailboxes. A personal folder may not take either name.
+	OtherUsersPrefix string `hcl:"other_users_prefix,optional" mapstructure:"other_users_prefix"`
+	SharedPrefix     string `hcl:"shared_prefix,optional" mapstructure:"shared_prefix"`
+}
+
+// Default IMAP namespace prefixes. internal/store declares the same strings
+// (config cannot import it); TestIMAPNamespaceDefaultsMatchStore pins them.
+const (
+	DefaultIMAPOtherUsersPrefix = "Other Users"
+	DefaultIMAPSharedPrefix     = "Shared"
+)
+
+// validateNamespacePrefixes refuses prefixes that would break NAMESPACE or
+// make the two namespaces impossible to tell apart.
+func (c IMAPConfig) validateNamespacePrefixes() error {
+	for _, p := range []struct{ key, val string }{
+		{"imap.other_users_prefix", c.OtherUsersPrefix},
+		{"imap.shared_prefix", c.SharedPrefix},
+	} {
+		switch {
+		case p.val == "":
+			return fmt.Errorf("%s: must not be empty", p.key)
+		case strings.Contains(p.val, "/"):
+			return fmt.Errorf("%s: %q must not contain %q", p.key, p.val, "/")
+		case strings.EqualFold(p.val, "INBOX"):
+			return fmt.Errorf("%s: %q is reserved (INBOX)", p.key, p.val)
+		case strings.TrimSpace(p.val) != p.val:
+			return fmt.Errorf("%s: %q must not start or end with white space", p.key, p.val)
+		case strings.ContainsAny(p.val, `*%"\`):
+			// LIST wildcards would make the prefix match other folders, and
+			// quotes or backslashes need escaping in every NAMESPACE reply.
+			return fmt.Errorf("%s: %q must not contain *, %%, \" or \\", p.key, p.val)
+		case strings.ContainsFunc(p.val, unicode.IsControl):
+			return fmt.Errorf("%s: %q must not contain control characters", p.key, p.val)
+		}
+	}
+	if strings.EqualFold(c.OtherUsersPrefix, c.SharedPrefix) {
+		return fmt.Errorf("imap.other_users_prefix and imap.shared_prefix must differ (case-insensitive), both are %q", c.OtherUsersPrefix)
+	}
+	return nil
 }
 
 type POP3Config struct {
@@ -893,6 +935,10 @@ func (c *Config) Validate() error {
 	}
 
 	if err := c.validateControlAddr(); err != nil {
+		return err
+	}
+
+	if err := c.IMAP.validateNamespacePrefixes(); err != nil {
 		return err
 	}
 
@@ -1473,6 +1519,9 @@ func Defaults() *Config {
 
 			MaxConnections:      1024,
 			MaxConnectionsPerIP: 50,
+
+			OtherUsersPrefix: DefaultIMAPOtherUsersPrefix,
+			SharedPrefix:     DefaultIMAPSharedPrefix,
 		},
 		POP3: POP3Config{
 			Enabled: true,

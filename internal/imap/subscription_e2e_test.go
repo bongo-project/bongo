@@ -20,7 +20,8 @@ import (
 // mandatory RFC 3501 command that Thunderbird and friends still send, and it is
 // the command this change is mostly about. Going through a socket rather than
 // calling session.List directly is the point — LSUB only reaches List because
-// go-imap translates it into ListOptions{SelectSubscribed: true}, and a test
+// go-imap translates it into ListOptions{SelectSubscribed: true,
+// SelectRecursiveMatch: true}, and a test
 // that called the helper itself would never exercise that translation.
 type rawIMAPConn struct {
 	t    *testing.T
@@ -303,5 +304,38 @@ func TestListMarksArchiveSpecialUse(t *testing.T) {
 	}
 	if strings.Contains(lines["Projects"], string(imap.MailboxAttrArchive)) {
 		t.Errorf("Projects line %q carries %s", lines["Projects"], imap.MailboxAttrArchive)
+	}
+}
+
+// TestLsubWithRecursiveMatchReturnsOnlySubscribed pins the LSUB dispatch of the
+// forked library (SelectSubscribed plus SelectRecursiveMatch). The backend
+// ignores RecursiveMatch, so LSUB must return exactly the subscribed set, not
+// every folder and not unsubscribed parents.
+func TestLsubWithRecursiveMatchReturnsOnlySubscribed(t *testing.T) {
+	ms, ps := newSubscriptionTestStore(t, "INBOX", "Work", "Archive", "Projects", "Projects/Live", "Work/Old")
+	addr := startPollTestServer(t, ms, ps)
+
+	raw := dialRawIMAP(t, addr)
+	for _, name := range []string{"Archive", "Projects", "Work/Old"} {
+		raw.exec("UNSUBSCRIBE %q", name)
+	}
+
+	if got := mailboxNames(t, raw.exec(`LSUB "" "*"`), "LSUB"); !slices.Equal(got, []string{"INBOX", "Projects/Live", "Work"}) {
+		t.Fatalf(`LSUB "" "*" = %v, want [INBOX Projects/Live Work]`, got)
+	}
+
+	lines := mailboxLines(t, raw.exec(`LSUB "" "%%"`), "LSUB")
+	for _, want := range []string{"INBOX", "Work"} {
+		if _, ok := lines[want]; !ok {
+			t.Errorf(`LSUB "" "%%" is missing subscribed %q: %v`, want, lines)
+		}
+	}
+	for _, unsub := range []string{"Archive", "Work/Old"} {
+		if _, ok := lines[unsub]; ok {
+			t.Errorf(`LSUB "" "%%" returned unsubscribed %q`, unsub)
+		}
+	}
+	if line, ok := lines["Projects"]; ok && !strings.Contains(line, `\Noselect`) {
+		t.Errorf("unsubscribed Projects listed without \\Noselect: %s", line)
 	}
 }
