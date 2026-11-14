@@ -9,6 +9,13 @@ its source. Only the modules that ship an Apache-2.0 NOTICE file are reproduced
 in part 2, because Apache-2.0 section 4(d) asks for those to travel with
 copies.
 
+`github.com/emersion/go-imap/v2` is replaced in `go.mod` by the fork
+`github.com/bongo-project/go-imap` (MIT, like upstream), branch `bongo`. It is
+upstream's `v2` branch plus two changes: server ACL support (RFC 4314) from
+upstream pull request #730 by Dejan Strbac, and server QUOTA support
+(RFC 9208) adapted from commit c90f7a7 of `github.com/0kaba0hub/go-imap` by
+0kaba0hub.
+
 ## 1. Vendored static assets (`internal/web/static/`)
 
 | Asset | File | Version | Licence | Copyright |

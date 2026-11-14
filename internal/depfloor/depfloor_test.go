@@ -103,3 +103,15 @@ func TestComposeImageTag(t *testing.T) {
 		t.Error("deploy/docker-compose.yml does not use ghcr.io/bongo-project/bongo:0.15.14")
 	}
 }
+
+// TestGoIMAPFork keeps go-imap on the bongo-project fork, which carries the
+// server-side ACL (RFC 4314) and QUOTA (RFC 9208) support upstream does not
+// have. Dropping the replace line would build against upstream beta.8 and
+// silently lose both.
+func TestGoIMAPFork(t *testing.T) {
+	gomod := readRepoFile(t, "go.mod")
+	re := regexp.MustCompile(`(?m)^replace github\.com/emersion/go-imap/v2 => github\.com/bongo-project/go-imap/v2 v\S+$`)
+	if !re.MatchString(gomod) {
+		t.Error("go.mod does not replace github.com/emersion/go-imap/v2 with github.com/bongo-project/go-imap/v2")
+	}
+}

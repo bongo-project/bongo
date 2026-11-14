@@ -142,3 +142,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace github.com/emersion/go-imap/v2 => github.com/bongo-project/go-imap/v2 v2.0.0-20261114072814-de06c8af6712
