@@ -820,7 +820,7 @@ Open:
 
 6. US-010: members of a shared inbox are assigned by an admin. Do their
    folder grants go through the invitation flow like any share, or are
-   admin-assigned grants created `accepted`?
+   admin-assigned grants created `accepted`? Resolved by decision 18.
 7. US-016: decision 7 asks for "a dedicated key". Is a key derived from the
    session secret with its own purpose string enough, or should it be a
    separate configured secret, so that rotating the session secret does not
@@ -889,6 +889,9 @@ Open:
     trailers, so the upstream change is prepared as a branch and written
     and opened by the operator, QUOTA first as a small pull request, raised
     in #emersion on Libera beforehand.
+18. (operator, 2026-11-14) Open question 6: members an admin adds to a
+    shared inbox get access straight away. Their grants are created
+    `accepted`, with no invitation email; removing a member revokes them.
 
 ### 8.2 Candidates for the next release
 
