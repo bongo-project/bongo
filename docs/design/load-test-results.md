@@ -7,11 +7,10 @@ component that reached it, and marks each suspected limit of PRD section 6.2.
 Defects and candidates are listed in PRD section 8.2; this document refers to
 them rather than repeating the detail.
 
-**These numbers are preliminary.** Both machines had shared vCPUs, so under
-decision 13 the series finds what breaks first and its numbers are not
-published as headline figures. Several stages ran on different releases, and
-fixes went in between them (section 4). Publishing needs a final run on one
-tagged release, repeated within 10% (US-010).
+**These numbers are preliminary.** The stages ran on different releases,
+fixes went in between them (section 4), and no stage ran twice. Publishing
+needs a final run on one tagged release, repeated within 10% (US-010). The
+final run uses the same kind of shared-vCPU machine (decision 17).
 
 ## 1. Setup
 
@@ -176,13 +175,14 @@ On a cx23 (2 shared vCPU, 4 GB), under the traffic model above:
 
 The limit is CPU in every case: search indexing for mail, bcrypt for logins
 and DAV. Neither memory, connections, disk space nor the account count was the
-first limit on this machine. What the server does with dedicated or more CPU
-is not yet measured.
+first limit on this machine. What the server does with more CPU, or on
+dedicated hardware, is not yet measured.
 
 ## 6. Next run
 
-- Dedicated vCPU, so the numbers can be published (decision 13).
+- Shared vCPU again, the machine most installations run on (decision 17).
 - One tagged release for every stage, run twice to check the 10% agreement.
+- Dedicated hardware as the last test of the series, reported separately.
 - ClamAV on, to measure scanning.
 - After the PRD 8.2 candidates that move the CPU limit (DAV credential cost,
   Bleve mapping), so the run measures the release users will get.

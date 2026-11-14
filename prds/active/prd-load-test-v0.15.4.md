@@ -260,12 +260,16 @@ Bongo writes everything to one data directory, and the operator chooses the disk
 under it. A small server keeps it on the root disk; a large mail store needs a
 mounted volume, which is network storage at most providers. The test covers both.
 
-1. **Start small, then scale up.** Run the stages on a small machine first, then on
-   one or two larger sizes. If the limit does not move when CPU and memory double,
+1. **Start small, then scale up.** Run the stages on a small shared-vCPU machine
+   first, then on one or two larger sizes. If the limit does not move when CPU and memory double,
    it is not CPU or memory (Bleve indexing and disk sync are the suspects). Results
    are given per machine size.
-2. **Dedicated CPU only.** Shared-CPU machines vary with their neighbours, which
-   breaks the rule that two runs agree within 10%.
+2. **Shared vCPU for the headline numbers, dedicated hardware last** (decision 17).
+   Most installations run on a VM or in a container with shared CPU, so the
+   headline numbers come from that. Shared CPU varies with other tenants, so the
+   two runs must still agree within 10%; a pair that does not is repeated. A run
+   on dedicated hardware is the last test of the series and is reported as a
+   separate result.
 3. **Local disk for accounts, message rate and connections.** This is what a
    one-server installation most likely runs, and it is the best case.
 4. **A mounted volume for storage scale.** Load it once, snapshot it, and move it
@@ -422,6 +426,12 @@ worthwhile.
     the effect of scanning is not measured. The next run turns ClamAV on.
 16. (operator, 2026-11-13) The compose template's memory limit goes from 512 MB to
     2 GB: the server used about 1 GB with 820 connected clients.
+17. (operator, 2026-11-14) The headline numbers come from shared-vCPU VMs, because
+    most people run Bongo on a VM or in a container. Dedicated hardware is the
+    final test at the end of the series. This replaces section 6.1.1 item 2 and
+    the dedicated-CPU parts of decisions 11 and 13: a shared-CPU run is no longer
+    preliminary for that reason alone. The 10% agreement between two runs still
+    applies, and the generator stays on dedicated CPU (item 8).
 
 ### 8.2 Candidates for the next release
 
