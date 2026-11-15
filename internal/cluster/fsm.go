@@ -498,23 +498,31 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 // has a delivery to work with, and expunges, moves and flag changes need
 // announcing too.
 func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
-	if result == nil || result.NewMail == nil {
+	if result == nil {
 		return
 	}
-	newMail := result.NewMail
-
-	if newMail.Meta != nil {
-		metaBytes, err := proto.Marshal(newMail.Meta)
-		if err != nil {
-			f.logger.Warn("fsm: failed to marshal delivered MailMeta for indexing", "error", err, "user", newMail.UserID, "guid", newMail.GUID)
-		} else {
-			f.updateDerivedIndexes(&bongov1.RaftCommand{
-				Op:    bongov1.Op_OP_PUT,
-				Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", newMail.UserID, newMail.GUID)),
-				Value: metaBytes,
-			})
-		}
+	f.indexNewMail(result.NewMail)
+	// A cross-owner transfer wrote one MailMeta per message into another
+	// account's namespace; each is indexed exactly as a delivery is.
+	for _, nm := range result.NewMails {
+		f.indexNewMail(nm)
 	}
+}
+
+func (f *FSM) indexNewMail(newMail *store.MailboxNewMail) {
+	if newMail == nil || newMail.Meta == nil {
+		return
+	}
+	metaBytes, err := proto.Marshal(newMail.Meta)
+	if err != nil {
+		f.logger.Warn("fsm: failed to marshal delivered MailMeta for indexing", "error", err, "user", newMail.UserID, "guid", newMail.GUID)
+		return
+	}
+	f.updateDerivedIndexes(&bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", newMail.UserID, newMail.GUID)),
+		Value: metaBytes,
+	})
 }
 
 // updateDerivedIndexes updates SQLite and Bleve indexes based on the applied

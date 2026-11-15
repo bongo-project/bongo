@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"mime/quotedprintable"
@@ -30,6 +31,7 @@ const contactsPerPage = 25
 // ContactsHandler handles contact management endpoints.
 type ContactsHandler struct {
 	contacts *store.ContactStore
+	books    *store.AddressBookStore // nil = the default book only
 	search   *store.SearchManager
 	quota    QuotaChecker // nil = unlimited
 }
@@ -51,8 +53,38 @@ func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		page = p
 	}
 
+	// No book parameter lists every contact, whichever book it is filed in.
+	active := r.URL.Query().Get("book")
+	if active != "" && active != store.DefaultAddressBookID {
+		if h.books == nil || !store.ValidAddressBookID(active) {
+			bookFail(w, r, http.StatusNotFound, "contacts.errBookNotFound")
+			return
+		}
+		if _, err := h.books.Get(userID, active); err != nil {
+			if errors.Is(err, store.ErrAddressBookNotFound) {
+				bookFail(w, r, http.StatusNotFound, "contacts.errBookNotFound")
+				return
+			}
+			http.Error(w, "failed to list contacts", http.StatusInternalServerError)
+			return
+		}
+	}
+	view, err := h.bookView(userID, active)
+	if err != nil {
+		http.Error(w, "failed to list contacts", http.StatusInternalServerError)
+		return
+	}
+
 	offset := (page - 1) * contactsPerPage
-	contacts, total, err := h.contacts.List(userID, offset, contactsPerPage)
+	var (
+		contacts []*bongov1.Contact
+		total    int
+	)
+	if active == "" {
+		contacts, total, err = h.contacts.List(userID, offset, contactsPerPage)
+	} else {
+		contacts, total, err = h.contacts.ListByBook(userID, active, offset, contactsPerPage)
+	}
 	if err != nil {
 		http.Error(w, "failed to list contacts", http.StatusInternalServerError)
 		return
@@ -65,14 +97,20 @@ func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 
 	flash := flashText(r)
 
-	templ.Handler(templates.ContactsPage(contacts, page, totalPages, email, flash)).ServeHTTP(w, r)
+	templ.Handler(templates.ContactsPage(contacts, page, totalPages, email, flash, view)).ServeHTTP(w, r)
 }
 
 // CreateContact handles POST to create a new contact.
 func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
-	contact := &bongov1.Contact{}
+	book, err := h.formBook(userID, r.FormValue("addressbook"))
+	if err != nil {
+		answerFormBookError(w, r, err)
+		return
+	}
+
+	contact := &bongov1.Contact{AddressbookId: book}
 	// Build the full vCard from the edit form (also sets the derived quick fields).
 	buildVCardFromForm(contact, r)
 
@@ -88,7 +126,16 @@ func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	http.Redirect(w, r, withFlash("/contacts", flashContactCreated), http.StatusSeeOther)
+	http.Redirect(w, r, withFlash(contactsReturnURL(book), flashContactCreated), http.StatusSeeOther) // #nosec G710 -- fixed same-origin /contacts path, book id validated
+}
+
+// contactsReturnURL is the list a request returns to: the book it filed into,
+// or all contacts.
+func contactsReturnURL(book string) string {
+	if book == "" {
+		return "/contacts"
+	}
+	return contactsBookURL(book)
 }
 
 // ShowContact renders a single contact detail/edit view.
@@ -101,8 +148,13 @@ func (h *ContactsHandler) ShowContact(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "contact not found", http.StatusNotFound)
 		return
 	}
+	view, err := h.bookView(userID, store.ContactBook(contact))
+	if err != nil {
+		http.Error(w, "failed to load address books", http.StatusInternalServerError)
+		return
+	}
 
-	templ.Handler(templates.ContactDetailPage(contact, email)).ServeHTTP(w, r)
+	templ.Handler(templates.ContactDetailPage(contact, email, view)).ServeHTTP(w, r)
 }
 
 // ShowContactDetail renders the contact detail partial for the HTMX reading pane.
@@ -184,6 +236,12 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	book, err := h.formBook(userID, r.FormValue("addressbook"))
+	if err != nil {
+		answerFormBookError(w, r, err)
+		return
+	}
+
 	existing, _ := h.contacts.FindByEmail(userID, fromEmail)
 	if existing != nil {
 		if returnTo != "" {
@@ -195,8 +253,9 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 	}
 
 	contact := &bongov1.Contact{
-		DisplayName: fromName,
-		Email:       fromEmail,
+		DisplayName:   fromName,
+		Email:         fromEmail,
+		AddressbookId: book,
 	}
 	syncQuickFieldsToVCard(contact)
 	if quotaExceeded(h.quota, nil, userID, store.ContactRecordSize(contact)) {
@@ -281,6 +340,11 @@ func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer removeUploadTemp(r)
+	book, err := h.formBook(userID, r.FormValue("addressbook"))
+	if err != nil {
+		answerFormBookError(w, r, err)
+		return
+	}
 	file, _, err := r.FormFile("vcf")
 	if err != nil {
 		http.Redirect(w, r, withFlash("/contacts", flashNoFileUploaded), http.StatusSeeOther)
@@ -323,6 +387,7 @@ func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request)
 			skipped++
 			continue
 		}
+		contact.AddressbookId = book
 
 		if _, err := h.contacts.Create(userID, contact); err != nil {
 			skipped++

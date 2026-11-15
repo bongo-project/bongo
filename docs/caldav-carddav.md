@@ -160,7 +160,8 @@ OpenTasks when one of them is installed.
 | Tasks | `/caldav/{user}/calendars/tasks/` | Tasks (VTODO) only. See below for when it exists. |
 | Calendars shared with the user | `/caldav/{user}/calendars/shared-{owner}-{calendar}/` | From v0.15.0. Read or read-write, as the owner granted. Writes are stored under the owner and count against the owner's quota. |
 | Subscribed calendars | as calendars | Read-only. A `PUT` or `DELETE` of an object inside one answers `403`. A `DELETE` of the collection itself answers `409`: unsubscribe in the web interface. |
-| Address book | `/carddav/{user}/addressbooks/default/` | Contacts (vCard). |
+| Address book | `/carddav/{user}/addressbooks/default/` | Contacts (vCard). The default book. |
+| More address books | `/carddav/{user}/addressbooks/{book}/` | Contacts (vCard) filed in that book. See Address books below. |
 
 From v0.15.0 the server also handles calendar scheduling (RFC 6638). It
 sends invitations, updates, cancellations and replies for events saved by a
@@ -236,10 +237,30 @@ Up to v0.15.0, `MKCALENDAR` answered `405` and extended `MKCOL` ignored the
 component set and the path, and no release could delete a calendar over
 CalDAV.
 
+## Address books
+
+A user has the default address book and up to 20 more. A client lists them in
+the address book home set and creates one with `MKCOL` and a resource type of
+collection plus address book; the display name in the request becomes the
+book's name, and `Contacts` is used when there is none. Hyphenated and
+upper-case UUID segments are accepted and stored as 32 lower-case hex digits.
+`MKCOL` of `default` or of an existing book answers `405`, and a new book over
+the limit answers `507`.
+
+A contact belongs to the book it was `PUT` into. A `PUT` of a contact that
+already exists in another book answers `409`; Bongo does not move contacts. A
+`PUT` into a book that does not exist answers `409`.
+
+A `DELETE` of a book removes its contacts one by one and then the book. If it
+fails part way the book stays, with the contacts left, and repeating the
+`DELETE` finishes the job. The default book cannot be deleted and answers
+`403`. Renaming is done in the web interface.
+
 ## Limits
 
 - One request body is at most 10 MiB; a larger one is refused with `413`.
 - A user owns at most 5 calendars; see Creating and deleting calendars.
+- A user owns at most 20 address books besides the default one.
 - Events, tasks and contacts count towards the domain's quota, checked at
   every `PUT`.
 - An event can invite at most 100 attendees. Only attendees the server would

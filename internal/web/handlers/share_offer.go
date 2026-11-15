@@ -55,7 +55,19 @@ type GrantOffer struct {
 	// resolving the address, so a full resource cannot be used to tell a valid
 	// address from an invalid one.
 	Full bool
-	Now  time.Time
+	// GrantedBy is the user who made the share, recorded on the grant. Empty
+	// means the owner; a grantee holding the administer right on a folder sets
+	// it to themselves.
+	GrantedBy string
+	Now       time.Time
+}
+
+// by returns who the grant is recorded as made by.
+func (o GrantOffer) by() string {
+	if o.GrantedBy != "" {
+		return o.GrantedBy
+	}
+	return o.Owner
 }
 
 // offerGrant creates a pending grant, or changes the permission of an existing
@@ -87,7 +99,7 @@ func offerGrant(acl grantStore, inv *ShareInviter, o GrantOffer) (shareOutcome, 
 	if !fresh && existing.Level == o.Level && existing.Rights == o.Rights {
 		return shareUnchanged, nil
 	}
-	if err := acl.SetGrantKeepState(o.Kind, o.Owner, o.Resource, grantee, o.Level, o.Rights, store.GrantStatePending, o.Owner, o.Now); err != nil {
+	if err := acl.SetGrantKeepState(o.Kind, o.Owner, o.Resource, grantee, o.Level, o.Rights, store.GrantStatePending, o.by(), o.Now); err != nil {
 		return shareUnchanged, fmt.Errorf("writing grant: %w", err)
 	}
 	if !fresh {
@@ -121,7 +133,7 @@ func offerGroupGrant(acl grantStore, o GrantOffer) (shareOutcome, error) {
 	if !fresh && existing.State == store.GrantStateAccepted && existing.Level == o.Level && existing.Rights == o.Rights {
 		return shareUnchanged, nil
 	}
-	if err := acl.SetGrant(o.Kind, o.Owner, o.Resource, grantee, o.Level, o.Rights, store.GrantStateAccepted, o.Owner, o.Now); err != nil {
+	if err := acl.SetGrant(o.Kind, o.Owner, o.Resource, grantee, o.Level, o.Rights, store.GrantStateAccepted, o.by(), o.Now); err != nil {
 		return shareUnchanged, fmt.Errorf("writing grant: %w", err)
 	}
 	if fresh {
@@ -155,3 +167,24 @@ func inviteKeys(kind string) (subject, body string) {
 		return "calendar.shareInviteSubject", "calendar.shareInviteBody"
 	}
 }
+
+// ErrShareRefused is what OfferGrant and OfferGroupGrant return when the
+// resource is full and the grantee is new.
+var ErrShareRefused = errShareRefused
+
+// OfferGrant is offerGrant for protocol servers outside this package, which
+// cannot import it without a cycle. It returns no outcome: they need only to
+// know whether the share was written.
+func OfferGrant(acl grantStore, inv *ShareInviter, o GrantOffer) error {
+	_, err := offerGrant(acl, inv, o)
+	return err
+}
+
+// OfferGroupGrant is offerGroupGrant for protocol servers; see OfferGrant.
+func OfferGroupGrant(acl grantStore, o GrantOffer) error {
+	_, err := offerGroupGrant(acl, o)
+	return err
+}
+
+// ValidLinkHost reports whether host may go into a link the server emails.
+func ValidLinkHost(host string) bool { return validLinkHost(host) }

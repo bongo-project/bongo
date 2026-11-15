@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-vcard"
@@ -22,12 +23,14 @@ import (
 // /                               → root (depth 0)
 // /{userID}/                      → user principal (depth 1)
 // /{userID}/addressbooks/         → address book home set (depth 2)
-// /{userID}/addressbooks/default/ → address book (depth 3)
-// /{userID}/addressbooks/default/{guid}.vcf → address object (depth 4)
+// /{userID}/addressbooks/{book}/  → address book (depth 3); {book} is "default"
+//                                   or the 32-hex id of one of the user's books
+// /{userID}/addressbooks/{book}/{guid}.vcf → address object (depth 4)
 
 // Backend implements the carddav.Backend interface.
 type Backend struct {
 	contacts *store.ContactStore
+	books    *store.AddressBookStore
 	search   *store.SearchManager
 	logger   *slog.Logger
 
@@ -90,6 +93,10 @@ func (b *Backend) checkQuota(userID string, addBytes int64) error {
 	return nil
 }
 
+// SetAddressBooks enables books beyond the default one. Without it the backend
+// serves the default book only and MKCOL is refused. Call before serving.
+func (b *Backend) SetAddressBooks(books *store.AddressBookStore) { b.books = books }
+
 // NewBackend creates a CardDAV backend.
 func NewBackend(contacts *store.ContactStore, search *store.SearchManager, logger *slog.Logger) *Backend {
 	return &Backend{contacts: contacts, search: search, logger: logger}
@@ -119,12 +126,86 @@ func homeSetPath(userID string) string {
 	return "/carddav/" + userID + "/addressbooks/"
 }
 
-func bookPath(userID string) string {
-	return "/carddav/" + userID + "/addressbooks/default/"
+// bookPath is the collection path of a book: store.DefaultAddressBookID for
+// the default book, otherwise the book's id.
+func bookPath(userID, bookID string) string {
+	return "/carddav/" + userID + "/addressbooks/" + bookID + "/"
 }
 
-func objectPath(userID, guid string) string {
-	return "/carddav/" + userID + "/addressbooks/default/" + guid + ".vcf"
+func objectPath(userID, bookID, guid string) string {
+	return "/carddav/" + userID + "/addressbooks/" + bookID + "/" + guid + ".vcf"
+}
+
+// parseBookPath splits a request path into the user segment, the book segment
+// and, for an address object, its file segment. ok is false for any other
+// shape. The segments are returned as sent: callers must compare the user with
+// the authenticated one and canonicalise the book.
+func parseBookPath(p string) (user, seg, object string, ok bool) {
+	rest, found := strings.CutPrefix(p, "/carddav/")
+	if !found {
+		return "", "", "", false
+	}
+	parts := strings.Split(strings.TrimSuffix(rest, "/"), "/")
+	if len(parts) < 3 || len(parts) > 4 || parts[1] != "addressbooks" || parts[0] == "" || parts[2] == "" {
+		return "", "", "", false
+	}
+	if len(parts) == 4 {
+		if parts[3] == "" {
+			return "", "", "", false
+		}
+		object = parts[3]
+	}
+	return parts[0], parts[2], object, true
+}
+
+func notFound(msg string) error {
+	return webdav.NewHTTPError(http.StatusNotFound, errors.New(msg))
+}
+
+// resolveBook maps a request path to the authenticated user and one of their
+// books. The path's user segment must be the authenticated user, and the book
+// is read from that user's own keys, so another user's book id answers 404 and
+// never reaches their data. The default book needs no record. A missing book
+// wraps store.ErrAddressBookNotFound.
+func (b *Backend) resolveBook(ctx context.Context, p string) (userID, bookID, object string, err error) {
+	userID = getUserID(ctx)
+	if userID == "" {
+		return "", "", "", fmt.Errorf("no user in context")
+	}
+	user, seg, object, ok := parseBookPath(p)
+	if !ok || user != userID {
+		return "", "", "", notFound("not found")
+	}
+	bookID, ok = store.CanonicalAddressBookSegment(seg)
+	if !ok {
+		return "", "", "", notFound("not found")
+	}
+	if bookID == store.DefaultAddressBookID {
+		return userID, bookID, object, nil
+	}
+	if b.books == nil {
+		return "", "", "", notFound("not found")
+	}
+	if _, err := b.books.Get(userID, bookID); err != nil {
+		if errors.Is(err, store.ErrAddressBookNotFound) {
+			return "", "", "", webdav.NewHTTPError(http.StatusNotFound, err)
+		}
+		return "", "", "", fmt.Errorf("reading address book: %w", err)
+	}
+	return userID, bookID, object, nil
+}
+
+// resolveObject is resolveBook for a path that must name an address object.
+func (b *Backend) resolveObject(ctx context.Context, p string) (userID, bookID, guid string, err error) {
+	userID, bookID, object, err := b.resolveBook(ctx, p)
+	if err != nil {
+		return "", "", "", err
+	}
+	guid = guidFromPath(object)
+	if object == "" || guid == "" {
+		return "", "", "", notFound("not found")
+	}
+	return userID, bookID, guid, nil
 }
 
 // CurrentUserPrincipal returns the principal path for the current user.
@@ -145,72 +226,162 @@ func (b *Backend) AddressBookHomeSetPath(ctx context.Context) (string, error) {
 	return homeSetPath(userID), nil
 }
 
-// ListAddressBooks returns the user's address books (single default book).
+func defaultAddressBook(userID string) carddav.AddressBook {
+	return carddav.AddressBook{
+		Path:        bookPath(userID, store.DefaultAddressBookID),
+		Name:        "Contacts",
+		Description: "Personal contacts",
+	}
+}
+
+func toDAVAddressBook(userID string, ab *bongov1.AddressBook) carddav.AddressBook {
+	return carddav.AddressBook{
+		Path:        bookPath(userID, ab.Id),
+		Name:        ab.Name,
+		Description: ab.Description,
+	}
+}
+
+// ListAddressBooks returns the default book and every book the user owns.
 func (b *Backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, error) {
 	userID := getUserID(ctx)
 	if userID == "" {
 		return nil, fmt.Errorf("no user in context")
 	}
-	return []carddav.AddressBook{
-		{
-			Path:        bookPath(userID),
-			Name:        "Contacts",
-			Description: "Personal contacts",
-		},
-	}, nil
+	out := []carddav.AddressBook{defaultAddressBook(userID)}
+	if b.books == nil {
+		return out, nil
+	}
+	books, err := b.books.List(userID)
+	if err != nil {
+		return nil, fmt.Errorf("listing address books: %w", err)
+	}
+	for _, ab := range books {
+		out = append(out, toDAVAddressBook(userID, ab))
+	}
+	return out, nil
 }
 
-// GetAddressBook returns address book metadata.
+// GetAddressBook returns address book metadata, or 404 for a book the user
+// does not own.
 func (b *Backend) GetAddressBook(ctx context.Context, path string) (*carddav.AddressBook, error) {
-	userID := getUserID(ctx)
-	if userID == "" {
-		return nil, fmt.Errorf("no user in context")
+	userID, bookID, object, err := b.resolveBook(ctx, path)
+	if err != nil {
+		return nil, err
 	}
-	return &carddav.AddressBook{
-		Path:        bookPath(userID),
-		Name:        "Contacts",
-		Description: "Personal contacts",
-	}, nil
+	if object != "" {
+		return nil, notFound("not found")
+	}
+	if bookID == store.DefaultAddressBookID {
+		ab := defaultAddressBook(userID)
+		return &ab, nil
+	}
+	rec, err := b.books.Get(userID, bookID)
+	if err != nil {
+		return nil, webdav.NewHTTPError(http.StatusNotFound, err)
+	}
+	ab := toDAVAddressBook(userID, rec)
+	return &ab, nil
 }
 
-// CreateAddressBook is not supported (single default book).
+// CreateAddressBook creates the book named by the last segment of addressBook.Path
+// (MKCOL). The stored id is the canonical form of the segment, so a client that
+// creates a collection under an upper-case or hyphenated UUID can keep using
+// its own URL: every lookup canonicalises the same way. It never overwrites.
+// The count check is serialised per node only (see AddressBookStore.Create).
 func (b *Backend) CreateAddressBook(ctx context.Context, addressBook *carddav.AddressBook) error {
-	return fmt.Errorf("creating additional address books is not supported")
-}
-
-// DeleteAddressBook is not supported (single default book).
-func (b *Backend) DeleteAddressBook(ctx context.Context, path string) error {
-	return fmt.Errorf("deleting the default address book is not supported")
-}
-
-// GetAddressObject returns a single contact as a CardDAV address object.
-func (b *Backend) GetAddressObject(ctx context.Context, path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
 	userID := getUserID(ctx)
 	if userID == "" {
-		return nil, fmt.Errorf("no user in context")
+		return fmt.Errorf("no user in context")
 	}
+	user, seg, object, ok := parseBookPath(addressBook.Path)
+	if !ok || object != "" || user != userID {
+		return webdav.NewHTTPError(http.StatusForbidden, errors.New("address books are created under your own home set"))
+	}
+	id, ok := store.CanonicalAddressBookSegment(seg)
+	if !ok {
+		return webdav.NewHTTPError(http.StatusForbidden, errors.New("invalid address book name"))
+	}
+	if id == store.DefaultAddressBookID || b.books == nil {
+		return webdav.NewHTTPError(http.StatusMethodNotAllowed, errors.New("address book already exists"))
+	}
+	name := store.CleanAddressBookText(addressBook.Name, store.MaxAddressBookNameLen)
+	if name == "" {
+		name = "Contacts"
+	}
+	desc := store.CleanAddressBookText(addressBook.Description, store.MaxAddressBookDescLen)
 
-	guid := guidFromPath(path)
-	if guid == "" {
-		return nil, fmt.Errorf("invalid path")
+	_, err := b.books.Create(userID, id, name, desc)
+	switch {
+	case err == nil:
+		b.logger.Info("carddav: address book created", "user", userID, "book", id)
+		return nil
+	case errors.Is(err, store.ErrAddressBookExists):
+		return webdav.NewHTTPError(http.StatusMethodNotAllowed, err)
+	case errors.Is(err, store.ErrAddressBookLimit):
+		return webdav.NewHTTPError(http.StatusInsufficientStorage, err)
+	}
+	return fmt.Errorf("creating address book: %w", err)
+}
+
+// DeleteAddressBook deletes a book and its contacts. The default book answers
+// 403 and an unknown one 404. The delete is resumable and not atomic: see
+// store.PurgeAddressBook. A failure part way answers 500 and leaves the book in
+// place, so repeating the DELETE finishes the job.
+func (b *Backend) DeleteAddressBook(ctx context.Context, path string) error {
+	userID, bookID, object, err := b.resolveBook(ctx, path)
+	if err != nil {
+		return err
+	}
+	if object != "" {
+		return notFound("not found")
+	}
+	if bookID == store.DefaultAddressBookID {
+		return webdav.NewHTTPError(http.StatusForbidden, store.ErrAddressBookProtected)
+	}
+	err = store.PurgeAddressBook(b.books, b.contacts, userID, bookID)
+	switch {
+	case err == nil:
+	case errors.Is(err, store.ErrAddressBookNotFound):
+		return webdav.NewHTTPError(http.StatusNotFound, err)
+	case errors.Is(err, store.ErrAddressBookGrantsNotRevoked):
+		// The book is gone; the leader's orphan sweep removes what is left.
+		b.logger.Warn("carddav: address book deleted but grants not revoked", "user", userID, "book", bookID, "error", err)
+	default:
+		b.logger.Warn("carddav: address book delete failed", "user", userID, "book", bookID, "error", err)
+		return err
+	}
+	b.logger.Info("carddav: address book deleted", "user", userID, "book", bookID)
+	return nil
+}
+
+// GetAddressObject returns a single contact as a CardDAV address object. A
+// contact filed in another book answers 404 under this path.
+func (b *Backend) GetAddressObject(ctx context.Context, path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
+	userID, bookID, guid, err := b.resolveObject(ctx, path)
+	if err != nil {
+		return nil, err
 	}
 
 	contact, err := b.contacts.Get(userID, guid)
-	if err != nil {
-		return nil, fmt.Errorf("contact not found: %w", err)
+	if err != nil || store.ContactBook(contact) != bookID {
+		return nil, webdav.NewHTTPError(http.StatusNotFound, errors.New("contact not found"))
 	}
 
 	return contactToAddressObject(userID, contact)
 }
 
-// ListAddressObjects returns all contacts as CardDAV address objects.
+// ListAddressObjects returns the contacts of the book the path names.
 func (b *Backend) ListAddressObjects(ctx context.Context, path string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
-	userID := getUserID(ctx)
-	if userID == "" {
-		return nil, fmt.Errorf("no user in context")
+	userID, bookID, object, err := b.resolveBook(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if object != "" {
+		return nil, notFound("not found")
 	}
 
-	contacts, _, err := b.contacts.List(userID, 0, 0)
+	contacts, _, err := b.contacts.ListByBook(userID, bookID, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("listing contacts: %w", err)
 	}
@@ -235,19 +406,21 @@ func (b *Backend) QueryAddressObjects(ctx context.Context, path string, query *c
 	return carddav.Filter(query, objects)
 }
 
-// PutAddressObject creates or updates a contact from a vCard.
+// PutAddressObject creates or updates a contact from a vCard. The book is
+// resolved first, so a PUT into a book that does not exist (or that a
+// concurrent DELETE has just removed) answers 409 before anything is written.
+// A GUID that already exists in another book answers 409: a PUT never moves a
+// contact. An update keeps the contact's book.
 func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (*carddav.AddressObject, error) {
 	if b.storage != nil && b.storage.Low() {
 		return nil, webdav.NewHTTPError(http.StatusInsufficientStorage, ErrStorageLow)
 	}
-	userID := getUserID(ctx)
-	if userID == "" {
-		return nil, fmt.Errorf("no user in context")
-	}
-
-	guid := guidFromPath(path)
-	if guid == "" {
-		return nil, fmt.Errorf("invalid path")
+	userID, bookID, guid, err := b.resolveObject(ctx, path)
+	if err != nil {
+		if errors.Is(err, store.ErrAddressBookNotFound) {
+			return nil, webdav.NewHTTPError(http.StatusConflict, err)
+		}
+		return nil, err
 	}
 
 	// Encode vCard to raw bytes.
@@ -265,9 +438,15 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 		Notes:       card.PreferredValue(vcard.FieldNote),
 		VcardRaw:    rawBuf.Bytes(),
 	}
+	if bookID != store.DefaultAddressBookID {
+		contact.AddressbookId = bookID
+	}
 
 	// Check if contact exists (update vs create).
 	existing, _ := b.contacts.Get(userID, guid)
+	if existing != nil && store.ContactBook(existing) != bookID {
+		return nil, webdav.NewHTTPError(http.StatusConflict, errors.New("a contact with this id exists in another address book"))
+	}
 
 	// Conditional headers are enforced before any write. See the CalDAV
 	// backend for the reasoning; the failure was identical here.
@@ -304,16 +483,17 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 	return contactToAddressObject(userID, contact)
 }
 
-// DeleteAddressObject removes a contact.
+// DeleteAddressObject removes a contact. A contact filed in another book
+// answers 404 under this path.
 func (b *Backend) DeleteAddressObject(ctx context.Context, path string) error {
-	userID := getUserID(ctx)
-	if userID == "" {
-		return fmt.Errorf("no user in context")
+	userID, bookID, guid, err := b.resolveObject(ctx, path)
+	if err != nil {
+		return err
 	}
 
-	guid := guidFromPath(path)
-	if guid == "" {
-		return fmt.Errorf("invalid path")
+	existing, err := b.contacts.Get(userID, guid)
+	if err == nil && store.ContactBook(existing) != bookID {
+		return webdav.NewHTTPError(http.StatusNotFound, errors.New("contact not found"))
 	}
 
 	if err := b.contacts.Delete(userID, guid); err != nil {
@@ -361,7 +541,7 @@ func contactToAddressObject(userID string, c *bongov1.Contact) (*carddav.Address
 	}
 
 	return &carddav.AddressObject{
-		Path:    objectPath(userID, c.Guid),
+		Path:    objectPath(userID, store.ContactBook(c), c.Guid),
 		Card:    card,
 		ModTime: modTime,
 		ETag:    store.ContentETagValue(c.VcardRaw, c.UpdatedAt),

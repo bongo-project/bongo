@@ -210,6 +210,32 @@ func RemoveUserFromGroups(applier RaftApplier, userID string, now time.Time) err
 	return nil
 }
 
+// GroupReader is the lookup ShareableGroup needs; *GroupStore satisfies it and
+// callers may pass a narrower fake.
+type GroupReader interface {
+	GetGroup(id string) (*bongov1.Group, error)
+}
+
+// ShareableGroup returns the id of the group a share may name: it exists and
+// sits on the domain of ownerAddress, the folder or calendar owner's address
+// (never the acting user's, so a delegate cannot attach the groups of their own
+// domain). Anything else is false, and callers give the same refusal as for an
+// unknown address so a group cannot be probed.
+func ShareableGroup(groups GroupReader, groupID, ownerAddress string) (string, bool) {
+	if groups == nil {
+		return "", false
+	}
+	g, err := groups.GetGroup(groupID)
+	if err != nil {
+		return "", false
+	}
+	_, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(ownerAddress)), "@")
+	if !ok || domain == "" || g.Domain != domain {
+		return "", false
+	}
+	return g.Id, true
+}
+
 // GetGroup returns the group, or ErrGroupNotFound.
 func (s *GroupStore) GetGroup(id string) (*bongov1.Group, error) {
 	if !groupIDPattern.MatchString(id) {

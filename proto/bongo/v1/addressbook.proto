@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
+
+// AddressBook is the metadata of one of a user's non-default address books,
+// stored at /user/{user_id}/addressbook/{id}. The default book is implicit and
+// has no record.
+message AddressBook {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+}

@@ -76,7 +76,7 @@ func TestMultipartFormsRenderCSRFFirst(t *testing.T) {
 	}{
 		{"compose", ComposePage("new", "", "", "", "", "", 0, nil, "", "")},
 		{"import", ImportPage([]string{"INBOX"}, "u1@example.com")},
-		{"contacts", ContactsPage(nil, 1, 1, "u1@example.com", "")},
+		{"contacts", ContactsPage(nil, 1, 1, "u1@example.com", "", ContactBooksView{})},
 		{"calendar", CalendarSidebar(nil)},
 	}
 	for _, tt := range tests {

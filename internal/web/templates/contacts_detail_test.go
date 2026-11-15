@@ -96,7 +96,7 @@ func TestContactDetailWebsiteIsPlainText(t *testing.T) {
 func TestContactEditorHiddenState(t *testing.T) {
 	c := &bongov1.Contact{Guid: "g1", DisplayName: "Ada", Email: "a@x.example"}
 	partial := renderToString(t, ContactDetailPartial(c))
-	page := renderToString(t, ContactDetailPage(c, "me@x.example"))
+	page := renderToString(t, ContactDetailPage(c, "me@x.example", ContactBooksView{}))
 	idx := func(s string) string {
 		i := strings.Index(s, `id="contact-editor-g1"`)
 		if i < 0 {
@@ -134,7 +134,7 @@ func TestContactRowKeepsHooks(t *testing.T) {
 }
 
 func TestContactsPageHeader(t *testing.T) {
-	out := renderToString(t, ContactsPage(nil, 1, 1, "u@x.example", ""))
+	out := renderToString(t, ContactsPage(nil, 1, 1, "u@x.example", "", ContactBooksView{}))
 	for _, want := range []string{
 		`class="page-head contacts-head"`, `href="/contacts/export"`,
 		`data-contact-form-toggle="toggle"`, contactsTr("contacts.importVcard"), `name="vcf"`,

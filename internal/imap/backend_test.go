@@ -526,9 +526,23 @@ type imapDirectApplier struct {
 	// groupMu serialises group commands as the FSM does; stored literally or
 	// applied concurrently they would let group tests pass vacuously.
 	groupMu sync.Mutex
+	// mailboxMu serialises mailbox commands as the FSM does, so two sessions
+	// allocating uids in one test cannot interleave.
+	mailboxMu sync.Mutex
+	// failPut, when set, may refuse a command before it is applied.
+	failPut func(cmd *bongov1.RaftCommand) error
 }
 
 func (a *imapDirectApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	if a.failPut != nil {
+		if err := a.failPut(cmd); err != nil {
+			return err
+		}
+	}
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {
+		a.mailboxMu.Lock()
+		defer a.mailboxMu.Unlock()
+	}
 	var notifier store.MailboxNotifier
 	if a.mailboxes != nil {
 		notifier = a.mailboxes.Notifier()

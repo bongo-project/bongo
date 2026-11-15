@@ -127,6 +127,7 @@ type Agent struct {
 	Threads      *store.ThreadStore
 	Rules        *rules.RuleStore
 	Contacts     *store.ContactStore
+	AddressBooks *store.AddressBookStore
 	Events       *store.EventStore
 	Tasks        *store.TaskStore
 	// ScheduleInbox holds the iTIP messages CalDAV clients find in their
@@ -564,6 +565,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		a.Rules = rules.NewRuleStore(pebbleStore, a)
 		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)
 		a.Contacts = store.NewContactStore(pebbleStore, a)
+		a.AddressBooks = store.NewAddressBookStore(pebbleStore, a)
 		if a.Search != nil {
 			a.Contacts.SetSearch(a.Search)
 		}
@@ -1188,6 +1190,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	)
 	if a.Contacts != nil {
 		carddavBackend = bongocarddav.NewBackend(a.Contacts, a.Search, a.logger)
+		carddavBackend.SetAddressBooks(a.AddressBooks)
 		if a.DomainQuota != nil {
 			carddavBackend.SetQuotaChecker(a.DomainQuota)
 		}
@@ -1632,6 +1635,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Contacts != nil {
 			contactsH := handlers.NewContactsHandler(a.Contacts, a.Search)
+			contactsH.SetAddressBooks(a.AddressBooks)
 			if a.DomainQuota != nil {
 				contactsH.SetQuotaChecker(a.DomainQuota)
 			}
@@ -1640,6 +1644,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/contacts/export", contactsH.ExportContacts)
 			r.With(refuseLowStorage).Post("/contacts/import", contactsH.ImportContacts)
 			r.Post("/contacts/quick-add", contactsH.QuickAddContact)
+			r.Post("/contacts/books", contactsH.CreateAddressBook)
+			r.Post("/contacts/books/{id}/rename", contactsH.RenameAddressBook)
+			r.Post("/contacts/books/{id}/delete", contactsH.DeleteAddressBook)
 			r.Get("/contacts/{guid}", contactsH.ShowContact)
 			r.Get("/contacts/{guid}/detail", contactsH.ShowContactDetail)
 			r.Post("/contacts/{guid}", contactsH.UpdateContact)
@@ -2299,6 +2306,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		a.IMAP.SetStorageGate(a.storageGate())
 		a.IMAP.SetACLStore(a.ACL)
+		a.wireIMAPSharing(sharedResolver)
 		a.IMAP.SetConnectionLimits(a.Config.IMAP.MaxConnections, a.Config.IMAP.MaxConnectionsPerIP)
 		a.IMAP.SetNamespacePrefixes(a.Config.IMAP.OtherUsersPrefix, a.Config.IMAP.SharedPrefix)
 		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol, a.proxyTrust); err != nil {
