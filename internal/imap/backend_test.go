@@ -531,6 +531,12 @@ func (a *imapDirectApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Durati
 	}
 	pending := store.PrepareNotify(a.store, notifier, cmd, nil)
 
+	// Grants are revoked with a synthetic command; stored literally it would
+	// leave the grant behind and a revoke assertion would pass vacuously.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsACLSyntheticCommand(cmd.Key) {
+		return store.ApplyACLCommand(a.store, cmd)
+	}
+
 	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {
 		result, err := store.ApplyMailboxCommand(a.store, cmd)
 		if err != nil {

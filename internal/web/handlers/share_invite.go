@@ -13,24 +13,20 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/a-h/templ"
 	gomessage "github.com/emersion/go-message/mail"
 
 	"github.com/bongo-project/bongo/internal/i18n"
-	"github.com/bongo-project/bongo/internal/store"
-	"github.com/bongo-project/bongo/internal/web/middleware"
-	"github.com/bongo-project/bongo/internal/web/templates"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// Sharing a calendar by email. A share creates a pending grant and
-// mails the grantee a link to /calendar/shares, where they accept or decline.
+// Sharing by email. A share of a calendar, folder or address book creates a pending grant and
+// mails the grantee a link to /shares, where they accept or decline.
 // Only an accepted grant authorises anything; the grant is authoritative and
 // the email is best-effort.
 
 // shareInviteQueueSize bounds the invitations waiting for the sender. A full
 // buffer drops the invitation (logged); the grant stands, and the grantee
-// still finds it on /calendar/shares.
+// still finds it on /shares.
 const shareInviteQueueSize = 64
 
 // maxInviteNameRunes bounds the owner and calendar names put into a message.
@@ -48,12 +44,13 @@ type shareInviteJob struct {
 	ownerEmail   string
 	granteeID    string
 	recipient    string
-	calendarName string
+	kind         string
+	resourceName string
 	// host is the already-checked host of the link in the message.
 	host string
 }
 
-// ShareInviter delivers calendar invitation emails off the request path.
+// ShareInviter delivers share invitation emails off the request path.
 type ShareInviter struct {
 	sender inviteSender
 	prefs  localeSource
@@ -130,7 +127,7 @@ func (s *ShareInviter) locale(userID string) string {
 }
 
 // send builds and delivers one invitation. A failure is logged with the user
-// and calendar IDs only: never the address, the link or the body.
+// and owner IDs only: never the address, the link or the body.
 func (s *ShareInviter) send(j shareInviteJob) {
 	if s.sender == nil {
 		s.logger.Warn("calendar-share: invitation not sent: no sender", "owner", j.ownerID, "grantee", j.granteeID)
@@ -138,10 +135,11 @@ func (s *ShareInviter) send(j shareInviteJob) {
 	}
 	locale := s.locale(j.granteeID)
 	owner := inviteName(j.ownerEmail)
-	name := inviteName(j.calendarName)
-	link := "https://" + j.host + "/calendar/shares"
-	subject := fmt.Sprintf(i18n.T(locale, "calendar.shareInviteSubject"), owner, name)
-	body := fmt.Sprintf(i18n.T(locale, "calendar.shareInviteBody"), owner, name, link)
+	name := inviteName(j.resourceName)
+	link := "https://" + j.host + "/shares"
+	subjectKey, bodyKey := inviteKeys(j.kind)
+	subject := fmt.Sprintf(i18n.T(locale, subjectKey), owner, name)
+	body := fmt.Sprintf(i18n.T(locale, bodyKey), owner, name, link)
 	raw, err := buildPlainMail(j.ownerEmail, j.recipient, subject, body, time.Now())
 	if err != nil {
 		s.logger.Warn("calendar-share: invitation not sent: building message failed", "owner", j.ownerID, "grantee", j.granteeID, "error", err)
@@ -262,180 +260,4 @@ func validLinkHost(host string) bool {
 		}
 	}
 	return true
-}
-
-// queueShareInvite hands an invitation to the background sender. Failure to
-// queue is logged and never fails the share.
-func (h *CalendarHandler) queueShareInvite(r *http.Request, ownerID, ownerEmail, granteeID, recipient, calendarName string) {
-	host := h.linkHost(r)
-	switch {
-	case h.inviter == nil:
-		slog.Info("calendar-share: invitation email skipped: no sender wired", "owner", ownerID)
-	case host == "":
-		slog.Warn("calendar-share: invitation email skipped: no usable link host", "owner", ownerID)
-	case !h.inviter.Submit(shareInviteJob{
-		ownerID: ownerID, ownerEmail: ownerEmail, granteeID: granteeID,
-		recipient: recipient, calendarName: calendarName, host: host,
-	}):
-		slog.Warn("calendar-share: invitation email dropped: queue full", "owner", ownerID, "grantee", granteeID)
-	}
-}
-
-// ShareInvitations renders the pending calendar invitations of the user.
-//
-// GET /calendar/shares
-func (h *CalendarHandler) ShareInvitations(w http.ResponseWriter, r *http.Request) {
-	userID, email := middleware.UserFromContext(r.Context())
-	var rows, joined []templates.PendingShare
-	if h.acl != nil {
-		held, err := h.acl.ListPendingCalendarGrantsHeld(userID, h.clock())
-		if err != nil {
-			http.Error(w, "failed to load invitations", http.StatusInternalServerError)
-			return
-		}
-		rows = h.shareRows(held)
-		accepted, err := h.acl.ListCalendarGrantsHeld(userID)
-		if err != nil {
-			http.Error(w, "failed to load shared calendars", http.StatusInternalServerError)
-			return
-		}
-		joined = h.shareRows(accepted)
-	}
-	calendars, err := h.calendars.List(userID)
-	if err != nil {
-		http.Error(w, "failed to load calendars", http.StatusInternalServerError)
-		return
-	}
-	r = clockRequest(r, h.nowIn(userID))
-	r = h.sharedSidebar(r, userID)
-	templ.Handler(templates.CalendarSharesPage(rows, joined, calendars, email)).ServeHTTP(w, r)
-}
-
-// clock returns the handler's time source reading, the wall clock by default.
-func (h *CalendarHandler) clock() time.Time {
-	if h.now != nil {
-		return h.now()
-	}
-	return time.Now()
-}
-
-// shareRows turns held grants into page rows, leaving out calendars that can
-// no longer be read.
-func (h *CalendarHandler) shareRows(held []store.HeldGrant) []templates.PendingShare {
-	var rows []templates.PendingShare
-	for _, g := range held {
-		cal, err := h.calendars.Get(g.Owner, g.Calendar)
-		if err != nil {
-			continue
-		}
-		label := h.acl.UserEmail(g.Owner)
-		if label == "" {
-			label = g.Owner
-		}
-		rows = append(rows, templates.PendingShare{
-			Owner: g.Owner, OwnerLabel: label, Calendar: g.Calendar, CalendarName: cal.Name, Level: g.Level,
-		})
-	}
-	return rows
-}
-
-// AcceptShare turns a pending grant held by the session user into an accepted
-// one. The grantee is always the session user: the form names only the
-// calendar. The accept is decided inside the FSM, so a grant the owner revoked
-// meanwhile stays revoked; the re-read reports that as 404.
-//
-// POST /calendar/shares/accept
-func (h *CalendarHandler) AcceptShare(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
-	// One reading serves the pre-check and the command, so the handler and the
-	// FSM judge expiry by the same instant.
-	now := h.clock()
-	owner, cal, ok := h.heldShare(w, r, userID, store.GrantStatePending, now)
-	if !ok {
-		return
-	}
-	if err := h.acl.AcceptCalendarGrant(owner, cal, userID, now); err != nil {
-		slog.Error("calendar-share: accept failed", "user", userID, "owner", owner, "calendar", cal, "error", err)
-		http.Error(w, "failed to accept invitation", http.StatusInternalServerError)
-		return
-	}
-	g, err := h.acl.GetCalendarGrant(owner, cal, userID)
-	if err != nil {
-		http.Error(w, "failed to accept invitation", http.StatusInternalServerError)
-		return
-	}
-	if g == nil || g.State != store.GrantStateAccepted {
-		http.Error(w, "invitation not found", http.StatusNotFound)
-		return
-	}
-	shareAnswered(w, r)
-}
-
-// DeclineShare deletes a pending grant held by the session user.
-//
-// POST /calendar/shares/decline
-func (h *CalendarHandler) DeclineShare(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
-	owner, cal, ok := h.heldShare(w, r, userID, store.GrantStatePending, h.clock())
-	if !ok {
-		return
-	}
-	if err := h.acl.RevokeCalendarGrant(owner, cal, userID); err != nil {
-		slog.Error("calendar-share: decline failed", "user", userID, "owner", owner, "calendar", cal, "error", err)
-		http.Error(w, "failed to decline invitation", http.StatusInternalServerError)
-		return
-	}
-	shareAnswered(w, r)
-}
-
-// LeaveShare removes an accepted grant held by the session user. Like accept
-// and decline it names only the calendar: the grantee is always the session
-// user, so no form field can point it at someone else's grant. It reuses the
-// revoke command. Absent, pending and malformed all answer the same 404.
-//
-// POST /calendar/shares/leave
-func (h *CalendarHandler) LeaveShare(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
-	owner, cal, ok := h.heldShare(w, r, userID, store.GrantStateAccepted, h.clock())
-	if !ok {
-		return
-	}
-	if err := h.acl.RevokeCalendarGrant(owner, cal, userID); err != nil {
-		slog.Error("calendar-share: leave failed", "user", userID, "owner", owner, "calendar", cal, "error", err)
-		http.Error(w, "failed to leave shared calendar", http.StatusInternalServerError)
-		return
-	}
-	shareAnswered(w, r)
-}
-
-// heldShare reads the owner and calendar from the form and checks that the
-// session user holds a grant on them in the given state. A pending grant
-// expired at now counts as absent. It writes the response and reports false
-// when not. Absent, malformed, expired and wrong-state all answer the same 404.
-func (h *CalendarHandler) heldShare(w http.ResponseWriter, r *http.Request, userID, state string, now time.Time) (owner, cal string, ok bool) {
-	owner, cal = r.FormValue("owner"), r.FormValue("calendar")
-	if h.acl == nil {
-		http.Error(w, "sharing is unavailable", http.StatusServiceUnavailable)
-		return "", "", false
-	}
-	if !validOwnerID(owner) || !validOwnerID(cal) {
-		http.Error(w, "invitation not found", http.StatusNotFound)
-		return "", "", false
-	}
-	g, err := h.acl.GetCalendarGrant(owner, cal, userID)
-	if err != nil {
-		http.Error(w, "failed to read invitation", http.StatusInternalServerError)
-		return "", "", false
-	}
-	if g == nil || g.State != state || store.PendingGrantExpired(g, now.Unix()) {
-		http.Error(w, "invitation not found", http.StatusNotFound)
-		return "", "", false
-	}
-	return owner, cal, true
-}
-
-func shareAnswered(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("HX-Trigger", "calendarRefresh")
-	refreshSettings(w, r)
-	w.WriteHeader(http.StatusOK)
 }

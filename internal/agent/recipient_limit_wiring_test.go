@@ -247,7 +247,12 @@ func TestRunWiresOutboundLimiters(t *testing.T) {
 	// a session each is refused by the auth middleware, so only an unmounted
 	// route is a 404 or 405.
 	for _, rt := range []struct{ method, path string }{
+		{http.MethodGet, "/shares"},
+		{http.MethodPost, "/shares/accept"},
+		{http.MethodPost, "/shares/decline"},
+		{http.MethodPost, "/shares/leave"},
 		{http.MethodGet, "/calendar/shares"},
+		{http.MethodPost, "/calendar/shares/leave"},
 		{http.MethodPost, "/calendar/shares/accept"},
 		{http.MethodPost, "/calendar/shares/decline"},
 		{http.MethodPost, "/calendar/someid/publish/send"},

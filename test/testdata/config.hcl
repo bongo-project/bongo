@@ -47,6 +47,7 @@ smtp {
     max_connections  = 512
     flood_threshold  = 25
     outbound_recipients_per_hour = 77
+    group_fanout_per_hour        = 1234
     send_as_verify_max_per_hour  = 3
   }
 

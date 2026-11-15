@@ -331,6 +331,12 @@ smtp {
     # External recipients per user/hour across SMTP submission and web compose.
     # In memory and per node (restart resets; N nodes allow N times). Keep >= max_recipients.
     outbound_recipients_per_hour = 500  # 0 = off
+    # Member copies one sender may cause by posting to group addresses per hour,
+    # apart from the external-recipient budget above. Per account on submission and
+    # web compose, per source IP for mail from the internet (a trusted upstream relay
+    # puts every sender on one key). In memory and per node. Keep >= 1000, the
+    # largest group, or a full group can never be posted to.
+    group_fanout_per_hour        = 5000 # 0 = off
     send_as_verify_max_per_hour  = 5    # send-as verification mails per user/hour (0 = off)
   }
 

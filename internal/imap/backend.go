@@ -459,6 +459,12 @@ func (s *session) Delete(mailbox string) error {
 		return err
 	}
 	if err := s.mailboxes.DeleteMailbox(s.userID, mailbox); err != nil {
+		if errors.Is(err, store.ErrMailboxGrantsNotRevoked) {
+			// The mailbox is gone; answering NO would invite a retry that fails as
+			// a nonexistent mailbox. The orphan sweep removes the grants.
+			s.logger.Warn("imap: mailbox deleted but its grants were not revoked", "mailbox", mailbox, "user", s.userID, "error", err)
+			return nil
+		}
 		s.logger.Warn("imap: delete mailbox failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return err
 	}

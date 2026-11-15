@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -111,6 +112,18 @@ func (d *DeliveryPipeline) StoreBlob(r io.Reader) (string, error) {
 	return blobHash, nil
 }
 
+// StampBlob stores a copy of the blob hash with header lines in front and
+// returns the new blob's hash. A group expansion uses it so that the
+// X-Bongo-Group header reaches the members but not the relay queue's copy.
+func (d *DeliveryPipeline) StampBlob(hash, header string) (string, error) {
+	rc, err := d.blobs.Get(hash)
+	if err != nil {
+		return "", fmt.Errorf("reading blob to stamp: %w", err)
+	}
+	defer rc.Close()
+	return d.StoreBlob(io.MultiReader(strings.NewReader(header), rc))
+}
+
 // EnqueueLocal enqueues one QueueEnvelope per local recipient, all referencing
 // the same already-stored blob, into the spool for asynchronous local pipeline
 // delivery.
@@ -128,6 +141,9 @@ func (d *DeliveryPipeline) StoreBlob(r io.Reader) (string, error) {
 // never claims success for an envelope that was not written. If the runner has
 // already picked up a written envelope it cannot be rolled back, and the
 // client's retry delivers a duplicate to that recipient. That is deliberate.
+// A group expansion can put up to 1000 member envelopes in one call, and all
+// of this applies to them: a 451 for the transaction can follow some members'
+// envelopes having been written and picked up.
 func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHash string, meta *InboundMeta) error {
 	if len(recipients) == 0 {
 		return errors.New("enqueuing message to spool: no recipients")

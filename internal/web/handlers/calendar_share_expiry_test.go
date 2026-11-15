@@ -49,7 +49,7 @@ func TestExpiredPendingShareIsInvisibleAndNotAcceptable(t *testing.T) {
 			e := newInviteEnv(t)
 			e.clockAt(e.now)
 			e.seedPending(t, e.calID, e.now.Add(-tc.age))
-			if got := strings.Contains(e.invitationsPage("bob"), `hx-post="/calendar/shares/accept"`); got != tc.visible {
+			if got := strings.Contains(e.invitationsPage("bob"), `hx-post="/shares/accept"`); got != tc.visible {
 				t.Errorf("listed = %v, want %v", got, tc.visible)
 			}
 			rr := e.answer(true, "bob", e.form())
@@ -242,12 +242,12 @@ func TestLeaveShare(t *testing.T) {
 		e := newInviteEnv(t)
 		accepted(e, "bob")
 		body := e.invitationsPage("bob")
-		for _, want := range []string{`hx-post="/calendar/shares/leave"`, "alice@d.test", "Work", "Leave", `name="_csrf"`} {
+		for _, want := range []string{`hx-post="/shares/leave"`, "alice@d.test", "Work", "Leave", `name="_csrf"`} {
 			if !strings.Contains(body, want) {
 				t.Errorf("page lacks %q", want)
 			}
 		}
-		if strings.Contains(e.invitationsPage("carol"), "/calendar/shares/leave") {
+		if strings.Contains(e.invitationsPage("carol"), "/shares/leave") {
 			t.Error("another user sees bob's leave form")
 		}
 	})

@@ -157,6 +157,12 @@ type Agent struct {
 	// SMTP submission and web compose. Use recipientLimiter() to obtain it.
 	RecipientLimiter *mail.RateLimiter
 
+	// Groups reads distribution groups and expands them for SMTP RCPT and web
+	// compose. GroupFanoutLimiter is the per-sender cap on the member copies
+	// that causes, shared by SMTP and compose; use groupFanoutLimiter().
+	Groups             *store.GroupStore
+	GroupFanoutLimiter *mail.FanoutLimiter
+
 	// composeHandler and addrVerifyHandler are the handlers Run mounted, kept
 	// so tests can confirm the limiters were wired in the real startup path.
 	composeHandler    *handlers.ComposeHandler
@@ -580,6 +586,13 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		}
 		a.AddressStore = store.NewAddressStore(pebbleStore, a, sys)
 
+		// Groups. The address check keeps a group from taking an address an
+		// account, alias or identity already holds.
+		a.Groups = store.NewGroupStore(pebbleStore, a)
+		a.Groups.SetAddressCheck(func(address string) error {
+			return auth.CheckAddressFree(a, a.Metadata, address)
+		})
+
 		// Domain quota store: per-domain max_users and
 		// max_storage_bytes limits + recomputed usage. The Agent itself is the
 		// RaftApplier so all writes go through Raft consensus.
@@ -820,11 +833,33 @@ func (a *Agent) recipientLimiter() *mail.RateLimiter {
 	return a.RecipientLimiter
 }
 
-// wireComposeLimits gives web compose the shared recipient budget and the
-// per-message recipient cap.
+// maxGroupMembers is the largest group (store.MaxGroupMembers).
+const maxGroupMembers = store.MaxGroupMembers
+
+// groupFanoutLimiter returns the shared cap on member copies per sender,
+// creating it on first use. SMTP and web compose must draw on the same
+// instance. It is in memory and per node.
+func (a *Agent) groupFanoutLimiter() *mail.FanoutLimiter {
+	if a.GroupFanoutLimiter == nil {
+		n := a.Config.SMTP.Limits.GroupFanoutPerHour
+		if n > 0 && n < maxGroupMembers {
+			a.logger.Warn("groups: smtp.limits.group_fanout_per_hour is below the largest group size; a full group can never be posted to",
+				"group_fanout_per_hour", n, "max_group_members", maxGroupMembers)
+		}
+		a.GroupFanoutLimiter = mail.NewFanoutLimiter(n)
+	}
+	return a.GroupFanoutLimiter
+}
+
+// wireComposeLimits gives web compose the shared recipient budget, the
+// per-message recipient cap and the group expansion with its fan-out cap.
 func (a *Agent) wireComposeLimits(h *handlers.ComposeHandler) {
 	h.SetRecipientLimiter(a.recipientLimiter())
 	h.SetMaxRecipients(a.Config.SMTP.Limits.MaxRecipients)
+	if a.Groups != nil {
+		h.SetGroups(a.Groups)
+	}
+	h.SetGroupFanoutLimiter(a.groupFanoutLimiter())
 }
 
 // calendarSharesPerHour is the per-user, rolling-hour cap on calendar share
@@ -858,6 +893,10 @@ func (a *Agent) wireAddressVerifyLimiter(h *handlers.AddressVerifyHandler) {
 func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *store.RecipientResolver) (*bongosmtp.Backend, error) {
 	backend := bongosmtp.NewBackend(a.Auth, deliverer, a.logger)
 	backend.SetRecipientLimiter(a.recipientLimiter())
+	if a.Groups != nil {
+		backend.SetGroups(a.Groups)
+	}
+	backend.SetGroupFanoutLimiter(a.groupFanoutLimiter())
 	// Operator-configured trusted networks: a connecting source IP inside one
 	// of these CIDRs is treated as trusted the same as an authenticated
 	// submission session (see (*smtp.Session).inboundMeta). Registration
@@ -1605,6 +1644,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			calendarH.SetShareResolver(sharedResolver)
 			calendarH.SetACL(a.ACL)
+			if a.Mailboxes != nil {
+				calendarH.SetMailboxes(a.Mailboxes)
+			}
 			calendarH.SetProfiles(a.Store)
 			if a.Preferences != nil {
 				calendarH.SetLocaleSource(a.Preferences)
@@ -1674,7 +1716,14 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Delete("/calendar/{calendarID}", calendarH.DeleteCalendar)
 			r.Post("/calendar/{calendarID}/share", calendarH.ShareCalendar)
 			r.Post("/calendar/{calendarID}/unshare", calendarH.UnshareCalendar)
-			r.Get("/calendar/shares", calendarH.ShareInvitations)
+			// The shares page is general now; the old path stays for links in
+			// mails already sent, and the old POST paths for a page left open
+			// across an upgrade.
+			r.Get("/shares", calendarH.ShareInvitations)
+			r.Post("/shares/accept", calendarH.AcceptShare)
+			r.Post("/shares/decline", calendarH.DeclineShare)
+			r.Post("/shares/leave", calendarH.LeaveShare)
+			r.Get("/calendar/shares", handlers.SharesRedirect)
 			r.Post("/calendar/shares/accept", calendarH.AcceptShare)
 			r.Post("/calendar/shares/decline", calendarH.DeclineShare)
 			r.Post("/calendar/shares/leave", calendarH.LeaveShare)
@@ -4156,10 +4205,12 @@ func (a *Agent) runCalendarGrantsMigration(ctx context.Context, interval time.Du
 	}
 }
 
-// sweepOrphanedGrants removes grants whose owner profile, calendar or grantee
-// profile is gone. It is the backstop for the best-effort revokes on user
-// delete, which can fail, and for the window between a calendar's revoke and
-// its delete.
+// sweepOrphanedGrants removes grants of every kind whose owner profile,
+// resource or grantee profile is gone. It is the backstop for the best-effort
+// revokes on user and mailbox delete, which can fail, and for the window
+// between a calendar's revoke and its delete. A mailbox is probed through its
+// id lookup key. Address-book resources are not probed yet, and g: grants are
+// left to the groups work.
 //
 // A grant must be seen orphaned on two consecutive passes, and only
 // store.ErrNotFound counts as gone: any other read error keeps the grant. The

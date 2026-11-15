@@ -93,6 +93,15 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 			return url.Values{"name": {"Work " + n}, "color": {"#112233"}}
 		}},
 		{"calendar unsubscribe", "/calendar/missing/unsubscribe", func(string) url.Values { return url.Values{} }},
+		{"shares accept", "/shares/accept", func(string) url.Values {
+			return url.Values{"kind": {"mailbox"}, "owner": {"nobody"}, "resource": {"none"}}
+		}},
+		{"shares decline", "/shares/decline", func(string) url.Values {
+			return url.Values{"kind": {"mailbox"}, "owner": {"nobody"}, "resource": {"none"}}
+		}},
+		{"shares leave", "/shares/leave", func(string) url.Values {
+			return url.Values{"kind": {"addressbook"}, "owner": {"nobody"}, "resource": {"none"}}
+		}},
 		{"share accept", "/calendar/shares/accept", func(string) url.Values {
 			return url.Values{"owner": {"nobody"}, "calendar": {"none"}}
 		}},
@@ -318,13 +327,22 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 	})
 
 	t.Run("share invitations page", func(t *testing.T) {
-		resp, err := client.Get(base + "/calendar/shares")
+		resp, err := client.Get(base + "/shares")
 		if err != nil {
 			t.Fatal(err)
 		}
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			t.Errorf("GET /calendar/shares = %d, want 200", resp.StatusCode)
+			t.Errorf("GET /shares = %d, want 200", resp.StatusCode)
+		}
+		// Links in mails sent before the page moved still work.
+		resp, err = client.Get(base + "/calendar/shares")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/shares" {
+			t.Errorf("GET /calendar/shares = %d %q, want 302 /shares", resp.StatusCode, resp.Header.Get("Location"))
 		}
 	})
 

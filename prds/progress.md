@@ -1863,3 +1863,11 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Follow-ups to PRD 8.2: mailboxGone duplicates MailboxNameByID; STATUS SIZE test and corrupt-record logging; other address writers stay check-then-act; no sweep for stale group member ids.
 - PATTERN: [review] When a new record kind is added to a shared key space, audit the writers as well as the readers; the admin remove-address path deleted any kind except primary.
 - PATTERN: [store] A compare-and-set that checks "does this id exist" cannot catch a self-reference on create; check the payload against its own id.
+
+## 2026-11-15: Phase 39 batch 3 (39.5, 39.6, 39.10)
+
+- All three plans PROCEED, all three reviews MINOR. Patches applied with no conflicts; shares_templ.go and calendar_templ.go generated with templ v0.3.1001.
+- One fixer agent on the merged branch, eight items, each with a test checked against the code without the fix (go test -overlay): direct SMTP recipients are no longer de-duplicated (the worker's user-id de-duplication had collapsed bob@ and bob+lists@, losing subaddress routing and per-RCPT DSN); a group whose members are all over quota is refused on web compose (507) and listed as not reached for generated mail; the web fan-out charge moved after the spool, rate and recipient-budget checks; a Warn when the MX loop check cannot parse the header; DeleteMailbox skips the revoke when a rename moved the id (answers not found); IMAP DELETE test for the revoke-failure sentinel; the shares page no longer prints "Address book" twice; store.ValidMailboxID exported and shared.
+- Follow-ups to PRD 8.2: share log component name; /shares unauthenticated and DeleteUser cascade wiring tests; group member liveness checked twice.
+- PATTERN: [review] A de-duplication added for a new path (group members) must not change the old path (direct recipients); test the old behaviour explicitly, including subaddresses and DSN parameters.
+- PATTERN: [store] Read-then-act on a name can act on a renamed object; re-resolve by the stable id before acting on what the read found.
