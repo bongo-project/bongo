@@ -27,7 +27,9 @@ import (
 // unlimited, and a checker error fails open (logged), matching the other
 // protocols: a Pebble hiccup must never block a user's own writes.
 //
-// Only the domain quota is enforced. UserProfile.QuotaBytes is not.
+// Both limits apply: the user's own UserProfile.QuotaBytes (0 = none) and the
+// domain quota. Per-user usage is the leader's last recompute, so it can be
+// about ten minutes old.
 type QuotaChecker interface {
 	RecipientWouldExceedQuota(userID string, addBytes int64) (bool, error)
 }

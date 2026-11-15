@@ -28,8 +28,9 @@ const (
 type Grant struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// level is the permission level. Calendars: freebusy, read, write.
+	// Address books: read, write. Mailbox grants carry no level.
 	Level string `protobuf:"bytes,1,opt,name=level,proto3" json:"level,omitempty"`
-	// rights is reserved for mailbox rights (RFC 4314 letters).
+	// rights holds the RFC 4314 letters of a mailbox grant; empty otherwise.
 	Rights string `protobuf:"bytes,2,opt,name=rights,proto3" json:"rights,omitempty"`
 	// state is pending or accepted. Only an accepted grant authorises.
 	State string `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`

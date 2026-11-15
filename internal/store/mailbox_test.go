@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +24,9 @@ import (
 type directApplier struct {
 	store     *PebbleStore
 	mailboxes *MailboxStore
+	// groupMu serialises group commands, as the FSM does; the other commands
+	// have never needed it.
+	groupMu sync.Mutex
 }
 
 func (a *directApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
@@ -43,6 +47,12 @@ func (a *directApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) 
 
 	if cmd.Op == bongov1.Op_OP_PUT && IsUserUsageSyntheticCommand(cmd.Key) {
 		return ApplyUserUsageCommand(a.store, cmd)
+	}
+
+	if cmd.Op == bongov1.Op_OP_PUT && IsGroupSyntheticCommand(cmd.Key) {
+		a.groupMu.Lock()
+		defer a.groupMu.Unlock()
+		return ApplyGroupCommand(a.store, cmd)
 	}
 
 	if cmd.Op == bongov1.Op_OP_PUT && IsAppPasswordSyntheticCommand(cmd.Key) {

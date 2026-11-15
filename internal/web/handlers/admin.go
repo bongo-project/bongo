@@ -742,6 +742,18 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Cascade: remove the user from every distribution group (member and owner
+	// lists and the member index) in one command, one batch in the FSM.
+	// Best-effort, like the grant cascade: the user IS deleted either way and
+	// the failure is logged. A leftover id is inert, because whatever expands a
+	// group skips members whose profile is gone. No sweep exists yet; the
+	// expansion work owns skipping dead ids and any later sweep.
+	if h.applier != nil {
+		if gErr := store.RemoveUserFromGroups(h.applier, userID, time.Now()); gErr != nil {
+			h.logger.Warn("admin: delete cascade: failed to remove user from groups", "user_id", userID, "error", gErr)
+		}
+	}
+
 	// Cascade: remove legacy /system/alias keys targeting this user's email and
 	// the catch-alls it owns, plus the derived SQLite alias rows. A legacy alias
 	// value is an email, so left behind it would route to whoever re-registers
@@ -2678,6 +2690,13 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 	}
 	if ok && existing.Kind == "primary" {
 		http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotRemovePrimary), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+		return
+	}
+	// A group's address record is removed only with the group. Deleting it
+	// here would leave the group and its member keys behind, unreachable, and
+	// free the address for someone else to claim.
+	if ok && (existing.Kind == store.AddressKindGroup || existing.GroupId != "") {
+		http.Error(w, "this address belongs to a group", http.StatusConflict)
 		return
 	}
 

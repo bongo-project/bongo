@@ -18,9 +18,26 @@ import (
 // convention. The operation is the last key segment.
 const aclPrefix = "/__acl__/"
 
-// ACLKindCalendar is the grant kind for calendars. v0.16 adds mailbox and
-// addressbook.
-const ACLKindCalendar = "calendar"
+// Grant kinds. A mailbox grant names a MailboxMeta.id and carries RFC 4314
+// rights; a calendar or address-book grant carries a level.
+const (
+	ACLKindCalendar    = "calendar"
+	ACLKindMailbox     = "mailbox"
+	ACLKindAddressBook = "addressbook"
+)
+
+// MaxGrantsPerResource caps the live grants on one resource of any kind.
+// Expired pending grants are outside the cap.
+const MaxGrantsPerResource = 50
+
+// mailboxRightLetters are the RFC 4314 rights a mailbox grant may carry.
+const mailboxRightLetters = "lrswipkxtea"
+
+// groupGranteesEnabled gates g: grantees. Groups do not exist yet, so every
+// command naming one is refused; the groups change turns this on.
+const groupGranteesEnabled = false
+
+var errGroupGranteesUnsupported = errors.New("acl group grantees are not supported yet")
 
 // Calendar permission levels, weakest first. Read and write also satisfy a
 // freebusy requirement.
@@ -70,7 +87,7 @@ const (
 	ACLOpRevokeGrantee  = "revoke_grantee"
 )
 
-var aclKinds = []string{ACLKindCalendar}
+var aclKinds = []string{ACLKindCalendar, ACLKindMailbox, ACLKindAddressBook}
 
 var calendarLevelRank = map[string]int{
 	GrantLevelFreeBusy: 1,
@@ -82,6 +99,57 @@ var calendarLevelRank = map[string]int{
 func ValidCalendarLevel(level string) bool {
 	_, ok := calendarLevelRank[level]
 	return ok
+}
+
+// ValidAddressBookLevel reports whether level is an address-book level.
+func ValidAddressBookLevel(level string) bool {
+	return level == GrantLevelRead || level == GrantLevelWrite
+}
+
+// ValidMailboxRights reports whether rights is a non-empty string of distinct
+// RFC 4314 letters from lrswipkxtea.
+func ValidMailboxRights(rights string) bool {
+	if rights == "" {
+		return false
+	}
+	seen := map[rune]bool{}
+	for _, r := range rights {
+		if !strings.ContainsRune(mailboxRightLetters, r) || seen[r] {
+			return false
+		}
+		seen[r] = true
+	}
+	return true
+}
+
+// validAddressBookID checks the shape of an address-book id: 32 lowercase hex,
+// what generateGUID produces. Address books themselves arrive later; the shape
+// is fixed now so nothing else can reach a key segment.
+func validAddressBookID(s string) bool { return validMailboxID(s) }
+
+// GranteeUser returns the typed grantee value of a user.
+func GranteeUser(id string) string { return "u:" + id }
+
+// GranteeGroup returns the typed grantee value of a group.
+func GranteeGroup(id string) string { return "g:" + id }
+
+// splitGrantee splits a typed grantee into its type ("u" or "g") and id.
+func splitGrantee(g string) (typ, id string, ok bool) {
+	if len(g) < 3 || g[1] != ':' || (g[0] != 'u' && g[0] != 'g') {
+		return "", "", false
+	}
+	return g[:1], g[2:], true
+}
+
+// payloadGrantee maps the wire grantee to a typed one. User grantees travel as
+// the bare user id, exactly as before typed grantees, so a v0.15 node and a
+// replay of the existing log compute the same keys; only a group carries its
+// "g:" prefix.
+func payloadGrantee(wire string) string {
+	if strings.HasPrefix(wire, "g:") {
+		return wire
+	}
+	return GranteeUser(wire)
 }
 
 func validACLKind(kind string) bool {
@@ -98,13 +166,24 @@ func escSeg(s string) string { return url.PathEscape(s) }
 // ACLKey returns the forward key of one grant. Every ID is escaped with
 // url.PathEscape, so no segment contains "/" and a prefix ending in "/"
 // cannot match another owner or resource ("ab" versus "abc").
+// grantee is typed: GranteeUser or GranteeGroup.
 func ACLKey(kind, owner, resource, grantee string) []byte {
-	return []byte("/acl/" + kind + "/" + escSeg(owner) + "/" + escSeg(resource) + "/u:" + escSeg(grantee))
+	return []byte("/acl/" + kind + "/" + escSeg(owner) + "/" + escSeg(resource) + "/" + granteeSeg(grantee))
+}
+
+// granteeSeg renders a typed grantee as a key segment. A value that is not
+// typed gets a type no parser accepts, so it can never alias a real grant.
+func granteeSeg(grantee string) string {
+	typ, id, ok := splitGrantee(grantee)
+	if !ok {
+		return "?:" + escSeg(grantee)
+	}
+	return typ + ":" + escSeg(id)
 }
 
 // ACLRevKey returns the reverse marker of one grant.
 func ACLRevKey(kind, owner, resource, grantee string) []byte {
-	return []byte("/aclrev/u:" + escSeg(grantee) + "/" + kind + "/" + escSeg(owner) + "/" + escSeg(resource))
+	return []byte("/aclrev/" + granteeSeg(grantee) + "/" + kind + "/" + escSeg(owner) + "/" + escSeg(resource))
 }
 
 func aclResourcePrefix(kind, owner, resource string) []byte {
@@ -116,11 +195,11 @@ func aclOwnerPrefix(kind, owner string) []byte {
 }
 
 func aclGranteePrefix(grantee string) []byte {
-	return []byte("/aclrev/u:" + escSeg(grantee) + "/")
+	return []byte("/aclrev/" + granteeSeg(grantee) + "/")
 }
 
 func aclGranteeKindOwnerPrefix(kind, owner, grantee string) []byte {
-	return []byte("/aclrev/u:" + escSeg(grantee) + "/" + kind + "/" + escSeg(owner) + "/")
+	return []byte("/aclrev/" + granteeSeg(grantee) + "/" + kind + "/" + escSeg(owner) + "/")
 }
 
 // aclPayload is one grant command, applied inside the FSM. Timestamps travel
@@ -143,12 +222,15 @@ type aclPayload struct {
 
 // ACLRequest is the caller's description of one grant command.
 type ACLRequest struct {
-	Op        string
-	Kind      string
-	Owner     string
-	Resource  string
-	Grantee   string
-	Level     string
+	Op       string
+	Kind     string
+	Owner    string
+	Resource string
+	// Grantee is typed: GranteeUser(id) or GranteeGroup(id).
+	Grantee string
+	Level   string
+	// Rights holds RFC 4314 letters for a mailbox grant.
+	Rights    string
 	State     string
 	GrantedBy string
 	// At is the unix time recorded as created_at and updated_at by a set, and
@@ -162,6 +244,10 @@ func validateACLPayload(p *aclPayload) error {
 	if !validACLKind(p.Kind) {
 		return fmt.Errorf("acl command has invalid kind %q", p.Kind)
 	}
+	// Refused on every op, revoke_grantee included, until groups exist.
+	if !groupGranteesEnabled && strings.HasPrefix(p.Grantee, "g:") {
+		return errGroupGranteesUnsupported
+	}
 	need := func(name, v string) error {
 		if v == "" {
 			return fmt.Errorf("acl %s command missing %s", p.Op, name)
@@ -172,8 +258,8 @@ func validateACLPayload(p *aclPayload) error {
 	switch p.Op {
 	case ACLOpSet:
 		fields = []error{need("owner", p.Owner), need("resource", p.Resource), need("grantee", p.Grantee)}
-		if !ValidCalendarLevel(p.Level) {
-			return fmt.Errorf("acl set command has invalid level %q", p.Level)
+		if err := validateGrantPermission(p); err != nil {
+			return err
 		}
 		if p.State != GrantStatePending && p.State != GrantStateAccepted {
 			return fmt.Errorf("acl set command has invalid state %q", p.State)
@@ -189,16 +275,78 @@ func validateACLPayload(p *aclPayload) error {
 	default:
 		return fmt.Errorf("acl command has invalid op %q", p.Op)
 	}
-	return errors.Join(fields...)
+	if err := errors.Join(fields...); err != nil {
+		return err
+	}
+	switch p.Op {
+	case ACLOpSet, ACLOpAccept, ACLOpRevoke, ACLOpRevokeResource:
+		return validateGrantResource(p.Kind, p.Resource)
+	}
+	return nil
+}
+
+// validateGrantPermission checks the level and rights of a set per kind.
+func validateGrantPermission(p *aclPayload) error {
+	switch p.Kind {
+	case ACLKindCalendar:
+		if !ValidCalendarLevel(p.Level) {
+			return fmt.Errorf("acl set command has invalid level %q", p.Level)
+		}
+		if p.Rights != "" {
+			return errors.New("acl set command for a calendar must not carry rights")
+		}
+	case ACLKindAddressBook:
+		if !ValidAddressBookLevel(p.Level) {
+			return fmt.Errorf("acl set command has invalid address book level %q", p.Level)
+		}
+		if p.Rights != "" {
+			return errors.New("acl set command for an address book must not carry rights")
+		}
+	case ACLKindMailbox:
+		if p.Level != "" {
+			return errors.New("acl set command for a mailbox must not carry a level")
+		}
+		if !ValidMailboxRights(p.Rights) {
+			return fmt.Errorf("acl set command has invalid mailbox rights %q", p.Rights)
+		}
+	}
+	return nil
+}
+
+// validateGrantResource checks the resource id shape. Calendars have none:
+// legacy ids such as "default" and "tasks" exist.
+func validateGrantResource(kind, resource string) error {
+	switch kind {
+	case ACLKindMailbox:
+		if !validMailboxID(resource) {
+			return fmt.Errorf("acl command has invalid mailbox id %q", resource)
+		}
+	case ACLKindAddressBook:
+		if !validAddressBookID(resource) {
+			return fmt.Errorf("acl command has invalid address book id %q", resource)
+		}
+	}
+	return nil
 }
 
 // BuildACLCommand builds the synthetic command that changes grants. A set
 // writes the grant and its reverse marker, and every revoke removes both, in
 // one Pebble batch, so the two key families never disagree.
 func BuildACLCommand(req ACLRequest) (*bongov1.RaftCommand, error) {
+	wire := ""
+	if req.Grantee != "" {
+		typ, id, ok := splitGrantee(req.Grantee)
+		if !ok {
+			return nil, fmt.Errorf("acl grantee %q is not typed", req.Grantee)
+		}
+		wire = id
+		if typ == "g" {
+			wire = req.Grantee
+		}
+	}
 	p := aclPayload{
 		Op: req.Op, Kind: req.Kind, Owner: req.Owner, Resource: req.Resource,
-		Grantee: req.Grantee, Level: req.Level, State: req.State,
+		Grantee: wire, Level: req.Level, Rights: req.Rights, State: req.State,
 		GrantedBy: req.GrantedBy, At: req.At, KeepState: req.KeepState,
 	}
 	if err := validateACLPayload(&p); err != nil {
@@ -242,8 +390,9 @@ type ACLWrite struct {
 // refreshes updated_at and so revives an expired grant.
 //
 // The scans run inside Apply, on Raft's single goroutine. They are bounded by
-// the grant count: the handler caps a calendar at 50 live grants, so
-// revoke_owner and revoke_grantee touch about 50 keys per calendar. Expired
+// the grant count: handlers cap every resource of every kind at
+// MaxGrantsPerResource live grants, so revoke_owner (which walks every kind)
+// and revoke_grantee touch about 50 keys per resource. Expired
 // pending grants are outside the cap and are never deleted, so the bound is
 // soft.
 func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][]byte, error), cmd *bongov1.RaftCommand) (sets []ACLWrite, deletes [][]byte, err error) {
@@ -257,10 +406,11 @@ func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][
 	if err := validateACLPayload(&p); err != nil {
 		return nil, nil, err
 	}
+	grantee := payloadGrantee(p.Grantee)
 
 	switch p.Op {
 	case ACLOpSet:
-		fwd := ACLKey(p.Kind, p.Owner, p.Resource, p.Grantee)
+		fwd := ACLKey(p.Kind, p.Owner, p.Resource, grantee)
 		createdAt := p.At
 		state := p.State
 		prev, gErr := get(fwd)
@@ -289,14 +439,14 @@ func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][
 		}
 		return []ACLWrite{
 			{Key: fwd, Value: val},
-			{Key: ACLRevKey(p.Kind, p.Owner, p.Resource, p.Grantee), Value: []byte{}},
+			{Key: ACLRevKey(p.Kind, p.Owner, p.Resource, grantee), Value: []byte{}},
 		}, nil, nil
 
 	case ACLOpAccept:
 		// Conditional on the stored grant, so an accept can never bring back a
 		// grant the owner revoked in the meantime. Accepting an accepted grant
 		// plans nothing, which keeps replay idempotent.
-		fwd := ACLKey(p.Kind, p.Owner, p.Resource, p.Grantee)
+		fwd := ACLKey(p.Kind, p.Owner, p.Resource, grantee)
 		prev, gErr := get(fwd)
 		if gErr != nil && !errors.Is(gErr, ErrNotFound) {
 			return nil, nil, fmt.Errorf("reading existing grant: %w", gErr)
@@ -321,8 +471,8 @@ func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][
 
 	case ACLOpRevoke:
 		return nil, [][]byte{
-			ACLKey(p.Kind, p.Owner, p.Resource, p.Grantee),
-			ACLRevKey(p.Kind, p.Owner, p.Resource, p.Grantee),
+			ACLKey(p.Kind, p.Owner, p.Resource, grantee),
+			ACLRevKey(p.Kind, p.Owner, p.Resource, grantee),
 		}, nil
 
 	case ACLOpRevokeResource:
@@ -344,7 +494,7 @@ func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][
 		return nil, forwardAndReverse(all), nil
 
 	default: // ACLOpRevokeGrantee, validated above
-		keys, sErr := scan(aclGranteePrefix(p.Grantee))
+		keys, sErr := scan(aclGranteePrefix(grantee))
 		if sErr != nil {
 			return nil, nil, fmt.Errorf("scanning grants of grantee: %w", sErr)
 		}
@@ -366,20 +516,27 @@ func forwardAndReverse(keys [][]byte) [][]byte {
 	return out
 }
 
-// GrantRef names one grant. Fields hold the unescaped IDs.
+// GrantRef names one grant. Fields hold the unescaped IDs; Principal is
+// typed (GranteeUser or GranteeGroup).
 type GrantRef struct {
-	Kind     string
-	Owner    string
-	Resource string
-	Grantee  string
+	Kind      string
+	Owner     string
+	Resource  string
+	Principal string
+}
+
+// UserID returns the grantee's user id, and false for a group grant.
+func (r GrantRef) UserID() (string, bool) {
+	typ, id, ok := splitGrantee(r.Principal)
+	return id, ok && typ == "u"
 }
 
 func (r GrantRef) forwardKey() []byte {
-	return ACLKey(r.Kind, r.Owner, r.Resource, r.Grantee)
+	return ACLKey(r.Kind, r.Owner, r.Resource, r.Principal)
 }
 
 func (r GrantRef) reverseKey() []byte {
-	return ACLRevKey(r.Kind, r.Owner, r.Resource, r.Grantee)
+	return ACLRevKey(r.Kind, r.Owner, r.Resource, r.Principal)
 }
 
 // parseACLKey reads a forward or reverse key back into its parts.
@@ -387,14 +544,14 @@ func parseACLKey(key string) (GrantRef, bool) {
 	var kind, owner, res, grantee string
 	switch {
 	case strings.HasPrefix(key, "/acl/"):
-		// /acl/{kind}/{owner}/{res}/u:{grantee}
+		// /acl/{kind}/{owner}/{res}/{u|g}:{grantee}
 		p := strings.Split(strings.TrimPrefix(key, "/acl/"), "/")
 		if len(p) != 4 {
 			return GrantRef{}, false
 		}
 		kind, owner, res, grantee = p[0], p[1], p[2], p[3]
 	case strings.HasPrefix(key, "/aclrev/"):
-		// /aclrev/u:{grantee}/{kind}/{owner}/{res}
+		// /aclrev/{u|g}:{grantee}/{kind}/{owner}/{res}
 		p := strings.Split(strings.TrimPrefix(key, "/aclrev/"), "/")
 		if len(p) != 4 {
 			return GrantRef{}, false
@@ -403,7 +560,8 @@ func parseACLKey(key string) (GrantRef, bool) {
 	default:
 		return GrantRef{}, false
 	}
-	if !strings.HasPrefix(grantee, "u:") || !validACLKind(kind) {
+	typ, rawID, ok := splitGrantee(grantee)
+	if !ok || !validACLKind(kind) {
 		return GrantRef{}, false
 	}
 	var err error
@@ -414,9 +572,11 @@ func parseACLKey(key string) (GrantRef, bool) {
 	if ref.Resource, err = url.PathUnescape(res); err != nil || ref.Resource == "" {
 		return GrantRef{}, false
 	}
-	if ref.Grantee, err = url.PathUnescape(strings.TrimPrefix(grantee, "u:")); err != nil || ref.Grantee == "" {
+	id, err := url.PathUnescape(rawID)
+	if err != nil || id == "" {
 		return GrantRef{}, false
 	}
+	ref.Principal = typ + ":" + id
 	return ref, true
 }
 
@@ -487,7 +647,7 @@ func (s *ACLStore) apply(req ACLRequest) error {
 func (s *ACLStore) SetCalendarGrant(owner, calendar, grantee, level, state, grantedBy string, now time.Time) error {
 	return s.apply(ACLRequest{
 		Op: ACLOpSet, Kind: ACLKindCalendar, Owner: owner, Resource: calendar,
-		Grantee: grantee, Level: level, State: state, GrantedBy: grantedBy, At: now.Unix(),
+		Grantee: GranteeUser(grantee), Level: level, State: state, GrantedBy: grantedBy, At: now.Unix(),
 	})
 }
 
@@ -496,7 +656,7 @@ func (s *ACLStore) SetCalendarGrant(owner, calendar, grantee, level, state, gran
 func (s *ACLStore) SetCalendarGrantKeepState(owner, calendar, grantee, level, state, grantedBy string, now time.Time) error {
 	return s.apply(ACLRequest{
 		Op: ACLOpSet, Kind: ACLKindCalendar, Owner: owner, Resource: calendar,
-		Grantee: grantee, Level: level, State: state, GrantedBy: grantedBy, At: now.Unix(),
+		Grantee: GranteeUser(grantee), Level: level, State: state, GrantedBy: grantedBy, At: now.Unix(),
 		KeepState: true,
 	})
 }
@@ -507,13 +667,13 @@ func (s *ACLStore) SetCalendarGrantKeepState(owner, calendar, grantee, level, st
 func (s *ACLStore) AcceptCalendarGrant(owner, calendar, grantee string, now time.Time) error {
 	return s.apply(ACLRequest{
 		Op: ACLOpAccept, Kind: ACLKindCalendar, Owner: owner, Resource: calendar,
-		Grantee: grantee, At: now.Unix(),
+		Grantee: GranteeUser(grantee), At: now.Unix(),
 	})
 }
 
 // RevokeCalendarGrant removes one grant. An absent grant is a no-op.
 func (s *ACLStore) RevokeCalendarGrant(owner, calendar, grantee string) error {
-	return s.apply(ACLRequest{Op: ACLOpRevoke, Kind: ACLKindCalendar, Owner: owner, Resource: calendar, Grantee: grantee})
+	return s.apply(ACLRequest{Op: ACLOpRevoke, Kind: ACLKindCalendar, Owner: owner, Resource: calendar, Grantee: GranteeUser(grantee)})
 }
 
 // RevokeCalendar removes every grant on one calendar.
@@ -534,7 +694,7 @@ func RevokeUserGrants(applier RaftApplier, userID string) error {
 	var errs []error
 	for _, req := range []ACLRequest{
 		{Op: ACLOpRevokeOwner, Kind: ACLKindCalendar, Owner: userID},
-		{Op: ACLOpRevokeGrantee, Kind: ACLKindCalendar, Grantee: userID},
+		{Op: ACLOpRevokeGrantee, Kind: ACLKindCalendar, Grantee: GranteeUser(userID)},
 	} {
 		cmd, err := BuildACLCommand(req)
 		if err != nil {
@@ -548,12 +708,24 @@ func RevokeUserGrants(applier RaftApplier, userID string) error {
 	return errors.Join(errs...)
 }
 
-// GetCalendarGrant returns one grant, or nil when there is none.
+// GetCalendarGrant returns one calendar grant, or nil when there is none.
 func (s *ACLStore) GetCalendarGrant(owner, calendar, grantee string) (*bongov1.Grant, error) {
-	if owner == "" || calendar == "" || grantee == "" {
+	if grantee == "" {
 		return nil, nil
 	}
-	data, err := s.pebble.Get(ACLKey(ACLKindCalendar, owner, calendar, grantee))
+	return s.GetGrant(ACLKindCalendar, owner, calendar, GranteeUser(grantee))
+}
+
+// GetGrant returns one grant of any kind, or nil when there is none. grantee
+// is typed.
+func (s *ACLStore) GetGrant(kind, owner, resource, grantee string) (*bongov1.Grant, error) {
+	if owner == "" || resource == "" {
+		return nil, nil
+	}
+	if _, _, ok := splitGrantee(grantee); !ok {
+		return nil, nil
+	}
+	data, err := s.pebble.Get(ACLKey(kind, owner, resource, grantee))
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
@@ -580,12 +752,19 @@ func (s *ACLStore) CountCalendarGrants(owner, calendar string) (int, error) {
 }
 
 // CountActiveCalendarGrants counts the grants on one calendar that count
-// towards the share cap: every grant except a pending one expired at now.
+// towards the cap: every grant except a pending one expired at now.
 func (s *ACLStore) CountActiveCalendarGrants(owner, calendar string, now time.Time) (int, error) {
-	if owner == "" || calendar == "" {
+	return s.CountActiveGrants(ACLKindCalendar, owner, calendar, now)
+}
+
+// CountActiveGrants counts the grants on one resource of any kind that count
+// towards MaxGrantsPerResource: every grant except a pending one expired at
+// now. Group grants count like any other.
+func (s *ACLStore) CountActiveGrants(kind, owner, resource string, now time.Time) (int, error) {
+	if owner == "" || resource == "" {
 		return 0, nil
 	}
-	keys, err := s.pebble.scanKeys(aclResourcePrefix(ACLKindCalendar, owner, calendar))
+	keys, err := s.pebble.scanKeys(aclResourcePrefix(kind, owner, resource))
 	if err != nil {
 		return 0, fmt.Errorf("counting grants: %w", err)
 	}
@@ -595,7 +774,7 @@ func (s *ACLStore) CountActiveCalendarGrants(owner, calendar string, now time.Ti
 		if !ok {
 			continue
 		}
-		g, err := s.GetCalendarGrant(ref.Owner, ref.Resource, ref.Grantee)
+		g, err := s.GetGrant(ref.Kind, ref.Owner, ref.Resource, ref.Principal)
 		if err != nil {
 			return 0, err
 		}
@@ -604,6 +783,18 @@ func (s *ACLStore) CountActiveCalendarGrants(owner, calendar string, now time.Ti
 		}
 	}
 	return n, nil
+}
+
+// GrantCapReached reports whether the resource already holds
+// MaxGrantsPerResource live grants. Handlers call it before resolving the
+// target, so a full resource cannot be used to tell valid addresses from
+// invalid ones.
+func (s *ACLStore) GrantCapReached(kind, owner, resource string, now time.Time) (bool, error) {
+	n, err := s.CountActiveGrants(kind, owner, resource, now)
+	if err != nil {
+		return false, err
+	}
+	return n >= MaxGrantsPerResource, nil
 }
 
 // HasCalendarAccess reports whether grantee holds an accepted grant of at
@@ -615,16 +806,16 @@ func (s *ACLStore) HasCalendarAccess(owner, grantee, minLevel string) (bool, err
 	if owner == "" || grantee == "" || !ok {
 		return false, nil
 	}
-	keys, err := s.pebble.scanKeys(aclGranteeKindOwnerPrefix(ACLKindCalendar, owner, grantee))
+	keys, err := s.pebble.scanKeys(aclGranteeKindOwnerPrefix(ACLKindCalendar, owner, GranteeUser(grantee)))
 	if err != nil {
 		return false, fmt.Errorf("scanning grants held: %w", err)
 	}
 	for _, k := range keys {
 		ref, ok := parseACLKey(string(k))
-		if !ok || ref.Owner != owner || ref.Grantee != grantee {
+		if !ok || ref.Owner != owner || ref.Principal != GranteeUser(grantee) {
 			continue
 		}
-		g, err := s.GetCalendarGrant(ref.Owner, ref.Resource, ref.Grantee)
+		g, err := s.GetGrant(ref.Kind, ref.Owner, ref.Resource, ref.Principal)
 		if err != nil {
 			return false, err
 		}
@@ -657,14 +848,19 @@ func (s *ACLStore) ListGrantRefs() ([]GrantRef, error) {
 	return refs, nil
 }
 
-// GrantOrphaned reports whether the grant's owner profile, calendar or grantee
-// profile is gone. Only ErrNotFound counts as gone; any other read error is
-// returned so the caller keeps the grant.
+// GrantOrphaned reports whether the grant's owner profile, resource or grantee
+// profile is gone. The grantee is probed only for a user grant: a group grant
+// is never orphaned here. The resource is probed per kind: a calendar by its
+// key, a mailbox by its id key and the mailbox that carries it; an address book
+// is not probed until address books exist. Only ErrNotFound counts as gone;
+// any other read error is returned so the caller keeps the grant.
 func (s *ACLStore) GrantOrphaned(ref GrantRef) (bool, error) {
-	probes := [][]byte{
-		[]byte("/user/" + ref.Owner + "/profile"),
-		[]byte("/user/" + ref.Grantee + "/profile"),
-		calendarKey(ref.Owner, ref.Resource),
+	probes := [][]byte{[]byte("/user/" + ref.Owner + "/profile")}
+	if uid, ok := ref.UserID(); ok {
+		probes = append(probes, []byte("/user/"+uid+"/profile"))
+	}
+	if ref.Kind == ACLKindCalendar {
+		probes = append(probes, calendarKey(ref.Owner, ref.Resource))
 	}
 	for _, k := range probes {
 		if _, err := s.pebble.Get(k); err != nil {
@@ -674,10 +870,40 @@ func (s *ACLStore) GrantOrphaned(ref GrantRef) (bool, error) {
 			return false, fmt.Errorf("probing grant target: %w", err)
 		}
 	}
+	if ref.Kind == ACLKindMailbox {
+		return s.mailboxGone(ref.Owner, ref.Resource)
+	}
 	return false, nil
+}
+
+// mailboxGone reports whether no mailbox of owner carries the id. It mirrors
+// MailboxStore.MailboxNameByID, which the ACL store cannot call.
+func (s *ACLStore) mailboxGone(owner, id string) (bool, error) {
+	if !validMailboxID(id) {
+		return true, nil
+	}
+	name, err := s.pebble.Get(mailboxIDKey(owner, id))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return true, nil
+		}
+		return false, fmt.Errorf("probing mailbox id: %w", err)
+	}
+	data, err := s.pebble.Get(mailboxMetaKey(owner, string(name)))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return true, nil
+		}
+		return false, fmt.Errorf("probing mailbox: %w", err)
+	}
+	var meta bongov1.MailboxMeta
+	if err := proto.Unmarshal(data, &meta); err != nil {
+		return false, fmt.Errorf("parsing mailbox meta: %w", err)
+	}
+	return meta.Id != id, nil
 }
 
 // RevokeRef removes one grant named by a GrantRef.
 func (s *ACLStore) RevokeRef(ref GrantRef) error {
-	return s.apply(ACLRequest{Op: ACLOpRevoke, Kind: ref.Kind, Owner: ref.Owner, Resource: ref.Resource, Grantee: ref.Grantee})
+	return s.apply(ACLRequest{Op: ACLOpRevoke, Kind: ref.Kind, Owner: ref.Owner, Resource: ref.Resource, Grantee: ref.Principal})
 }

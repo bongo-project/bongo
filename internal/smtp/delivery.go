@@ -44,16 +44,16 @@ type RecipientResolver interface {
 	ResolveRecipient(email string) (string, error)
 }
 
-// QuotaChecker checks whether a resolved local recipient's domain is over its
-// storage quota. It is called after a successful ResolveRecipient so that the
+// QuotaChecker checks whether a resolved local recipient is over a storage
+// quota, their own or their domain's. It is called after a successful ResolveRecipient so that the
 // userID is already known (no duplicate resolution).
 //
-// RecipientWouldExceedQuota loads the owning user's profile to derive the
-// primary domain, compares the domain's last-recomputed usage plus addBytes
-// against its max_storage_bytes limit, and returns:
-//   - (false, nil) when the domain has no quota configured (0 = unlimited) or
-//     usage has not yet been recomputed (first job run pending);
-//   - (true, nil) when usage >= max_storage_bytes (over or at limit) or usage
+// RecipientWouldExceedQuota loads the owning user's profile, compares the
+// user's last-recomputed usage plus addBytes against UserProfile.quota_bytes,
+// then does the same for the domain's max_storage_bytes, and returns:
+//   - (false, nil) when neither limit is configured (0 = unlimited) or usage has
+//     not yet been recomputed (first job run pending);
+//   - (true, nil) when usage >= a limit (over or at it) or usage
 //     plus addBytes would exceed it (addBytes == 0 is the plain at-or-over test); the
 //     inbound message MUST be rejected at RCPT with a permanent 5xx error;
 //   - (false, err) on an unexpected store error; callers should accept the

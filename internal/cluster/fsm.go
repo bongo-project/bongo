@@ -429,6 +429,21 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 		return nil
 	}
 
+	// Distribution groups are one composite command so the group, its address
+	// record and the member index commit in one batch, with the address
+	// compare-and-set inside the FSM. A refusal is the normal losing outcome
+	// of a race or bad input: it is returned to the caller (errors.Is) and not
+	// logged as an error. Time and ids are in the payload.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsGroupSyntheticCommand(cmd.Key) {
+		if err := store.ApplyGroupCommand(f.store, cmd); err != nil {
+			if !store.IsGroupRefusal(err) {
+				f.logger.Error("fsm: group synthetic command failed", "error", err)
+			}
+			return err
+		}
+		return nil
+	}
+
 	// The last-used touch of an app password is conditional here so it can
 	// never bring back a record a revoke or user delete just removed. The day
 	// is in the payload; the FSM does not read the clock.

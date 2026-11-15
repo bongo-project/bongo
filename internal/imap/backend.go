@@ -132,6 +132,7 @@ var (
 	// NAMESPACE is advertised in server.go; without this method go-imap
 	// panics on every new connection.
 	_ imapserver.SessionNamespace = (*session)(nil)
+	_ imapserver.SessionQuota     = (*session)(nil)
 )
 
 // Close is called when the connection is closed.
@@ -668,6 +669,10 @@ func (s *session) statusForMailbox(mailbox string, options *imap.StatusOptions) 
 		data.UIDNext = imap.UID(meta.UidNext)
 	}
 
+	if err := s.statusSizes(data, mailbox, options); err != nil {
+		return nil, err
+	}
+
 	return data, nil
 }
 
@@ -719,7 +724,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		if qErr != nil {
 			s.logger.Warn("imap: quota check error (fail open)", "mailbox", mailbox, "user", s.userID, "error", qErr)
 		} else if over {
-			s.logger.Warn("imap: append refused: domain over storage quota", "mailbox", mailbox, "user", s.userID)
+			s.logger.Warn("imap: append refused: over storage quota", "mailbox", mailbox, "user", s.userID)
 			return nil, &imap.Error{
 				Type: imap.StatusResponseTypeNo,
 				Code: imap.ResponseCodeOverQuota,

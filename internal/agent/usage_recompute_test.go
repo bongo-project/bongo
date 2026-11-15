@@ -46,6 +46,9 @@ func (a *testApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) er
 		a.usageCmds++
 		return store.ApplyUserUsageCommand(a.store, cmd)
 	}
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsGroupSyntheticCommand(cmd.Key) {
+		return store.ApplyGroupCommand(a.store, cmd)
+	}
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
 		return a.store.Set(cmd.Key, cmd.Value)

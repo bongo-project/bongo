@@ -132,7 +132,8 @@ func (e *shareEnv) sharedBy(t *testing.T, owner, calID string) []string {
 	var out []string
 	for _, r := range refs {
 		if r.Owner == owner && r.Resource == calID {
-			out = append(out, r.Grantee)
+			id, _ := r.UserID()
+			out = append(out, id)
 		}
 	}
 	slices.Sort(out)
@@ -575,8 +576,8 @@ func TestShareCalendarCapDoesNotCountExistingGrantee(t *testing.T) {
 	if err := e.acl.RevokeCalendarGrant("alice", e.fullID, "filler-aa"); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(e.shared(t, e.fullID)); got != maxCalendarShares {
-		t.Fatalf("fixture has %d grants, want %d", got, maxCalendarShares)
+	if got := len(e.shared(t, e.fullID)); got != store.MaxGrantsPerResource {
+		t.Fatalf("fixture has %d grants, want %d", got, store.MaxGrantsPerResource)
 	}
 	if rr := e.shareLevel("alice", e.fullID, "bob@d.test", store.GrantLevelWrite); rr.Code != http.StatusOK {
 		t.Fatalf("existing grantee at the cap: status = %d, want 200", rr.Code)
@@ -584,7 +585,7 @@ func TestShareCalendarCapDoesNotCountExistingGrantee(t *testing.T) {
 	if g, _ := e.acl.GetCalendarGrant("alice", e.fullID, "bob"); g == nil || g.Level != store.GrantLevelWrite {
 		t.Errorf("level not changed at the cap: %+v", g)
 	}
-	if got := len(e.shared(t, e.fullID)); got != maxCalendarShares {
-		t.Errorf("grants = %d, want %d", got, maxCalendarShares)
+	if got := len(e.shared(t, e.fullID)); got != store.MaxGrantsPerResource {
+		t.Errorf("grants = %d, want %d", got, store.MaxGrantsPerResource)
 	}
 }

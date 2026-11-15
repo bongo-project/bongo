@@ -32,6 +32,11 @@ func CanSendAs(as *AddressStore, userID, primaryEmail, addr string) (bool, error
 	if err != nil {
 		return false, fmt.Errorf("send-as lookup %q: %w", addr, err)
 	}
+	// A group address is never a sender: a group record has no owner, and
+	// the kind is checked explicitly so that stays true if that changes.
+	if ok && rec.Kind == AddressKindGroup {
+		return false, nil
+	}
 	return ok && rec.UserId == userID && rec.CanSend && rec.Verified, nil
 }
 

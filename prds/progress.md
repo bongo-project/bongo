@@ -1855,3 +1855,11 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [store] A composite command that refuses the whole batch over one bad entry lets one bad record block every user; filter on the leader and keep the FSM refusal as the backstop.
 - PATTERN: [store] Prefix-list-then-delete user removal can race leader-written keys; a profile check inside the FSM covers only keys present when the list was taken.
 - PATTERN: [workflow] Run gofmt -l on a worker's untracked files before trusting its DONE; a worker's test-all can pass before a late edit.
+
+## 2026-11-15: Phase 39 batch 2 (39.4, 39.8, 39.9)
+
+- Advisor plans: 39.4 and 39.8 REVISE (applied in the worker briefs: keep the JSON grantee bare so a v0.15 node and log replay write the same calendar keys; fill STATUS DELETED, DELETED-STORAGE and SIZE because advertising QUOTA=RES-STORAGE makes the library dereference them). All three reviews MINOR. Patches applied with no conflicts.
+- Orchestrator fixes at merge: admin RemoveAddress refused a group's address only for kind primary, so it could delete a group's record and free the address (409 and test added); a group cannot list its own id as member or owner (the nesting check reads a key that does not exist yet); duplicate SessionQuota assertion removed; misleading test comment fixed; CLAUDE.md notes that user deletion sends /__group__/remove_user to every node. acl.pb.go regenerated with protoc-gen-go v1.36.11: identical to the hand edit.
+- Follow-ups to PRD 8.2: mailboxGone duplicates MailboxNameByID; STATUS SIZE test and corrupt-record logging; other address writers stay check-then-act; no sweep for stale group member ids.
+- PATTERN: [review] When a new record kind is added to a shared key space, audit the writers as well as the readers; the admin remove-address path deleted any kind except primary.
+- PATTERN: [store] A compare-and-set that checks "does this id exist" cannot catch a self-reference on create; check the payload against its own id.

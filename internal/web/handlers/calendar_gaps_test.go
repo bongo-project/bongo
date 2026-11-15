@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // The cap sits between 49 and 51 grants: the 50th grantee is accepted and the
@@ -13,20 +15,20 @@ func TestShareCalendarCapBoundary(t *testing.T) {
 	if err := e.acl.RevokeCalendarGrant("alice", e.fullID, "filler-aa"); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(e.shared(t, e.fullID)); got != maxCalendarShares-1 {
-		t.Fatalf("fixture has %d grants, want %d", got, maxCalendarShares-1)
+	if got := len(e.shared(t, e.fullID)); got != store.MaxGrantsPerResource-1 {
+		t.Fatalf("fixture has %d grants, want %d", got, store.MaxGrantsPerResource-1)
 	}
 	if rr := e.share("alice", e.fullID, "bob@d.test"); rr.Code != http.StatusOK {
 		t.Fatalf("50th grantee: status = %d %q, want 200", rr.Code, rr.Body)
 	}
-	if got := len(e.shared(t, e.fullID)); got != maxCalendarShares {
-		t.Fatalf("grants after the 50th = %d, want %d", got, maxCalendarShares)
+	if got := len(e.shared(t, e.fullID)); got != store.MaxGrantsPerResource {
+		t.Fatalf("grants after the 50th = %d, want %d", got, store.MaxGrantsPerResource)
 	}
 	if rr := e.share("alice", e.fullID, "dave@ca.test"); rr.Code != http.StatusBadRequest {
 		t.Fatalf("51st grantee: status = %d %q, want 400", rr.Code, rr.Body)
 	}
-	if got := len(e.shared(t, e.fullID)); got != maxCalendarShares {
-		t.Errorf("grants after the refused 51st = %d, want %d", got, maxCalendarShares)
+	if got := len(e.shared(t, e.fullID)); got != store.MaxGrantsPerResource {
+		t.Errorf("grants after the refused 51st = %d, want %d", got, store.MaxGrantsPerResource)
 	}
 }
 

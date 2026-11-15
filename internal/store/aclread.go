@@ -78,7 +78,7 @@ func (s *ACLStore) ListCalendarGrantsHeld(grantee string) ([]HeldGrant, error) {
 	if grantee == "" {
 		return nil, nil
 	}
-	prefix := append(aclGranteePrefix(grantee), []byte(ACLKindCalendar+"/")...)
+	prefix := append(aclGranteePrefix(GranteeUser(grantee)), []byte(ACLKindCalendar+"/")...)
 	keys, err := s.pebble.scanKeys(prefix)
 	if err != nil {
 		return nil, fmt.Errorf("scanning grants held: %w", err)
@@ -86,7 +86,7 @@ func (s *ACLStore) ListCalendarGrantsHeld(grantee string) ([]HeldGrant, error) {
 	var out []HeldGrant
 	for _, k := range keys {
 		ref, ok := parseACLKey(string(k))
-		if !ok || ref.Grantee != grantee || ref.Kind != ACLKindCalendar {
+		if !ok || ref.Principal != GranteeUser(grantee) || ref.Kind != ACLKindCalendar {
 			continue
 		}
 		level, err := s.CalendarAccessLevel(ref.Owner, ref.Resource, grantee)
@@ -113,7 +113,7 @@ func (s *ACLStore) ListPendingCalendarGrantsHeld(grantee string, now time.Time) 
 	if grantee == "" {
 		return nil, nil
 	}
-	prefix := append(aclGranteePrefix(grantee), []byte(ACLKindCalendar+"/")...)
+	prefix := append(aclGranteePrefix(GranteeUser(grantee)), []byte(ACLKindCalendar+"/")...)
 	keys, err := s.pebble.scanKeys(prefix)
 	if err != nil {
 		return nil, fmt.Errorf("scanning grants held: %w", err)
@@ -121,7 +121,7 @@ func (s *ACLStore) ListPendingCalendarGrantsHeld(grantee string, now time.Time) 
 	var out []HeldGrant
 	for _, k := range keys {
 		ref, ok := parseACLKey(string(k))
-		if !ok || ref.Grantee != grantee || ref.Kind != ACLKindCalendar {
+		if !ok || ref.Principal != GranteeUser(grantee) || ref.Kind != ACLKindCalendar {
 			continue
 		}
 		g, err := s.GetCalendarGrant(ref.Owner, ref.Resource, grantee)
@@ -164,12 +164,16 @@ func (s *ACLStore) ListCalendarGrants(owner, calendar string) ([]CalendarGrantEn
 		if !ok || ref.Owner != owner || ref.Resource != calendar {
 			continue
 		}
-		g, err := s.GetCalendarGrant(owner, calendar, ref.Grantee)
+		uid, isUser := ref.UserID()
+		if !isUser {
+			continue
+		}
+		g, err := s.GetCalendarGrant(owner, calendar, uid)
 		if err != nil {
 			return nil, err
 		}
 		if g != nil {
-			out = append(out, CalendarGrantEntry{Grantee: ref.Grantee, Level: g.Level, State: g.State})
+			out = append(out, CalendarGrantEntry{Grantee: uid, Level: g.Level, State: g.State})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Grantee < out[j].Grantee })

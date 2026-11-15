@@ -64,12 +64,12 @@ func aclKeys(t *testing.T, ps *PebbleStore) []string {
 func TestACLSetAndRevokeWriteBothKeysOrNeither(t *testing.T) {
 	e := newACLEnv(t)
 
-	set, err := BuildACLCommand(ACLRequest{Op: ACLOpSet, Kind: ACLKindCalendar, Owner: "alice", Resource: "cal1", Grantee: "bob",
+	set, err := BuildACLCommand(ACLRequest{Op: ACLOpSet, Kind: ACLKindCalendar, Owner: "alice", Resource: "cal1", Grantee: GranteeUser("bob"),
 		Level: GrantLevelRead, State: GrantStateAccepted, GrantedBy: "alice", At: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
-	revoke, err := BuildACLCommand(ACLRequest{Op: ACLOpRevoke, Kind: ACLKindCalendar, Owner: "alice", Resource: "cal1", Grantee: "bob"})
+	revoke, err := BuildACLCommand(ACLRequest{Op: ACLOpRevoke, Kind: ACLKindCalendar, Owner: "alice", Resource: "cal1", Grantee: GranteeUser("bob")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestACLSetAndRevokeWriteBothKeysOrNeither(t *testing.T) {
 }
 
 func TestBuildACLCommandRefusals(t *testing.T) {
-	ok := ACLRequest{Op: ACLOpSet, Kind: ACLKindCalendar, Owner: "a", Resource: "c", Grantee: "b", Level: GrantLevelRead, State: GrantStateAccepted}
+	ok := ACLRequest{Op: ACLOpSet, Kind: ACLKindCalendar, Owner: "a", Resource: "c", Grantee: GranteeUser("b"), Level: GrantLevelRead, State: GrantStateAccepted}
 	mod := func(f func(r *ACLRequest)) ACLRequest { r := ok; f(&r); return r }
 	tests := []struct {
 		name string
@@ -220,7 +220,7 @@ func TestACLRevokeOperations(t *testing.T) {
 			"/aclrev/u:bob/calendar/alice/c1", "/aclrev/u:bob/calendar/alice/c2", "/aclrev/u:carl/calendar/alice/c1",
 		}},
 		{"revoke grantee only", func(e *aclEnv) error {
-			cmd, err := BuildACLCommand(ACLRequest{Op: ACLOpRevokeGrantee, Kind: ACLKindCalendar, Grantee: "bob"})
+			cmd, err := BuildACLCommand(ACLRequest{Op: ACLOpRevokeGrantee, Kind: ACLKindCalendar, Grantee: GranteeUser("bob")})
 			if err != nil {
 				return err
 			}
@@ -308,7 +308,7 @@ func TestACLEscapingAndPrefixBoundaries(t *testing.T) {
 	// grantee: revoking one must leave the other's grants.
 	e.grant(t, "zed", "z1", "bob", GrantLevelRead, GrantStateAccepted)
 	e.grant(t, "zed", "z1", "bobby", GrantLevelRead, GrantStateAccepted)
-	cmd, err := BuildACLCommand(ACLRequest{Op: ACLOpRevokeGrantee, Kind: ACLKindCalendar, Grantee: "bob"})
+	cmd, err := BuildACLCommand(ACLRequest{Op: ACLOpRevokeGrantee, Kind: ACLKindCalendar, Grantee: GranteeUser("bob")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,8 +322,8 @@ func TestACLEscapingAndPrefixBoundaries(t *testing.T) {
 		t.Error("revoke_grantee bob removed bobby's grant")
 	}
 	// Round trip through the parser for the awkward IDs.
-	ref, ok := parseACLKey(string(ACLKey("calendar", "a/b", "c:d", "e%2Ff")))
-	if !ok || ref.Owner != "a/b" || ref.Resource != "c:d" || ref.Grantee != "e%2Ff" {
+	ref, ok := parseACLKey(string(ACLKey("calendar", "a/b", "c:d", GranteeUser("e%2Ff"))))
+	if !ok || ref.Owner != "a/b" || ref.Resource != "c:d" || ref.Principal != GranteeUser("e%2Ff") {
 		t.Errorf("parse round trip = %+v %v", ref, ok)
 	}
 }
@@ -440,14 +440,14 @@ func TestGrantOrphaned(t *testing.T) {
 	put("/user/o/profile")
 	put("/user/g/profile")
 	e.calendar(t, "o", "c")
-	ref := GrantRef{Kind: ACLKindCalendar, Owner: "o", Resource: "c", Grantee: "g"}
+	ref := GrantRef{Kind: ACLKindCalendar, Owner: "o", Resource: "c", Principal: GranteeUser("g")}
 	if orphan, err := e.acl.GrantOrphaned(ref); err != nil || orphan {
 		t.Fatalf("healthy grant orphaned=%v err=%v", orphan, err)
 	}
 	for name, r := range map[string]GrantRef{
-		"owner gone":    {Kind: ACLKindCalendar, Owner: "x", Resource: "c", Grantee: "g"},
-		"calendar gone": {Kind: ACLKindCalendar, Owner: "o", Resource: "x", Grantee: "g"},
-		"grantee gone":  {Kind: ACLKindCalendar, Owner: "o", Resource: "c", Grantee: "x"},
+		"owner gone":    {Kind: ACLKindCalendar, Owner: "x", Resource: "c", Principal: GranteeUser("g")},
+		"calendar gone": {Kind: ACLKindCalendar, Owner: "o", Resource: "x", Principal: GranteeUser("g")},
+		"grantee gone":  {Kind: ACLKindCalendar, Owner: "o", Resource: "c", Principal: GranteeUser("x")},
 	} {
 		if orphan, err := e.acl.GrantOrphaned(r); err != nil || !orphan {
 			t.Errorf("%s: orphaned=%v err=%v", name, orphan, err)
@@ -462,7 +462,7 @@ func TestGrantOrphaned(t *testing.T) {
 // Replaying a set against a grant the user cannot parse must not wedge.
 func TestACLSetOverCorruptGrant(t *testing.T) {
 	e := newACLEnv(t)
-	if err := e.ps.Set(ACLKey("calendar", "a", "c", "b"), []byte{0xff, 0xff}); err != nil {
+	if err := e.ps.Set(ACLKey("calendar", "a", "c", GranteeUser("b")), []byte{0xff, 0xff}); err != nil {
 		t.Fatal(err)
 	}
 	e.grant(t, "a", "c", "b", GrantLevelRead, GrantStateAccepted)

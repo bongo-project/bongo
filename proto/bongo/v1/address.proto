@@ -14,7 +14,9 @@ message AddressRecord {
   // domain is the domain part of the address (e.g. "example.com"), lowercased.
   string domain = 2;
 
-  // kind classifies the address role: "primary", "alias", or "identity".
+  // kind classifies the address role: "primary", "alias", "identity" or
+  // "group". A group record has an empty user_id and names its group in
+  // group_id.
   string kind = 3;
 
   // can_send indicates the user may send outbound mail from this address.
@@ -22,6 +24,10 @@ message AddressRecord {
 
   // verified indicates the address ownership has been verified.
   bool verified = 5;
+
+  // group_id is the Group this address belongs to when kind is "group".
+  // Empty for every other kind. A node that predates the field keeps it.
+  string group_id = 6;
 }
 
 // AddressVerification stores a pending email verification challenge.
