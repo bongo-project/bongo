@@ -47,6 +47,12 @@ type splitDeliverer interface {
 	EnqueueLocal(from string, recipients []string, blobHash string, meta *InboundMeta) error
 }
 
+// blobStamper is implemented by a deliverer that can store a copy of a blob
+// with header lines in front, for local recipients of a group expansion.
+type blobStamper interface {
+	StampBlob(hash, header string) (string, error)
+}
+
 // RelayQueuer enqueues an authenticated user's message for outbound relay.
 type RelayQueuer interface {
 	Enqueue(msg *bongov1.OutboundMessage) error
@@ -74,6 +80,12 @@ type Backend struct {
 	// recipientRL is the per-user external-recipient budget shared with web
 	// compose (keyed by user ID). nil = disabled. In memory and per node.
 	recipientRL *mail.RateLimiter
+
+	// groups expands a group address at RCPT; groupFanout caps the member
+	// copies one sender may cause per hour (shared with web compose). Both nil
+	// on nodes without a store.
+	groups      GroupExpander
+	groupFanout *mail.FanoutLimiter
 
 	connLimit *netx.PerIPLimiter  // nil = disabled; per-IP cap from config.SMTPLimits.MaxConnectionsPerIP
 	inboundRL *inboundRateLimiter // nil = disabled; set from config.SMTPLimits.MessagesPerMinute
@@ -335,6 +347,10 @@ type Session struct {
 	dsnEnvID    string
 	localDSN    []RcptDSN
 	externalDSN []RcptDSN
+
+	// groupState is the bookkeeping for group expansion: which users a group
+	// copy or a direct recipient already covers.
+	groupState groupState
 }
 
 // Limits on the DSN parameters, from RFC 3461 sections 4.4 (ENVID: 100
@@ -711,9 +727,22 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 				return &gosmtp.SMTPError{Code: 552, EnhancedCode: gosmtp.EnhancedCode{5, 2, 2}, Message: "Mailbox quota exceeded"}
 			}
 		}
-		s.addLocal(to, dsn)
+		// A direct recipient always keeps its own envelope, as before groups:
+		// two addresses of one account (bob@ and bob+lists@, or two aliases)
+		// stay two envelopes, each with its subaddress folder and DSN
+		// parameters. Only a copy a group added for this user is merged into
+		// it; see addDirectLocal.
+		s.addDirectLocal(userID, to, dsn)
 		s.logger.Debug("smtp: RCPT TO (local)", "to", to)
 		return nil
+	}
+
+	// A group address. This must precede the unavailable branch below, which
+	// a group error also matches. With no expander wired the group is refused
+	// like an unavailable mailbox.
+	var gre *store.GroupRecipientError
+	if errors.As(resolveErr, &gre) && s.backend.groups != nil {
+		return s.rcptGroup(to, gre, dsn)
 	}
 
 	if errors.Is(resolveErr, store.ErrRecipientUnavailable) {
@@ -843,7 +872,10 @@ func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
 // Data is called when the message data is received.
 func (s *Session) Data(r io.Reader) error {
 	defer observability.SMTPData.Since(time.Now())
-	if len(s.localRcpts)+len(s.externalRcpts) == 0 {
+	// A transaction whose only recipients are groups is valid even before the
+	// loop check has run: that check may drop them all, and the message is then
+	// accepted and discarded.
+	if len(s.localRcpts)+len(s.externalRcpts)+len(s.groupState.groups) == 0 {
 		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 		return &gosmtp.SMTPError{Code: 554, EnhancedCode: gosmtp.EnhancedCode{5, 5, 1}, Message: "No valid recipients"}
 	}
@@ -894,16 +926,48 @@ func (s *Session) Data(r io.Reader) error {
 		r = &declaredSizeReader{r: r, limit: declaredSizeAllowance(s.declaredSize)}
 	}
 
-	// Authenticated submission: the header From must be an address the user may
-	// send as, because the outbound queue DKIM-signs by the header From domain.
-	// The (bounded) header block is read here and replayed ahead of the body.
-	if s.submission && s.authed {
-		replay, err := s.checkSubmissionHeaderFrom(r)
+	// The header block is read once, bounded, and replayed ahead of the body. It
+	// is needed for two checks. Authenticated submission: the header From must
+	// be an address the user may send as, because the outbound queue DKIM-signs
+	// by the header From domain. Group expansion: a message that already names
+	// a group is not expanded for it again.
+	if (s.submission && s.authed) || len(s.groupState.groups) > 0 {
+		hdr, replay, err := readHeaderBlock(r)
 		if err != nil {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-			return s.dataFailure("submission header check", err)
+			return s.dataFailure("message header read", err)
 		}
 		r = replay
+		parsed, parseErr := parseHeaderBlock(hdr)
+		if s.submission && s.authed {
+			if parseErr != nil {
+				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+				return s.dataFailure("submission header check", malformedFrom("unparseable message header"))
+			}
+			if err := s.checkSubmissionHeaderFrom(parsed); err != nil {
+				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+				return s.dataFailure("submission header check", err)
+			}
+		}
+		if len(s.groupState.groups) > 0 && parseErr != nil {
+			// Only an unauthenticated message gets here (submission was refused
+			// above). It is delivered as before, but every group in it is
+			// expanded without the loop check.
+			for _, ge := range s.groupState.groups {
+				s.logger.Warn("groups: message header unparseable, loop check skipped", "group", ge.groupID)
+			}
+		}
+		if len(s.groupState.groups) > 0 && parseErr == nil {
+			s.dropLoopedGroups(parsed)
+			if len(s.localRcpts)+len(s.externalRcpts) == 0 {
+				// Nothing is left to deliver. Accept and discard: a refusal or
+				// a bounce could itself loop.
+				_, _ = io.Copy(io.Discard, r)
+				observability.SMTPMessagesTotal.WithLabelValues("accepted").Inc()
+				s.logger.Info("groups: message discarded, every recipient was a looped group", "from", s.from)
+				return nil
+			}
+		}
 	}
 
 	// Commit the recipient budget once the message is otherwise acceptable, so
@@ -917,6 +981,17 @@ func (s *Session) Data(r io.Reader) error {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 			s.logger.Warn("smtp: outbound recipient limit exceeded", "user", s.userID, "recipients", len(s.externalRcpts))
 			return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Outbound recipient limit exceeded, try again later"}
+		}
+	}
+
+	// Charge the group fan-out cap for the member copies that remain. The RCPT
+	// check only peeked. A refusal here has already spent the units above, which
+	// errs on the strict side as for the recipient budget.
+	if n := s.fanoutCount(); n > 0 && s.backend.groupFanout != nil {
+		if !s.backend.groupFanout.AllowN(s.fanoutKey(), n) {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+			s.logger.Warn("groups: fan-out limit exceeded", "key", s.fanoutKey(), "members", n)
+			return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many group recipients, try again later"}
 		}
 	}
 
@@ -938,13 +1013,33 @@ func (s *Session) Data(r io.Reader) error {
 
 	// Server-role split delivery: store once, route local vs. external.
 	if sd, ok := s.backend.deliverer.(splitDeliverer); ok {
+		// The loop header goes only into the copy local recipients receive. The
+		// blob for the relay queue must not carry group ids out to outside
+		// recipients, so a message with both stores the original once and then
+		// a stamped blob; the members still share exactly one blob.
+		groupHdr := s.groupHeaderBlock()
+		if groupHdr != "" && len(s.externalRcpts) == 0 {
+			reader = io.MultiReader(strings.NewReader(groupHdr), reader)
+		}
 		blobHash, err := sd.StoreBlob(reader)
 		if err != nil {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 			return s.dataFailure("store blob", err)
 		}
+		localHash := blobHash
+		if groupHdr != "" && len(s.externalRcpts) > 0 {
+			st, ok := s.backend.deliverer.(blobStamper)
+			if !ok {
+				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+				return s.dataFailure("stamp blob", errors.New("deliverer cannot stamp a group header"))
+			}
+			if localHash, err = st.StampBlob(blobHash, groupHdr); err != nil {
+				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+				return s.dataFailure("stamp blob", err)
+			}
+		}
 		if len(s.localRcpts) > 0 {
-			if err := sd.EnqueueLocal(s.from, s.localRcpts, blobHash, s.inboundMeta(sourceIP)); err != nil {
+			if err := sd.EnqueueLocal(s.from, s.localRcpts, localHash, s.inboundMeta(sourceIP)); err != nil {
 				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 				return s.dataFailure("local delivery", err)
 			}
@@ -1089,14 +1184,11 @@ func (s *Session) checkSendAs(addr string) error {
 // maxSubmissionHeaderBytes bounds the header block buffered for the From check.
 const maxSubmissionHeaderBytes = 256 << 10
 
-// checkSubmissionHeaderFrom reads the header block of an authenticated
-// submission, requires exactly one parseable From field whose every address
-// the user may send as, and returns a reader that replays the consumed bytes
-// followed by the rest of the stream. It parses with net/mail, the parser the
-// DKIM signer uses to pick its domain, so the check and the signer agree.
-func (s *Session) checkSubmissionHeaderFrom(r io.Reader) (io.Reader, error) {
+// readHeaderBlock reads the header block of a message (up to and including the
+// blank line, at most maxSubmissionHeaderBytes) and returns it with a reader
+// that replays the consumed bytes followed by the rest of the stream.
+func readHeaderBlock(r io.Reader) (hdr []byte, replay io.Reader, err error) {
 	br := bufio.NewReaderSize(r, 4096)
-	var hdr []byte
 	// atLineStart is false while ReadSlice is returning pieces of one over-long
 	// line; a bare line ending in such a piece is not a blank line.
 	atLineStart := true
@@ -1104,7 +1196,7 @@ func (s *Session) checkSubmissionHeaderFrom(r io.Reader) (io.Reader, error) {
 		line, err := br.ReadSlice('\n')
 		hdr = append(hdr, line...)
 		if len(hdr) > maxSubmissionHeaderBytes {
-			return nil, &gosmtp.SMTPError{Code: 552, EnhancedCode: gosmtp.EnhancedCode{5, 3, 4}, Message: "Message header too large"}
+			return nil, nil, &gosmtp.SMTPError{Code: 552, EnhancedCode: gosmtp.EnhancedCode{5, 3, 4}, Message: "Message header too large"}
 		}
 		if errors.Is(err, bufio.ErrBufferFull) {
 			atLineStart = false
@@ -1114,37 +1206,48 @@ func (s *Session) checkSubmissionHeaderFrom(r io.Reader) (io.Reader, error) {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, fmt.Errorf("reading message header: %w", err)
+			return nil, nil, fmt.Errorf("reading message header: %w", err)
 		}
 		if atLineStart && len(line) <= 2 && strings.TrimRight(string(line), "\r\n") == "" {
 			break
 		}
 		atLineStart = true
 	}
+	return hdr, io.MultiReader(bytes.NewReader(hdr), br), nil
+}
 
-	// Terminate defensively so a header block cut off at EOF still parses.
+// parseHeaderBlock parses hdr with net/mail, the parser the DKIM signer uses
+// to pick its domain, so the From check and the signer agree. It terminates the
+// block defensively so one cut off at EOF still parses.
+func parseHeaderBlock(hdr []byte) (netmail.Header, error) {
 	msg, err := netmail.ReadMessage(io.MultiReader(bytes.NewReader(hdr), strings.NewReader("\r\n\r\n")))
 	if err != nil {
-		return nil, malformedFrom("unparseable message header")
+		return nil, err
 	}
-	froms := msg.Header["From"]
+	return msg.Header, nil
+}
+
+// checkSubmissionHeaderFrom requires exactly one parseable From field whose
+// every address the user may send as.
+func (s *Session) checkSubmissionHeaderFrom(h netmail.Header) error {
+	froms := h["From"]
 	if len(froms) != 1 {
-		return nil, malformedFrom("exactly one From header is required")
+		return malformedFrom("exactly one From header is required")
 	}
 	addrs, err := netmail.ParseAddressList(froms[0])
 	if err != nil || len(addrs) == 0 {
-		return nil, malformedFrom("From header is not a valid address list")
+		return malformedFrom("From header is not a valid address list")
 	}
 	for _, a := range addrs {
 		if err := s.checkSendAs(a.Address); err != nil {
 			var se *gosmtp.SMTPError
 			if errors.As(err, &se) && se.Code == 553 {
-				return nil, &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "From address not owned by authenticated user"}
+				return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "From address not owned by authenticated user"}
 			}
-			return nil, err
+			return err
 		}
 	}
-	return io.MultiReader(bytes.NewReader(hdr), br), nil
+	return nil
 }
 
 func malformedFrom(msg string) error {
@@ -1160,6 +1263,7 @@ func (s *Session) Reset() {
 	s.externalRcpts = nil
 	s.localDSN = nil
 	s.externalDSN = nil
+	s.groupState.reset()
 	s.dsnRet = ""
 	s.dsnEnvID = ""
 	s.spfResult = ""
@@ -1485,6 +1589,9 @@ func (s *Server) Close() error {
 	}
 	return nil
 }
+
+// Backend returns the backend all listeners share.
+func (s *Server) Backend() *Backend { return s.backend }
 
 // MXAddr returns the MX listener address (useful for tests).
 func (s *Server) MXAddr() string {

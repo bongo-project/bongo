@@ -65,6 +65,7 @@ func TestLoadFromFile(t *testing.T) {
 		{"smtp.submissions_port", cfg.SMTP.SubmissionsPort, 465},
 		{"smtp.limits.max_recipients", cfg.SMTP.Limits.MaxRecipients, 50},
 		{"smtp.limits.outbound_recipients_per_hour", cfg.SMTP.Limits.OutboundRecipientsPerHour, 77},
+		{"smtp.limits.group_fanout_per_hour", cfg.SMTP.Limits.GroupFanoutPerHour, 1234},
 		{"smtp.limits.send_as_verify_max_per_hour", cfg.SMTP.Limits.SendAsVerifyMaxPerHour, 3},
 		{"smtp.dkim.selector", cfg.SMTP.DKIM.Selector, "test"},
 		{"smtp.dkim.domain", cfg.SMTP.DKIM.Domain, "test.example"},

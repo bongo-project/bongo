@@ -61,7 +61,11 @@ type ComposeHandler struct {
 	rateLimiter *mail.RateLimiter
 	// recipientRL is the per-user external-recipient budget shared with SMTP
 	// submission, keyed by user ID. nil = unlimited.
-	recipientRL   *mail.RateLimiter
+	recipientRL *mail.RateLimiter
+	// groups expands a group address; groupFanout caps the member copies one
+	// account may cause per hour (shared with SMTP submission).
+	groups        groupExpander
+	groupFanout   *mail.FanoutLimiter
 	maxRecipients int // per-message cap on To+Cc; <= 0 means defaultMaxRecipients
 	prefs         *store.PreferenceStore
 	resolver      localRecipientResolver // unified address→userID resolver
@@ -650,16 +654,42 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Split recipients into local and external before any user-visible writes
 	// so pre-delivery rejection does not leave a partial Sent copy behind.
 	allRecipients := append(store.SplitAddressHeader(to), store.SplitAddressHeader(cc)...)
-	localRecipients, externalRecipients := h.splitLocal(allRecipients)
+	localRecipients, externalRecipients, groupRecipients := h.splitRecipients(allRecipients)
 
+	// A group address counts as one recipient here: the cap is on what the user
+	// typed, and the fan-out cap below bounds what it expands to.
 	maxRcpts := h.maxRecipients
 	if maxRcpts <= 0 {
 		maxRcpts = defaultMaxRecipients
 	}
-	if len(localRecipients)+len(externalRecipients) > maxRcpts {
+	if len(localRecipients)+len(externalRecipients)+len(groupRecipients) > maxRcpts {
 		composeError(w, r, "compose.errTooManyRecipients", http.StatusBadRequest)
 		return
 	}
+
+	// Group addresses expand into one local copy per member, delivered through
+	// the same spool as a direct local recipient. A group is never handed to
+	// the outbound queue.
+	expanded, gerr := h.expandGroups(userID, fromAddr, groupRecipients)
+	switch {
+	case errors.Is(gerr, errGroupsUnavailable):
+		h.logger.Error("groups: cannot send to a group: group delivery not configured", "user", userID)
+		composeError(w, r, "compose.errLocalUnavailable", http.StatusServiceUnavailable)
+		return
+	case errors.Is(gerr, errGroupEmpty):
+		composeError(w, r, "compose.errGroupEmpty", http.StatusBadRequest)
+		return
+	case gerr != nil:
+		// Includes a refusal by the posting policy.
+		h.logger.Warn("groups: expansion failed", "user", userID, "error", gerr)
+		composeError(w, r, "compose.errAddressForbidden", http.StatusForbidden)
+		return
+	}
+	// Every member copy the groups could add, before quota. It names the send
+	// log steps to read; the quota pass below narrows it.
+	directUsers := h.localUserSet(localRecipients)
+	members, _ := pickMembers(expanded, directUsers, nil)
+	groupIDs := groupIDsOf(expanded)
 
 	// Serialise submissions of this send ID in this process, then read which
 	// steps are already recorded. A record made for different content (the
@@ -680,6 +710,9 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, rcpt := range localRecipients {
 		steps = append(steps, store.SendLogLocalStep(rcpt))
+	}
+	for _, m := range members {
+		steps = append(steps, store.SendLogLocalStep(m.addr))
 	}
 	// Any record of this send ID made for different content conflicts, even
 	// for a step this submission does not have (all local recipients changed,
@@ -709,6 +742,13 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	pendingMembers := false
+	for _, m := range members {
+		if !stepDone[store.SendLogLocalStep(m.addr)] {
+			pendingMembers = true
+		}
+	}
+
 	// The size the usage recompute counts for a stored message
 	// (MailMeta.RawMessage.Size), computed once. Every copy of this send, the
 	// sender's and each local recipient's, is the same size.
@@ -728,8 +768,27 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// A member over quota is skipped and logged, not refused: the sender
+	// addressed the group, not the member. A group none of whose members can
+	// take the message is refused like a direct recipient whose mailbox is
+	// full (SMTP answers 552). Members already delivered by an earlier attempt
+	// are not re-checked, as for a direct recipient.
+	if pendingMembers {
+		kept, perr := pickMembers(expanded, directUsers, func(m composeMember) bool {
+			if stepDone[store.SendLogLocalStep(m.addr)] || !quotaExceeded(h.quota, h.logger, m.userID, msgSize) {
+				return false
+			}
+			h.logger.Warn("groups: member skipped: over storage quota", "user", m.userID)
+			return true
+		})
+		if gq, ok := errors.AsType[*groupOverQuotaError](perr); ok {
+			refuseQuotaText(w, r, groupQuotaText(r, gq.addr))
+			return
+		}
+		members = kept
+	}
 	// Refuse before anything is stored or the rate limiters spend budget.
-	if len(localRecipients) > 0 && h.spool == nil {
+	if len(localRecipients)+len(members) > 0 && h.spool == nil {
 		h.logger.Error("web: cannot send to local recipients: inbound spool not configured", "user", userID)
 		composeError(w, r, "compose.errLocalUnavailable", http.StatusServiceUnavailable)
 		return
@@ -808,6 +867,26 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Charge the group fan-out cap for the member copies still to place, after
+	// every other refusal and before anything is spooled, the order SMTP DATA
+	// uses, so a send refused above spends no fan-out allowance. A refusal here
+	// has already spent the external budget above, which errs on the strict
+	// side as SMTP does. A retry whose members are all recorded done spends
+	// nothing.
+	if h.groupFanout != nil {
+		fresh := 0
+		for _, m := range members {
+			if !stepDone[store.SendLogLocalStep(m.addr)] {
+				fresh++
+			}
+		}
+		if !h.groupFanout.AllowN(groupFanoutKey(userID), fresh) {
+			h.logger.Warn("groups: fan-out limit reached", "user", userID, "members", fresh)
+			composeError(w, r, "compose.errGroupFanout", http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	// Hand local recipients to the inbound pipeline, the same path SMTP
 	// submission uses, so each recipient's rules and forwarding run. The
 	// envelope is Trusted with AuthUserId set to the author: compose is the
@@ -863,6 +942,36 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := lg.mark(step); err != nil {
 				h.logger.Warn("web: failed to record local delivery", "recipient", rcpt, "guid", guid, "error", err)
+				composeError(w, r, "compose.errLocalCopy", http.StatusInternalServerError)
+				return
+			}
+			stepDone[step] = true
+		}
+	}
+
+	// Member copies of a group. They name a second blob, the message with the
+	// loop header in front, shared by every member; the Sent copy and the
+	// external relay keep the original. Spool writes and markers are as for a
+	// direct recipient: at-least-once, not atomic, up to the group size.
+	if pendingMembers && len(members) > 0 {
+		memberHash, err := h.putStamped(rawMsg, groupIDs)
+		if err != nil {
+			composeError(w, r, "compose.errStoreMessage", http.StatusInternalServerError)
+			return
+		}
+		for _, m := range members {
+			step := store.SendLogLocalStep(m.addr)
+			if stepDone[step] {
+				continue
+			}
+			env := localEnvelope(memberEnvID(userID, sendID, m.addr), userID, fromAddr, m.addr, memberHash)
+			if err := h.spool.Enqueue(env); err != nil {
+				h.logger.Warn("groups: failed to spool member copy", "user", m.userID, "guid", guid, "error", err)
+				composeError(w, r, "compose.errLocalCopy", http.StatusInternalServerError)
+				return
+			}
+			if err := lg.mark(step); err != nil {
+				h.logger.Warn("groups: failed to record member delivery", "user", m.userID, "guid", guid, "error", err)
 				composeError(w, r, "compose.errLocalCopy", http.StatusInternalServerError)
 				return
 			}
@@ -945,11 +1054,11 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.logger.Info("web: message sent", "from", fromAddr, "to_count", len(allRecipients), "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
+	h.logger.Info("web: message sent", "from", fromAddr, "to_count", len(allRecipients), "local", len(localRecipients), "group_members", len(members), "external", len(externalRecipients), "user", userID)
 
 	// Build flash message based on delivery type.
 	flash := flashSent
-	if len(localRecipients) > 0 && len(externalRecipients) > 0 {
+	if len(localRecipients)+len(members) > 0 && len(externalRecipients) > 0 {
 		flash = flashSentLocalQueued
 	} else if len(externalRecipients) > 0 {
 		flash = flashQueued

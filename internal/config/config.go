@@ -337,6 +337,16 @@ type SMTPLimits struct {
 	// with N nodes the effective ceiling is N times this value. Values below
 	// max_recipients would refuse legitimate full-size messages permanently.
 	OutboundRecipientsPerHour int `hcl:"outbound_recipients_per_hour,optional" mapstructure:"outbound_recipients_per_hour"`
+	// GroupFanoutPerHour caps the member copies one sender may cause by posting
+	// to group addresses per hour, apart from outbound_recipients_per_hour (a
+	// group member is a local recipient, not an external one). Authenticated
+	// submission and web compose count per account, mail from the internet per
+	// source IP (a trusted upstream relay puts every sender on one key). 0
+	// disables the limit; negative values are refused. The count is in memory
+	// and per node: a restart resets it and with N nodes the effective ceiling
+	// is N times this value. Values below the 1000-member group maximum make a
+	// full group impossible to post to.
+	GroupFanoutPerHour int `hcl:"group_fanout_per_hour,optional" mapstructure:"group_fanout_per_hour"`
 	// SendAsVerifyMaxPerHour caps send-as verification mails per user per hour
 	// (in memory, per node). 0 disables the limit.
 	SendAsVerifyMaxPerHour int `hcl:"send_as_verify_max_per_hour,optional" mapstructure:"send_as_verify_max_per_hour"`
@@ -950,6 +960,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if c.SMTP.Limits.GroupFanoutPerHour < 0 {
+		return fmt.Errorf("smtp.limits.group_fanout_per_hour: must not be negative, got %d (0 disables the limit)", c.SMTP.Limits.GroupFanoutPerHour)
+	}
+
 	if c.Storage.MinFreeMB < 0 || c.Storage.MinFreeMB > maxMinFreeMB {
 		return fmt.Errorf("storage.min_free_mb: must be between 0 and %d, got %d", maxMinFreeMB, c.Storage.MinFreeMB)
 	}
@@ -1506,6 +1520,7 @@ func Defaults() *Config {
 				MaxConnectionsPerIP:       50,
 				OutboundMessagesPerMinute: 30,
 				OutboundRecipientsPerHour: 500,
+				GroupFanoutPerHour:        5000,
 				SendAsVerifyMaxPerHour:    5,
 			},
 			DKIM: SMTPDKIMConfig{

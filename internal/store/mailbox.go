@@ -56,10 +56,11 @@ const (
 // mailboxIDLen is the length of a mailbox id: 16 random bytes, hex encoded.
 const mailboxIDLen = 32
 
-// validMailboxID reports whether s is exactly 32 lowercase hex characters.
+// ValidMailboxID reports whether s is exactly 32 lowercase hex characters.
 // Ids reach Pebble key segments and later come from untrusted input, so
-// nothing else may be used to build a key.
-func validMailboxID(s string) bool {
+// nothing else may be used to build a key. Address book ids and grant
+// resource ids share the format.
+func ValidMailboxID(s string) bool {
 	if len(s) != mailboxIDLen {
 		return false
 	}
@@ -414,7 +415,7 @@ func applyMailboxDelete(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		return fmt.Errorf("listing messages for delete: %w", err)
 	}
 	var removeIDKey bool
-	if validMailboxID(id) {
+	if ValidMailboxID(id) {
 		// Only remove the key while it still names this mailbox.
 		if v, err := ps.Get(mailboxIDKey(userID, id)); err == nil {
 			removeIDKey = string(v) == mailbox
@@ -569,7 +570,7 @@ func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		if err := writeMailboxMetaBatch(batch, userID, payload.NewName, newMeta); err != nil {
 			return err
 		}
-		if validMailboxID(newMeta.Id) {
+		if ValidMailboxID(newMeta.Id) {
 			// Keyed by id, so moving it is an overwrite of the value.
 			if err := batch.Set(mailboxIDKey(userID, newMeta.Id), []byte(payload.NewName), nil); err != nil {
 				return fmt.Errorf("moving mailbox id key: %w", err)
@@ -631,7 +632,7 @@ func applyMailboxAssignID(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 	if err := json.Unmarshal(cmd.Value, &payload); err != nil {
 		return fmt.Errorf("parsing mailbox assign id payload: %w", err)
 	}
-	if !validMailboxID(payload.ID) {
+	if !ValidMailboxID(payload.ID) {
 		return fmt.Errorf("invalid mailbox id")
 	}
 
@@ -875,17 +876,71 @@ func (ms *MailboxStore) CreateMailbox(userID, name string) error {
 	return ms.applier.ApplyCommand(cmd, 5*time.Second)
 }
 
+// ErrMailboxGrantsNotRevoked reports that a mailbox was deleted but revoking
+// the grants on it failed. The delete is complete; the caller must not treat it
+// as a failed delete.
+var ErrMailboxGrantsNotRevoked = errors.New("mailbox deleted but its grants were not revoked")
+
 // DeleteMailbox deletes a mailbox and all its messages via Raft.
 // INBOX cannot be deleted per IMAP spec.
+//
+// A mailbox that was ever shared carries an id, and the grants on it are
+// revoked in a second command after the delete. The two are not atomic, and the
+// revoke is best-effort: if it fails the mailbox IS gone and the error wraps
+// ErrMailboxGrantsNotRevoked, which callers should log and not report as a
+// failed delete (a retry would only find no such mailbox). The leftover grants
+// are inert, because the delete removes the id key and MailboxNameByID checks
+// the meta, and ids are random so a recreated folder never inherits them; the
+// leader's orphan sweep removes them. A mailbox with no id issues no ACL
+// command.
+//
+// The id is read first, because the delete removes it. A read failure other
+// than ErrNotFound stops before anything is written. Two races sit between
+// that read and the delete:
+//
+//   - An id assigned and shared in between is not revoked here; the orphan
+//     sweep removes it.
+//   - A rename in between moves the mailbox, id and grants to the new name, so
+//     the delete finds nothing under the old name. Revoking by id would then
+//     strip the grants of a mailbox that still exists. So the revoke runs only
+//     once MailboxNameByID confirms the id no longer resolves; while it still
+//     does, nothing is revoked and the result wraps ErrNotFound, the answer
+//     for deleting a name that does not exist. Any other error from that check
+//     also skips the revoke (wrapped in ErrMailboxGrantsNotRevoked), because
+//     an inert leftover grant is the lesser harm.
 func (ms *MailboxStore) DeleteMailbox(userID, name string) error {
 	if strings.EqualFold(name, "INBOX") {
 		return fmt.Errorf("cannot delete INBOX")
+	}
+	var id string
+	meta, err := ms.GetMailbox(userID, name)
+	switch {
+	case err == nil:
+		id = meta.Id
+	case errors.Is(err, ErrNotFound):
+	default:
+		return fmt.Errorf("reading mailbox before delete: %w", err)
 	}
 	cmd := &bongov1.RaftCommand{
 		Op:  bongov1.Op_OP_PUT,
 		Key: mailboxDeleteKey(userID, name),
 	}
-	return ms.applier.ApplyCommand(cmd, 5*time.Second)
+	if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return err
+	}
+	if !ValidMailboxID(id) {
+		return nil
+	}
+	switch _, err := ms.MailboxNameByID(userID, id); {
+	case err == nil:
+		return fmt.Errorf("mailbox %q (renamed before the delete): %w", name, ErrNotFound)
+	case !errors.Is(err, ErrNotFound):
+		return fmt.Errorf("%w: confirming the mailbox is gone: %w", ErrMailboxGrantsNotRevoked, err)
+	}
+	if err := RevokeResourceGrants(ms.applier, ACLKindMailbox, userID, id); err != nil {
+		return fmt.Errorf("%w: %w", ErrMailboxGrantsNotRevoked, err)
+	}
+	return nil
 }
 
 // RenameMailbox renames a mailbox via Raft.
@@ -979,7 +1034,7 @@ func (ms *MailboxStore) EnsureMailboxID(userID, name string) (string, error) {
 // carries the id, which turns a stale lookup key (left by a node on an older
 // binary, or a CreateMailbox race) into ErrNotFound.
 func (ms *MailboxStore) MailboxNameByID(userID, id string) (string, error) {
-	if !validMailboxID(id) {
+	if !ValidMailboxID(id) {
 		return "", ErrNotFound
 	}
 	v, err := ms.store.Get(mailboxIDKey(userID, id))

@@ -130,7 +130,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 				</label>
 				<noscript><button type="submit" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.importIcs") }</button></noscript>
 			</form>
-			<a href="/calendar/shares" class="tool-btn calendar-sidebar-btn">{ t(ctx, "calendar.sharesTitle") }</a>
+			@SharesLink()
 			<form action="/calendar/search" method="get" class="calendar-sidebar-form">
 				<input type="search" name="q" placeholder={ t(ctx, "calendar.searchEvents") } aria-label={ t(ctx, "calendar.searchEvents") } class="calendar-sidebar-search"/>
 			</form>

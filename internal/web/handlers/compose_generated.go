@@ -16,19 +16,26 @@ import (
 // whether they resolve to a local account. The To and Cc fields may carry a
 // display name or angle brackets ("Alice <a@b.com>"), which must not leak into
 // the SMTP envelope or the MX-lookup domain ("b.com>"). Blanks are dropped.
-func (h *ComposeHandler) splitLocal(rcpts []string) (local, external []string) {
+//
+// A group address is a third class: it is neither local nor external. The
+// resolver's group error is kept for that, and a group sent down the external
+// path would be queued, relayed to this server's own MX and counted against the
+// external budget and the server's own IP.
+func (h *ComposeHandler) splitRecipients(rcpts []string) (local, external []string, groups []composeGroup) {
 	for _, rcpt := range rcpts {
 		rcpt = normalizeRecipient(rcpt)
 		if rcpt == "" {
 			continue
 		}
-		if h.resolveLocalUser(rcpt) != "" {
+		if id, ok := h.groupOf(rcpt); ok {
+			groups = append(groups, composeGroup{addr: rcpt, id: id})
+		} else if h.resolveLocalUser(rcpt) != "" {
 			local = append(local, rcpt)
 		} else {
 			external = append(external, rcpt)
 		}
 	}
-	return local, external
+	return local, external, groups
 }
 
 // localEnvelope is the spool entry for one local recipient. It is Trusted with
@@ -88,8 +95,8 @@ func (h *ComposeHandler) DeliverGenerated(userID, sessionEmail, from string, rcp
 		seen[strings.ToLower(r)] = true
 		uniq = append(uniq, r)
 	}
-	local, external := h.splitLocal(uniq)
-	if len(local)+len(external) == 0 {
+	local, external, groups := h.splitRecipients(uniq)
+	if len(local)+len(external)+len(groups) == 0 {
 		return nil, nil
 	}
 	fail := func(cause error, addrs ...string) {
@@ -113,6 +120,46 @@ func (h *ComposeHandler) DeliverGenerated(userID, sessionEmail, from string, rcp
 			spoolable = append(spoolable, rcpt)
 		}
 	}
+	// Groups expand to member copies delivered through the spool. A group that
+	// cannot be expanded, would exceed the fan-out cap or has no member who can
+	// take the message (none live, or every one over quota) goes in
+	// notReached; it is never sent external.
+	var members []composeMember
+	var groupIDs []string
+	// Only direct recipients that will be delivered cover a member: one over
+	// quota is not reached, so the group does not count it either.
+	reached := h.localUserSet(spoolable)
+	for _, g := range groups {
+		if h.spool == nil {
+			fail(fmt.Errorf("inbound spool not configured"), g.addr)
+			continue
+		}
+		expanded, gerr := h.expandGroups(userID, from, []composeGroup{g})
+		if gerr != nil {
+			fail(gerr, g.addr)
+			continue
+		}
+		kept, perr := pickMembers(expanded, reached, func(m composeMember) bool {
+			if !quotaExceeded(h.quota, h.logger, m.userID, msgSize) {
+				return false
+			}
+			h.logger.Warn("groups: member skipped: over storage quota", "user", m.userID)
+			return true
+		})
+		if perr != nil {
+			fail(perr, g.addr)
+			continue
+		}
+		if h.groupFanout != nil && !h.groupFanout.AllowN(groupFanoutKey(userID), len(kept)) {
+			fail(fmt.Errorf("group fan-out limit reached"), g.addr)
+			continue
+		}
+		for _, m := range kept {
+			reached[m.userID] = true
+		}
+		members = append(members, kept...)
+		groupIDs = append(groupIDs, groupIDsOf(expanded)...)
+	}
 	var queueable []string
 	switch {
 	case len(external) == 0:
@@ -124,7 +171,7 @@ func (h *ComposeHandler) DeliverGenerated(userID, sessionEmail, from string, rcp
 	default:
 		queueable = external
 	}
-	if len(spoolable)+len(queueable) == 0 {
+	if len(spoolable)+len(queueable)+len(members) == 0 {
 		return notReached, err
 	}
 
@@ -138,6 +185,20 @@ func (h *ComposeHandler) DeliverGenerated(userID, sessionEmail, from string, rcp
 		if serr := h.spool.Enqueue(env); serr != nil {
 			h.logger.Warn("web: failed to spool generated message", "user", userID, "error", serr)
 			fail(fmt.Errorf("spooling for a local recipient: %w", serr), rcpt)
+		}
+	}
+	if len(members) > 0 {
+		memberHash, herr := h.putStamped(raw, groupIDs)
+		if herr != nil {
+			fail(herr, memberAddrs(members)...)
+		} else {
+			for _, m := range members {
+				env := localEnvelope(uuid.NewString(), userID, from, m.addr, memberHash)
+				if serr := h.spool.Enqueue(env); serr != nil {
+					h.logger.Warn("groups: failed to spool generated member copy", "user", m.userID, "error", serr)
+					fail(fmt.Errorf("spooling for a group member: %w", serr), m.addr)
+				}
+			}
 		}
 	}
 	if len(queueable) > 0 {

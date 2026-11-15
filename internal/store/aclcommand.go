@@ -125,7 +125,7 @@ func ValidMailboxRights(rights string) bool {
 // validAddressBookID checks the shape of an address-book id: 32 lowercase hex,
 // what generateGUID produces. Address books themselves arrive later; the shape
 // is fixed now so nothing else can reach a key segment.
-func validAddressBookID(s string) bool { return validMailboxID(s) }
+func validAddressBookID(s string) bool { return ValidMailboxID(s) }
 
 // GranteeUser returns the typed grantee value of a user.
 func GranteeUser(id string) string { return "u:" + id }
@@ -318,7 +318,7 @@ func validateGrantPermission(p *aclPayload) error {
 func validateGrantResource(kind, resource string) error {
 	switch kind {
 	case ACLKindMailbox:
-		if !validMailboxID(resource) {
+		if !ValidMailboxID(resource) {
 			return fmt.Errorf("acl command has invalid mailbox id %q", resource)
 		}
 	case ACLKindAddressBook:
@@ -391,10 +391,10 @@ type ACLWrite struct {
 //
 // The scans run inside Apply, on Raft's single goroutine. They are bounded by
 // the grant count: handlers cap every resource of every kind at
-// MaxGrantsPerResource live grants, so revoke_owner (which walks every kind)
-// and revoke_grantee touch about 50 keys per resource. Expired
-// pending grants are outside the cap and are never deleted, so the bound is
-// soft.
+// MaxGrantsPerResource (50) live grants. revoke_resource therefore touches
+// about 50 grants; revoke_owner and revoke_grantee touch about 50 per resource
+// the user owns or holds, across all kinds. Expired pending grants are outside
+// the cap and are never deleted, so the bound is soft.
 func PlanACL(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([][]byte, error), cmd *bongov1.RaftCommand) (sets []ACLWrite, deletes [][]byte, err error) {
 	if !IsACLSyntheticCommand(cmd.Key) {
 		return nil, nil, fmt.Errorf("not a synthetic acl command")
@@ -678,21 +678,41 @@ func (s *ACLStore) RevokeCalendarGrant(owner, calendar, grantee string) error {
 
 // RevokeCalendar removes every grant on one calendar.
 func (s *ACLStore) RevokeCalendar(owner, calendar string) error {
-	return s.apply(ACLRequest{Op: ACLOpRevokeResource, Kind: ACLKindCalendar, Owner: owner, Resource: calendar})
+	return RevokeResourceGrants(s.applier, ACLKindCalendar, owner, calendar)
 }
 
-// RevokeUser removes the grants a user owns and the grants they hold. The two
-// commands are separate, so a failure between them leaves one half; the
-// orphan sweep removes it.
+// RevokeResourceGrants removes every grant on one resource of any kind.
+// Whatever deletes a shareable resource calls it with the resource's kind and
+// the id the grants were written under: the calendar guid, the mailbox id and,
+// for the address book delete, ACLKindAddressBook with the book id. It is a
+// separate command from the delete, so the caller decides what a failure
+// means; the leader's orphan sweep is the backstop.
+func RevokeResourceGrants(applier RaftApplier, kind, owner, resource string) error {
+	cmd, err := BuildACLCommand(ACLRequest{Op: ACLOpRevokeResource, Kind: kind, Owner: owner, Resource: resource})
+	if err != nil {
+		return err
+	}
+	if err := applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return fmt.Errorf("applying acl %s: %w", ACLOpRevokeResource, err)
+	}
+	return nil
+}
+
+// RevokeUser removes the grants a user owns and the grants they hold, of every
+// kind. The two commands are separate, so a failure between them leaves one
+// half; the orphan sweep removes it.
 func (s *ACLStore) RevokeUser(userID string) error {
 	return RevokeUserGrants(s.applier, userID)
 }
 
 // RevokeUserGrants issues revoke_owner and revoke_grantee for userID through
-// applier and returns the joined errors.
+// applier and returns the joined errors. Both ops cover every kind: revoke_owner
+// walks each kind's owner prefix and revoke_grantee scans the reverse index,
+// where the kind comes after the grantee.
 func RevokeUserGrants(applier RaftApplier, userID string) error {
 	var errs []error
 	for _, req := range []ACLRequest{
+		// Kind is required by validation and ignored by these two ops.
 		{Op: ACLOpRevokeOwner, Kind: ACLKindCalendar, Owner: userID},
 		{Op: ACLOpRevokeGrantee, Kind: ACLKindCalendar, Grantee: GranteeUser(userID)},
 	} {
@@ -879,7 +899,7 @@ func (s *ACLStore) GrantOrphaned(ref GrantRef) (bool, error) {
 // mailboxGone reports whether no mailbox of owner carries the id. It mirrors
 // MailboxStore.MailboxNameByID, which the ACL store cannot call.
 func (s *ACLStore) mailboxGone(owner, id string) (bool, error) {
-	if !validMailboxID(id) {
+	if !ValidMailboxID(id) {
 		return true, nil
 	}
 	name, err := s.pebble.Get(mailboxIDKey(owner, id))

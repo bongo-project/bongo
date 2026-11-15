@@ -120,7 +120,7 @@ func TestShareCreatesPendingGrantAndInvites(t *testing.T) {
 		t.Errorf("subject = %q", subject)
 	}
 	body, _ := io.ReadAll(msg.Body)
-	if !strings.Contains(string(body), "https://mail.d.test/calendar/shares") {
+	if !strings.Contains(string(body), "https://mail.d.test/shares") {
 		t.Errorf("body lacks the link: %q", body)
 	}
 }
@@ -278,7 +278,7 @@ func TestInviteMessageHasNoInjectedHeader(t *testing.T) {
 	s := NewShareInviter(sender, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	s.send(shareInviteJob{
 		ownerID: "alice", ownerEmail: "alice@d.test", granteeID: "bob", recipient: "bob@d.test",
-		calendarName: "Work\r\nBcc: evil@x.test\r\nX-Injected: 1", host: "mail.d.test",
+		resourceName: "Work\r\nBcc: evil@x.test\r\nX-Injected: 1", host: "mail.d.test",
 	})
 	if sender.count() != 1 {
 		t.Fatal("not sent")
@@ -453,12 +453,12 @@ func TestShareInvitationsPageListsOnlyOwnPending(t *testing.T) {
 		return rr.Body.String()
 	}
 	body := get("bob")
-	for _, want := range []string{"alice@d.test", "Work", `hx-post="/calendar/shares/accept"`, `hx-post="/calendar/shares/decline"`, `name="_csrf"`} {
+	for _, want := range []string{"alice@d.test", "Work", `hx-post="/shares/accept"`, `hx-post="/shares/decline"`, `name="_csrf"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
 	}
-	if strings.Count(body, `hx-post="/calendar/shares/accept"`) != 1 {
+	if strings.Count(body, `hx-post="/shares/accept"`) != 1 {
 		t.Error("an accepted grant is listed as pending")
 	}
 	if strings.Contains(get("carol"), "Work") {

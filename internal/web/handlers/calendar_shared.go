@@ -390,6 +390,7 @@ func (h *CalendarHandler) sharedEvents(set sharedSet, start, end int64) ([]*bong
 // key) and the sidebar group on the request context. It also returns the set
 // of shared calendars, for callers that load more than events.
 func (h *CalendarHandler) withShared(r *http.Request, actor string, events []*bongov1.Event, colours map[string]string, start, end int64) (*http.Request, []*bongov1.Event, sharedSet) {
+	r = h.withPendingCount(r, actor)
 	cals, set, shareColours := h.loadShared(actor)
 	if len(cals) == 0 {
 		return r, events, nil
@@ -410,6 +411,7 @@ func (h *CalendarHandler) withShared(r *http.Request, actor string, events []*bo
 // sharedSidebar puts the shared calendars on the context for pages that list
 // calendars but load no events (the event form).
 func (h *CalendarHandler) sharedSidebar(r *http.Request, actor string) *http.Request {
+	r = h.withPendingCount(r, actor)
 	cals, _, _ := h.loadShared(actor)
 	if len(cals) == 0 {
 		return r

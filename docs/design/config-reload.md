@@ -230,6 +230,7 @@ TLS as well as raft transport.
 | `smtp.limits.max_connections_per_ip` | `smtp/server.go:696`, read at `:172` (`Backend.NewSession`) | ctor; plain `maxPerIP` int. Read at `:172` OUTSIDE `b.mu` (the mutex only guards `perIP`, taken at `:174`) | RESTART (HOT-3 candidate) |
 | `smtp.limits.outbound_messages_per_minute` | `smtp/server.go:698`, used `:446-447` | ctor; as above | RESTART (HOT-3 candidate) |
 | `smtp.limits.outbound_recipients_per_hour` | `agent.go` -> `mail.NewRateLimiter` stored as `Agent.RecipientLimiter` | ctor | RESTART |
+| `smtp.limits.group_fanout_per_hour` | `agent.go` -> `mail.NewRateLimiter` stored as `Agent.GroupFanoutLimiter`, shared by SMTP and web compose | ctor | RESTART |
 | `smtp.limits.send_as_verify_max_per_hour` | `agent.go` -> `mail.NewRateLimiter` handed to the send-as verification handler (`SetLimiter`) | ctor | RESTART |
 | `smtp.relay.enabled` | `smtp/relay.go:91` (`Relay.Deliver`) | ptr: read per delivery through `&a.Config.SMTP.Relay` (`agent.go:1239`) | RESTART in incr. 1 (HOT-3, see 4.3) |
 | `smtp.relay.host` | `relay.go:91,98,101` | ptr, per delivery | RESTART (HOT-3) |

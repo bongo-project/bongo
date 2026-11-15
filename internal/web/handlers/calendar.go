@@ -39,6 +39,9 @@ type CalendarHandler struct {
 	// acl holds calendar grants. nil disables sharing: free/busy then
 	// authorises only the caller's own calendar.
 	acl *store.ACLStore
+	// mailboxes resolves a mailbox grant's id to a folder name for the shares
+	// page. nil lists no mailbox grants.
+	mailboxes *store.MailboxStore
 	// shareLimiter caps ShareCalendar requests per user. nil = unlimited.
 	shareLimiter shareRateLimiter
 	// freeBusyLimiter caps availability lookups by address per user. nil =
@@ -737,39 +740,23 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	existing, err := h.acl.GetCalendarGrant(userID, calID, targetID)
-	if err != nil {
-		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
-		return
-	}
-	// An expired pending grant is a new grantee: it does not count against the
-	// cap, so a re-share must pass the cap again, and it refreshes and
-	// re-invites below. Someone with a live grant may have the level changed
-	// on a full calendar.
-	expired := existing != nil && store.PendingGrantExpired(existing, now.Unix())
-	if (existing == nil || expired) && full {
+	_, ownerEmail := middleware.UserFromContext(r.Context())
+	outcome, err := offerGrant(h.acl, h.inviter, GrantOffer{
+		Kind: store.ACLKindCalendar, Owner: userID, OwnerEmail: ownerEmail,
+		Resource: calID, ResourceName: cal.Name, GranteeID: targetID, Recipient: parsed.Address,
+		Level: level, Host: h.linkHost(r), Full: full, Now: now,
+	})
+	switch {
+	case errors.Is(err, errShareRefused):
 		http.Error(w, refused, http.StatusBadRequest)
 		return
-	}
-	if existing != nil && !expired && existing.Level == level {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// A new grantee starts pending. A level change keeps the stored state,
-	// decided in the FSM so it cannot undo a Decline or an Accept that lands
-	// between the read above and this write.
-	if err := h.acl.SetCalendarGrantKeepState(userID, calID, targetID, level, store.GrantStatePending, userID, now); err != nil {
+	case err != nil:
 		slog.Error("calendar: share failed", "user", userID, "calendar", calID, "error", err)
 		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
 		return
-	}
-	// Only a new or expired grant sends the invitation, so the form cannot be
-	// used to send repeated emails (one per grantee per 30 days at most).
-	// Best-effort: the grant stands either way.
-	if existing == nil || expired {
-		_, ownerEmail := middleware.UserFromContext(r.Context())
-		h.queueShareInvite(r, userID, ownerEmail, targetID, parsed.Address, cal.Name)
+	case outcome == shareUnchanged:
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
 	w.Header().Set("HX-Trigger", "calendarRefresh")

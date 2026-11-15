@@ -88,7 +88,7 @@ func TestEnsureMailboxIDAssignsAndResolves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureMailboxID: %v", err)
 	}
-	if !validMailboxID(id) {
+	if !ValidMailboxID(id) {
 		t.Fatalf("id %q is not 32 lowercase hex", id)
 	}
 	meta, err := e.ms.GetMailbox("u1", "Work")

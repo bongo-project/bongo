@@ -935,6 +935,13 @@ Found while building v0.16.0 (2026-11-15):
   check and the Put; only group create is a compare-and-set.
 - **No sweep for group member ids whose user is gone.** User deletion
   removes them best-effort; expansion must skip a member without a profile.
+- **Share logs still use the `calendar-share` component** for folder and
+  address-book invitations; a general `share` component would read better.
+- **No test asserts that `/shares` sends an unauthenticated visitor to
+  login**, and none that the admin user-delete handler still calls
+  `RevokeUserGrants` (the store-level cascade is tested).
+- **Group member liveness is checked in two places** (`ExpandMembers` and
+  the resolver); a shared helper would stop them drifting.
 
 Audit corrections found while writing this PRD (2026-10-26):
 
