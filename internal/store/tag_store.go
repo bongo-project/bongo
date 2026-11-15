@@ -302,3 +302,9 @@ func (ts *TagStore) countTags(userID string) (int, error) {
 	}
 	return n, nil
 }
+
+// CountTags returns how many tag definitions the user holds: the figure
+// CreateTag checks against MaxTagsPerUser.
+func (ts *TagStore) CountTags(userID string) (int, error) {
+	return ts.countTags(userID)
+}

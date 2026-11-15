@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap/v2"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -47,13 +48,12 @@ var (
 		Text: "Permission denied",
 	}
 
-	// errCrossOwner answers COPY and MOVE between folders of different
-	// owners. Writing a message into another account needs quota, indexing and
-	// one composite command, which a later change adds.
+	// errCrossOwner answers RENAME of a shared folder into another owner's
+	// tree.
 	errCrossOwner = &imap.Error{
 		Type: imap.StatusResponseTypeNo,
 		Code: imap.ResponseCodeCannot,
-		Text: "Copying or moving between different owners is not supported yet",
+		Text: "A folder cannot be renamed into another owner's tree",
 	}
 
 	// errCrossNamespace answers RENAME of a shared folder to a name outside
@@ -64,13 +64,20 @@ var (
 		Text: "A shared folder can only be renamed within its owner's tree",
 	}
 
-	// errSharedKeywords answers a keyword change on a shared folder. The
-	// owner's tags are shown as read-only keywords until keywords on shared
-	// messages become the owner's tags.
+	// errSharedKeywords answers a keyword change on a shared folder that the
+	// owner's tag limits or the tag naming rules refuse. A keyword there is the
+	// owner's tag, so the owner's limits apply, not the grantee's.
 	errSharedKeywords = &imap.Error{
 		Type: imap.StatusResponseTypeNo,
-		Code: imap.ResponseCodeCannot,
-		Text: "Keywords are not supported on shared folders yet",
+		Code: imap.ResponseCodeLimit,
+		Text: "Keyword not accepted on this shared folder",
+	}
+
+	// errOverQuota answers a write the destination owner has no room for.
+	errOverQuota = &imap.Error{
+		Type: imap.StatusResponseTypeNo,
+		Code: imap.ResponseCodeOverQuota,
+		Text: "Storage quota exceeded",
 	}
 )
 
@@ -270,21 +277,183 @@ func storeNeeds(changed uint32) string {
 }
 
 // checkTransfer decides whether the selected folder's messages may go to dst
-// with COPY or MOVE. Both folders must have the same owner: own to own, or
-// within one owner's shared tree. Anything across owners is refused with a
-// fixed text, because a cross-owner write needs quota, indexing and a single
-// composite command that a later change adds. dst needs the insert right and,
-// for MOVE, the selected folder needs srcNeeds (t and e). dst has been
+// with COPY or MOVE. dst needs the insert right and, for MOVE, the selected
+// folder needs srcNeeds (t and e); the read right on the source is held already
+// (checkSelected). Folders of different owners are allowed: the transfer then
+// runs as one cross-owner command with the destination's quota. dst has been
 // resolved, so the user already holds the lookup right on it.
-func (s *session) checkTransfer(dst resolvedMailbox, srcOwner, srcNeeds string) error {
-	if dst.owner != srcOwner {
-		return errCrossOwner
-	}
+func (s *session) checkTransfer(dst resolvedMailbox, srcNeeds string) error {
 	if err := requireRight(dst, "i"); err != nil {
 		return err
 	}
 	if srcNeeds != "" && !s.selHas(srcNeeds) {
 		return errNoPermission
+	}
+	return nil
+}
+
+// transferFlagMask is the set of system flags a copy keeps on dst: all of them
+// on the user's own folder, and on a shared one only those the user's rights on
+// dst allow, as for APPEND (RFC 4314).
+func transferFlagMask(dst resolvedMailbox) uint32 {
+	all := store.FlagSeen | store.FlagAnswered | store.FlagFlagged | store.FlagDeleted | store.FlagDraft
+	if !dst.shared {
+		return all
+	}
+	return maskSharedAppendFlags(all, dst)
+}
+
+// checkTransferQuota refuses a cross-owner transfer the destination owner has
+// no room for. It runs after the rights checks, so OVERQUOTA is only ever
+// answered to a user who may write to dst. Usage is a recomputed figure, so this
+// is best effort; a checker error fails open and is logged, as for APPEND.
+func (s *session) checkTransferQuota(srcOwner string, dst resolvedMailbox, msgs []*bongov1.MailboxMessage) error {
+	if s.quota == nil || s.pebble == nil {
+		return nil
+	}
+	var total int64
+	for _, m := range msgs {
+		data, err := s.pebble.Get([]byte(fmt.Sprintf("/user/%s/mail/%s", srcOwner, m.MailGuid)))
+		if err != nil {
+			return fmt.Errorf("reading mail meta for quota: %w", err)
+		}
+		var meta bongov1.MailMeta
+		if err := proto.Unmarshal(data, &meta); err != nil {
+			return fmt.Errorf("parsing mail meta for quota: %w", err)
+		}
+		if meta.RawMessage != nil {
+			total += meta.RawMessage.Size
+		}
+	}
+	over, err := s.quota.RecipientWouldExceedQuota(dst.owner, total)
+	if err != nil {
+		s.logger.Warn("imap: transfer quota check error (fail open)", "user", s.userID, "error", err)
+		return nil
+	}
+	if over {
+		s.logger.Warn("imap: transfer refused: over storage quota", "user", s.userID)
+		return errOverQuota
+	}
+	return nil
+}
+
+// keywordNames maps stored tags to the bare keyword names a client's STORE
+// carries, through the same $-prefix convention FETCH shows them with.
+func keywordNames(tags []string) []string {
+	_, names := separateFlags(tagsToIMAPKeywords(tags))
+	return names
+}
+
+// sameKeywords reports whether two keyword lists hold the same names.
+func sameKeywords(a, b []string) bool {
+	as := map[string]bool{}
+	for _, k := range a {
+		as[k] = true
+	}
+	bs := map[string]bool{}
+	for _, k := range b {
+		bs[k] = true
+	}
+	if len(as) != len(bs) {
+		return false
+	}
+	for k := range as {
+		if !bs[k] {
+			return false
+		}
+	}
+	return true
+}
+
+// keywordChanges reports whether a STORE changes msg's keywords.
+func keywordChanges(op imap.StoreFlagsOp, keywords []string, msg *bongov1.MailboxMessage) bool {
+	if op == imap.StoreFlagsSet {
+		return !sameKeywords(keywords, keywordNames(msg.Tags))
+	}
+	return len(keywords) > 0
+}
+
+// checkSharedStore decides, before the first write, whether a STORE on the
+// selected shared folder may go ahead. Every message in numSet is checked for
+// the rights its flag and keyword changes need (a keyword is the owner's tag, so
+// it needs w), and keyword additions are checked against the OWNER's tag
+// limits: name validity, the number of tags the owner may hold and the
+// per-message maximum. A refusal changes nothing.
+func (s *session) checkSharedStore(owner string, msgs []*bongov1.MailboxMessage, numSet imap.NumSet, op imap.StoreFlagsOp, flagBits uint32, keywords []string) error {
+	var selected []*bongov1.MailboxMessage
+	for seqNum, msg := range msgs {
+		if !numSetContains(numSet, uint32(seqNum+1), imap.UID(msg.Uid)) {
+			continue
+		}
+		changed := flagBits
+		if op == imap.StoreFlagsSet {
+			changed = (msg.Flags ^ flagBits) & (store.FlagSeen | store.FlagAnswered | store.FlagFlagged | store.FlagDeleted | store.FlagDraft)
+		}
+		need := storeNeeds(changed)
+		if keywordChanges(op, keywords, msg) {
+			need += "w"
+			selected = append(selected, msg)
+		}
+		if !s.selHas(need) {
+			return errNoPermission
+		}
+	}
+	if op == imap.StoreFlagsDel || len(keywords) == 0 || len(selected) == 0 {
+		return nil
+	}
+
+	for _, kw := range keywords {
+		if err := store.ValidateTagName(kw); err != nil {
+			return errSharedKeywords
+		}
+	}
+	if s.tags != nil {
+		var fresh int
+		seen := map[string]bool{}
+		for _, kw := range keywords {
+			if seen[kw] {
+				continue
+			}
+			seen[kw] = true
+			if _, err := s.tags.GetTag(owner, kw); err != nil {
+				if !errors.Is(err, store.ErrNotFound) {
+					return fmt.Errorf("reading owner tag: %w", err)
+				}
+				fresh++
+			}
+		}
+		if fresh > 0 {
+			defined, err := s.tags.CountTags(owner)
+			if err != nil {
+				return fmt.Errorf("counting owner tags: %w", err)
+			}
+			used, err := s.mailboxes.CountUserDistinctTags(owner)
+			if err != nil {
+				return fmt.Errorf("counting owner tags in use: %w", err)
+			}
+			if defined+fresh > store.MaxTagsPerUser || used+fresh > store.MaxTagsPerUser {
+				return errSharedKeywords
+			}
+		}
+	}
+	for _, msg := range selected {
+		data, err := s.pebble.Get([]byte(fmt.Sprintf("/user/%s/mail/%s", owner, msg.MailGuid)))
+		if err != nil {
+			return fmt.Errorf("reading mail meta: %w", err)
+		}
+		var meta bongov1.MailMeta
+		if err := proto.Unmarshal(data, &meta); err != nil {
+			return fmt.Errorf("parsing mail meta: %w", err)
+		}
+		var terr error
+		if op == imap.StoreFlagsSet {
+			terr = store.SetTags(&meta, keywords)
+		} else {
+			terr = store.AddTags(&meta, keywords)
+		}
+		if terr != nil {
+			return errSharedKeywords
+		}
 	}
 	return nil
 }

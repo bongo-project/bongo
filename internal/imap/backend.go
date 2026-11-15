@@ -72,6 +72,9 @@ type session struct {
 	// prefix resolves.
 	acl *store.ACLStore
 
+	// share is what SETACL needs to resolve an identifier and write a grant.
+	share shareDeps
+
 	userID string
 	// epoch is the account's credential fingerprint recorded at LOGIN; a
 	// mismatch later means the password was reset.
@@ -148,6 +151,8 @@ var (
 	// panics on every new connection.
 	_ imapserver.SessionNamespace = (*session)(nil)
 	_ imapserver.SessionQuota     = (*session)(nil)
+	// Advertises ACL: go-imap adds the capability when the session has it.
+	_ imapserver.SessionACL = (*session)(nil)
 )
 
 // Close is called when the connection is closed.
@@ -430,15 +435,15 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 
 	permanent := append(flags, `\*`)
 	if rm.shared {
-		// A shared folder offers only the flags the rights allow, and never
-		// arbitrary keywords.
+		// A shared folder offers only the flags the rights allow. Arbitrary
+		// keywords need w, because they become the owner's tags.
 		permanent = nil
 		if !s.readOnly {
 			if rm.has("s") {
 				permanent = append(permanent, imap.FlagSeen)
 			}
 			if rm.has("w") {
-				permanent = append(permanent, imap.FlagAnswered, imap.FlagFlagged, imap.FlagDraft)
+				permanent = append(permanent, imap.FlagAnswered, imap.FlagFlagged, imap.FlagDraft, `\*`)
 			}
 			if rm.has("t") {
 				permanent = append(permanent, imap.FlagDeleted)
@@ -1816,13 +1821,6 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 	// Separate standard system flags from custom $keyword flags.
 	stdFlags, keywords := separateFlags(flags.Flags)
 	flagBits := imapFlagsToUint32(stdFlags)
-	// The messages on a shared folder are the owner's, and so are their
-	// keywords (tags). Until keyword changes there become the owner's tags,
-	// they are refused, and FLAGS (replace) leaves the owner's tags alone.
-	if s.selShared && len(keywords) > 0 {
-		return errSharedKeywords
-	}
-
 	// Refresh cache.
 	owner, name := s.sel()
 	msgs, err := s.mailboxes.ListMessages(owner, name)
@@ -1831,21 +1829,14 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 	}
 	s.cachedMsgs = msgs
 
-	// Check every right before the first write, so a refusal changes nothing.
-	// \Seen needs s, \Deleted needs t and every other flag needs w. A replace
-	// needs the rights of the flags it changes on each message.
+	// Check everything before the first write, so a refusal changes nothing.
+	// On a shared folder the messages are the owner's, and so are their
+	// keywords (tags): \Seen needs s, \Deleted needs t, every other flag and
+	// any keyword change needs w, and new keywords answer to the owner's tag
+	// limits.
 	if s.selShared {
-		for seqNum, msg := range msgs {
-			if !numSetContains(numSet, uint32(seqNum+1), imap.UID(msg.Uid)) {
-				continue
-			}
-			changed := flagBits
-			if flags.Op == imap.StoreFlagsSet {
-				changed = (msg.Flags ^ flagBits) & (store.FlagSeen | store.FlagAnswered | store.FlagFlagged | store.FlagDeleted | store.FlagDraft)
-			}
-			if !s.selHas(storeNeeds(changed)) {
-				return errNoPermission
-			}
+		if err := s.checkSharedStore(owner, msgs, numSet, flags.Op, flagBits, keywords); err != nil {
+			return err
 		}
 	}
 
@@ -1873,9 +1864,19 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 			}
 		}
 
-		// Apply keyword (tag) changes.
-		if !s.selShared && (len(keywords) > 0 || flags.Op == imap.StoreFlagsSet) {
-			if err := s.applyKeywords(msg.MailGuid, msg.Uid, flags.Op, keywords); err != nil {
+		// Apply keyword (tag) changes. On a shared folder they are the
+		// owner's tags: a failure fails the command, and a replace that leaves
+		// a message's keywords as they are writes nothing, so a user without w
+		// can still change flags with FLAGS.
+		if s.selShared {
+			if keywordChanges(flags.Op, keywords, msg) {
+				if err := s.applyKeywords(owner, name, msg.MailGuid, msg.Uid, flags.Op, keywords); err != nil {
+					s.logger.Warn("imap: shared keyword update failed", "guid", msg.MailGuid, "user", s.userID, "error", err)
+					return err
+				}
+			}
+		} else if len(keywords) > 0 || flags.Op == imap.StoreFlagsSet {
+			if err := s.applyKeywords(owner, name, msg.MailGuid, msg.Uid, flags.Op, keywords); err != nil {
 				s.logger.Warn("imap: keyword update failed", "guid", msg.MailGuid, "error", err)
 				// Non-fatal: continue with other messages and standard flags.
 			}
@@ -1907,14 +1908,15 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 // applyKeywords applies keyword (tag) changes to MailMeta and syncs the
 // denormalised MailboxMessage.Tags field plus search indexes.
 //
-// It only ever works on the session user's own mailbox: tags are per user, and
-// every s.userID below is that user's. Callers refuse shared folders first.
-func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsOp, keywords []string) error {
-	if s.selShared {
-		return errSharedKeywords
-	}
+// Tags belong to the account that owns the message, so owner and mailbox name
+// that account's namespace: the session user for a personal folder, the folder's
+// owner for a shared one. Nothing below may use s.userID or s.selectedMailbox,
+// or a grantee's keyword would land in the grantee's own tags. Two sessions
+// changing one message's tags at once is last writer wins on the MailMeta
+// read-modify-write.
+func (s *session) applyKeywords(owner, mailbox, mailGUID string, uid uint32, op imap.StoreFlagsOp, keywords []string) error {
 	// Load MailMeta from Pebble.
-	key := fmt.Sprintf("/user/%s/mail/%s", s.userID, mailGUID)
+	key := fmt.Sprintf("/user/%s/mail/%s", owner, mailGUID)
 	data, err := s.pebble.Get([]byte(key))
 	if err != nil {
 		return fmt.Errorf("reading mail meta: %w", err)
@@ -1930,9 +1932,12 @@ func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsO
 		// Auto-create tag definitions for any new keywords (best-effort).
 		if s.tags != nil {
 			for _, kw := range keywords {
-				if _, err := s.tags.GetTag(s.userID, kw); err != nil {
+				if _, err := s.tags.GetTag(owner, kw); err != nil {
 					// Tag does not exist yet — create it.
-					if _, createErr := s.tags.CreateTag(s.userID, kw); createErr != nil {
+					if _, createErr := s.tags.CreateTag(owner, kw); createErr != nil {
+						if s.selShared {
+							return fmt.Errorf("creating owner tag: %w", createErr)
+						}
 						s.logger.Warn("imap: auto-create tag failed", "tag", kw, "error", createErr)
 					}
 				}
@@ -1952,8 +1957,11 @@ func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsO
 		// Auto-create definitions for new keywords first (best-effort).
 		if s.tags != nil {
 			for _, kw := range keywords {
-				if _, err := s.tags.GetTag(s.userID, kw); err != nil {
-					if _, createErr := s.tags.CreateTag(s.userID, kw); createErr != nil {
+				if _, err := s.tags.GetTag(owner, kw); err != nil {
+					if _, createErr := s.tags.CreateTag(owner, kw); createErr != nil {
+						if s.selShared {
+							return fmt.Errorf("creating owner tag: %w", createErr)
+						}
 						s.logger.Warn("imap: auto-create tag failed", "tag", kw, "error", createErr)
 					}
 				}
@@ -1965,25 +1973,30 @@ func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsO
 	}
 
 	// Persist updated MailMeta via Raft.
-	if err := s.mailboxes.StoreMailMeta(s.userID, &meta); err != nil {
+	if err := s.mailboxes.StoreMailMeta(owner, &meta); err != nil {
 		return fmt.Errorf("persisting mail meta: %w", err)
 	}
 
 	// Update the denormalised Tags field on the MailboxMessage.
-	if writeErr := s.mailboxes.WriteMessageTags(s.userID, s.selectedMailbox, uid, meta.Tags); writeErr != nil {
+	if writeErr := s.mailboxes.WriteMessageTags(owner, mailbox, uid, meta.Tags); writeErr != nil {
+		// On a shared folder MailMeta is already written, so swallowing this
+		// would leave it and MailboxMessage.Tags disagreeing behind an OK.
+		if s.selShared {
+			return fmt.Errorf("updating mailbox message tags: %w", writeErr)
+		}
 		s.logger.Warn("imap: updating mailbox message tags failed", "uid", uid, "error", writeErr)
 	}
 
 	// Update SQLite index (best-effort).
 	if s.metadata != nil {
-		if err := s.metadata.IndexMailTags(s.userID, mailGUID, meta.Tags); err != nil {
+		if err := s.metadata.IndexMailTags(owner, mailGUID, meta.Tags); err != nil {
 			s.logger.Warn("imap: sqlite tag index update failed", "guid", mailGUID, "error", err)
 		}
 	}
 
 	// Update Bleve index (best-effort).
 	if s.search != nil {
-		if err := s.search.IndexMail(s.userID, mailGUID, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, false, meta.Tags); err != nil {
+		if err := s.search.IndexMail(owner, mailGUID, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, false, meta.Tags); err != nil {
 			s.logger.Warn("imap: search index failed on store", "guid", mailGUID, "error", err)
 		}
 	}
@@ -1998,6 +2011,10 @@ func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsO
 // at the existing MailMeta and blob: no new bytes are stored, and usage is
 // summed per MailMeta, so the copy is free under the existing accounting.
 // Refusing it would also block moving mail to Trash to get back under quota.
+//
+// Between folders of different owners the copy IS a new MailMeta in the
+// destination owner's account (same blob, no tags), so that path runs as one
+// composite command and the destination owner's quota applies (OVERQUOTA).
 func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) {
 	defer observability.IMAPCopy.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
@@ -2014,7 +2031,7 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.checkTransfer(dst, srcOwner, ""); err != nil {
+	if err := s.checkTransfer(dst, ""); err != nil {
 		return nil, err
 	}
 
@@ -2023,6 +2040,14 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 		return nil, err
 	}
 	s.cachedMsgs = msgs
+
+	if dst.owner != srcOwner {
+		srcUIDs, dstUIDs, _, err := s.transferAcrossOwners(srcOwner, srcName, msgs, numSet, dst, false)
+		if err != nil {
+			return nil, err
+		}
+		return &imap.CopyData{UIDValidity: s.destValidity(dst), SourceUIDs: srcUIDs, DestUIDs: dstUIDs}, nil
+	}
 
 	var srcUIDs, dstUIDs imap.UIDSet
 	var copyCount int
@@ -2090,7 +2115,7 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 		return err
 	}
 	// MOVE removes from the source, so it needs t and e there as well.
-	if err := s.checkTransfer(dst, srcOwner, "te"); err != nil {
+	if err := s.checkTransfer(dst, "te"); err != nil {
 		return err
 	}
 
@@ -2103,6 +2128,20 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 	var srcUIDs, dstUIDs imap.UIDSet
 	var expungeSeqNums []uint32
 	var movedUIDs []uint32
+
+	if dst.owner != srcOwner {
+		var err error
+		srcUIDs, dstUIDs, expungeSeqNums, err = s.transferAcrossOwners(srcOwner, srcName, msgs, numSet, dst, true)
+		if err != nil {
+			return err
+		}
+		for seqNum, msg := range msgs {
+			if numSetContains(numSet, uint32(seqNum+1), imap.UID(msg.Uid)) {
+				movedUIDs = append(movedUIDs, msg.Uid)
+			}
+		}
+		msgs = nil
+	}
 
 	for seqNum, msg := range msgs {
 		seqNum := uint32(seqNum + 1)
@@ -2397,4 +2436,71 @@ func maskSharedAppendFlags(flags uint32, dest resolvedMailbox) uint32 {
 		allowed |= store.FlagAnswered | store.FlagFlagged | store.FlagDraft
 	}
 	return flags & allowed
+}
+
+// destValidity returns dst's current UIDVALIDITY, read fresh so a COPYUID
+// response carries the destination's value and not the source's.
+func (s *session) destValidity(dst resolvedMailbox) uint32 {
+	meta, err := s.mailboxes.GetMailbox(dst.owner, dst.name)
+	if err != nil || meta == nil {
+		return 0
+	}
+	return meta.UidValidity
+}
+
+// transferAcrossOwners copies or moves the messages numSet selects into dst,
+// which belongs to a different owner than the source. Rights on both sides have
+// been checked by the caller; this adds the storage gate and the destination
+// owner's quota, both before any write, then issues the composite command(s)
+// through MailboxStore.TransferMessages. The source sequence numbers of the
+// moved messages are returned for the EXPUNGE responses of a MOVE.
+//
+// The flags a copy keeps are masked by the user's rights on dst (RFC 4314); the
+// owner's keywords are never carried over. A request beyond
+// store.MaxMailboxTransferItems is several commands that are not atomic
+// together; the error then leaves the earlier chunks applied.
+func (s *session) transferAcrossOwners(srcOwner, srcName string, msgs []*bongov1.MailboxMessage, numSet imap.NumSet, dst resolvedMailbox, move bool) (srcUIDs, dstUIDs imap.UIDSet, seqNums []uint32, err error) {
+	var picked []*bongov1.MailboxMessage
+	var uids []uint32
+	for seqNum, msg := range msgs {
+		if !numSetContains(numSet, uint32(seqNum+1), imap.UID(msg.Uid)) {
+			continue
+		}
+		picked = append(picked, msg)
+		uids = append(uids, msg.Uid)
+		seqNums = append(seqNums, uint32(seqNum+1))
+	}
+	if len(uids) == 0 {
+		return srcUIDs, dstUIDs, nil, nil
+	}
+	if s.storage != nil && s.storage.Low() {
+		return srcUIDs, dstUIDs, nil, &imap.Error{
+			Type: imap.StatusResponseTypeNo,
+			Code: imap.ResponseCodeUnavailable,
+			Text: "Insufficient system storage",
+		}
+	}
+	if err := s.checkTransferQuota(srcOwner, dst, picked); err != nil {
+		return srcUIDs, dstUIDs, nil, err
+	}
+	pairs, err := s.mailboxes.TransferMessages(srcOwner, srcName, dst.owner, dst.name, uids, move, transferFlagMask(dst))
+	if err != nil {
+		s.logger.Warn("imap: cross-owner transfer failed", "user", s.userID, "mailbox", dst.name, "move", move, "error", err)
+		// Refusals from the FSM carry store detail (guids, uids) that a
+		// client has no use for; only protocol errors built here pass through.
+		var imapErr *imap.Error
+		if errors.As(err, &imapErr) {
+			return srcUIDs, dstUIDs, nil, err
+		}
+		return srcUIDs, dstUIDs, nil, &imap.Error{
+			Type: imap.StatusResponseTypeNo,
+			Text: "Copy or move to the shared folder failed",
+		}
+	}
+	for _, p := range pairs {
+		srcUIDs.AddNum(imap.UID(p.SrcUID))
+		dstUIDs.AddNum(imap.UID(p.DstUID))
+	}
+	s.logger.Info("imap: messages transferred across owners", "user", s.userID, "move", move, "count", len(pairs))
+	return srcUIDs, dstUIDs, seqNums, nil
 }

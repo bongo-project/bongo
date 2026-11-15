@@ -38,7 +38,9 @@ func newTestBackend(t *testing.T) (*Backend, string) {
 	t.Cleanup(func() { ps.Close() })
 
 	contacts := store.NewContactStore(ps, &directApplier{store: ps})
-	return NewBackend(contacts, nil, slog.Default()), "test-user-1"
+	b := NewBackend(contacts, nil, slog.Default())
+	b.SetAddressBooks(store.NewAddressBookStore(ps, &directApplier{store: ps}))
+	return b, "test-user-1"
 }
 
 func testCard(fn, email string) vcard.Card {
@@ -70,7 +72,7 @@ func assertPreconditionFailed(t *testing.T, err error, what string) {
 func TestCardDAVETagChangesWithContent(t *testing.T) {
 	backend, userID := newTestBackend(t)
 	ctx := WithUserID(context.Background(), userID)
-	path := objectPath(userID, "c1")
+	path := objectPath(userID, store.DefaultAddressBookID, "c1")
 
 	first, err := backend.PutAddressObject(ctx, path, testCard("Ada Lovelace", "ada@example.com"), nil)
 	if err != nil {
@@ -96,7 +98,7 @@ func TestCardDAVETagChangesWithContent(t *testing.T) {
 func TestCardDAVIfMatchRejectsStaleWrite(t *testing.T) {
 	backend, userID := newTestBackend(t)
 	ctx := WithUserID(context.Background(), userID)
-	path := objectPath(userID, "c1")
+	path := objectPath(userID, store.DefaultAddressBookID, "c1")
 
 	original, err := backend.PutAddressObject(ctx, path, testCard("Original", "a@example.com"), nil)
 	if err != nil {
@@ -128,7 +130,7 @@ func TestCardDAVIfMatchRejectsStaleWrite(t *testing.T) {
 func TestCardDAVIfMatchAcceptsCurrentETag(t *testing.T) {
 	backend, userID := newTestBackend(t)
 	ctx := WithUserID(context.Background(), userID)
-	path := objectPath(userID, "c1")
+	path := objectPath(userID, store.DefaultAddressBookID, "c1")
 
 	original, err := backend.PutAddressObject(ctx, path, testCard("Original", "a@example.com"), nil)
 	if err != nil {
@@ -144,7 +146,7 @@ func TestCardDAVIfMatchAcceptsCurrentETag(t *testing.T) {
 func TestCardDAVIfNoneMatchWildcard(t *testing.T) {
 	backend, userID := newTestBackend(t)
 	ctx := WithUserID(context.Background(), userID)
-	path := objectPath(userID, "c1")
+	path := objectPath(userID, store.DefaultAddressBookID, "c1")
 
 	if _, err := backend.PutAddressObject(ctx, path, testCard("New", "a@example.com"),
 		&carddav.PutAddressObjectOptions{IfNoneMatch: webdav.ConditionalMatch("*")}); err != nil {
@@ -162,7 +164,7 @@ func TestCardDAVIfMatchOnMissingObject(t *testing.T) {
 	backend, userID := newTestBackend(t)
 	ctx := WithUserID(context.Background(), userID)
 
-	_, err := backend.PutAddressObject(ctx, objectPath(userID, "gone"),
+	_, err := backend.PutAddressObject(ctx, objectPath(userID, store.DefaultAddressBookID, "gone"),
 		testCard("Ghost", "g@example.com"),
 		&carddav.PutAddressObjectOptions{IfMatch: webdav.ConditionalMatch(`"deadbeef"`)})
 	assertPreconditionFailed(t, err, "If-Match on a nonexistent object")
@@ -170,11 +172,11 @@ func TestCardDAVIfMatchOnMissingObject(t *testing.T) {
 
 // --- Cross-account scoping -------------------------------------------------
 //
-// The CardDAV URL contains a {userID} segment which the backend deliberately
-// ignores: the owner comes from the Basic-Auth principal in the request
-// context. go-webdav hands REPORT multiget hrefs straight to
-// GetAddressObject with no path validation, so that convention is the entire
-// cross-account boundary for contact data. It had no test.
+// The CardDAV URL contains a {userID} segment. The owner comes from the
+// Basic-Auth principal in the request context, and the backend answers 404 for
+// a path whose user segment is anyone else. go-webdav hands REPORT multiget
+// hrefs straight to GetAddressObject with no path validation, so those two
+// checks are the entire cross-account boundary for contact data.
 
 func twoUserBackend(t *testing.T) (*Backend, string, string, string) {
 	t.Helper()
@@ -182,7 +184,7 @@ func twoUserBackend(t *testing.T) (*Backend, string, string, string) {
 	victim := "victim-user"
 
 	victimCtx := WithUserID(context.Background(), victim)
-	if _, err := backend.PutAddressObject(victimCtx, objectPath(victim, "secret-1"),
+	if _, err := backend.PutAddressObject(victimCtx, objectPath(victim, store.DefaultAddressBookID, "secret-1"),
 		testCard("Victim Private Contact", "private@victim.test"), nil); err != nil {
 		t.Fatalf("seeding victim contact: %v", err)
 	}
@@ -194,12 +196,12 @@ func TestCardDAVReadIsScopedToPrincipal(t *testing.T) {
 
 	// Control first: the victim can read their own contact.
 	if _, err := backend.GetAddressObject(WithUserID(context.Background(), victim),
-		objectPath(victim, guid), nil); err != nil {
+		objectPath(victim, store.DefaultAddressBookID, guid), nil); err != nil {
 		t.Fatalf("victim cannot read their own contact: %v", err)
 	}
 
 	obj, err := backend.GetAddressObject(WithUserID(context.Background(), attacker),
-		objectPath(victim, guid), nil)
+		objectPath(victim, store.DefaultAddressBookID, guid), nil)
 	if err == nil {
 		t.Fatalf("attacker read the victim's contact by requesting its URL path: %+v", obj)
 	}
@@ -209,7 +211,7 @@ func TestCardDAVWriteIsScopedToPrincipal(t *testing.T) {
 	backend, attacker, victim, guid := twoUserBackend(t)
 
 	_, err := backend.PutAddressObject(WithUserID(context.Background(), attacker),
-		objectPath(victim, guid), testCard("Overwritten", "attacker@evil.test"), nil)
+		objectPath(victim, store.DefaultAddressBookID, guid), testCard("Overwritten", "attacker@evil.test"), nil)
 
 	got, gerr := backend.contacts.Get(victim, guid)
 	if gerr != nil {
@@ -225,7 +227,7 @@ func TestCardDAVDeleteIsScopedToPrincipal(t *testing.T) {
 	backend, attacker, victim, guid := twoUserBackend(t)
 
 	_ = backend.DeleteAddressObject(WithUserID(context.Background(), attacker),
-		objectPath(victim, guid))
+		objectPath(victim, store.DefaultAddressBookID, guid))
 
 	if _, err := backend.contacts.Get(victim, guid); err != nil {
 		t.Errorf("attacker deleted the victim's contact by requesting its URL path: %v", err)

@@ -175,15 +175,7 @@ func (h *CalendarHandler) shareableGroup(groupID, ownerEmail string) (string, bo
 	if h.groups == nil {
 		return "", false
 	}
-	g, err := h.groups.GetGroup(groupID)
-	if err != nil {
-		return "", false
-	}
-	_, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(ownerEmail)), "@")
-	if !ok || domain == "" || g.Domain != domain {
-		return "", false
-	}
-	return g.Id, true
+	return store.ShareableGroup(h.groups, groupID, ownerEmail)
 }
 
 // SetShareResolver wires the resolver ShareCalendar uses to validate targets.

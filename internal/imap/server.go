@@ -55,6 +55,9 @@ type Server struct {
 	// the other-users prefix resolves.
 	acl atomic.Pointer[store.ACLStore]
 
+	// share is what SETACL resolves and writes with, read the same way.
+	share atomic.Pointer[shareDeps]
+
 	// newSession is the factory handed to go-imap; kept so tests can build a
 	// session exactly as an accepted connection would.
 	newSession func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error)
@@ -114,7 +117,12 @@ func NewServer(
 		if p := s.namespaces.Load(); p != nil {
 			ns = *p
 		}
+		var sd shareDeps
+		if p := s.share.Load(); p != nil {
+			sd = *p
+		}
 		sess := &session{
+			share:       sd,
 			namespaces:  ns,
 			acl:         s.acl.Load(),
 			quota:       qc,

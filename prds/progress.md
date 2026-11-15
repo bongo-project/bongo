@@ -1882,3 +1882,12 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [workflow] Tasks built in parallel against a single resolver hook (MailboxRights awaiting EffectiveGrant) must be joined at merge; grep for the "later task widens this" note in every worker report.
 - PATTERN: [review] A refusal test that asserts only "not success" passes when an earlier unrelated check refuses; assert the specific refusal text.
 - PATTERN: [imap] RFC 4314 ignores flags the user may not set on APPEND; a rights check on STORE alone leaves APPEND as a bypass.
+
+## 2026-11-15: Phase 39 batch 5 (39.14, 39.15) and 40.2
+
+- All three plans PROCEED, all three reviews MINOR. Patches applied; one CLAUDE.md conflict (the IMAP shared-folders note edited by both IMAP tasks), both edits kept.
+- Workers could not finish make test-all: three suites in parallel timed out on the shared machine (agent, web/handlers, scripts/loadgen). The orchestrator runs the full gate alone after the merge.
+- One fixer agent for the review items: shared keyword write failure fails STORE, fixed NO text for transfer refusals, cloned MailMeta drops source folder references, one group-shareability helper for web and IMAP, granted_by rewrite on delegate change documented, real-path SETACL tests through the agent, Bleve autocomplete test for a non-default book, web book delete retry test and visible error, CLAUDE.md note on the CardDAV user segment.
+- Follow-ups to PRD 8.2: transfer guid-to-uid mapping cost and partial-chunk answer; CardDAV double read and English fallback names; release note for the CardDAV path check.
+- PATTERN: [workflow] Three workers running make test-all at once time out on one machine; tell workers to run their packages narrowly and leave the full gate to the orchestrator.
+- PATTERN: [review] Tests against a hand-written fake of a shared helper drift silently; keep at least one test through the real wiring for each behaviour the fake copies.

@@ -160,9 +160,14 @@ func (e *sharedEnv) flags(uid uint32) uint32 {
 
 func (e *sharedEnv) startServer() string {
 	e.t.Helper()
+	return e.startServerAuth(stubAuthenticator{})
+}
+
+func (e *sharedEnv) startServerAuth(auth profileAuthenticator) string {
+	e.t.Helper()
 	notifier := NewNotifier()
 	e.ms.SetNotifier(NewStoreNotifier(notifier))
-	srv := NewServer(stubAuthenticator{}, e.ps, e.blobs, e.ms, nil, nil, nil, notifier, nil, true, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	srv := NewServer(auth, e.ps, e.blobs, e.ms, nil, nil, nil, notifier, nil, true, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	srv.SetACLStore(e.acl)
 	if err := srv.Listen("127.0.0.1:0", "", nil, false, nil); err != nil {
 		e.t.Fatal(err)
@@ -474,7 +479,8 @@ func TestSharedRightsOnStore(t *testing.T) {
 		{"seen and deleted need both", "lrs", flag(imap.StoreFlagsAdd, imap.FlagSeen, imap.FlagDeleted), errNoPermission, 0},
 		{"replace changing seen only", "lrs", flag(imap.StoreFlagsSet, imap.FlagSeen), nil, store.FlagSeen},
 		{"replace changing flagged without w", "lrs", flag(imap.StoreFlagsSet, imap.FlagSeen, imap.FlagFlagged), errNoPermission, 0},
-		{"keywords refused", "lrswipkxtea", flag(imap.StoreFlagsAdd, "$work"), errSharedKeywords, 0},
+		{"keyword with w", "lrw", flag(imap.StoreFlagsAdd, "$work"), nil, 0},
+		{"keyword without w", "lrst", flag(imap.StoreFlagsAdd, "$work"), errNoPermission, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -511,30 +517,6 @@ func TestSharedStoreRefusalWritesNothing(t *testing.T) {
 	wantErr(t, err, errNoPermission)
 	if e.flags(e.uids[0]) != 0 || e.flags(e.uids[1]) != store.FlagFlagged {
 		t.Fatalf("a refused STORE changed flags: %d, %d", e.flags(e.uids[0]), e.flags(e.uids[1]))
-	}
-}
-
-// FLAGS (replace) on a shared folder must not clear the owner's tags.
-func TestSharedStoreReplaceKeepsOwnerTags(t *testing.T) {
-	e := newSharedEnv(t)
-	e.grant("Work", "lrswt")
-	if err := e.ms.WriteMessageTags(shOwner, "Work", e.uids[0], []string{"invoice"}); err != nil {
-		t.Fatal(err)
-	}
-	s := e.session()
-	if _, err := s.Select(shWork, nil); err != nil {
-		t.Fatal(err)
-	}
-	err := s.Store(nil, imap.UIDSetNum(1), &imap.StoreFlags{Op: imap.StoreFlagsSet, Silent: true, Flags: []imap.Flag{imap.FlagSeen}}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := e.ms.GetMessage(shOwner, "Work", e.uids[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(m.Tags, []string{"invoice"}) {
-		t.Fatalf("owner tags = %v after FLAGS on a shared folder", m.Tags)
 	}
 }
 
@@ -727,51 +709,6 @@ func TestSharedCopyMoveOwnerRules(t *testing.T) {
 			wantErr(t, s.Move(nil, imap.UIDSetNum(1), shSub), want)
 		}
 	})
-	t.Run("shared to own", func(t *testing.T) {
-		e := newSharedEnv(t)
-		e.grant("Work", "lrswipkxtea")
-		s := e.session()
-		if _, err := s.Select(shWork, nil); err != nil {
-			t.Fatal(err)
-		}
-		_, err := s.Copy(imap.UIDSetNum(1), "Archive")
-		wantErr(t, err, errCrossOwner)
-		wantErr(t, s.Move(nil, imap.UIDSetNum(1), "Archive"), errCrossOwner)
-		if msgs, _ := e.ms.ListMessages(pollTestUser, "Archive"); len(msgs) != 0 {
-			t.Fatal("a cross-owner copy wrote a message")
-		}
-	})
-	t.Run("own to shared", func(t *testing.T) {
-		e := newSharedEnv(t)
-		e.grant("Work", "lrswipkxtea")
-		s := e.session()
-		if _, err := s.Select("Archive", nil); err != nil {
-			t.Fatal(err)
-		}
-		_, err := s.Copy(imap.UIDSetNum(1), shWork)
-		wantErr(t, err, errCrossOwner)
-		wantErr(t, s.Move(nil, imap.UIDSetNum(1), shWork), errCrossOwner)
-	})
-	t.Run("one owner to another", func(t *testing.T) {
-		e := newSharedEnv(t)
-		e.grant("Work", "lrswipkxtea")
-		if err := e.ms.CreateMailbox(shOther, "Box"); err != nil {
-			t.Fatal(err)
-		}
-		oid, err := e.ms.EnsureMailboxID(shOther, "Box")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := e.acl.SetGrantKeepState(store.ACLKindMailbox, shOther, oid, store.GranteeUser(pollTestUser), "", "lrswipkxtea", store.GrantStateAccepted, shOther, time.Now()); err != nil {
-			t.Fatal(err)
-		}
-		s := e.session()
-		if _, err := s.Select(shWork, nil); err != nil {
-			t.Fatal(err)
-		}
-		_, err = s.Copy(imap.UIDSetNum(1), "Other Users/own2@example.test/Box")
-		wantErr(t, err, errCrossOwner)
-	})
 }
 
 // ---- over the wire ---------------------------------------------------------
@@ -799,8 +736,8 @@ func TestSharedSelectReadOnlyOverTheWire(t *testing.T) {
 			if data.NumMessages != 2 {
 				t.Fatalf("NumMessages = %d, want 2", data.NumMessages)
 			}
-			if slices.Contains(data.PermanentFlags, `\*`) {
-				t.Fatalf("shared folder offers arbitrary keywords: %v", data.PermanentFlags)
+			if got := slices.Contains(data.PermanentFlags, `\*`); got != strings.Contains(tt.rights, "w") {
+				t.Fatalf("PERMANENTFLAGS %v for rights %s: arbitrary keywords offered = %v", data.PermanentFlags, tt.rights, got)
 			}
 		})
 	}

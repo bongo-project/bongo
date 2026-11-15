@@ -959,6 +959,15 @@ Found while building v0.16.0 (2026-11-15):
   `/admin/groups` answers "group not found" and "Forbidden" untranslated.
 - **Generated mail to a restricted group** has no test and no
   restricted-specific message; it is listed as not reached.
+- **Cross-owner transfer costs.** `TransferMessages` maps guids to uids by
+  listing the whole destination folder once per 500-item chunk; a scan from
+  the pre-apply uid_next would do. A transfer that fails after some chunks
+  applied answers NO with no COPYUID or EXPUNGE for the applied chunks.
+- **CardDAV reads a book twice** on GET (resolveBook then Get); the MKCOL
+  fallback name and the default book's CardDAV name are fixed English.
+- **Release note for v0.16.0:** CardDAV now requires the path's user segment
+  to be the authenticated user's id; a client configured by hand with an
+  email address there gets 404.
 
 Audit corrections found while writing this PRD (2026-10-26):
 

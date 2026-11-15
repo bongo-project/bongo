@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/mail"
@@ -419,6 +420,56 @@ func TestOfferGrant(t *testing.T) {
 	e.grant(t, store.ACLKindMailbox, res, "bob", "", "lr", store.GrantStatePending, old)
 	if _, err := offer("lr", true, e.now); err != errShareRefused {
 		t.Errorf("expired on full = %v, want refused", err)
+	}
+}
+
+// A grantee delegating with the administer right is recorded as the one who
+// made the share; an offer that names nobody is the owner's.
+func TestOfferGrantRecordsGrantedBy(t *testing.T) {
+	e := newSharesEnv(t)
+	res := e.folder(t, "Projects")
+	base := GrantOffer{
+		Kind: store.ACLKindMailbox, Owner: "alice", OwnerEmail: "alice@d.test", Resource: res,
+		ResourceName: "Projects", Recipient: "bob@d.test", Rights: "lr", Host: "mail.d.test", Now: e.now,
+	}
+	tests := []struct {
+		name      string
+		grantedBy string
+		group     bool
+		want      string
+	}{
+		{"user default is the owner", "", false, "alice"},
+		{"user delegated", "carol", false, "carol"},
+		{"group default is the owner", "", true, "alice"},
+		{"group delegated", "carol", true, "carol"},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := base
+			o.GrantedBy = tt.grantedBy
+			grantee := fmt.Sprintf("bob%d", i)
+			var principal string
+			if tt.group {
+				o.GroupID = grantee
+				principal = store.GranteeGroup(grantee)
+				if err := OfferGroupGrant(e.acl, o); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				o.GranteeID = grantee
+				principal = store.GranteeUser(grantee)
+				if err := OfferGrant(e.acl, e.inviter, o); err != nil {
+					t.Fatal(err)
+				}
+			}
+			g, err := e.acl.GetGrant(store.ACLKindMailbox, "alice", res, principal)
+			if err != nil || g == nil {
+				t.Fatalf("grant = %v, %v", g, err)
+			}
+			if g.GrantedBy != tt.want {
+				t.Errorf("GrantedBy = %q, want %q", g.GrantedBy, tt.want)
+			}
+		})
 	}
 }
 

@@ -113,3 +113,46 @@ func TestGALSearchIncludesGroupsOfTheCallersDomain(t *testing.T) {
 		t.Errorf("sales@example.com listed %d times", count)
 	}
 }
+
+// A contact filed in a book other than the default is found by compose
+// autocomplete: the contact search index is book-agnostic, and this goes
+// through the real Bleve index and GALSearch, not a stub.
+func TestGALSearchFindsContactsInANonDefaultBook(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir() + "/pebble")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	sm, err := store.NewSearchManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sm.Close() })
+
+	applier := &directApplierTags{ps: ps}
+	books := store.NewAddressBookStore(ps, applier)
+	contacts := store.NewContactStore(ps, applier)
+	contacts.SetSearch(sm)
+	book, err := books.Create("u-caller", store.NewAddressBookID(), "Clients", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := contacts.Create("u-caller", &bongov1.Contact{
+		DisplayName: "Zebulon Quimby", Email: "zeb@clients.test", AddressbookId: book.Id,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ch := NewComposeHandler(ps, nil, nil, sm, nil, discardLogger())
+	req := httptest.NewRequest("GET", "/api/gal?q=zebulon", nil)
+	req = req.WithContext(middleware.WithUserContext(req.Context(), "u-caller", "amy@example.com"))
+	rr := httptest.NewRecorder()
+	ch.GALSearch(rr, req)
+	var got []map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("%v: %s", err, rr.Body.String())
+	}
+	if len(got) != 1 || got[0]["email"] != "zeb@clients.test" || got[0]["source"] != "contacts" {
+		t.Fatalf("autocomplete = %v, want the contact in the Clients book", got)
+	}
+}

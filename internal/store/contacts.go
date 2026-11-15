@@ -166,6 +166,51 @@ func (s *ContactStore) List(userID string, offset, limit int) ([]*bongov1.Contac
 	return contacts, total, nil
 }
 
+// ContactBook returns the address book a contact is filed in: the default
+// book's id when addressbook_id is empty.
+func ContactBook(c *bongov1.Contact) string {
+	if c.AddressbookId == "" {
+		return DefaultAddressBookID
+	}
+	return c.AddressbookId
+}
+
+// ListByBook returns the contacts filed in one address book, paginated like
+// List. Both "" and "default" mean the default book. It is a prefix scan of the
+// user's contacts: books are not indexed, and the total counts only the book.
+func (s *ContactStore) ListByBook(userID, bookID string, offset, limit int) ([]*bongov1.Contact, int, error) {
+	if bookID == "" {
+		bookID = DefaultAddressBookID
+	}
+	iter, err := s.pebble.PrefixScan(contactPrefix(userID))
+	if err != nil {
+		return nil, 0, fmt.Errorf("scanning contacts: %w", err)
+	}
+	defer iter.Close()
+
+	var contacts []*bongov1.Contact
+	total := 0
+	for iter.Next() {
+		val, err := iter.Value()
+		if err != nil {
+			continue
+		}
+		var contact bongov1.Contact
+		if err := proto.Unmarshal(val, &contact); err != nil {
+			continue
+		}
+		if ContactBook(&contact) != bookID {
+			continue
+		}
+		total++
+		if total <= offset || (limit > 0 && len(contacts) >= limit) {
+			continue
+		}
+		contacts = append(contacts, &contact)
+	}
+	return contacts, total, nil
+}
+
 // FindByEmail returns the first contact matching the given email address.
 func (s *ContactStore) FindByEmail(userID, email string) (*bongov1.Contact, error) {
 	iter, err := s.pebble.PrefixScan(contactPrefix(userID))

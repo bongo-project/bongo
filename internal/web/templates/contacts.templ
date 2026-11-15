@@ -2,6 +2,7 @@ package templates
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -12,6 +13,42 @@ import (
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
+
+// ContactBooksView is what the contacts pages need to show address books.
+// Enabled is false when the server has no book store, and the pages then look as
+// they did before books existed.
+type ContactBooksView struct {
+	Enabled bool
+	Books   []*bongov1.AddressBook
+	// Active is "" for all contacts, "default" for the default book, or a book id.
+	Active string
+	// ActiveBook is the record of Active when it is one of the user's own books.
+	ActiveBook *bongov1.AddressBook
+}
+
+// contactsBaseURL is the list URL pagination links extend.
+func contactsBaseURL(v ContactBooksView) string {
+	if v.Active == "" {
+		return "/contacts"
+	}
+	return "/contacts?book=" + url.QueryEscape(v.Active)
+}
+
+// contactsBookHref is the list URL of one book.
+func contactsBookHref(id string) string {
+	return "/contacts?book=" + url.QueryEscape(id)
+}
+
+// contactsBookTitle is the page heading for the active book.
+func contactsBookTitle(ctx context.Context, v ContactBooksView) string {
+	switch {
+	case v.ActiveBook != nil:
+		return v.ActiveBook.Name
+	case v.Active == "default":
+		return t(ctx, "contacts.defaultBook")
+	}
+	return t(ctx, "contacts.contacts")
+}
 
 // contactExtraField is a labelled read-only value parsed from a contact's vCard
 // for display (the label is an i18n key).
@@ -267,20 +304,23 @@ func formatVCardAddress(a *vcard.Address) string {
 	return strings.Join(parts, ", ")
 }
 
-templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email string, flash string) {
+templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email string, flash string, books ContactBooksView) {
 	@LayoutWithContent(t(ctx, "contacts.contacts"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-			@ContactsSidebar()
+			@ContactsSidebar(books)
 		</aside>
 		<main class="content" id="main-content">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
 			<div class="page-head contacts-head">
-				<h1>{ t(ctx, "contacts.contacts") }</h1>
+				<h1>{ contactsBookTitle(ctx, books) }</h1>
 				<div class="spacer"></div>
 				<form class="import-form" method="post" action="/contacts/import" enctype="multipart/form-data" aria-label={ t(ctx, "contacts.importContacts") }>
 					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+					if books.Enabled && books.Active != "" {
+						<input type="hidden" name="addressbook" value={ books.Active }/>
+					}
 					<label class="tool-btn outline">
 						<span>{ t(ctx, "contacts.importVcard") }</span>
 						<input type="file" name="vcf" accept=".vcf" class="sr-only" aria-label={ t(ctx, "contacts.selectVcf") }/>
@@ -290,9 +330,34 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 				<a href="/contacts/export" class="tool-btn outline">{ t(ctx, "contacts.exportVcard") }</a>
 				<button type="button" class="tool-btn primary" data-contact-form-toggle="toggle">{ t(ctx, "contacts.newContact") }</button>
 			</div>
+			if books.ActiveBook != nil {
+				<div class="settings-card u-mt-1">
+					<div class="u-p-18">
+						<form method="post" action={ templ.SafeURL("/contacts/books/" + books.ActiveBook.Id + "/rename") } class="form-inline-actions">
+							<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+							<label>
+								<span class="settings-row-title">{ t(ctx, "contacts.bookName") }</span>
+								<input type="text" name="name" class="settings-input" value={ books.ActiveBook.Name } maxlength="100" required/>
+							</label>
+							<button type="submit" class="btn-secondary">{ t(ctx, "contacts.renameBook") }</button>
+						</form>
+						<form
+							method="post"
+							action={ templ.SafeURL("/contacts/books/" + books.ActiveBook.Id + "/delete") }
+							hx-post={ "/contacts/books/" + books.ActiveBook.Id + "/delete" }
+							hx-confirm={ t(ctx, "contacts.deleteBookConfirm") }
+							class="u-mt-075"
+						>
+							<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+							<button type="submit" class="btn-danger">{ t(ctx, "contacts.deleteBook") }</button>
+						</form>
+					</div>
+				</div>
+			}
 			<div id="create-form" hidden>
 				<div class="settings-card u-mt-1">
 					<form method="post" action="/contacts" class="u-p-18">
+						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 						<div class="form-grid-two">
 							<label>
 								<span class="settings-row-title">{ t(ctx, "contacts.name") }</span>
@@ -315,6 +380,17 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 							<span class="settings-row-title">{ t(ctx, "contacts.notes") }</span>
 							<textarea name="notes" rows="2" class="settings-input u-w-full"></textarea>
 						</label>
+						if books.Enabled {
+							<label class="u-mt-075 u-block">
+								<span class="settings-row-title">{ t(ctx, "contacts.bookLabel") }</span>
+								<select name="addressbook" class="settings-input u-w-full">
+									<option value="default" selected?={ books.Active == "" || books.Active == "default" }>{ t(ctx, "contacts.defaultBook") }</option>
+									for _, b := range books.Books {
+										<option value={ b.Id } selected?={ books.Active == b.Id }>{ b.Name }</option>
+									}
+								</select>
+							</label>
+						}
 						<div class="form-inline-actions">
 							<button type="submit" class="btn-send">{ t(ctx, "contacts.create") }</button>
 							<button type="button" class="btn-secondary" data-contact-form-toggle="hide">{ t(ctx, "contacts.cancel") }</button>
@@ -332,7 +408,7 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 								@ContactRow(c)
 							}
 						</div>
-						@Pagination(page, totalPages, "/contacts")
+						@Pagination(page, totalPages, contactsBaseURL(books))
 					</div>
 					<div class="contact-detail-pane" id="contact-detail">
 						<div class="detail-placeholder detail-placeholder-center">
@@ -368,10 +444,10 @@ templ ContactRow(c *bongov1.Contact) {
 	</a>
 }
 
-templ ContactDetailPage(c *bongov1.Contact, email string) {
+templ ContactDetailPage(c *bongov1.Contact, email string, books ContactBooksView) {
 	@LayoutWithContent(t(ctx, "contacts.contact"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-			@ContactsSidebar()
+			@ContactsSidebar(books)
 		</aside>
 		<main class="content" id="main-content">
 			<div class="toolbar">
@@ -593,19 +669,45 @@ templ contactCard(c *bongov1.Contact, editorOpen bool) {
 	</div>
 }
 
-templ ContactsSidebar() {
+templ ContactsSidebar(books ContactBooksView) {
 	<nav class="sidebar-scroll" aria-label={ t(ctx, "contacts.contactsNav") }>
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "nav.contacts") }</div>
 			<ul class="nav-list">
 				<li class="nav-item">
-					<a href="/contacts" class="active">
+					<a href="/contacts" class={ templ.KV("active", !books.Enabled || books.Active == "") }>
 						<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
 						<span>{ t(ctx, "nav.allContacts") }</span>
 					</a>
 				</li>
 			</ul>
 		</div>
+		if books.Enabled {
+			<div class="sidebar-group">
+				<div class="sidebar-label">{ t(ctx, "contacts.books") }</div>
+				<ul class="nav-list">
+					<li class="nav-item">
+						<a href={ templ.SafeURL(contactsBookHref("default")) } class={ templ.KV("active", books.Active == "default") }>
+							<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
+							<span>{ t(ctx, "contacts.defaultBook") }</span>
+						</a>
+					</li>
+					for _, b := range books.Books {
+						<li class="nav-item">
+							<a href={ templ.SafeURL(contactsBookHref(b.Id)) } class={ templ.KV("active", books.Active == b.Id) }>
+								<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
+								<span>{ b.Name }</span>
+							</a>
+						</li>
+					}
+				</ul>
+				<form method="post" action="/contacts/books" class="u-p-18">
+					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+					<input type="text" name="name" class="settings-input u-w-full" maxlength="100" required placeholder={ t(ctx, "contacts.bookName") } aria-label={ t(ctx, "contacts.newBook") }/>
+					<button type="submit" class="btn-secondary u-mt-075">{ t(ctx, "contacts.createBook") }</button>
+				</form>
+			</div>
+		}
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "contacts.navigation") }</div>
 			<ul class="nav-list">

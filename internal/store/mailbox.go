@@ -48,6 +48,10 @@ const (
 
 	mailboxSubscribePrefix = "/__mailbox_subscribe__/"
 
+	// mailboxTransferXPrefix copies or moves messages between mailboxes of two
+	// different owners in one batch (mailbox_transfer.go).
+	mailboxTransferXPrefix = "/__mailbox_xfer__/"
+
 	// mailboxAssignIDPrefix gives a mailbox its stable id and writes the
 	// lookup key in one batch.
 	mailboxAssignIDPrefix = "/__mailbox_assignid__/"
@@ -122,6 +126,13 @@ type MailboxCommandResult struct {
 	// Expunged lists messages that are no longer in their mailbox: the ones an
 	// EXPUNGE removed, and the source half of a move.
 	Expunged []MailboxMessageRef
+
+	// NewMails lists MailMeta records a cross-owner transfer wrote. They exist
+	// only so every node can feed the derived indexes and the blob syncer, as
+	// for a delivery. They are not announced: Arrivals already carry the
+	// notification, and announcing both would send a client two EXISTS for one
+	// message.
+	NewMails []*MailboxNewMail
 }
 
 // MailboxMessageRef names one message by its position in a mailbox. It carries
@@ -218,6 +229,7 @@ func IsMailboxSyntheticCommand(key []byte) bool {
 		strings.HasPrefix(keyStr, mailboxMovePrefix) ||
 		strings.HasPrefix(keyStr, mailboxRenamePrefix) ||
 		strings.HasPrefix(keyStr, mailboxSubscribePrefix) ||
+		strings.HasPrefix(keyStr, mailboxTransferXPrefix) ||
 		strings.HasPrefix(keyStr, mailboxAssignIDPrefix)
 }
 
@@ -241,6 +253,8 @@ func ApplyMailboxCommand(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCom
 		return nil, applyMailboxRename(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxSubscribePrefix):
 		return nil, applyMailboxSubscribe(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxTransferXPrefix):
+		return applyMailboxTransferX(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxAssignIDPrefix):
 		return nil, applyMailboxAssignID(ps, cmd)
 	default:
