@@ -55,6 +55,10 @@ func (f *fakeGroups) ExpandMembers(id string) (*bongov1.Group, []store.GroupMemb
 	return g, out, nil
 }
 
+// PostingAllowed lets everyone post: the policy itself is tested against the
+// real store in groups_posting_test.go.
+func (f *fakeGroups) PostingAllowed(*bongov1.Group, string) error { return nil }
+
 type groupEnv struct {
 	b      *Backend
 	groups *fakeGroups

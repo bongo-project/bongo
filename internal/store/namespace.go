@@ -43,6 +43,29 @@ func (n IMAPNamespaces) Reserves(name string) bool {
 	return reservesPrefix(name, n.OtherUsers) || reservesPrefix(name, n.Shared)
 }
 
+// IsOtherUsersName reports whether name lies in the other-users tree: it equals
+// the prefix or starts with it and a "/". The match is case-insensitive.
+func (n IMAPNamespaces) IsOtherUsersName(name string) bool {
+	return reservesPrefix(name, n.OtherUsers)
+}
+
+// SplitOtherUsers cuts a name of the form {prefix}/{address}/{folder} into its
+// address and folder. The address ends at the first "/", so an address that
+// itself contains one is unreachable by design. ok is false when the name is
+// outside the tree or any of the three segments is empty, which covers "//",
+// a trailing "/", the bare prefix and the bare address.
+func (n IMAPNamespaces) SplitOtherUsers(name string) (addr, folder string, ok bool) {
+	if !n.IsOtherUsersName(name) || len(name) <= len(n.OtherUsers)+1 {
+		return "", "", false
+	}
+	rest := name[len(n.OtherUsers)+1:]
+	addr, folder, found := strings.Cut(rest, "/")
+	if !found || addr == "" || folder == "" {
+		return "", "", false
+	}
+	return addr, folder, true
+}
+
 func reservesPrefix(name, prefix string) bool {
 	if prefix == "" {
 		return false

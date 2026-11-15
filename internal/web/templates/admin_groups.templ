@@ -1,0 +1,194 @@
+package templates
+
+import (
+	"context"
+	"strconv"
+)
+
+// GroupRow is one line of the admin group list.
+type GroupRow struct {
+	ID          string
+	Address     string
+	DisplayName string
+	Members     int
+	Policy      string
+}
+
+// GroupUserOption is one local user the member and owner pickers offer.
+type GroupUserOption struct {
+	ID     string
+	Email  string
+	Member bool
+	Owner  bool
+}
+
+// GroupForm is the data of the group create and edit form. ID is empty on
+// create; on edit the address and domain are fixed.
+type GroupForm struct {
+	ID          string
+	Domain      string
+	LocalPart   string // create only
+	Address     string // edit only
+	DisplayName string
+	Policy      string
+	Users       []GroupUserOption
+	// Domains is the choice offered when the create form has no domain yet.
+	Domains []string
+	// Error is a translated message shown above the form.
+	Error string
+}
+
+// groupPolicies are the posting policies in the order the form offers them.
+var groupPolicies = []string{"anyone", "domain", "members", "owners"}
+
+func groupPolicyLabel(ctx context.Context, policy string) string {
+	switch policy {
+	case "domain":
+		return t(ctx, "admin.groupPolicyDomain")
+	case "members":
+		return t(ctx, "admin.groupPolicyMembers")
+	case "owners":
+		return t(ctx, "admin.groupPolicyOwners")
+	}
+	return t(ctx, "admin.groupPolicyAnyone")
+}
+
+templ AdminGroupList(groups []GroupRow, email, flash, level string) {
+	@AdminLayout(t(ctx, "admin.groups"), email, "groups") {
+		<div class="admin-scroll">
+			if flash != "" {
+				@FlashMessage(flash, level)
+			}
+			@adminPageHead(t(ctx, "admin.groups"), t(ctx, "admin.groupsSubtitle"))
+			<p><a class="btn-primary" href="/admin/groups/new">{ t(ctx, "admin.groupNew") }</a></p>
+			<div class="card">
+				<div class="card-body flush">
+					<table class="admin-table data-table" aria-label={ t(ctx, "admin.groups") }>
+						<thead>
+							<tr>
+								<th scope="col">{ t(ctx, "admin.groupAddress") }</th>
+								<th scope="col">{ t(ctx, "admin.groupDisplayName") }</th>
+								<th scope="col">{ t(ctx, "admin.groupMembers") }</th>
+								<th scope="col">{ t(ctx, "admin.groupPolicy") }</th>
+								<th scope="col" class="u-width-100px">{ t(ctx, "common.actions") }</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, g := range groups {
+								<tr>
+									<td><a href={ templ.SafeURL("/admin/groups/" + g.ID) }><code class="u-font-088">{ g.Address }</code></a></td>
+									<td>{ g.DisplayName }</td>
+									<td>{ strconv.Itoa(g.Members) }</td>
+									<td>{ groupPolicyLabel(ctx, g.Policy) }</td>
+									<td>
+										<form method="post" action={ templ.SafeURL("/admin/groups/" + g.ID + "/delete") }>
+											<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+											<button type="submit" class="btn-flush">{ t(ctx, "common.delete") }</button>
+										</form>
+									</td>
+								</tr>
+							}
+							if len(groups) == 0 {
+								<tr><td colspan="5" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noGroups") }</td></tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+templ AdminGroupForm(f GroupForm, email string) {
+	@AdminLayout(groupFormTitle(ctx, f), email, "groups") {
+		<div class="admin-scroll">
+			@adminPageHead(groupFormTitle(ctx, f), t(ctx, "admin.groupsSubtitle"))
+			if f.Error != "" {
+				@FlashMessage(f.Error, "error")
+			}
+			if f.ID == "" && f.Domain == "" {
+				<div class="form-card">
+					<form method="get" action="/admin/groups/new" class="admin-inline-form u-flex-wrap">
+						<div class="u-flex-1 u-min-w-200">
+							<label for="group_domain_pick" class="admin-inline-label">{ t(ctx, "admin.groupDomain") }</label>
+							<select name="domain" id="group_domain_pick" required class="form-select u-m0">
+								for _, d := range f.Domains {
+									<option value={ d }>{ d }</option>
+								}
+							</select>
+						</div>
+						<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "admin.groupContinue") }</button>
+					</form>
+				</div>
+			} else {
+				<div class="form-card">
+					<form method="post" action={ templ.SafeURL(groupFormAction(f)) }>
+						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+						<input type="hidden" name="domain" value={ f.Domain }/>
+						if f.ID == "" {
+							<div class="form-group">
+								<label for="group_local" class="form-label">{ t(ctx, "admin.groupLocalPart") }</label>
+								<input type="text" name="local" id="group_local" value={ f.LocalPart } required maxlength="64" class="form-input"/>
+								<span class="meta">{ "@" + f.Domain }</span>
+							</div>
+						} else {
+							<div class="form-group">
+								<span class="form-label">{ t(ctx, "admin.groupAddress") }</span>
+								<code>{ f.Address }</code>
+							</div>
+						}
+						<div class="form-group">
+							<label for="group_display" class="form-label">{ t(ctx, "admin.groupDisplayName") }</label>
+							<input type="text" name="display_name" id="group_display" value={ f.DisplayName } maxlength="128" class="form-input"/>
+						</div>
+						<div class="form-group">
+							<label for="group_policy" class="form-label">{ t(ctx, "admin.groupPolicy") }</label>
+							<select name="posting_policy" id="group_policy" class="form-select">
+								for _, p := range groupPolicies {
+									<option value={ p } selected?={ p == f.Policy }>{ groupPolicyLabel(ctx, p) }</option>
+								}
+							</select>
+						</div>
+						<fieldset class="form-group">
+							<legend class="form-label">{ t(ctx, "admin.groupMembers") }</legend>
+							for _, u := range f.Users {
+								<label class="admin-inline-label">
+									<input type="checkbox" name="member" value={ u.ID } checked?={ u.Member } class="u-width-auto"/>
+									{ u.Email }
+								</label>
+							}
+							if len(f.Users) == 0 {
+								<span class="meta">{ t(ctx, "admin.groupNoUsers") }</span>
+							}
+						</fieldset>
+						<fieldset class="form-group">
+							<legend class="form-label">{ t(ctx, "admin.groupOwners") }</legend>
+							for _, u := range f.Users {
+								<label class="admin-inline-label">
+									<input type="checkbox" name="owner" value={ u.ID } checked?={ u.Owner } class="u-width-auto"/>
+									{ u.Email }
+								</label>
+							}
+						</fieldset>
+						<button type="submit" class="btn-primary">{ t(ctx, "common.save") }</button>
+						<a href="/admin/groups" class="btn-secondary">{ t(ctx, "common.cancel") }</a>
+					</form>
+				</div>
+			}
+		</div>
+	}
+}
+
+func groupFormTitle(ctx context.Context, f GroupForm) string {
+	if f.ID == "" {
+		return t(ctx, "admin.groupNew")
+	}
+	return t(ctx, "admin.groupEdit")
+}
+
+func groupFormAction(f GroupForm) string {
+	if f.ID == "" {
+		return "/admin/groups"
+	}
+	return "/admin/groups/" + f.ID
+}

@@ -51,6 +51,10 @@ type Server struct {
 	// namespaces is read the same way; nil means the defaults.
 	namespaces atomic.Pointer[store.IMAPNamespaces]
 
+	// acl resolves shared folders, read the same way. Nil means nothing under
+	// the other-users prefix resolves.
+	acl atomic.Pointer[store.ACLStore]
+
 	// newSession is the factory handed to go-imap; kept so tests can build a
 	// session exactly as an accepted connection would.
 	newSession func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error)
@@ -112,6 +116,7 @@ func NewServer(
 		}
 		sess := &session{
 			namespaces:  ns,
+			acl:         s.acl.Load(),
 			quota:       qc,
 			storage:     sg,
 			auth:        authenticator,
@@ -182,6 +187,13 @@ func (s *Server) SetStorageGate(g storageGate) {
 		return
 	}
 	s.storage.Store(&g)
+}
+
+// SetACLStore installs the grant store that shared folders are resolved
+// against. Without it nothing under the other-users prefix resolves. Like
+// SetQuotaChecker it applies to sessions created afterwards.
+func (s *Server) SetACLStore(a *store.ACLStore) {
+	s.acl.Store(a)
 }
 
 // SetNamespacePrefixes sets the NAMESPACE prefixes for other users' and shared

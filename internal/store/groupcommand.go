@@ -369,9 +369,17 @@ func PlanGroup(get func(key []byte) ([]byte, error), scan func(prefix []byte) ([
 		return sets, deletes, nil
 
 	case GroupOpDelete:
+		// The group's grants go in the same batch, so no grant outlives its
+		// group. The scan covers /aclrev/g:{id}/ only, bounded by the grant cap
+		// (50 per resource) times the resources shared with the group.
+		grantKeys, sErr := scan(aclGranteePrefix(GranteeGroup(p.ID)))
+		if sErr != nil {
+			return nil, nil, fmt.Errorf("scanning grants of group: %w", sErr)
+		}
+		deletes = append(deletes, forwardAndReverse(grantKeys)...)
 		old, lErr := loadGroup(get, p.ID)
 		if errors.Is(lErr, ErrGroupNotFound) {
-			return nil, nil, nil
+			return nil, deletes, nil
 		}
 		if lErr != nil {
 			return nil, nil, lErr

@@ -670,7 +670,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Group addresses expand into one local copy per member, delivered through
 	// the same spool as a direct local recipient. A group is never handed to
 	// the outbound queue.
-	expanded, gerr := h.expandGroups(userID, fromAddr, groupRecipients)
+	expanded, gerr := h.expandGroups(userID, groupRecipients)
 	switch {
 	case errors.Is(gerr, errGroupsUnavailable):
 		h.logger.Error("groups: cannot send to a group: group delivery not configured", "user", userID)
@@ -679,8 +679,15 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(gerr, errGroupEmpty):
 		composeError(w, r, "compose.errGroupEmpty", http.StatusBadRequest)
 		return
+	case isGroupRestricted(gerr):
+		// Refused whole, before any blob, Sent copy, send log or rate-limiter
+		// write, like a group that is gone: no other recipient gets the message.
+		// That keeps a retry with the same send ID refused too.
+		gr, _ := errors.AsType[*groupRestrictedError](gerr)
+		h.logger.Warn("groups: compose refused by posting policy", "group", gr.groupID, "user", userID)
+		http.Error(w, fmt.Sprintf(i18n.T(middleware.LocaleFromContext(r.Context()), "compose.errGroupRestricted"), gr.addr), http.StatusForbidden)
+		return
 	case gerr != nil:
-		// Includes a refusal by the posting policy.
 		h.logger.Warn("groups: expansion failed", "user", userID, "error", gerr)
 		composeError(w, r, "compose.errAddressForbidden", http.StatusForbidden)
 		return
@@ -1323,6 +1330,20 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		result = append(result, item)
+	}
+
+	// Groups are not in the GAL index, which is keyed by user id and rebuilt
+	// from profiles. They are matched here, on the caller's own domain only.
+	for _, g := range h.matchGroups(q, callerEmail, 10) {
+		lower := strings.ToLower(g.Address)
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		result = append(result, galJSON{
+			Email: g.Address, DisplayName: g.DisplayName, Source: "gal",
+			Kind: "group", Label: i18n.T(locale, "compose.groupLabel"),
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

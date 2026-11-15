@@ -156,6 +156,9 @@ var (
 	flashDomainQuotaSet              = flashKey{"quota-set"}
 	flashAliasCreated                = flashKey{"alias-created"}
 	flashAliasDeleted                = flashKey{"alias-deleted"}
+	flashGroupCreated                = flashKey{"group-created"}
+	flashGroupUpdated                = flashKey{"group-updated"}
+	flashGroupDeleted                = flashKey{"group-deleted"}
 	flashQueueFlushed                = flashKey{"queue-flushed"}
 	flashPolicy2FAUpdated            = flashKey{"policy-2fa-updated"}
 	flashAddressAdded                = flashKey{"address-added"}
@@ -268,6 +271,9 @@ var flashMessages = map[string]string{
 	flashDomainQuotaSet.id:              "flash.quotaSet",
 	flashAliasCreated.id:                "flash.aliasCreated",
 	flashAliasDeleted.id:                "flash.aliasDeleted",
+	flashGroupCreated.id:                "flash.groupCreated",
+	flashGroupUpdated.id:                "flash.groupUpdated",
+	flashGroupDeleted.id:                "flash.groupDeleted",
 	flashQueueFlushed.id:                "flash.queueFlushed",
 	flashPolicy2FAUpdated.id:            "flash.policy2faUpdated",
 	flashAddressAdded.id:                "flash.addressAdded",

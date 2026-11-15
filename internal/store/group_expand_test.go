@@ -113,9 +113,3 @@ func TestHeaderHasGroup(t *testing.T) {
 		})
 	}
 }
-
-func TestGroupPostingAllowedHook(t *testing.T) {
-	if err := GroupPostingAllowed(&bongov1.Group{}, "u1", "a@example.com"); err != nil {
-		t.Fatalf("hook = %v, want nil until the posting policy is enforced", err)
-	}
-}

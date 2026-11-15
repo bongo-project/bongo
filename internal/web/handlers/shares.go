@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/a-h/templ"
@@ -105,12 +106,43 @@ func (h *CalendarHandler) shareRows(held []store.HeldShare) []templates.PendingS
 		if label == "" {
 			label = g.Owner
 		}
-		rows = append(rows, templates.PendingShare{
+		row := templates.PendingShare{
 			Kind: g.Kind, Owner: g.Owner, OwnerLabel: label, Resource: g.Resource, ResourceName: name,
 			Level: g.Level, Rights: g.Rights,
-		})
+		}
+		if !g.Direct && len(g.ViaGroups) > 0 {
+			row.Via = h.groupLabels(g.ViaGroups)
+		}
+		rows = append(rows, row)
 	}
 	return rows
+}
+
+// groupAddress returns a group's address for display, or "" when it cannot be
+// read. It is a label, never an authorisation input.
+func (h *CalendarHandler) groupAddress(id string) string {
+	if h.groups == nil {
+		return ""
+	}
+	g, err := h.groups.GetGroup(id)
+	if err != nil {
+		return ""
+	}
+	return g.Address
+}
+
+// groupLabels joins the addresses of the groups, falling back to the id of one
+// that cannot be read so the row is never blank.
+func (h *CalendarHandler) groupLabels(ids []string) string {
+	labels := make([]string, 0, len(ids))
+	for _, id := range ids {
+		l := h.groupAddress(id)
+		if l == "" {
+			l = id
+		}
+		labels = append(labels, l)
+	}
+	return strings.Join(labels, ", ")
 }
 
 // withPendingCount puts the number of pending invitations on the context for

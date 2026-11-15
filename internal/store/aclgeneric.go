@@ -16,6 +16,16 @@ func (s *ACLStore) SetGrantKeepState(kind, owner, resource, grantee, level, righ
 	})
 }
 
+// SetGrant writes a grant of any kind and overwrites an existing one, state
+// included. A group grant is written this way, accepted: a group has no single
+// person to accept it. grantee is typed.
+func (s *ACLStore) SetGrant(kind, owner, resource, grantee, level, rights, state, grantedBy string, now time.Time) error {
+	return s.apply(ACLRequest{
+		Op: ACLOpSet, Kind: kind, Owner: owner, Resource: resource, Grantee: grantee,
+		Level: level, Rights: rights, State: state, GrantedBy: grantedBy, At: now.Unix(),
+	})
+}
+
 // AcceptGrant turns a pending grant of any kind into an accepted one. The FSM
 // decides: an absent, already accepted or expired grant is left alone.
 func (s *ACLStore) AcceptGrant(kind, owner, resource, grantee string, now time.Time) error {

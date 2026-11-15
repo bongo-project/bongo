@@ -2,7 +2,6 @@ package store
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -58,8 +57,8 @@ func TestBuildACLCommandPerKind(t *testing.T) {
 		{"mailbox with level", set(ACLKindMailbox, kindsMailboxID, GrantLevelRead, "lr"), false},
 		{"mailbox bad id", set(ACLKindMailbox, "INBOX", "", "lr"), false},
 		{"unknown kind", set("task", "c", GrantLevelRead, ""), false},
-		{"group grantee", ACLRequest{Op: ACLOpSet, Kind: ACLKindCalendar, Owner: "o", Resource: "c",
-			Grantee: GranteeGroup("g"), Level: GrantLevelRead, State: GrantStatePending}, false},
+		{"group grantee accepted", ACLRequest{Op: ACLOpSet, Kind: ACLKindCalendar, Owner: "o", Resource: "c",
+			Grantee: GranteeGroup("g"), Level: GrantLevelRead, State: GrantStatePending}, true},
 		{"untyped grantee", ACLRequest{Op: ACLOpRevoke, Kind: ACLKindCalendar, Owner: "o", Resource: "c", Grantee: "bob"}, false},
 		{"mailbox revoke bad id", ACLRequest{Op: ACLOpRevoke, Kind: ACLKindMailbox, Owner: "o", Resource: "x", Grantee: GranteeUser("b")}, false},
 	}
@@ -73,23 +72,34 @@ func TestBuildACLCommandPerKind(t *testing.T) {
 	}
 }
 
-// Every op refuses a group grantee, with the named error, both through the
-// builder and through hand-built payloads (the FSM backstop).
-func TestACLGroupGranteeRefusedOnEveryOp(t *testing.T) {
+// A group grantee is accepted on every op when its id has the group shape, and
+// refused when it does not, through the builder and through hand-built
+// payloads (the FSM backstop).
+func TestACLGroupGranteeShape(t *testing.T) {
 	for _, op := range []string{ACLOpSet, ACLOpAccept, ACLOpRevoke, ACLOpRevokeGrantee} {
-		t.Run(op, func(t *testing.T) {
-			_, err := BuildACLCommand(ACLRequest{Op: op, Kind: ACLKindCalendar, Owner: "o", Resource: "c",
-				Grantee: GranteeGroup("g"), Level: GrantLevelRead, State: GrantStatePending})
-			if !errors.Is(err, errGroupGranteesUnsupported) {
-				t.Errorf("builder err = %v", err)
-			}
-			raw, _ := json.Marshal(aclPayload{Op: op, Kind: ACLKindCalendar, Owner: "o", Resource: "c",
-				Grantee: "g:g", Level: GrantLevelRead, State: GrantStatePending})
-			cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: []byte(aclPrefix + op), Value: raw}
-			if _, _, err := PlanACL(noGet, noScan, cmd); !errors.Is(err, errGroupGranteesUnsupported) {
-				t.Errorf("PlanACL err = %v", err)
-			}
-		})
+		for _, tt := range []struct {
+			grantee string
+			ok      bool
+		}{
+			{GranteeGroup("g"), true},
+			{GranteeGroup("Bad/Id"), false},
+			{GranteeGroup(""), false},
+			{GranteeGroup("UPPER"), false},
+		} {
+			t.Run(op+"/"+tt.grantee, func(t *testing.T) {
+				_, err := BuildACLCommand(ACLRequest{Op: op, Kind: ACLKindCalendar, Owner: "o", Resource: "c",
+					Grantee: tt.grantee, Level: GrantLevelRead, State: GrantStatePending})
+				if (err == nil) != tt.ok {
+					t.Errorf("builder err = %v, want ok=%v", err, tt.ok)
+				}
+				raw, _ := json.Marshal(aclPayload{Op: op, Kind: ACLKindCalendar, Owner: "o", Resource: "c",
+					Grantee: tt.grantee, Level: GrantLevelRead, State: GrantStatePending})
+				cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: []byte(aclPrefix + op), Value: raw}
+				if _, _, err := PlanACL(noGet, noScan, cmd); (err == nil) != tt.ok {
+					t.Errorf("PlanACL err = %v, want ok=%v", err, tt.ok)
+				}
+			})
+		}
 	}
 }
 
@@ -348,6 +358,7 @@ func TestGrantOrphanedPerKind(t *testing.T) {
 	}
 	put("/user/o/profile")
 	put("/user/b/profile")
+	put("/system/group/staff")
 	e.create(t, "o", "Work")
 	id, err := e.ms.EnsureMailboxID("o", "Work")
 	if err != nil {
@@ -371,7 +382,8 @@ func TestGrantOrphanedPerKind(t *testing.T) {
 		{"addressbook grantee gone", GrantRef{Kind: ACLKindAddressBook, Owner: "o", Resource: kindsBookID, Principal: GranteeUser("x")}, true},
 		{"calendar healthy", GrantRef{Kind: ACLKindCalendar, Owner: "o", Resource: "cal", Principal: GranteeUser("b")}, false},
 		{"calendar gone", GrantRef{Kind: ACLKindCalendar, Owner: "o", Resource: "nope", Principal: GranteeUser("b")}, true},
-		{"group grant never orphaned", GrantRef{Kind: ACLKindMailbox, Owner: "o", Resource: id, Principal: GranteeGroup("staff")}, false},
+		{"group grant, group present", GrantRef{Kind: ACLKindMailbox, Owner: "o", Resource: id, Principal: GranteeGroup("staff")}, false},
+		{"group grant, group gone", GrantRef{Kind: ACLKindMailbox, Owner: "o", Resource: id, Principal: GranteeGroup("vanished")}, true},
 		{"group grant, owner gone", GrantRef{Kind: ACLKindAddressBook, Owner: "x", Resource: kindsBookID, Principal: GranteeGroup("staff")}, true},
 	}
 	for _, tt := range tests {

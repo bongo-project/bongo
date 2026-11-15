@@ -17,6 +17,7 @@ import (
 // *store.GroupStore is the production implementation.
 type GroupExpander interface {
 	ExpandMembers(groupID string) (*bongov1.Group, []store.GroupMember, error)
+	PostingAllowed(g *bongov1.Group, userID string) error
 }
 
 // SetGroups sets the expander used for RCPT to a group address. With none set
@@ -119,10 +120,17 @@ func (s *Session) rcptGroup(to string, gre *store.GroupRecipientError, dsn RcptD
 		s.logger.Error("groups: expansion failed", "to", to, "group", gre.GroupID, "error", err)
 		return smtpErr(451, 4, 3, 0, "Temporary local error, please try again later")
 	}
-	// Anyone may post today; the hook is where the posting policy lands.
-	if err := store.GroupPostingAllowed(g, s.postingUserID(), s.from); err != nil {
-		s.logger.Warn("groups: RCPT rejected: posting not allowed", "to", to, "group", g.Id, "error", err)
-		return smtpErr(550, 5, 7, 1, "Not allowed to post to this address")
+	// The policy is decided on the authenticated account alone: s.from and the
+	// From header are free to forge. It runs before the quota pass, the 552 and
+	// the fan-out peek, so an outsider learns nothing about member quota and a
+	// refusal spends no fan-out budget.
+	if perr := s.backend.groups.PostingAllowed(g, s.postingUserID()); perr != nil {
+		if errors.Is(perr, store.ErrGroupPostingRestricted) {
+			s.logger.Warn("groups: RCPT rejected: posting restricted", "group", g.Id, "user", s.postingUserID())
+			return smtpErr(550, 5, 7, 1, "Posting to this group is restricted")
+		}
+		s.logger.Error("groups: posting check failed", "group", g.Id, "user", s.postingUserID(), "error", perr)
+		return smtpErr(451, 4, 3, 0, "Temporary local error, please try again later")
 	}
 	if skipped := len(g.MemberIds) - len(members); skipped > 0 {
 		s.logger.Info("groups: skipped members with no live account", "group", g.Id, "skipped", skipped)

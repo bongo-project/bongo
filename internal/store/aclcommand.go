@@ -33,12 +33,6 @@ const MaxGrantsPerResource = 50
 // mailboxRightLetters are the RFC 4314 rights a mailbox grant may carry.
 const mailboxRightLetters = "lrswipkxtea"
 
-// groupGranteesEnabled gates g: grantees. Groups do not exist yet, so every
-// command naming one is refused; the groups change turns this on.
-const groupGranteesEnabled = false
-
-var errGroupGranteesUnsupported = errors.New("acl group grantees are not supported yet")
-
 // Calendar permission levels, weakest first. Read and write also satisfy a
 // freebusy requirement.
 const (
@@ -244,9 +238,10 @@ func validateACLPayload(p *aclPayload) error {
 	if !validACLKind(p.Kind) {
 		return fmt.Errorf("acl command has invalid kind %q", p.Kind)
 	}
-	// Refused on every op, revoke_grantee included, until groups exist.
-	if !groupGranteesEnabled && strings.HasPrefix(p.Grantee, "g:") {
-		return errGroupGranteesUnsupported
+	// Shape only: that the group exists is the caller's check, and the orphan
+	// sweep removes a grant whose group is gone.
+	if strings.HasPrefix(p.Grantee, "g:") && !groupIDPattern.MatchString(strings.TrimPrefix(p.Grantee, "g:")) {
+		return fmt.Errorf("acl command has malformed group grantee")
 	}
 	need := func(name, v string) error {
 		if v == "" {
@@ -826,29 +821,39 @@ func (s *ACLStore) HasCalendarAccess(owner, grantee, minLevel string) (bool, err
 	if owner == "" || grantee == "" || !ok {
 		return false, nil
 	}
-	keys, err := s.pebble.scanKeys(aclGranteeKindOwnerPrefix(ACLKindCalendar, owner, GranteeUser(grantee)))
+	principals := []string{GranteeUser(grantee)}
+	gids, err := s.userGroupIDs(grantee)
 	if err != nil {
-		return false, fmt.Errorf("scanning grants held: %w", err)
+		return false, err
 	}
-	for _, k := range keys {
-		ref, ok := parseACLKey(string(k))
-		if !ok || ref.Owner != owner || ref.Principal != GranteeUser(grantee) {
-			continue
-		}
-		g, err := s.GetGrant(ref.Kind, ref.Owner, ref.Resource, ref.Principal)
+	for _, gid := range gids {
+		principals = append(principals, GranteeGroup(gid))
+	}
+	for _, principal := range principals {
+		keys, err := s.pebble.scanKeys(aclGranteeKindOwnerPrefix(ACLKindCalendar, owner, principal))
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("scanning grants held: %w", err)
 		}
-		if g == nil || g.State != GrantStateAccepted || calendarLevelRank[g.Level] < need {
-			continue
-		}
-		if _, err := s.pebble.Get(calendarKey(ref.Owner, ref.Resource)); err != nil {
-			if errors.Is(err, ErrNotFound) {
+		for _, k := range keys {
+			ref, ok := parseACLKey(string(k))
+			if !ok || ref.Owner != owner || ref.Principal != principal {
 				continue
 			}
-			return false, fmt.Errorf("reading calendar for grant: %w", err)
+			g, err := s.GetGrant(ref.Kind, ref.Owner, ref.Resource, ref.Principal)
+			if err != nil {
+				return false, err
+			}
+			if g == nil || g.State != GrantStateAccepted || calendarLevelRank[g.Level] < need {
+				continue
+			}
+			if _, err := s.pebble.Get(calendarKey(ref.Owner, ref.Resource)); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					continue
+				}
+				return false, fmt.Errorf("reading calendar for grant: %w", err)
+			}
+			return true, nil
 		}
-		return true, nil
 	}
 	return false, nil
 }
@@ -869,8 +874,8 @@ func (s *ACLStore) ListGrantRefs() ([]GrantRef, error) {
 }
 
 // GrantOrphaned reports whether the grant's owner profile, resource or grantee
-// profile is gone. The grantee is probed only for a user grant: a group grant
-// is never orphaned here. The resource is probed per kind: a calendar by its
+// profile is gone. A user grantee is probed by its profile and a group grantee
+// by its group record. The resource is probed per kind: a calendar by its
 // key, a mailbox by its id key and the mailbox that carries it; an address book
 // is not probed until address books exist. Only ErrNotFound counts as gone;
 // any other read error is returned so the caller keeps the grant.
@@ -878,6 +883,9 @@ func (s *ACLStore) GrantOrphaned(ref GrantRef) (bool, error) {
 	probes := [][]byte{[]byte("/user/" + ref.Owner + "/profile")}
 	if uid, ok := ref.UserID(); ok {
 		probes = append(probes, []byte("/user/"+uid+"/profile"))
+	}
+	if typ, gid, ok := splitGrantee(ref.Principal); ok && typ == "g" {
+		probes = append(probes, GroupKey(gid))
 	}
 	if ref.Kind == ACLKindCalendar {
 		probes = append(probes, calendarKey(ref.Owner, ref.Resource))
