@@ -16,11 +16,11 @@ import (
 // requested item must be set even for an empty mailbox. QUOTA=RES-STORAGE
 // makes clients entitled to ask. It scans the mailbox only when one of them is
 // requested, so a plain STATUS costs nothing extra.
-func (s *session) statusSizes(data *imap.StatusData, mailbox string, options *imap.StatusOptions) error {
+func (s *session) statusSizes(data *imap.StatusData, owner, mailbox string, options *imap.StatusOptions) error {
 	if !options.NumDeleted && !options.DeletedStorage && !options.Size {
 		return nil
 	}
-	msgs, err := s.mailboxes.ListMessages(s.userID, mailbox)
+	msgs, err := s.mailboxes.ListMessages(owner, mailbox)
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func (s *session) statusSizes(data *imap.StatusData, mailbox string, options *im
 		if !needSize {
 			continue
 		}
-		size, err := s.mailSize(msg.MailGuid)
+		size, err := s.mailSize(owner, msg.MailGuid)
 		if err != nil {
 			return err
 		}
@@ -59,8 +59,8 @@ func (s *session) statusSizes(data *imap.StatusData, mailbox string, options *im
 
 // mailSize returns the stored raw size of a message, 0 when its record is gone
 // or unreadable.
-func (s *session) mailSize(guid string) (int64, error) {
-	data, err := s.pebble.Get([]byte("/user/" + s.userID + "/mail/" + guid))
+func (s *session) mailSize(owner, guid string) (int64, error) {
+	data, err := s.pebble.Get([]byte("/user/" + owner + "/mail/" + guid))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return 0, nil

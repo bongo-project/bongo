@@ -40,6 +40,9 @@ func (a *grantApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) e
 	if store.IsACLSyntheticCommand(cmd.Key) {
 		return store.ApplyACLCommand(a.ps, cmd)
 	}
+	if store.IsGroupSyntheticCommand(cmd.Key) {
+		return store.ApplyGroupCommand(a.ps, cmd)
+	}
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
 		return a.ps.Set(cmd.Key, cmd.Value)

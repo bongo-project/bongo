@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -522,6 +523,9 @@ func TestBuildBodyStructureIsWritableAsExtended(t *testing.T) {
 type imapDirectApplier struct {
 	store     *store.PebbleStore
 	mailboxes *store.MailboxStore
+	// groupMu serialises group commands as the FSM does; stored literally or
+	// applied concurrently they would let group tests pass vacuously.
+	groupMu sync.Mutex
 }
 
 func (a *imapDirectApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
@@ -535,6 +539,12 @@ func (a *imapDirectApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Durati
 	// leave the grant behind and a revoke assertion would pass vacuously.
 	if cmd.Op == bongov1.Op_OP_PUT && store.IsACLSyntheticCommand(cmd.Key) {
 		return store.ApplyACLCommand(a.store, cmd)
+	}
+
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsGroupSyntheticCommand(cmd.Key) {
+		a.groupMu.Lock()
+		defer a.groupMu.Unlock()
+		return store.ApplyGroupCommand(a.store, cmd)
 	}
 
 	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {

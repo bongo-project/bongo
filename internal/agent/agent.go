@@ -1433,6 +1433,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/aliases", adminH.ListAliases)
 		r.Post("/admin/aliases", adminH.CreateAlias)
 		r.Post("/admin/aliases/{address}/delete", adminH.DeleteAlias)
+		if a.Groups != nil {
+			groupsH := handlers.NewAdminGroupsHandler(a.Groups, a.Store, a.Metadata, a.logger)
+			r.Get("/admin/groups", groupsH.List)
+			r.Get("/admin/groups/new", groupsH.NewForm)
+			r.Post("/admin/groups", groupsH.Create)
+			r.Get("/admin/groups/{id}", groupsH.EditForm)
+			r.Post("/admin/groups/{id}", groupsH.Update)
+			r.Post("/admin/groups/{id}/delete", groupsH.Delete)
+		}
 		r.Get("/admin/queue", adminH.QueueDashboard)
 		r.Post("/admin/queue/{id}/retry", adminH.RetryMessage)
 		r.Post("/admin/queue/{id}/drop", adminH.DropMessage)
@@ -1644,6 +1653,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			calendarH.SetShareResolver(sharedResolver)
 			calendarH.SetACL(a.ACL)
+			if a.Groups != nil {
+				calendarH.SetGroups(a.Groups)
+			}
 			if a.Mailboxes != nil {
 				calendarH.SetMailboxes(a.Mailboxes)
 			}
@@ -2286,6 +2298,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.IMAP.SetQuotaChecker(a.DomainQuota)
 		}
 		a.IMAP.SetStorageGate(a.storageGate())
+		a.IMAP.SetACLStore(a.ACL)
 		a.IMAP.SetConnectionLimits(a.Config.IMAP.MaxConnections, a.Config.IMAP.MaxConnectionsPerIP)
 		a.IMAP.SetNamespacePrefixes(a.Config.IMAP.OtherUsersPrefix, a.Config.IMAP.SharedPrefix)
 		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg, a.Config.IMAP.ProxyProtocol, a.proxyTrust); err != nil {
@@ -4209,8 +4222,8 @@ func (a *Agent) runCalendarGrantsMigration(ctx context.Context, interval time.Du
 // resource or grantee profile is gone. It is the backstop for the best-effort
 // revokes on user and mailbox delete, which can fail, and for the window
 // between a calendar's revoke and its delete. A mailbox is probed through its
-// id lookup key. Address-book resources are not probed yet, and g: grants are
-// left to the groups work.
+// id lookup key. Address-book resources are not probed yet. A g: grant is
+// orphaned when its group record is gone.
 //
 // A grant must be seen orphaned on two consecutive passes, and only
 // store.ErrNotFound counts as gone: any other read error keeps the grant. The

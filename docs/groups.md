@@ -28,8 +28,32 @@ ordinary local copy.
 - Delivery reports: `NOTIFY=SUCCESS` and `DELAY` are not passed on to members, so
   one request does not produce a report per member. The original recipient in a
   report is the group address.
-- Anyone may post to a group for now. A posting policy is enforced in a later
-  release.
+- Posting policy decides who may send to a group:
+
+  | Policy | Who may post |
+  |---|---|
+  | `anyone` (default) | everyone, including mail from the internet |
+  | `domain` | signed-in users whose primary address is in the group's domain |
+  | `members` | members and owners |
+  | `owners` | owners only |
+
+  The decision is made on the signed-in account, never on the `From` header, a
+  send-as address or the envelope sender, all of which can be forged. For
+  `domain`, the account's primary address must be in the group's own domain:
+  aliases, send-as addresses and alias domains do not count.
+  Mail from the internet (port 25) is never signed in, so any policy other than
+  `anyone` refuses it at `RCPT` with `550 5.7.1 Posting to this group is
+  restricted`. This tells an outsider that the address is a restricted group.
+  Authenticated submission gets the same answer. Web compose refuses the whole
+  send with an error naming the group, and sends to no one, including the other
+  recipients, the same as for a group that is gone. A forwarding rule, or mail
+  relayed through the outbound queue to a restricted group, returns over port 25
+  unsigned, so it is refused and bounces. Mail the server generates for an
+  account (calendar invitations, iMIP replies and share invitations) is expanded
+  in process and checked against the posting policy as the triggering account, so
+  it reaches a restricted group only when that account may post there; a refused
+  group is listed among the recipients the message did not reach and nothing
+  bounces.
 
 ## Fan-out limit
 
@@ -57,4 +81,35 @@ nodes the effective limit is N times the value. The setting is read at startup.
 
 Group delivery adds no stored data and no Raft command. A node on an older
 binary answers `550` for a group address, so mail to a group bounces if it reaches
-such a node. Upgrade every node before creating a group.
+such a node. Upgrade every node before creating a group, and before setting a
+posting policy other than `anyone`: an earlier binary does not enforce it.
+
+Sharing with a group writes a grant naming the group, and deleting a group
+removes its grants in the same step. A node on an older binary refuses or
+misstores such a grant and keeps the grants of a deleted group, so upgrade every
+node before anyone shares with a group.
+
+## Managing groups
+
+Global administrators and domain administrators manage groups under
+**Admin > Groups** (`/admin/groups`). A domain administrator sees and edits only
+the groups of the domains they administer. A group has an address, a display
+name, members, owners and a posting policy. Members and owners must be existing
+users (not rooms or equipment) whose address is on the group's own domain, and
+the address of a group cannot be changed once created. An address already used by
+an account, alias or group is refused.
+
+Groups of your own domain appear in the address autocomplete when you write a
+message, with their display name. Users of other domains do not see them.
+
+## Sharing with a group
+
+A calendar can be shared with a group of the owner's own domain by entering the
+group address in the sharing form. Every member then has the permission given.
+Unlike a share with a person, a share with a group is active at once: there is no
+invitation to accept, because the group, kept by the administrators, is what the
+owner trusts. Members see the calendar under **Shared with you** as "via" the
+group and cannot leave it themselves; the owner removes the group from the
+sharing list. When a member holds a permission of their own as well, the stronger
+of the two applies. Taking someone out of the group ends their access straight
+away, and deleting a group removes every share made with it.

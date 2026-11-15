@@ -184,9 +184,11 @@ func TestQuotaWithQuota(t *testing.T) {
 	if _, status := raw.execLines("GETQUOTAROOT Missing"); !strings.HasPrefix(status, "NO [NONEXISTENT]") {
 		t.Errorf("GETQUOTAROOT Missing = %s, want NO [NONEXISTENT]", status)
 	}
-	lines, status = raw.execLines(`GETQUOTAROOT "Other Users/bob/INBOX"`)
-	if !strings.HasPrefix(status, "OK") || len(lines) != 1 || lines[0] != `* QUOTAROOT "Other Users/bob/INBOX"` {
-		t.Errorf("GETQUOTAROOT other user = %q, %s; want no root", lines, status)
+	// A name under the other-users prefix goes through the shared-folder
+	// resolver: one that does not resolve is a missing mailbox, and one that
+	// does carries no root (TestSharedQuotaRootUsesResolver).
+	if _, status := raw.execLines(`GETQUOTAROOT "Other Users/bob/INBOX"`); !strings.HasPrefix(status, "NO [NONEXISTENT]") {
+		t.Errorf("GETQUOTAROOT other user = %s, want NO [NONEXISTENT]", status)
 	}
 	if _, status := raw.execLines("SETQUOTA user (STORAGE 10)"); !strings.HasPrefix(status, "NO [NOPERM]") {
 		t.Errorf("SETQUOTA = %s, want NO [NOPERM]", status)

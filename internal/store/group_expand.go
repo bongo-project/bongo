@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/textproto"
+	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
@@ -63,13 +64,68 @@ func (s *GroupStore) ExpandMembers(groupID string) (*bongov1.Group, []GroupMembe
 	return g, members, nil
 }
 
-// GroupPostingAllowed is the hook every expansion site calls before it
-// delivers to a group. Posting policy is enforced by the posting-policy work;
-// currently anyone may post, so it returns nil. senderUserID is empty for mail
-// from outside.
-func GroupPostingAllowed(g *bongov1.Group, senderUserID, envelopeFrom string) error {
-	_, _, _ = g, senderUserID, envelopeFrom
-	return nil
+// ErrGroupPostingRestricted is returned when the group's posting policy does
+// not let the sender post. Read failures are wrapped errors that do not match
+// it, so a caller can tell a refusal from a fault.
+var ErrGroupPostingRestricted = errors.New("posting to this group is restricted")
+
+// postingAllowed decides the posting policy for an authenticated account.
+// userID is empty for mail from outside (MX), which no policy but "anyone"
+// admits. userEmail is the account's primary address; only "domain" reads it.
+// An unknown policy refuses, so a value written by a newer binary fails closed.
+func postingAllowed(g *bongov1.Group, userID, userEmail string) error {
+	switch g.PostingPolicy {
+	case "", GroupPolicyAnyone:
+		return nil
+	case GroupPolicyOwners:
+		if userID != "" && slices.Contains(g.OwnerIds, userID) {
+			return nil
+		}
+	case GroupPolicyMembers:
+		if userID != "" && (slices.Contains(g.MemberIds, userID) || slices.Contains(g.OwnerIds, userID)) {
+			return nil
+		}
+	case GroupPolicyDomain:
+		if userID == "" || g.Domain == "" {
+			break
+		}
+		_, domain, ok := strings.Cut(NormaliseAddress(userEmail), "@")
+		if ok && domain != "" && domain == strings.ToLower(g.Domain) {
+			return nil
+		}
+	}
+	return ErrGroupPostingRestricted
+}
+
+// PostingAllowed is the check every expansion site makes before it delivers to
+// a group. userID is the authenticated account, or "" for mail from outside.
+// It takes no address on purpose: the envelope sender and the From header cost
+// nothing to forge, so neither may decide.
+//
+// "domain" means the account's primary address is in the group's domain.
+// Send-as addresses, aliases and alias domains do not count. A missing profile
+// is a refusal; a read fault is a wrapped error that is not
+// ErrGroupPostingRestricted.
+func (s *GroupStore) PostingAllowed(g *bongov1.Group, userID string) error {
+	email := ""
+	if g.PostingPolicy == GroupPolicyDomain && userID != "" {
+		data, err := s.pebble.Get([]byte("/user/" + userID + "/profile"))
+		if errors.Is(err, ErrNotFound) || (err == nil && len(data) == 0) {
+			return ErrGroupPostingRestricted
+		}
+		if err != nil {
+			return fmt.Errorf("reading profile %s: %w", userID, err)
+		}
+		var p bongov1.UserProfile
+		if err := proto.Unmarshal(data, &p); err != nil {
+			return fmt.Errorf("decoding profile %s: %w", userID, err)
+		}
+		if p.Disabled {
+			return ErrGroupPostingRestricted
+		}
+		email = p.Email
+	}
+	return postingAllowed(g, userID, email)
 }
 
 // HeaderHasGroup reports whether h carries GroupLoopHeader naming groupID, in

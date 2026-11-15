@@ -68,6 +68,10 @@ type session struct {
 	// Nil in unit tests that build a bare session.
 	conn *imapserver.Conn
 
+	// acl resolves shared folders. Nil means nothing under the other-users
+	// prefix resolves.
+	acl *store.ACLStore
+
 	userID string
 	// epoch is the account's credential fingerprint recorded at LOGIN; a
 	// mismatch later means the password was reset.
@@ -77,6 +81,17 @@ type session struct {
 	appPassword     string
 	selectedMailbox string
 	readOnly        bool
+
+	// The selected folder as the store knows it. selectedMailbox stays the
+	// name the client used; for a shared folder these say whose namespace it
+	// lives in and what the user may do there, as of the last command. Read the
+	// owner and name through sel(), never from selectedMailbox.
+	selShared bool
+	selOwner  string
+	selName   string
+	selID     string
+	selAddr   string
+	selRights string
 
 	// Cached message list for sequence number mapping. This is the SERVER's
 	// view. Any handler may refresh it at will, and most do, because a command
@@ -226,10 +241,8 @@ func mailboxLookupError(name string, err error, notFound *imap.Error) error {
 // requireMailbox returns nil when the named mailbox exists, and otherwise the
 // error mailboxLookupError chooses.
 func (s *session) requireMailbox(name string, notFound *imap.Error) error {
-	if _, err := s.mailboxes.GetMailbox(s.userID, name); err != nil {
-		return mailboxLookupError(name, err, notFound)
-	}
-	return nil
+	_, err := s.resolveMailbox(name, notFound)
+	return err
 }
 
 // requireNoMailbox returns errAlreadyExists when the named mailbox exists
@@ -240,7 +253,7 @@ func (s *session) requireNoMailbox(name string) error {
 	if strings.EqualFold(name, "INBOX") {
 		return errAlreadyExists
 	}
-	_, err := s.mailboxes.GetMailbox(s.userID, name)
+	_, err := s.resolve(name)
 	switch {
 	case err == nil:
 		return errAlreadyExists
@@ -374,16 +387,27 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 	if err := s.checkAccount(); err != nil {
 		return nil, err
 	}
-	meta, err := s.mailboxes.GetMailbox(s.userID, mailbox)
+	rm, err := s.resolveMailbox(mailbox, errNoSuchMailbox)
 	if err != nil {
-		return nil, mailboxLookupError(mailbox, err, errNoSuchMailbox)
+		return nil, err
 	}
+	if err := requireRight(rm, "r"); err != nil {
+		return nil, err
+	}
+	meta := rm.meta
 
 	s.selectedMailbox = mailbox
+	s.selectShared(rm)
 	s.readOnly = options != nil && options.ReadOnly
+	// Without w, s and t nothing in a shared folder can change for this user,
+	// so it opens read-only even where the client asked for read-write.
+	sharedReadOnly := rm.shared && !rm.has("w") && !rm.has("s") && !rm.has("t")
+	if sharedReadOnly {
+		s.readOnly = true
+	}
 
 	// Load messages for sequence number mapping.
-	s.cachedMsgs, err = s.mailboxes.ListMessages(s.userID, mailbox)
+	s.cachedMsgs, err = s.mailboxes.ListMessages(rm.owner, rm.name)
 	if err != nil {
 		return nil, fmt.Errorf("listing messages: %w", err)
 	}
@@ -392,7 +416,7 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 	// so it is also where the client's view is (re)established.
 	s.setReported(s.cachedMsgs)
 
-	total, recent, unseen, err := s.mailboxes.CountMessages(s.userID, mailbox)
+	total, recent, unseen, err := s.mailboxes.CountMessages(rm.owner, rm.name)
 	if err != nil {
 		return nil, fmt.Errorf("counting messages: %w", err)
 	}
@@ -404,11 +428,30 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 
 	_ = unseen
 
+	permanent := append(flags, `\*`)
+	if rm.shared {
+		// A shared folder offers only the flags the rights allow, and never
+		// arbitrary keywords.
+		permanent = nil
+		if !s.readOnly {
+			if rm.has("s") {
+				permanent = append(permanent, imap.FlagSeen)
+			}
+			if rm.has("w") {
+				permanent = append(permanent, imap.FlagAnswered, imap.FlagFlagged, imap.FlagDraft)
+			}
+			if rm.has("t") {
+				permanent = append(permanent, imap.FlagDeleted)
+			}
+		}
+	}
+
 	return &imap.SelectData{
 		NumMessages:    total,
 		NumRecent:      recent,
 		Flags:          flags,
-		PermanentFlags: append(flags, `\*`),
+		PermanentFlags: permanent,
+		ReadOnly:       sharedReadOnly,
 		UIDValidity:    meta.UidValidity,
 		UIDNext:        imap.UID(meta.UidNext),
 	}, nil
@@ -419,6 +462,11 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 	defer observability.IMAPCreate.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
+	}
+	// Names under the other-users prefix are folders of other accounts; they
+	// are created only beneath a folder the user holds k on.
+	if s.ns().IsOtherUsersName(mailbox) {
+		return s.createShared(mailbox)
 	}
 	// Before any store read: the check consults configuration only, so it
 	// reveals nothing about existing mailboxes.
@@ -455,10 +503,19 @@ func (s *session) Delete(mailbox string) error {
 		return err
 	}
 	// RFC 3501 section 6.3.4: deleting a nonexistent mailbox is an error.
-	if err := s.requireMailbox(mailbox, errNoSuchMailbox); err != nil {
+	rm, err := s.resolveMailbox(mailbox, errNoSuchMailbox)
+	if err != nil {
 		return err
 	}
-	if err := s.mailboxes.DeleteMailbox(s.userID, mailbox); err != nil {
+	if rm.shared {
+		if err := requireRight(rm, "x"); err != nil {
+			return err
+		}
+		if strings.EqualFold(rm.name, "INBOX") {
+			return errNoPermission
+		}
+	}
+	if err := s.mailboxes.DeleteMailbox(rm.owner, rm.name); err != nil {
 		if errors.Is(err, store.ErrMailboxGrantsNotRevoked) {
 			// The mailbox is gone; answering NO would invite a retry that fails as
 			// a nonexistent mailbox. The orphan sweep removes the grants.
@@ -478,8 +535,14 @@ func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) e
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
-	// Only the new name is checked: an existing folder that already carries a
-	// reserved name stays usable and can be renamed away.
+	// A source under the other-users prefix is resolved first, so the answer
+	// for a folder the user cannot see does not depend on the new name.
+	if s.ns().IsOtherUsersName(mailbox) {
+		return s.renameShared(mailbox, newName)
+	}
+	// Only the new name is checked. A legacy personal folder that already sits
+	// under the other-users prefix routes to the shared resolver above, so it
+	// cannot be renamed away over IMAP.
 	if s.namespaces.Reserves(newName) {
 		return errReservedMailboxName
 	}
@@ -505,6 +568,17 @@ func (s *session) Subscribe(mailbox string) error {
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
+	if s.ns().IsOtherUsersName(mailbox) {
+		rm, err := s.resolveMailbox(mailbox, errNoSuchMailbox)
+		if err != nil {
+			return err
+		}
+		if err := s.acl.SetSharedSubscription(s.userID, rm.owner, rm.id, true); err != nil {
+			s.logger.Warn("imap: subscribe failed", "mailbox", mailbox, "user", s.userID, "error", err)
+			return err
+		}
+		return nil
+	}
 	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, true); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			// Client error, not worth a WARN.
@@ -522,6 +596,21 @@ func (s *session) Unsubscribe(mailbox string) error {
 	defer observability.IMAPUnsubscribe.Since(time.Now())
 	if err := s.checkAccount(); err != nil {
 		return err
+	}
+	if s.ns().IsOtherUsersName(mailbox) {
+		// A name that does not resolve has no subscription left to remove.
+		rm, err := s.resolve(mailbox)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("looking up mailbox %q: %w", mailbox, err)
+		}
+		if err := s.acl.SetSharedSubscription(s.userID, rm.owner, rm.id, false); err != nil {
+			s.logger.Warn("imap: unsubscribe failed", "mailbox", mailbox, "user", s.userID, "error", err)
+			return err
+		}
+		return nil
 	}
 	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, false); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -630,7 +719,14 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 		}
 	}
 
-	return nil
+	return s.listShared(w.WriteList, func(name string) bool {
+		for _, pattern := range patterns {
+			if imapserver.MatchList(name, '/', ref, pattern) {
+				return true
+			}
+		}
+		return false
+	}, options)
 }
 
 // Status returns mailbox status data.
@@ -643,9 +739,25 @@ func (s *session) Status(mailbox string, options *imap.StatusOptions) (*imap.Sta
 }
 
 func (s *session) statusForMailbox(mailbox string, options *imap.StatusOptions) (*imap.StatusData, error) {
-	meta, err := s.mailboxes.GetMailbox(s.userID, mailbox)
+	rm, err := s.resolveMailbox(mailbox, errNoSuchMailbox)
 	if err != nil {
-		return nil, mailboxLookupError(mailbox, err, errNoSuchMailbox)
+		return nil, err
+	}
+	if err := requireRight(rm, "r"); err != nil {
+		return nil, err
+	}
+	return s.statusFor(rm, mailbox, options)
+}
+
+// statusFor builds STATUS data for a folder the caller has resolved and holds
+// the read right on.
+func (s *session) statusFor(rm resolvedMailbox, mailbox string, options *imap.StatusOptions) (*imap.StatusData, error) {
+	meta := rm.meta
+	if meta == nil {
+		var err error
+		if meta, err = s.mailboxes.GetMailbox(rm.owner, rm.name); err != nil {
+			return nil, mailboxLookupError(mailbox, err, errNoSuchMailbox)
+		}
 	}
 
 	data := &imap.StatusData{
@@ -653,7 +765,7 @@ func (s *session) statusForMailbox(mailbox string, options *imap.StatusOptions) 
 	}
 
 	if options.NumMessages || options.NumUnseen || options.NumRecent {
-		total, recent, unseen, err := s.mailboxes.CountMessages(s.userID, mailbox)
+		total, recent, unseen, err := s.mailboxes.CountMessages(rm.owner, rm.name)
 		if err != nil {
 			return nil, err
 		}
@@ -675,7 +787,7 @@ func (s *session) statusForMailbox(mailbox string, options *imap.StatusOptions) 
 		data.UIDNext = imap.UID(meta.UidNext)
 	}
 
-	if err := s.statusSizes(data, mailbox, options); err != nil {
+	if err := s.statusSizes(data, rm.owner, rm.name, options); err != nil {
 		return nil, err
 	}
 
@@ -704,7 +816,13 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	}
 	// RFC 3501 section 6.3.11: the server MUST NOT create the mailbox
 	// implicitly. Checked before any blob work; go-imap drains the literal.
-	if err := s.requireMailbox(mailbox, errTryCreate); err != nil {
+	dest, err := s.resolveMailbox(mailbox, errTryCreate)
+	if err != nil {
+		return nil, err
+	}
+	// A shared folder is written into the owner's account: the owner's quota
+	// is checked, and the message is delivered and indexed under the owner.
+	if err := requireRight(dest, "i"); err != nil {
 		return nil, err
 	}
 
@@ -726,7 +844,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	// overshoot. A checker error fails open, as SMTP does. Nothing here blocks EXPUNGE, COPY or MOVE,
 	// so a user over quota can still free space.
 	if s.quota != nil {
-		over, qErr := s.quota.RecipientWouldExceedQuota(s.userID, r.Size())
+		over, qErr := s.quota.RecipientWouldExceedQuota(dest.owner, r.Size())
 		if qErr != nil {
 			s.logger.Warn("imap: quota check error (fail open)", "mailbox", mailbox, "user", s.userID, "error", qErr)
 		} else if over {
@@ -797,6 +915,12 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	var flags uint32
 	if options != nil {
 		flags = imapFlagsToUint32(options.Flags)
+		if dest.shared {
+			// RFC 4314: the server ignores flags the user may not set. Keywords
+			// are never stored here (imapFlagsToUint32 drops them), so only the
+			// system flags need masking, each by its own right.
+			flags = maskSharedAppendFlags(flags, dest)
+		}
 	}
 
 	// Generate GUID and store MailMeta.
@@ -840,7 +964,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		},
 		Attachments: attachmentRefs,
 	}
-	uid, err := s.mailboxes.DeliverMessage(s.userID, mailbox, meta, flags)
+	uid, err := s.mailboxes.DeliverMessage(dest.owner, dest.name, meta, flags)
 	if err != nil {
 		s.logger.Warn("imap: append failed", "mailbox", mailbox, "user", s.userID, "guid", guid, "error", err)
 		return nil, fmt.Errorf("delivering to mailbox: %w", err)
@@ -854,7 +978,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		if envelope != nil {
 			body = envelope.Text
 		}
-		if err := s.search.IndexMail(s.userID, guid, subject, headerFrom, toAddrs, body, internalDate.Unix(), false, nil); err != nil {
+		if err := s.search.IndexMail(dest.owner, guid, subject, headerFrom, toAddrs, body, internalDate.Unix(), false, nil); err != nil {
 			s.logger.Warn("imap: search index failed on append", "guid", guid, "error", err)
 		}
 	}
@@ -865,7 +989,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	// nobody on any other node.
 
 	// Get mailbox UIDValidity.
-	mbMeta, _ := s.mailboxes.GetMailbox(s.userID, mailbox)
+	mbMeta, _ := s.mailboxes.GetMailbox(dest.owner, dest.name)
 	validity := uint32(0)
 	if mbMeta != nil {
 		validity = mbMeta.UidValidity
@@ -909,6 +1033,12 @@ func (s *session) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
 		}
 		return err
 	}
+	// Losing a shared folder (or failing to re-read it) is reported by the
+	// next command, not here: a Poll error would end the connection. Nothing
+	// of the folder is sent.
+	if err := s.checkSelected(); err != nil {
+		return nil
+	}
 	return s.pollUpdates(w, allowExpunge)
 }
 
@@ -919,7 +1049,8 @@ func (s *session) pollUpdates(w updateWriter, allowExpunge bool) error {
 		return nil
 	}
 
-	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+	owner, name := s.sel()
+	msgs, err := s.mailboxes.ListMessages(owner, name)
 	if err != nil {
 		return fmt.Errorf("polling mailbox %q: %w", s.selectedMailbox, err)
 	}
@@ -986,6 +1117,9 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 		return err
 	}
 	// A long IDLE sends no commands, so revocation is noticed on a timer.
+	if err := s.checkSelected(); err != nil {
+		return err
+	}
 	recheck := time.NewTicker(idleRecheckInterval)
 	defer recheck.Stop()
 
@@ -998,11 +1132,15 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 				if err := s.checkAccount(); err != nil {
 					return err
 				}
+				if err := s.checkSelected(); err != nil {
+					return err
+				}
 			}
 		}
 	}
 
-	ch := s.notifier.Subscribe(s.userID, s.selectedMailbox)
+	owner, name := s.sel()
+	ch := s.notifier.Subscribe(owner, name)
 	defer s.notifier.Unsubscribe(ch)
 
 	for {
@@ -1013,6 +1151,9 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 			if err := s.checkAccount(); err != nil {
 				return err
 			}
+			if err := s.checkSelected(); err != nil {
+				return err
+			}
 		case notif, ok := <-ch:
 			if !ok {
 				return nil
@@ -1020,7 +1161,8 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 			switch notif.Type {
 			case NotifNewMail:
 				// Refresh cached messages to get accurate count.
-				msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+				owner, name := s.sel()
+				msgs, err := s.mailboxes.ListMessages(owner, name)
 				if err == nil {
 					s.cachedMsgs = msgs
 					// The EXISTS below tells the client about these, so the
@@ -1061,7 +1203,8 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 					continue
 				}
 				// Fetch the message to include tag-derived keywords in the flags response.
-				updated, _ := s.mailboxes.GetMessage(s.userID, s.selectedMailbox, notif.UID)
+				owner, name := s.sel()
+				updated, _ := s.mailboxes.GetMessage(owner, name, notif.UID)
 				var imapFlags []imap.Flag
 				if updated != nil {
 					imapFlags = messageToIMAPFlags(updated.Flags, updated.Tags)
@@ -1083,6 +1226,7 @@ func (s *session) Unselect() error {
 		return err
 	}
 	s.selectedMailbox = ""
+	s.selShared, s.selOwner, s.selName, s.selID, s.selAddr, s.selRights = false, "", "", "", "", ""
 	s.cachedMsgs = nil
 	s.reportedUIDs = nil
 	return nil
@@ -1094,10 +1238,28 @@ func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error 
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
+	// go-imap's CLOSE calls Expunge with a zero ExpungeWriter (and never when
+	// the folder is read-only). CLOSE must always succeed, so a shared folder
+	// whose grant was revoked, downgraded or lost its e right expunges nothing
+	// and answers OK; EXPUNGE and UID EXPUNGE are refused in those cases.
+	isClose := w != nil && *w == (imapserver.ExpungeWriter{})
+	if err := s.checkSelected(); err != nil {
+		if isClose && s.selShared {
+			return nil
+		}
+		return err
+	}
 	if s.readOnly {
 		return errMailboxReadOnly
 	}
-	expunged, err := s.mailboxes.Expunge(s.userID, s.selectedMailbox)
+	if !s.selHas("e") {
+		if isClose {
+			return nil
+		}
+		return errNoPermission
+	}
+	owner, name := s.sel()
+	expunged, err := s.mailboxes.Expunge(owner, name)
 	if err != nil {
 		return err
 	}
@@ -1135,8 +1297,13 @@ func (s *session) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria,
 		return nil, fmt.Errorf("no mailbox selected")
 	}
 
+	if err := s.checkSelected(); err != nil {
+		return nil, err
+	}
+
 	// Refresh cached messages.
-	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+	owner, name := s.sel()
+	msgs, err := s.mailboxes.ListMessages(owner, name)
 	if err != nil {
 		return nil, err
 	}
@@ -1146,7 +1313,7 @@ func (s *session) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria,
 	var bleveGUIDs map[string]struct{}
 	usedBleve := false
 	if s.search != nil && hasTextCriteria(criteria) {
-		bleveGUIDs, err = searchBleve(s.search, s.userID, criteria)
+		bleveGUIDs, err = searchBleve(s.search, owner, criteria)
 		if err != nil {
 			s.logger.Warn("imap: bleve search failed, falling back to in-memory", "error", err)
 		} else {
@@ -1205,8 +1372,13 @@ func (s *session) Fetch(w *imapserver.FetchWriter, numSet imap.NumSet, options *
 		return fmt.Errorf("no mailbox selected")
 	}
 
+	if err := s.checkSelected(); err != nil {
+		return err
+	}
+
 	// Refresh cached messages.
-	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+	owner, name := s.sel()
+	msgs, err := s.mailboxes.ListMessages(owner, name)
 	if err != nil {
 		return err
 	}
@@ -1253,7 +1425,8 @@ func (s *session) fetchMessage(w *imapserver.FetchWriter, seqNum uint32, msg *bo
 
 	if needContent {
 		var err error
-		mailMeta, rawMsg, err = s.loadMailContent(msg.MailGuid)
+		owner, _ := s.sel()
+		mailMeta, rawMsg, err = s.loadMailContent(owner, msg.MailGuid)
 		if err != nil {
 			s.logger.Warn("imap: failed to load mail content", "guid", msg.MailGuid, "error", err)
 			return respW.Close()
@@ -1289,9 +1462,11 @@ func (s *session) fetchMessage(w *imapserver.FetchWriter, seqNum uint32, msg *bo
 			return err
 		}
 
-		// Set \Seen flag if not PEEK and not read-only.
-		if !section.Peek && !s.readOnly {
-			if err := s.mailboxes.AddFlags(s.userID, s.selectedMailbox, msg.Uid, store.FlagSeen); err != nil {
+		// Set \Seen flag if not PEEK and not read-only. On a shared folder it
+		// is the owner's flag, and is set only for a user holding the s right.
+		if !section.Peek && !s.readOnly && s.selHas("s") {
+			owner, name := s.sel()
+			if err := s.mailboxes.AddFlags(owner, name, msg.Uid, store.FlagSeen); err != nil {
 				s.logger.Warn("imap: failed to set seen flag", "uid", msg.Uid, "error", err)
 			}
 		}
@@ -1300,9 +1475,9 @@ func (s *session) fetchMessage(w *imapserver.FetchWriter, seqNum uint32, msg *bo
 	return respW.Close()
 }
 
-func (s *session) loadMailContent(guid string) (*bongov1.MailMeta, []byte, error) {
-	// Read mail metadata from Pebble.
-	key := fmt.Sprintf("/user/%s/mail/%s", s.userID, guid)
+func (s *session) loadMailContent(owner, guid string) (*bongov1.MailMeta, []byte, error) {
+	// Read mail metadata from Pebble, from the namespace that owns the message.
+	key := fmt.Sprintf("/user/%s/mail/%s", owner, guid)
 	data, err := s.pebble.Get([]byte(key))
 	if err != nil {
 		return nil, nil, fmt.Errorf("mail meta not found: %w", err)
@@ -1631,20 +1806,48 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 	if s.selectedMailbox == "" {
 		return fmt.Errorf("no mailbox selected")
 	}
+	if err := s.checkSelected(); err != nil {
+		return err
+	}
 	if s.readOnly {
 		return errMailboxReadOnly
 	}
 
+	// Separate standard system flags from custom $keyword flags.
+	stdFlags, keywords := separateFlags(flags.Flags)
+	flagBits := imapFlagsToUint32(stdFlags)
+	// The messages on a shared folder are the owner's, and so are their
+	// keywords (tags). Until keyword changes there become the owner's tags,
+	// they are refused, and FLAGS (replace) leaves the owner's tags alone.
+	if s.selShared && len(keywords) > 0 {
+		return errSharedKeywords
+	}
+
 	// Refresh cache.
-	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+	owner, name := s.sel()
+	msgs, err := s.mailboxes.ListMessages(owner, name)
 	if err != nil {
 		return err
 	}
 	s.cachedMsgs = msgs
 
-	// Separate standard system flags from custom $keyword flags.
-	stdFlags, keywords := separateFlags(flags.Flags)
-	flagBits := imapFlagsToUint32(stdFlags)
+	// Check every right before the first write, so a refusal changes nothing.
+	// \Seen needs s, \Deleted needs t and every other flag needs w. A replace
+	// needs the rights of the flags it changes on each message.
+	if s.selShared {
+		for seqNum, msg := range msgs {
+			if !numSetContains(numSet, uint32(seqNum+1), imap.UID(msg.Uid)) {
+				continue
+			}
+			changed := flagBits
+			if flags.Op == imap.StoreFlagsSet {
+				changed = (msg.Flags ^ flagBits) & (store.FlagSeen | store.FlagAnswered | store.FlagFlagged | store.FlagDeleted | store.FlagDraft)
+			}
+			if !s.selHas(storeNeeds(changed)) {
+				return errNoPermission
+			}
+		}
+	}
 
 	var updatedUIDs []uint32
 	for seqNum, msg := range msgs {
@@ -1659,11 +1862,11 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 		if flagBits != 0 || flags.Op == imap.StoreFlagsSet {
 			switch flags.Op {
 			case imap.StoreFlagsSet:
-				err = s.mailboxes.SetFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
+				err = s.mailboxes.SetFlags(owner, name, msg.Uid, flagBits)
 			case imap.StoreFlagsAdd:
-				err = s.mailboxes.AddFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
+				err = s.mailboxes.AddFlags(owner, name, msg.Uid, flagBits)
 			case imap.StoreFlagsDel:
-				err = s.mailboxes.RemoveFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
+				err = s.mailboxes.RemoveFlags(owner, name, msg.Uid, flagBits)
 			}
 			if err != nil {
 				return err
@@ -1671,7 +1874,7 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 		}
 
 		// Apply keyword (tag) changes.
-		if len(keywords) > 0 || flags.Op == imap.StoreFlagsSet {
+		if !s.selShared && (len(keywords) > 0 || flags.Op == imap.StoreFlagsSet) {
 			if err := s.applyKeywords(msg.MailGuid, msg.Uid, flags.Op, keywords); err != nil {
 				s.logger.Warn("imap: keyword update failed", "guid", msg.MailGuid, "error", err)
 				// Non-fatal: continue with other messages and standard flags.
@@ -1682,7 +1885,7 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 
 		// Send updated flags back (unless SILENT).
 		if !flags.Silent {
-			updated, _ := s.mailboxes.GetMessage(s.userID, s.selectedMailbox, msg.Uid)
+			updated, _ := s.mailboxes.GetMessage(owner, name, msg.Uid)
 			if updated != nil {
 				respW := w.CreateMessage(seqNum)
 				respW.WriteUID(uid)
@@ -1703,7 +1906,13 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 
 // applyKeywords applies keyword (tag) changes to MailMeta and syncs the
 // denormalised MailboxMessage.Tags field plus search indexes.
+//
+// It only ever works on the session user's own mailbox: tags are per user, and
+// every s.userID below is that user's. Callers refuse shared folders first.
 func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsOp, keywords []string) error {
+	if s.selShared {
+		return errSharedKeywords
+	}
 	// Load MailMeta from Pebble.
 	key := fmt.Sprintf("/user/%s/mail/%s", s.userID, mailGUID)
 	data, err := s.pebble.Get([]byte(key))
@@ -1797,11 +2006,19 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 	if s.selectedMailbox == "" {
 		return nil, fmt.Errorf("no mailbox selected")
 	}
-	if err := s.requireMailbox(dest, errTryCreate); err != nil {
+	if err := s.checkSelected(); err != nil {
+		return nil, err
+	}
+	srcOwner, srcName := s.sel()
+	dst, err := s.resolveMailbox(dest, errTryCreate)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkTransfer(dst, srcOwner, ""); err != nil {
 		return nil, err
 	}
 
-	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+	msgs, err := s.mailboxes.ListMessages(srcOwner, srcName)
 	if err != nil {
 		return nil, err
 	}
@@ -1818,7 +2035,7 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 			continue
 		}
 
-		if err := s.mailboxes.CopyMessage(s.userID, s.selectedMailbox, msg.Uid, dest); err != nil {
+		if err := s.mailboxes.CopyMessage(srcOwner, srcName, msg.Uid, dst.name); err != nil {
 			return nil, err
 		}
 
@@ -1826,13 +2043,13 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 		copyCount++
 
 		// Get the UID assigned in the dest mailbox.
-		dstMeta, _ := s.mailboxes.GetMailbox(s.userID, dest)
+		dstMeta, _ := s.mailboxes.GetMailbox(dst.owner, dst.name)
 		if dstMeta != nil {
 			dstUIDs.AddNum(imap.UID(dstMeta.UidNext - 1))
 		}
 	}
 
-	dstMeta, _ := s.mailboxes.GetMailbox(s.userID, dest)
+	dstMeta, _ := s.mailboxes.GetMailbox(dst.owner, dst.name)
 	validity := uint32(0)
 	if dstMeta != nil {
 		validity = dstMeta.UidValidity
@@ -1861,14 +2078,23 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 	// MOVE deletes from the source (RFC 6851), so a read-only source forbids
 	// it. COPY deliberately has no such check: it only writes to dest and
 	// leaves the selected mailbox untouched, which EXAMINE permits.
+	if err := s.checkSelected(); err != nil {
+		return err
+	}
 	if s.readOnly {
 		return errMailboxReadOnly
 	}
-	if err := s.requireMailbox(dest, errTryCreate); err != nil {
+	srcOwner, srcName := s.sel()
+	dst, err := s.resolveMailbox(dest, errTryCreate)
+	if err != nil {
+		return err
+	}
+	// MOVE removes from the source, so it needs t and e there as well.
+	if err := s.checkTransfer(dst, srcOwner, "te"); err != nil {
 		return err
 	}
 
-	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+	msgs, err := s.mailboxes.ListMessages(srcOwner, srcName)
 	if err != nil {
 		return err
 	}
@@ -1886,12 +2112,12 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 			continue
 		}
 
-		if err := s.mailboxes.MoveMessage(s.userID, s.selectedMailbox, msg.Uid, dest); err != nil {
+		if err := s.mailboxes.MoveMessage(srcOwner, srcName, msg.Uid, dst.name); err != nil {
 			return err
 		}
 
 		srcUIDs.AddNum(uid)
-		dstMeta, _ := s.mailboxes.GetMailbox(s.userID, dest)
+		dstMeta, _ := s.mailboxes.GetMailbox(dst.owner, dst.name)
 		if dstMeta != nil {
 			dstUIDs.AddNum(imap.UID(dstMeta.UidNext - 1))
 		}
@@ -1899,7 +2125,7 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 		movedUIDs = append(movedUIDs, msg.Uid)
 	}
 
-	dstMeta, _ := s.mailboxes.GetMailbox(s.userID, dest)
+	dstMeta, _ := s.mailboxes.GetMailbox(dst.owner, dst.name)
 	validity := uint32(0)
 	if dstMeta != nil {
 		validity = dstMeta.UidValidity
@@ -1931,7 +2157,7 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 	}
 
 	// Refresh cache.
-	s.cachedMsgs, _ = s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+	s.cachedMsgs, _ = s.mailboxes.ListMessages(srcOwner, srcName)
 
 	return nil
 }
@@ -1961,7 +2187,8 @@ func (s *session) matchesCriteria(msg *bongov1.MailboxMessage, criteria *imap.Se
 
 	// Header/body text search requires loading the message content.
 	if len(criteria.Header) > 0 || len(criteria.Body) > 0 || len(criteria.Text) > 0 {
-		_, rawMsg, err := s.loadMailContent(msg.MailGuid)
+		owner, _ := s.sel()
+		_, rawMsg, err := s.loadMailContent(owner, msg.MailGuid)
 		if err != nil || rawMsg == nil {
 			return false
 		}
@@ -2154,4 +2381,20 @@ func hasFlag(flags uint32, flag imap.Flag) bool {
 		return flags&store.FlagDraft != 0
 	}
 	return false
+}
+
+// maskSharedAppendFlags keeps only the system flags the grantee may set on the
+// owner's folder: \Seen needs s, \Deleted needs t, and the rest need w.
+func maskSharedAppendFlags(flags uint32, dest resolvedMailbox) uint32 {
+	allowed := uint32(0)
+	if dest.has("s") {
+		allowed |= store.FlagSeen
+	}
+	if dest.has("t") {
+		allowed |= store.FlagDeleted
+	}
+	if dest.has("w") {
+		allowed |= store.FlagAnswered | store.FlagFlagged | store.FlagDraft
+	}
+	return flags & allowed
 }

@@ -233,3 +233,8 @@ func readOnlyEventFromCtx(ctx context.Context) bool {
 	v, _ := ctx.Value(readOnlyEventKey{}).(bool)
 	return v
 }
+
+// shareViaLabel says which groups a joined share comes from.
+func shareViaLabel(ctx context.Context, row PendingShare) string {
+	return fmt.Sprintf(t(ctx, "share.viaGroup"), row.Via)
+}

@@ -69,6 +69,14 @@ func (s *session) GetQuotaRoot(mailbox string) ([]imap.QuotaData, error) {
 	if err := s.checkAccount(); err != nil {
 		return nil, err
 	}
+	// A shared folder goes through the resolver: not found without the lookup
+	// right, and no root with it, so another account's figures are never shown.
+	if s.ns().IsOtherUsersName(mailbox) {
+		if _, err := s.resolveMailbox(mailbox, errNoSuchMailbox); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
 	if s.namespaces.OrDefaults().Reserves(mailbox) {
 		return nil, nil
 	}

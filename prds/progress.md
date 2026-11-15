@@ -1871,3 +1871,14 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Follow-ups to PRD 8.2: share log component name; /shares unauthenticated and DeleteUser cascade wiring tests; group member liveness checked twice.
 - PATTERN: [review] A de-duplication added for a new path (group members) must not change the old path (direct recipients); test the old behaviour explicitly, including subaddresses and DSN parameters.
 - PATTERN: [store] Read-then-act on a name can act on a renamed object; re-resolve by the stable id before acting on what the read found.
+
+## 2026-11-15: Phase 39 batch 4 (39.11, 39.12, 39.13)
+
+- Advisor plans: 39.11 and 39.12 PROCEED, 39.13 REVISE (applied in the worker brief: COPY and MOVE only within one owner, CLOSE without `e` succeeds, NO [NOPERM] only for a holder of `l`, a folder created with `k` inherits the parent's grants). All three reviews MINOR.
+- Patches: 39.11 and 39.12 conflicted in CLAUDE.md, docs/groups.md and compose_groups.go (both sides kept); 39.13 applied cleanly on top.
+- Orchestrator fix at merge: IMAP's MailboxRights read only the user's own grant, as 39.13 was built in parallel with group grantees; it now delegates to EffectiveGrant.
+- One fixer agent for the review items: APPEND to a shared folder masks flags by right, CLOSE succeeds after a revoke, a `k` CREATE copies only accepted grants, group mailbox grant tests (store and IMAP), the vacuous posting-policy From test, compose refusal log names the group, docs on generated mail, CLAUDE.md states the accepted group-grant design plainly.
+- Follow-ups to PRD 8.2: UID EXPUNGE ignores its UID set (pre-existing); IMAP shared-folder edges; ListGrantsHeld cost and shares-page hints; generated mail to a restricted group.
+- PATTERN: [workflow] Tasks built in parallel against a single resolver hook (MailboxRights awaiting EffectiveGrant) must be joined at merge; grep for the "later task widens this" note in every worker report.
+- PATTERN: [review] A refusal test that asserts only "not success" passes when an earlier unrelated check refuses; assert the specific refusal text.
+- PATTERN: [imap] RFC 4314 ignores flags the user may not set on APPEND; a rights check on STORE alone leaves APPEND as a bypass.

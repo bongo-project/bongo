@@ -448,11 +448,16 @@ func (h *CalendarHandler) CalendarSettings(w http.ResponseWriter, r *http.Reques
 				return
 			}
 			for _, g := range grants {
-				label := h.acl.UserEmail(g.Grantee)
-				if label == "" {
-					label = g.Grantee
+				// A group grant posts back as "g:" and its id; its label is the
+				// group address, which the level form re-posts to the share route.
+				grantee, label := g.Grantee, h.acl.UserEmail(g.Grantee)
+				if g.GroupID != "" {
+					grantee, label = "g:"+g.GroupID, h.groupAddress(g.GroupID)
 				}
-				card.Grants = append(card.Grants, templates.GrantRow{Grantee: g.Grantee, Label: label, Level: g.Level, State: g.State})
+				if label == "" {
+					label = grantee
+				}
+				card.Grants = append(card.Grants, templates.GrantRow{Grantee: grantee, Label: label, Level: g.Level, State: g.State})
 			}
 		}
 		cards = append(cards, card)

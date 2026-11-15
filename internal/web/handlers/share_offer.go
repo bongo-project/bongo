@@ -24,12 +24,15 @@ const (
 	shareChanged
 	// shareInvited: a new or refreshed pending grant was written and an invitation queued.
 	shareInvited
+	// shareGroupAdded: a new accepted group grant was written; no mail.
+	shareGroupAdded
 )
 
 // grantStore is the part of the ACL store offerGrant needs.
 type grantStore interface {
 	GetGrant(kind, owner, resource, grantee string) (*bongov1.Grant, error)
 	SetGrantKeepState(kind, owner, resource, grantee, level, rights, state, grantedBy string, now time.Time) error
+	SetGrant(kind, owner, resource, grantee, level, rights, state, grantedBy string, now time.Time) error
 }
 
 // GrantOffer describes one share of a calendar, folder or address book.
@@ -40,6 +43,8 @@ type GrantOffer struct {
 	Resource     string
 	ResourceName string
 	GranteeID    string
+	// GroupID names a group grantee instead of GranteeID; see offerGroupGrant.
+	GroupID string
 	// Recipient is the address the invitation goes to.
 	Recipient string
 	Level     string
@@ -93,6 +98,36 @@ func offerGrant(acl grantStore, inv *ShareInviter, o GrantOffer) (shareOutcome, 
 		recipient: o.Recipient, kind: o.Kind, resourceName: o.ResourceName, host: o.Host,
 	})
 	return shareInvited, nil
+}
+
+// offerGroupGrant shares with a group of the owner's own domain (the caller
+// checks the domain and that the group exists). The grant is written accepted,
+// with no invitation: a group has no single person to accept, and the group,
+// kept by the domain's admins, is the consent boundary. The cost is that anyone
+// who can share can put a resource into every member's shared list, which is
+// why the caller refuses groups of other domains. The cap, the level and the
+// rate limit are the caller's, before resolving the address, as for a user.
+// A re-share of a live grant with the same permission writes nothing.
+func offerGroupGrant(acl grantStore, o GrantOffer) (shareOutcome, error) {
+	grantee := store.GranteeGroup(o.GroupID)
+	existing, err := acl.GetGrant(o.Kind, o.Owner, o.Resource, grantee)
+	if err != nil {
+		return shareUnchanged, fmt.Errorf("reading grant: %w", err)
+	}
+	fresh := existing == nil || store.PendingGrantExpired(existing, o.Now.Unix())
+	if fresh && o.Full {
+		return shareUnchanged, errShareRefused
+	}
+	if !fresh && existing.State == store.GrantStateAccepted && existing.Level == o.Level && existing.Rights == o.Rights {
+		return shareUnchanged, nil
+	}
+	if err := acl.SetGrant(o.Kind, o.Owner, o.Resource, grantee, o.Level, o.Rights, store.GrantStateAccepted, o.Owner, o.Now); err != nil {
+		return shareUnchanged, fmt.Errorf("writing grant: %w", err)
+	}
+	if fresh {
+		return shareGroupAdded, nil
+	}
+	return shareChanged, nil
 }
 
 // queueShareInvite hands an invitation to the background sender. Failure to

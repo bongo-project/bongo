@@ -942,6 +942,23 @@ Found while building v0.16.0 (2026-11-15):
   `RevokeUserGrants` (the store-level cascade is tested).
 - **Group member liveness is checked in two places** (`ExpandMembers` and
   the resolver); a shared helper would stop them drifting.
+- **UID EXPUNGE ignores its UID set** (predates v0.16): it removes every
+  `\Deleted` message in the folder. On a shared folder one grantee's UID
+  EXPUNGE removes messages other people marked. Fix in its own change.
+- **IMAP shared-folder edges.** CREATE or RENAME under a shared parent answers
+  ALREADYEXISTS for a child the user cannot see (a narrow oracle that needs
+  `k`); `sharedsub` keys are left behind by an unresolvable UNSUBSCRIBE and by
+  folder deletion, with no sweep; after a lost grant the reported-UID set is
+  cleared without EXPUNGE, so a grant restored mid-session can desynchronise
+  sequence numbers (require a re-SELECT); a legacy personal folder under the
+  other-users prefix is listed but cannot be renamed away.
+- **Group grants and the shares page.** `ListGrantsHeld` calls
+  `EffectiveGrant` per key, rescanning the member index each time
+  (O(keys x groups)); pass the loaded group ids. A user with both a direct and
+  a group grant sees Leave with no hint that the group share remains.
+  `/admin/groups` answers "group not found" and "Forbidden" untranslated.
+- **Generated mail to a restricted group** has no test and no
+  restricted-specific message; it is listed as not reached.
 
 Audit corrections found while writing this PRD (2026-10-26):
 

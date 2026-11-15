@@ -37,23 +37,24 @@ type HeldGrant struct {
 
 // CalendarGrantEntry is one grant on a calendar, for the owner's sharing list.
 type CalendarGrantEntry struct {
+	// Grantee is the user id, or "" for a group grant.
 	Grantee string
+	// GroupID is the group id of a group grant, "" for a user grant.
+	GroupID string
 	Level   string
 	State   string
 }
 
 // CalendarAccessLevel returns the level grantee holds on the one calendar
 // (owner, calendar): "" unless the grant exists, is accepted and the calendar
-// still exists. Route authorisation must use this and not HasCalendarAccess,
+// still exists. The level is the highest of the grantee's own grant and the
+// grants of the groups they belong to (see EffectiveGrant). Route authorisation must use this and not HasCalendarAccess,
 // which answers for any calendar of the owner: a grant on calendar A would
 // then authorise a write to calendar B.
 func (s *ACLStore) CalendarAccessLevel(owner, calendar, grantee string) (string, error) {
-	g, err := s.GetCalendarGrant(owner, calendar, grantee)
-	if err != nil || g == nil {
+	eff, err := s.EffectiveGrant(ACLKindCalendar, owner, calendar, grantee)
+	if err != nil || eff.Level == "" {
 		return "", err
-	}
-	if g.State != GrantStateAccepted || !ValidCalendarLevel(g.Level) {
-		return "", nil
 	}
 	if _, err := s.pebble.Get(calendarKey(owner, calendar)); err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -61,7 +62,7 @@ func (s *ACLStore) CalendarAccessLevel(owner, calendar, grantee string) (string,
 		}
 		return "", fmt.Errorf("reading calendar for grant: %w", err)
 	}
-	return g.Level, nil
+	return eff.Level, nil
 }
 
 // LevelSatisfies reports whether level is at least need. An unknown level
@@ -73,36 +74,19 @@ func LevelSatisfies(level, need string) bool {
 }
 
 // ListCalendarGrantsHeld returns the accepted grants grantee holds, at any
-// level, on calendars that still exist, sorted by owner then calendar.
+// level, on calendars that still exist, including those reached through a
+// group (the strongest level when both apply), sorted by owner then calendar.
 func (s *ACLStore) ListCalendarGrantsHeld(grantee string) ([]HeldGrant, error) {
-	if grantee == "" {
-		return nil, nil
-	}
-	prefix := append(aclGranteePrefix(GranteeUser(grantee)), []byte(ACLKindCalendar+"/")...)
-	keys, err := s.pebble.scanKeys(prefix)
+	held, err := s.ListGrantsHeld(grantee, GrantStateAccepted, time.Time{})
 	if err != nil {
-		return nil, fmt.Errorf("scanning grants held: %w", err)
+		return nil, err
 	}
 	var out []HeldGrant
-	for _, k := range keys {
-		ref, ok := parseACLKey(string(k))
-		if !ok || ref.Principal != GranteeUser(grantee) || ref.Kind != ACLKindCalendar {
-			continue
-		}
-		level, err := s.CalendarAccessLevel(ref.Owner, ref.Resource, grantee)
-		if err != nil {
-			return nil, err
-		}
-		if level != "" {
-			out = append(out, HeldGrant{Owner: ref.Owner, Calendar: ref.Resource, Level: level})
+	for _, h := range held {
+		if h.Kind == ACLKindCalendar {
+			out = append(out, HeldGrant{Owner: h.Owner, Calendar: h.Resource, Level: h.Level})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Owner != out[j].Owner {
-			return out[i].Owner < out[j].Owner
-		}
-		return out[i].Calendar < out[j].Calendar
-	})
 	return out, nil
 }
 
@@ -164,18 +148,26 @@ func (s *ACLStore) ListCalendarGrants(owner, calendar string) ([]CalendarGrantEn
 		if !ok || ref.Owner != owner || ref.Resource != calendar {
 			continue
 		}
-		uid, isUser := ref.UserID()
-		if !isUser {
-			continue
-		}
-		g, err := s.GetCalendarGrant(owner, calendar, uid)
+		g, err := s.GetGrant(ACLKindCalendar, owner, calendar, ref.Principal)
 		if err != nil {
 			return nil, err
 		}
-		if g != nil {
-			out = append(out, CalendarGrantEntry{Grantee: uid, Level: g.Level, State: g.State})
+		if g == nil {
+			continue
 		}
+		e := CalendarGrantEntry{Level: g.Level, State: g.State}
+		if uid, isUser := ref.UserID(); isUser {
+			e.Grantee = uid
+		} else {
+			_, e.GroupID, _ = splitGrantee(ref.Principal)
+		}
+		out = append(out, e)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Grantee < out[j].Grantee })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].GroupID != out[j].GroupID {
+			return out[i].GroupID < out[j].GroupID
+		}
+		return out[i].Grantee < out[j].Grantee
+	})
 	return out, nil
 }

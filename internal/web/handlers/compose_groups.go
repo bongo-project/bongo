@@ -19,6 +19,7 @@ import (
 // *store.GroupStore satisfies it.
 type groupExpander interface {
 	ExpandMembers(groupID string) (*bongov1.Group, []store.GroupMember, error)
+	PostingAllowed(g *bongov1.Group, userID string) error
 }
 
 // SetGroups sets the expander used for recipients that are group addresses.
@@ -83,13 +84,22 @@ func (e *groupOverQuotaError) Error() string {
 	return "every deliverable member of " + e.addr + " is over storage quota"
 }
 
+// groupRestrictedError reports a group whose posting policy refuses the sender.
+type groupRestrictedError struct{ addr, groupID string }
+
+func (e *groupRestrictedError) Error() string {
+	return "posting to " + e.addr + " is restricted"
+}
+
 // expandGroups lists the members of each distinct group. A group that is
 // gone, refused by the posting policy or has no live member is an error; no
 // member copies are chosen here (see pickMembers).
 //
-// The posting policy is not enforced yet; GroupPostingAllowed is where it will
-// be.
-func (h *ComposeHandler) expandGroups(senderID, from string, groups []composeGroup) ([]expandedGroup, error) {
+// The posting policy is decided on senderID, the session account. The From
+// field may be a send-as address a user can set freely, so it is not passed.
+// A refusal fails the whole send before any write, as for a group that is gone
+// or has no live member.
+func (h *ComposeHandler) expandGroups(senderID string, groups []composeGroup) ([]expandedGroup, error) {
 	if len(groups) == 0 {
 		return nil, nil
 	}
@@ -111,8 +121,12 @@ func (h *ComposeHandler) expandGroups(senderID, from string, groups []composeGro
 		if eerr != nil {
 			return nil, fmt.Errorf("expanding group %s: %w", g.id, eerr)
 		}
-		if perr := store.GroupPostingAllowed(grp, senderID, from); perr != nil {
-			return nil, perr
+		if perr := h.groups.PostingAllowed(grp, senderID); perr != nil {
+			if errors.Is(perr, store.ErrGroupPostingRestricted) {
+				// The stored address, not what the user typed.
+				return nil, &groupRestrictedError{addr: grp.Address, groupID: grp.Id}
+			}
+			return nil, fmt.Errorf("checking posting policy for group %s: %w", g.id, perr)
 		}
 		if skipped := len(grp.MemberIds) - len(ms); skipped > 0 {
 			h.logger.Info("groups: skipped members with no live account", "group", grp.Id, "skipped", skipped)
@@ -216,4 +230,56 @@ func memberAddrs(members []composeMember) []string {
 // like a direct local recipient's so a retry places it once.
 func memberEnvID(userID, sendID, addr string) string {
 	return derivedSendID(userID, sendID, "local:"+strings.ToLower(addr)).String()
+}
+
+func isGroupRestricted(err error) bool {
+	_, ok := errors.AsType[*groupRestrictedError](err)
+	return ok
+}
+
+// groupLister lists the groups of a domain. *store.GroupStore satisfies it.
+type groupLister interface {
+	ListGroups(domain string) ([]*bongov1.Group, error)
+}
+
+// matchGroups returns up to limit groups on the caller's own domain whose
+// address, or a word of whose display name, starts with q. A caller with no
+// usable domain gets none, so a failure never widens the audience.
+func (h *ComposeHandler) matchGroups(q, callerEmail string, limit int) []*bongov1.Group {
+	lister, ok := h.groups.(groupLister)
+	if !ok || lister == nil {
+		return nil
+	}
+	domain := domainOf(callerEmail)
+	q = strings.ToLower(strings.TrimSpace(q))
+	if domain == "" || q == "" {
+		return nil
+	}
+	groups, err := lister.ListGroups(domain)
+	if err != nil {
+		return nil
+	}
+	var out []*bongov1.Group
+	for _, g := range groups {
+		if g.Domain != domain || !groupMatches(g, q) {
+			continue
+		}
+		out = append(out, g)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func groupMatches(g *bongov1.Group, q string) bool {
+	if strings.HasPrefix(strings.ToLower(g.Address), q) {
+		return true
+	}
+	for _, word := range strings.Fields(strings.ToLower(g.DisplayName)) {
+		if strings.HasPrefix(word, q) {
+			return true
+		}
+	}
+	return false
 }

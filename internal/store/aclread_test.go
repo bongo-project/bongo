@@ -116,8 +116,8 @@ func TestListCalendarGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []CalendarGrantEntry{
-		{"amy", GrantLevelWrite, GrantStatePending},
-		{"zed", GrantLevelRead, GrantStateAccepted},
+		{Grantee: "amy", Level: GrantLevelWrite, State: GrantStatePending},
+		{Grantee: "zed", Level: GrantLevelRead, State: GrantStateAccepted},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("grants = %+v, want %+v", got, want)

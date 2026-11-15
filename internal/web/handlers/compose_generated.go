@@ -134,7 +134,7 @@ func (h *ComposeHandler) DeliverGenerated(userID, sessionEmail, from string, rcp
 			fail(fmt.Errorf("inbound spool not configured"), g.addr)
 			continue
 		}
-		expanded, gerr := h.expandGroups(userID, from, []composeGroup{g})
+		expanded, gerr := h.expandGroups(userID, []composeGroup{g})
 		if gerr != nil {
 			fail(gerr, g.addr)
 			continue

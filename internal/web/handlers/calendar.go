@@ -36,6 +36,7 @@ type CalendarHandler struct {
 	search    *store.SearchManager
 	quota     QuotaChecker // nil = unlimited
 	shares    shareTargetResolver
+	groups    groupLookup
 	// acl holds calendar grants. nil disables sharing: free/busy then
 	// authorises only the caller's own calendar.
 	acl *store.ACLStore
@@ -157,6 +158,32 @@ func (h *CalendarHandler) FreeBusyLimiter() shareRateLimiter { return h.freeBusy
 // local account. It must not resolve through catch-alls.
 type shareTargetResolver interface {
 	ResolveAccount(email string) (string, error)
+}
+
+// groupLookup reads a distribution group by id.
+type groupLookup interface {
+	GetGroup(id string) (*bongov1.Group, error)
+}
+
+// SetGroups wires the group lookup ShareCalendar and the sharing list use.
+func (h *CalendarHandler) SetGroups(g groupLookup) { h.groups = g }
+
+// shareableGroup returns the group a share may name: it exists and sits on the
+// owner's own domain. Anything else is reported as false, and the caller gives
+// the same refusal as for an unknown address.
+func (h *CalendarHandler) shareableGroup(groupID, ownerEmail string) (string, bool) {
+	if h.groups == nil {
+		return "", false
+	}
+	g, err := h.groups.GetGroup(groupID)
+	if err != nil {
+		return "", false
+	}
+	_, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(ownerEmail)), "@")
+	if !ok || domain == "" || g.Domain != domain {
+		return "", false
+	}
+	return g.Id, true
 }
 
 // SetShareResolver wires the resolver ShareCalendar uses to validate targets.
@@ -734,18 +761,33 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// The stored grantee is the target's user ID; an address would never match.
+	// A group address of the owner's own domain names a group grantee instead.
+	_, ownerEmail := middleware.UserFromContext(r.Context())
 	targetID, err := h.shares.ResolveAccount(parsed.Address)
-	if err != nil || targetID == userID {
+	groupID := ""
+	var groupErr *store.GroupRecipientError
+	if errors.As(err, &groupErr) {
+		if gid, ok := h.shareableGroup(groupErr.GroupID, ownerEmail); ok {
+			groupID, err = gid, nil
+		}
+	}
+	if err != nil || (groupID == "" && targetID == userID) {
 		http.Error(w, refused, http.StatusBadRequest)
 		return
 	}
 
-	_, ownerEmail := middleware.UserFromContext(r.Context())
-	outcome, err := offerGrant(h.acl, h.inviter, GrantOffer{
+	offer := GrantOffer{
 		Kind: store.ACLKindCalendar, Owner: userID, OwnerEmail: ownerEmail,
 		Resource: calID, ResourceName: cal.Name, GranteeID: targetID, Recipient: parsed.Address,
 		Level: level, Host: h.linkHost(r), Full: full, Now: now,
-	})
+	}
+	var outcome shareOutcome
+	if groupID != "" {
+		offer.GroupID = groupID
+		outcome, err = offerGroupGrant(h.acl, offer)
+	} else {
+		outcome, err = offerGrant(h.acl, h.inviter, offer)
+	}
 	switch {
 	case errors.Is(err, errShareRefused):
 		http.Error(w, refused, http.StatusBadRequest)
@@ -765,7 +807,8 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 }
 
 // UnshareCalendar revokes one grantee's grant on a calendar. The entry is a
-// user ID, compared exactly as sent. Removing an absent grant is a 200 with no
+// user ID or, for a group grant, "g:" and the group id, compared exactly as
+// sent. Removing an absent grant is a 200 with no
 // write. No rate limit: removal reveals nothing about which accounts exist.
 func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
@@ -785,7 +828,11 @@ func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request
 		http.Error(w, "sharing is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	existing, err := h.acl.GetCalendarGrant(userID, calID, entry)
+	typed := store.GranteeUser(entry)
+	if gid, isGroup := strings.CutPrefix(entry, "g:"); isGroup {
+		typed = store.GranteeGroup(gid)
+	}
+	existing, err := h.acl.GetGrant(store.ACLKindCalendar, userID, calID, typed)
 	if err != nil {
 		http.Error(w, "failed to update calendar", http.StatusInternalServerError)
 		return
@@ -795,7 +842,7 @@ func (h *CalendarHandler) UnshareCalendar(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := h.acl.RevokeCalendarGrant(userID, calID, entry); err != nil {
+	if err := h.acl.RevokeGrant(store.ACLKindCalendar, userID, calID, typed); err != nil {
 		slog.Error("calendar: unshare failed", "user", userID, "calendar", calID, "error", err)
 		http.Error(w, "failed to update calendar", http.StatusInternalServerError)
 		return
