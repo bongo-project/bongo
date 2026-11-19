@@ -349,7 +349,7 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 						<div class="settings-card-pad">
 							<p>{ t(ctx, "security.scanQrCode") }</p>
 							<div class="u-text-center u-mt-2 u-mb-2">
-								<img src={ "data:image/png;base64," + qrCodeBase64 } alt={ t(ctx, "security.qrCodeAlt") } width="200" height="200"/>
+								<img src={ templ.SafeURL("data:image/png;base64," + qrCodeBase64) } alt={ t(ctx, "security.qrCodeAlt") } width="200" height="200"/>
 							</div>
 							<p class="u-text-center u-mb-12px u-text-muted">{ t(ctx, "security.manualKeyPrompt") }</p>
 							<div class="manual-key" id="totp-key">
@@ -510,7 +510,7 @@ templ deviceQR(v DeviceView) {
 			<div class="settings-card-pad">
 				<h3 class="settings-section-title">{ t(ctx, "security.deviceQRTitle") }</h3>
 				<p class="u-text-muted">{ t(ctx, "security.deviceQRIntro") }</p>
-				<img class="device-qr" src={ v.QR.DataURI } alt={ t(ctx, "security.deviceQRAlt") } width="240" height="240"/>
+				<img class="device-qr" src={ templ.SafeURL(v.QR.DataURI) } alt={ t(ctx, "security.deviceQRAlt") } width="240" height="240"/>
 				@DeviceLinkStatus(DeviceLinkPending, v.QR.Hash, v.Setup)
 			</div>
 		</div>
