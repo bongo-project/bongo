@@ -1,4 +1,4 @@
-.PHONY: all build dist generate test test-race test-integration test-all fmt fmt-check lint check-image-pins sec clean run dev ui-test ui-test-headed ui-test-setup ui-shots validate seed
+.PHONY: all build dist loadtest-bundle generate test test-race test-integration test-all fmt fmt-check lint check-image-pins sec clean run dev ui-test ui-test-headed ui-test-setup ui-shots validate seed
 
 BINARY     := bongo
 IMPORT_BIN := bongo-import
@@ -23,6 +23,13 @@ build: generate
 ## under dist/. Override targets with: make dist PLATFORMS="linux/amd64".
 dist:
 	scripts/package-release.sh
+
+## loadtest-bundle builds dist/bongo-loadtest-VERSION-linux-ARCH.zip: the release
+## binary, loadgen and the scripts to run docs/load-testing.md on two VMs.
+## Usage: make loadtest-bundle VERSION=v0.15.14 [ARCH=amd64]
+loadtest-bundle:
+	@test -n "$(VERSION)" || { echo "usage: make loadtest-bundle VERSION=vX.Y.Z [ARCH=amd64]"; exit 2; }
+	scripts/loadtest-bundle/build.sh $(VERSION) $(or $(ARCH),amd64)
 
 generate:
 	go run ./scripts/gen-geometry

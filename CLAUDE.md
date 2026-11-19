@@ -56,6 +56,7 @@ make dev              # build + run dev server, validate, seed test data, wait (
 make seed             # seed test data into a running dev server
 make ui-shots OUT=dir # screenshot every route (light, dark, mobile); not in CI
 make dist             # linux amd64/arm64 release zips under dist/
+make loadtest-bundle VERSION=vX.Y.Z  # load test bundle for two VMs under dist/ (docs/load-testing.md)
 make clean            # rm -rf bin/
 
 # Run a single test
