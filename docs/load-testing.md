@@ -31,6 +31,25 @@ release is published, and only when two runs agree within 10%. Runs on an
 untagged build are preliminary: they show what breaks first, and their numbers
 are not headline figures.
 
+### Running from the bundle
+
+`make loadtest-bundle VERSION=vX.Y.Z` builds
+`dist/bongo-loadtest-vX.Y.Z-linux-amd64.zip` (`ARCH=arm64` for arm64). It holds
+the release binary from that tag's published zip, checked against its
+`SHA256SUMS`, `loadgen` built from the same tag, this runbook, and the scripts in
+`scripts/loadtest-bundle/`:
+
+- `server/setup.sh` installs the server with the config of section 4.
+- `server/bulk-load.sh` and `server/egress-check.sh` wrap sections 6 and 5.
+- `generator/run.sh` runs the pre-flight and stages 7.1, 7.3, 7.4 and 7.7. It
+  records server and generator `vmstat` and `iostat` next to the samples,
+  writes the reports, and packs the results without state files, the session
+  secret or the server config.
+
+The bundle needs no Go toolchain and no checkout, so a tester without either
+can run it. It holds no secret: the session secret and the account passwords
+are generated on the VMs.
+
 ## 2. Machines
 
 A run uses two machines in the same region: the server and the generator.
