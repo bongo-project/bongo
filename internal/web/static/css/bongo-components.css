@@ -283,6 +283,34 @@
 .settings-card-pad .tfa-status { padding: .85rem 1rem; }
 .settings-card-pad .tfa-status-text .u-mb-12px { margin-bottom: .5rem; }
 
+/* Add a device: instructions people follow step by step, so body-colour text,
+   an indented list and labels stacked above their fields. */
+.device-setup .device-intro { margin: 1rem 0 1.25rem; color: var(--text-primary); }
+.device-setup .device-help { margin: 0 0 1rem; color: var(--text-secondary); line-height: 1.55; }
+.device-setup .device-steps { margin: 0 0 1.25rem; padding-left: 1.25rem; color: var(--text-secondary); line-height: 1.55; }
+.device-setup .device-steps li { margin-bottom: .4rem; }
+.device-setup .settings-card-pad .form-group { display: block; }
+.device-setup .settings-card-pad .form-label {
+  display: block; margin-bottom: .35rem; text-transform: none; letter-spacing: 0;
+  font-size: .9rem; color: var(--text-primary);
+}
+.device-setup .device-group-title { margin: 1.75rem 0 .75rem; font-size: 1rem; color: var(--text-primary); }
+/* Server settings: one compact row per value, label beside it, value left-aligned. */
+.device-setup #app-password-new {
+  margin: 0 0 .5rem; max-width: none; text-align: left; font-size: 1rem; padding: 12px 48px 12px 14px;
+}
+.device-setup .device-row {
+  display: grid; grid-template-columns: minmax(6rem, 9rem) minmax(0, 1fr);
+  align-items: center; column-gap: 1rem; margin-bottom: .5rem;
+}
+.device-setup .device-row-label { margin: 0; font-size: .85rem; font-weight: 600; color: var(--text-secondary); }
+.device-setup .device-row .manual-key {
+  margin: 0; max-width: none; text-align: left; letter-spacing: 0; padding: 8px 48px 8px 12px;
+}
+@media (max-width: 600px) {
+  .device-setup .device-row { grid-template-columns: 1fr; row-gap: .25rem; }
+}
+
 /* Calendar settings (US-001): cards of stacked forms on the Security grid. */
 .calendar-settings-card h4,
 .calendar-new-card h4,
