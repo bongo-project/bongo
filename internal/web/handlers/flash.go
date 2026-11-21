@@ -159,6 +159,8 @@ var (
 	flashGroupCreated                = flashKey{"group-created"}
 	flashGroupUpdated                = flashKey{"group-updated"}
 	flashGroupDeleted                = flashKey{"group-deleted"}
+	flashFolderShared                = flashKey{"folder-shared"}
+	flashFolderUnshared              = flashKey{"folder-unshared"}
 	flashQueueFlushed                = flashKey{"queue-flushed"}
 	flashPolicy2FAUpdated            = flashKey{"policy-2fa-updated"}
 	flashAddressAdded                = flashKey{"address-added"}
@@ -278,6 +280,8 @@ var flashMessages = map[string]string{
 	flashGroupCreated.id:                "flash.groupCreated",
 	flashGroupUpdated.id:                "flash.groupUpdated",
 	flashGroupDeleted.id:                "flash.groupDeleted",
+	flashFolderShared.id:                "flash.folderShared",
+	flashFolderUnshared.id:              "flash.folderUnshared",
 	flashQueueFlushed.id:                "flash.queueFlushed",
 	flashPolicy2FAUpdated.id:            "flash.policy2faUpdated",
 	flashAddressAdded.id:                "flash.addressAdded",

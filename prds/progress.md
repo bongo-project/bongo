@@ -1891,3 +1891,13 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Follow-ups to PRD 8.2: transfer guid-to-uid mapping cost and partial-chunk answer; CardDAV double read and English fallback names; release note for the CardDAV path check.
 - PATTERN: [workflow] Three workers running make test-all at once time out on one machine; tell workers to run their packages narrowly and leave the full gate to the orchestrator.
 - PATTERN: [review] Tests against a hand-written fake of a shared helper drift silently; keep at least one test through the real wiring for each behaviour the fake copies.
+
+## 2026-11-21: 39.16 folder sharing in the web UI
+
+- Workflow: advisor plan PROCEED, golang-pro worker (tests first), advisor review MINOR.
+- Design: shared folders get their own route tree, `/shared/mail/{owner id}/{folder id}`, with one per-request resolver (`resolveSharedFolder`: owner via PrimaryAddressOf, rights via MailboxRights, name via MailboxNameByID; one 404 before `l`, 403 after). Own-folder handlers are untouched, so no own path converts into a shared one. Owner side is `/settings/folders` (share with presets Read lrs, Write lrswite, Full lrswipkxte, Can share +a; revoke; state pending/accepted/expired). The share limiter is the calendar handler's instance, so web calendar, web folder and IMAP SETACL share one budget.
+- Orchestrator fixes after review: share and revoke forms post through htmx into a data-form-status area with translated refusals (they were bare text/plain pages); preset help corrected (Write adds messages) and shown once per page; the exclusion test now has an owner baseline for Starred, To me and the lists overview; the bulk check asserts no 5xx.
+- Found in the browser, not by tests: the shared list rows had no first grid column (the bulk checkbox), so the body sat in the 24px star column and showed one clipped word. Added a placeholder slot, the attachment icon and the preview line.
+- Follow-ups to PRD 8.2: reply, forward, move, copy, archive, spam, tags, bulk, thread view, iMIP answer, delegate sharing in the web, live SSE for shared folders. The /shares page still sits in the calendar layout with "Back to Calendar", odd for a folder invitation.
+- PATTERN: [ui] A new list that reuses a CSS grid row class must fill every grid column, or the content lands in the wrong track; check new pages in a browser, since handler tests only assert the HTML.
+- PATTERN: [web] Give a shared resource its own route tree with one resolver rather than threading an owner through existing handlers; the existing handlers stay session-user-only by construction.

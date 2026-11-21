@@ -1471,6 +1471,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Double-submit CSRF token, defence-in-depth on top of same-origin.
 		r.Use(middleware.InjectCSRF(sessionSecret))
 		r.Use(middleware.RequireCSRF(sessionSecret, a.Config.Server.Role != "dev"))
+		// The sidebar's "Shared with me" section is loaded lazily, per request.
+		if a.ACL != nil && a.Mailboxes != nil {
+			r.Use(handlers.SharedMailSidebar(a.ACL, a.Mailboxes))
+		}
 
 		// Root: the start_page preference decides between the summary page
 		// and the inbox. Visitors who are not signed in are sent to /login by
@@ -1538,6 +1542,19 @@ func (a *Agent) Run(ctx context.Context) error {
 				mailH.SetSearch(a.Search)
 			}
 			mailH.SetTagStore(store.NewTagStore(a.Store, a))
+			if a.ACL != nil {
+				mailH.SetACL(a.ACL)
+				// Shared folders have their own tree, outside /mail/{mailbox}, so
+				// a folder named "shared" stays reachable. Every handler resolves
+				// the grant on every request.
+				r.Get("/shared/mail/{owner}/{folder}", mailH.SharedList)
+				r.Get("/shared/mail/{owner}/{folder}/{uid}", mailH.SharedShow)
+				r.Get("/shared/mail/{owner}/{folder}/{uid}/attachment/{idx}", mailH.SharedAttachment)
+				r.Get("/shared/mail/{owner}/{folder}/{uid}/source", mailH.SharedSource)
+				r.Get("/shared/mail/{owner}/{folder}/{uid}/export", mailH.SharedExport)
+				r.Post("/shared/mail/{owner}/{folder}/{uid}/flags", mailH.SharedFlags)
+				r.Post("/shared/mail/{owner}/{folder}/{uid}/delete", mailH.SharedDelete)
+			}
 			r.Get("/mail/tag/{name}", mailH.ListTagMessages)
 			r.Post("/mail/tag/{name}/bulk", mailH.BulkTagView)
 			// Header-based views live under /mail/view/ and are registered
@@ -1706,6 +1723,22 @@ func (a *Agent) Run(ctx context.Context) error {
 				mailH.SetInvitations(calendarH)
 			}
 			a.wireCalendarShareLimiter(calendarH)
+			if a.ACL != nil && a.Mailboxes != nil {
+				// The folder form draws on the calendar handler's share limiter,
+				// so the web calendar, this form and IMAP SETACL share one budget.
+				folderH := handlers.NewFolderShareHandler(a.ACL, a.Mailboxes)
+				folderH.SetShareResolver(sharedResolver)
+				folderH.SetShareLimiter(calendarH.ShareLimiter())
+				folderH.SetShareInviter(a.shareInviter)
+				folderH.SetAuthservID(a.Config.SMTP.Hostname)
+				folderH.SetNamespacePrefixes(a.Config.IMAP.OtherUsersPrefix, a.Config.IMAP.SharedPrefix)
+				if a.Groups != nil {
+					folderH.SetGroups(a.Groups)
+				}
+				r.Get("/settings/folders", folderH.ShowFolders)
+				r.Post("/settings/folders/share", folderH.ShareFolder)
+				r.Post("/settings/folders/unshare", folderH.UnshareFolder)
+			}
 			a.wireCalendarFreeBusyLimiter(calendarH)
 			a.calendarHandler = calendarH
 			// CalDAV implicit scheduling sends through the calendar handler's

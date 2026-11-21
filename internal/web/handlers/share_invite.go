@@ -231,16 +231,21 @@ func (h *CalendarHandler) SetShareInviter(s *ShareInviter) { h.inviter = s }
 // ShareInviter returns the wired inviter, or nil.
 func (h *CalendarHandler) ShareInviter() *ShareInviter { return h.inviter }
 
-// linkHost returns the host to put in a link the server emails. The configured
-// hostname wins: r.Host is chosen by the sender of the request, and a link in
-// a message the server delivers must not point at a host the owner picked.
-// Only when no hostname is configured (a dev server) does the request host
-// stand in.
+// linkHost returns the host to put in a link the server emails; see shareLinkHost.
 func (h *CalendarHandler) linkHost(r *http.Request) string {
-	if validLinkHost(h.authservID) {
-		return h.authservID
+	return shareLinkHost(h.authservID, r)
+}
+
+// shareLinkHost returns the host to put in a link the server emails. The
+// configured hostname wins: r.Host is chosen by the sender of the request, and
+// a link in a message the server delivers must not point at a host the owner
+// picked. Only when no hostname is configured (a dev server) does the request
+// host stand in.
+func shareLinkHost(configured string, r *http.Request) string {
+	if validLinkHost(configured) {
+		return configured
 	}
-	if h.authservID == "" && validLinkHost(r.Host) {
+	if configured == "" && validLinkHost(r.Host) {
 		return r.Host
 	}
 	return ""

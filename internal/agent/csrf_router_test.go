@@ -120,6 +120,18 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"calendar unshare", "/calendar/missing/unshare", func(string) url.Values {
 			return url.Values{"share_with": {"nobody"}}
 		}},
+		{"folder share", "/settings/folders/share", func(string) url.Values {
+			return url.Values{"folder": {"missing"}, "share_with": {"friend@example.com"}, "preset": {"read"}}
+		}},
+		{"folder unshare", "/settings/folders/unshare", func(string) url.Values {
+			return url.Values{"folder": {"missing"}, "share_with": {"nobody"}}
+		}},
+		{"shared message flags", "/shared/mail/nobody/0123456789abcdef0123456789abcdef/1/flags", func(string) url.Values {
+			return url.Values{"flag": {"seen"}, "action": {"add"}}
+		}},
+		{"shared message delete", "/shared/mail/nobody/0123456789abcdef0123456789abcdef/1/delete", func(string) url.Values {
+			return url.Values{}
+		}},
 		{"invitation answer", "/mail/INBOX/1/invitation", func(string) url.Values {
 			return url.Values{"action": {"accept"}}
 		}},

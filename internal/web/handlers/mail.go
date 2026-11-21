@@ -109,6 +109,10 @@ type MailHandler struct {
 	// card.
 	invitations invitationService
 
+	// acl authorises the shared-folder routes (mail_shared.go). nil leaves them
+	// answering 404.
+	acl *store.ACLStore
+
 	// ensureMailboxMu serialises lazy mailbox creation (see ensureMailbox).
 	ensureMailboxMu sync.Mutex
 }
@@ -723,7 +727,7 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 							break
 						}
 					}
-					a.URL = h.attachmentURL(detail.Mailbox, detail.UID, i, a.Hash)
+					a.URL = h.detailAttachmentURL(detail, i, a.Hash)
 					detail.Attachments = append(detail.Attachments, a)
 				}
 			} else {
@@ -754,7 +758,7 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 				Hash:        blobRef.Hash,
 				ContentType: blobRef.ContentType,
 				Size:        blobRef.Size,
-				URL:         h.attachmentURL(detail.Mailbox, detail.UID, -1, blobRef.Hash),
+				URL:         h.detailAttachmentURL(detail, -1, blobRef.Hash),
 			})
 		}
 	}
@@ -777,7 +781,7 @@ func (h *MailHandler) hideCardPart(detail *templates.MessageDetail, env *enmime.
 		if p != part {
 			continue
 		}
-		u := h.attachmentURL(detail.Mailbox, detail.UID, i, "")
+		u := h.detailAttachmentURL(detail, i, "")
 		detail.Attachments = slices.DeleteFunc(detail.Attachments, func(a templates.Attachment) bool { return a.URL == u })
 		return
 	}
@@ -829,6 +833,21 @@ func (h *MailHandler) attachmentURL(mailbox string, uid uint32, index int, hash 
 		return ""
 	}
 	return fmt.Sprintf("/mail/%s/%d/attachment/%d", url.PathEscape(mailbox), uid, index)
+}
+
+// detailAttachmentURL is attachmentURL for a message being rendered. A message
+// of a shared folder (detail.AttachmentBase set) never links /mail/blob or
+// /mail/{folder}: those authorise against the session user's own mail, and a
+// blob is shared across users. Its parts are served by index under the shared
+// folder's own prefix, and a part with no index has no link.
+func (h *MailHandler) detailAttachmentURL(detail *templates.MessageDetail, index int, hash string) string {
+	if detail.AttachmentBase != "" {
+		if index < 0 {
+			return ""
+		}
+		return fmt.Sprintf("%s/%d/attachment/%d", detail.AttachmentBase, detail.UID, index)
+	}
+	return h.attachmentURL(detail.Mailbox, detail.UID, index, hash)
 }
 
 func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1.MailboxMessage, meta *bongov1.MailMeta) templates.MessageDetail {
@@ -1334,7 +1353,13 @@ func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta := h.loadMailMeta(userID, msg.MailGuid)
+	h.writeEML(w, userID, msg.MailGuid)
+}
+
+// writeEML downloads a message's raw RFC 5322 form. The caller has authorised
+// the message and loaded its metadata from the owner's keyspace.
+func (h *MailHandler) writeEML(w http.ResponseWriter, ownerID, guid string) {
+	meta := h.loadMailMeta(ownerID, guid)
 	if meta == nil || meta.RawMessage == nil || meta.RawMessage.Hash == "" {
 		http.Error(w, "Message data not found", http.StatusNotFound)
 		return
@@ -1604,7 +1629,14 @@ func (h *MailHandler) ServeAttachment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Message not found", http.StatusNotFound)
 		return
 	}
-	meta := h.loadMailMeta(userID, msg.MailGuid)
+	h.writeAttachmentPart(w, userID, msg.MailGuid, idx, r.URL.Query().Get("inline") == "1")
+}
+
+// writeAttachmentPart serves part idx of the message as a download, or inline
+// for the safe image and PDF types on request. The caller has authorised the
+// message and loaded its metadata from the owner's keyspace.
+func (h *MailHandler) writeAttachmentPart(w http.ResponseWriter, ownerID, guid string, idx int, inline bool) {
+	meta := h.loadMailMeta(ownerID, guid)
 	if meta == nil || meta.RawMessage == nil || meta.RawMessage.Hash == "" || h.blobs == nil {
 		http.Error(w, "Attachment not found", http.StatusNotFound)
 		return
@@ -1640,7 +1672,7 @@ func (h *MailHandler) ServeAttachment(w http.ResponseWriter, r *http.Request) {
 	// client-supplied query parameter. Everything else is an octet-stream
 	// download; the filename is supplied by the link's download attribute, so no
 	// user-controlled value reaches a response header.
-	if r.URL.Query().Get("inline") == "1" && safeInlineTypes[att.ContentType] {
+	if inline && safeInlineTypes[att.ContentType] {
 		w.Header().Set("Content-Disposition", "inline")
 		w.Header().Set("Content-Type", att.ContentType)
 		if att.ContentType == "application/pdf" {

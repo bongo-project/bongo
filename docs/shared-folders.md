@@ -57,3 +57,57 @@ The owner's own rights cannot be changed or removed by anyone.
 
 A person who holds `a` on a folder may grant any right, `a` included, and may
 change or remove other people's grants. The grant records who made it.
+
+## In the web interface
+
+### Sharing a folder
+
+Open Settings, Folders. Each of your folders has a form: the address of a
+person or a group, an access level and, for Full only, "Can share". The levels
+are presets:
+
+| Level | Rights | Lets the person |
+|-------|--------|-----------------|
+| Read | `lrs` | look up the folder, read messages and mark them read |
+| Write | `lrswite` | also change flags, add messages, delete messages and expunge |
+| Full | `lrswipkxte` | also post and create or delete sub-folders |
+| Full, can share | `lrswipkxtea` | also share the folder with others (over IMAP `SETACL`) |
+
+The same rules as for IMAP apply: a person gets a pending grant and an
+invitation mail, a group on your domain is accepted straight away, every
+refusal reads the same, and sharing is limited per person and hour, one budget
+for the web calendar form, this form and IMAP. The page lists who has access,
+whether each grant is pending, accepted or expired, and lets you revoke it. A
+set of rights an IMAP client chose that matches no preset shows as "Custom".
+
+### Using a shared folder
+
+An accepted folder appears in the sidebar under "Shared with me", grouped by
+owner, with an unread count where you hold the read right. Invitations wait on
+the shares page. Shared folders are not part of All Mail, Unread, Starred or
+the header views.
+
+The web interface offers on a shared message only what your rights allow:
+
+- read, download attachments and export (`r`);
+- mark read or unread (`s`);
+- star (`w`);
+- delete permanently (`t` and `e`).
+
+Reply, forward, move, copy, archive, spam marking, tags and bulk selection are
+not offered on a shared folder yet; use an IMAP client for those.
+
+Things to know:
+
+- Read, starred and answered are the owner's flags. When you read a message you
+  mark it read for the owner too, and the owner's unread count falls.
+- Delete is permanent. There is no move to Trash, because that would need the
+  right to insert into the owner's Trash. Deleting expunges the folder, which
+  also removes any message in it that an IMAP client has already marked as
+  deleted, exactly as IMAP `EXPUNGE` would.
+- Every request is checked against your current rights. Revoking a grant,
+  leaving a group, renaming or deleting the folder takes effect on the next
+  click, and a folder you cannot see answers like one that does not exist.
+- Sharing from the web creates the folder's id, the grant and the invitation as
+  separate steps, as `SETACL` does. A failure part way leaves at most an
+  unused id or a grant without a mail.

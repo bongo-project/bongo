@@ -172,10 +172,16 @@ func (h *CalendarHandler) SetGroups(g groupLookup) { h.groups = g }
 // owner's own domain. Anything else is reported as false, and the caller gives
 // the same refusal as for an unknown address.
 func (h *CalendarHandler) shareableGroup(groupID, ownerEmail string) (string, bool) {
-	if h.groups == nil {
+	return shareableGroupOf(h.groups, groupID, ownerEmail)
+}
+
+// shareableGroupOf is shareableGroup for any share handler. A nil lookup
+// shares with no group.
+func shareableGroupOf(groups groupLookup, groupID, ownerEmail string) (string, bool) {
+	if groups == nil {
 		return "", false
 	}
-	return store.ShareableGroup(h.groups, groupID, ownerEmail)
+	return store.ShareableGroup(groups, groupID, ownerEmail)
 }
 
 // SetShareResolver wires the resolver ShareCalendar uses to validate targets.
