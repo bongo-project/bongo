@@ -3,7 +3,7 @@ module github.com/bongo-project/bongo
 go 1.27.4
 
 require (
-	github.com/a-h/templ v0.3.1001
+	github.com/a-h/templ v0.3.1118
 	github.com/blevesearch/bleve/v2 v2.5.7
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc
 	github.com/cockroachdb/pebble v1.1.5
@@ -36,10 +36,10 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/teambition/rrule-go v1.8.2
 	go.yaml.in/yaml/v3 v3.0.5
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 	golang.org/x/net v0.62.0
-	golang.org/x/sys v0.49.0
-	golang.org/x/text v0.43.0
+	golang.org/x/sys v0.50.0
+	golang.org/x/text v0.44.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -79,8 +79,8 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fatih/color v1.16.0 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/fatih/color v1.19.0 // indirect
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -103,8 +103,8 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-colorable v0.1.16 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -134,9 +134,9 @@ require (
 	github.com/zclconf/go-cty v1.16.3 // indirect
 	go.etcd.io/bbolt v1.4.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
-	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/tools v0.51.0 // indirect
+	golang.org/x/mod v0.43.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/tools v0.52.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

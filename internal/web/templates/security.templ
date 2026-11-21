@@ -349,7 +349,7 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 						<div class="settings-card-pad">
 							<p>{ t(ctx, "security.scanQrCode") }</p>
 							<div class="u-text-center u-mt-2 u-mb-2">
-								<img src={ "data:image/png;base64," + qrCodeBase64 } alt={ t(ctx, "security.qrCodeAlt") } width="200" height="200"/>
+								<img src={ templ.SafeURL("data:image/png;base64," + qrCodeBase64) } alt={ t(ctx, "security.qrCodeAlt") } width="200" height="200"/>
 							</div>
 							<p class="u-text-center u-mb-12px u-text-muted">{ t(ctx, "security.manualKeyPrompt") }</p>
 							<div class="manual-key" id="totp-key">
@@ -420,7 +420,7 @@ templ AddDevice(email string, v DeviceView) {
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
-				<div class="settings-container">
+				<div class="settings-container device-setup">
 					if v.Flash != "" {
 						@FlashMessage(v.Flash, flashLevelOr(v.FlashLevel))
 					}
@@ -436,12 +436,12 @@ templ AddDevice(email string, v DeviceView) {
 					} else if v.Plaintext != "" {
 						@deviceReveal(v)
 					} else {
-						<p class="u-text-muted">{ t(ctx, "security.addDeviceIntro") }</p>
+						<p class="device-intro">{ t(ctx, "security.addDeviceIntro") }</p>
 						for _, choice := range v.Choices {
 							<div class="settings-card u-mb-24px">
 								<div class="settings-card-pad">
 									<h3 class="settings-section-title">{ choice.Title }</h3>
-									<p class="u-text-muted">{ choice.Help }</p>
+									<p class="device-help">{ choice.Help }</p>
 									if choice.Key == "apple" {
 										@appleDeviceCard(choice, v)
 									} else {
@@ -510,7 +510,7 @@ templ deviceQR(v DeviceView) {
 			<div class="settings-card-pad">
 				<h3 class="settings-section-title">{ t(ctx, "security.deviceQRTitle") }</h3>
 				<p class="u-text-muted">{ t(ctx, "security.deviceQRIntro") }</p>
-				<img class="device-qr" src={ v.QR.DataURI } alt={ t(ctx, "security.deviceQRAlt") } width="240" height="240"/>
+				<img class="device-qr" src={ templ.SafeURL(v.QR.DataURI) } alt={ t(ctx, "security.deviceQRAlt") } width="240" height="240"/>
 				@DeviceLinkStatus(DeviceLinkPending, v.QR.Hash, v.Setup)
 			</div>
 		</div>
@@ -555,7 +555,7 @@ templ DeviceLinkStatus(state, hash string, setup bool) {
 // away and a success does not, so the panel is worded for "if the download
 // started".
 templ appleDeviceCard(choice DeviceChoice, v DeviceView) {
-	<ul class="u-text-muted u-font-078 u-mb-12px">
+	<ul class="device-steps">
 		<li>{ t(ctx, "security.appleStepSafari") }</li>
 		<li>{ t(ctx, "security.appleStepInstall") }</li>
 		<li>{ t(ctx, "security.appleStepNotVerified") }</li>
@@ -570,10 +570,10 @@ templ appleDeviceCard(choice DeviceChoice, v DeviceView) {
 		<div x-show="done" x-cloak role="status">
 			<p><strong>{ t(ctx, "security.appleDoneTitle") }</strong></p>
 			if v.Setup {
-				<p class="u-text-muted">{ t(ctx, "security.appleDoneSetup") }</p>
+				<p class="device-help">{ t(ctx, "security.appleDoneSetup") }</p>
 				<a href="/settings/security/devices?setup=1" class="btn-primary u-text-decoration-none">{ t(ctx, "security.appleContinue") }</a>
 			} else {
-				<p class="u-text-muted">{ t(ctx, "security.appleDoneHelp") }</p>
+				<p class="device-help">{ t(ctx, "security.appleDoneHelp") }</p>
 				<a href="/settings/security" class="btn-primary u-text-decoration-none">{ t(ctx, "security.appleContinue") }</a>
 			}
 		</div>
@@ -593,18 +593,20 @@ templ deviceReveal(v DeviceView) {
 	<div class="settings-card u-mb-24px" hx-history="false">
 		<div class="settings-card-pad">
 			<h3 class="settings-section-title">{ t(ctx, "security.deviceSettings") }</h3>
-			<p class="u-mb-12px u-text-muted">{ t(ctx, "security.appPasswordCredential") }</p>
+			<p class="device-help">{ t(ctx, "security.appPasswordCredential") }</p>
 			<div class="manual-key" id="app-password-new">
 				<span>{ v.Plaintext }</span>
 				@copyButton()
 			</div>
 			for _, group := range v.Groups {
-				<h4 class="u-mt-2 u-mb-12px">{ group.Title }</h4>
+				<h4 class="device-group-title">{ group.Title }</h4>
 				for _, row := range group.Rows {
-					<p class="u-mb-12px u-text-muted u-font-078">{ row.Label }</p>
-					<div class="manual-key">
-						<span>{ row.Value }</span>
-						@copyButton()
+					<div class="device-row">
+						<p class="device-row-label">{ row.Label }</p>
+						<div class="manual-key">
+							<span>{ row.Value }</span>
+							@copyButton()
+						</div>
 					</div>
 				}
 			}

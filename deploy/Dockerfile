@@ -16,7 +16,7 @@ ARG COMMIT
 ARG DATE
 
 # Install the exact templ version the repo uses so generated code matches.
-RUN go install github.com/a-h/templ/cmd/templ@v0.3.1001
+RUN go install github.com/a-h/templ/cmd/templ@v0.3.1118
 
 WORKDIR /src
 

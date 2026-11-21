@@ -47,7 +47,7 @@ jobs:
 
       # Same templ version as deploy/Dockerfile, so generated code matches.
       - name: Install templ
-        run: go install github.com/a-h/templ/cmd/templ@v0.3.1001
+        run: go install github.com/a-h/templ/cmd/templ@v0.3.1118
 
       - name: Build zips
         run: scripts/package-release.sh "${TAG}"
