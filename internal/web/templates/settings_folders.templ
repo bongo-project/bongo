@@ -1,0 +1,162 @@
+package templates
+
+import (
+	"context"
+	"fmt"
+)
+
+// Presets a folder share offers, and the rights each stands for. The web form
+// sends the preset name; the server turns it into letters, never the client.
+const (
+	FolderPresetRead      = "read"
+	FolderPresetWrite     = "write"
+	FolderPresetFull      = "full"
+	FolderPresetFullShare = "full-share"
+	FolderPresetCustom    = "custom"
+)
+
+// FolderShareGrant is one grantee of one own folder.
+type FolderShareGrant struct {
+	// Grantee is what the revoke form sends: a user id, or "g:" and a group id.
+	Grantee string
+	// Label is the grantee's address, or the group's address.
+	Label string
+	// State is "pending", "accepted" or "expired".
+	State string
+	// Preset is one of the FolderPreset constants.
+	Preset string
+	// Rights are the stored letters, shown for a custom set.
+	Rights string
+}
+
+// FolderShareFolder is one own folder and who it is shared with.
+type FolderShareFolder struct {
+	Name   string
+	Grants []FolderShareGrant
+}
+
+// FolderSharePageData is the data of the folder sharing settings page.
+type FolderSharePageData struct {
+	Folders []FolderShareFolder
+	Email   string
+	Flash   string
+	Error   string
+}
+
+func folderPresetLabel(ctx context.Context, g FolderShareGrant) string {
+	switch g.Preset {
+	case FolderPresetRead:
+		return t(ctx, "folders.presetRead")
+	case FolderPresetWrite:
+		return t(ctx, "folders.presetWrite")
+	case FolderPresetFull:
+		return t(ctx, "folders.presetFull")
+	case FolderPresetFullShare:
+		return t(ctx, "folders.presetFull") + ", " + t(ctx, "folders.canShare")
+	default:
+		return fmt.Sprintf(t(ctx, "folders.custom"), g.Rights)
+	}
+}
+
+func folderStateLabel(ctx context.Context, state string) string {
+	switch state {
+	case "accepted":
+		return t(ctx, "folders.stateAccepted")
+	case "expired":
+		return t(ctx, "folders.stateExpired")
+	default:
+		return t(ctx, "folders.statePending")
+	}
+}
+
+func folderStateBadge(state string) string {
+	if state == "accepted" {
+		return "badge badge-active"
+	}
+	return "badge"
+}
+
+templ FolderSharePage(d FolderSharePageData) {
+	@LayoutWithContent(t(ctx, "folders.title"), d.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("folders")
+		</aside>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					if d.Flash != "" {
+						@FlashMessage(d.Flash, "success")
+					}
+					if d.Error != "" {
+						@FlashMessage(d.Error, "error")
+					}
+					<div class="page-head">
+						<h1>{ t(ctx, "folders.title") }</h1>
+					</div>
+					<p class="page-intro">{ t(ctx, "folders.intro") }</p>
+					<p class="u-text-muted u-font-088">{ t(ctx, "folders.presetHelp") }</p>
+					if len(d.Folders) == 0 {
+						<p class="u-text-muted u-font-088">{ t(ctx, "folders.none") }</p>
+					}
+					for _, f := range d.Folders {
+						<div class="card" data-folder-card={ f.Name }>
+							<div class="card-body">
+								<h3 class="settings-section-title">{ f.Name }</h3>
+								if len(f.Grants) == 0 {
+									<p class="u-text-muted u-font-088">{ t(ctx, "folders.notShared") }</p>
+								} else {
+									<table class="data-table">
+										<thead>
+											<tr>
+												<th scope="col">{ t(ctx, "folders.sharedWith") }</th>
+												<th scope="col">{ t(ctx, "folders.access") }</th>
+												<th scope="col">{ t(ctx, "folders.state") }</th>
+												<th scope="col">{ t(ctx, "common.actions") }</th>
+											</tr>
+										</thead>
+										<tbody>
+											for _, g := range f.Grants {
+												<tr>
+													<td><code class="u-font-088">{ g.Label }</code></td>
+													<td>{ folderPresetLabel(ctx, g) }</td>
+													<td><span class={ folderStateBadge(g.State) } data-grant-state={ g.State }>{ folderStateLabel(ctx, g.State) }</span></td>
+													<td>
+														<form method="post" action="/settings/folders/unshare" hx-post="/settings/folders/unshare" hx-target="find [data-form-status]" hx-swap="innerHTML">
+															<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+															<input type="hidden" name="folder" value={ f.Name }/>
+															<input type="hidden" name="share_with" value={ g.Grantee }/>
+															<button type="submit" class="btn-flush">{ t(ctx, "folders.revoke") }</button>
+															<div data-form-status aria-live="polite"></div>
+														</form>
+													</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								}
+								<form method="post" action="/settings/folders/share" hx-post="/settings/folders/share" hx-target="find [data-form-status]" hx-swap="innerHTML" class="u-mt-8px">
+									<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+									<input type="hidden" name="folder" value={ f.Name }/>
+									<div class="u-flex-gap-4">
+										<input type="email" name="share_with" placeholder={ t(ctx, "folders.shareWithPlaceholder") } aria-label={ t(ctx, "folders.shareWith") } required class="form-input u-m0 u-flex-1"/>
+										<select name="preset" class="form-input u-m0" aria-label={ t(ctx, "folders.access") }>
+											<option value="read">{ t(ctx, "folders.presetRead") }</option>
+											<option value="write">{ t(ctx, "folders.presetWrite") }</option>
+											<option value="full">{ t(ctx, "folders.presetFull") }</option>
+										</select>
+										<label class="u-inline-flex u-items-center u-gap-05">
+											<input type="checkbox" name="can_share" value="1"/>
+											<span>{ t(ctx, "folders.canShare") }</span>
+										</label>
+										<button type="submit" class="btn-primary">{ t(ctx, "folders.share") }</button>
+									</div>
+									<div data-form-status aria-live="polite"></div>
+								</form>
+							</div>
+						</div>
+					}
+				</div>
+			</div>
+		</main>
+	}
+}

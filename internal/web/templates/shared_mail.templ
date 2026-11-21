@@ -1,0 +1,249 @@
+package templates
+
+import "fmt"
+
+// sharedSidebarSection is the "Shared with me" part of the mail sidebar. It
+// reads the section from the request context, where the loader of the request
+// put it, and shows nothing when the user has no shared folder and no waiting
+// invitation. Rows carry data-shared-folder and data-shared-unread, never the
+// own-folder attributes, so the live count refresh cannot write an own
+// folder's count onto a shared folder of the same name.
+templ sharedSidebarSection() {
+	{{ data := sharedSidebar(ctx) }}
+	if len(data.Folders) > 0 || data.PendingInvitations > 0 {
+		<div class="sidebar-group" data-group="shared" x-data="sidebarSection('shared', true)">
+			<button type="button" class="sidebar-label sidebar-label-toggle" x-on:click="toggle()" x-bind:aria-expanded="open">
+				<span>{ t(ctx, "nav.sharedWithMe") }</span>
+				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}" aria-hidden="true">&#9660;</span>
+			</button>
+			<ul class="nav-list" x-bind:hidden="!open" aria-label={ t(ctx, "nav.sharedWithMe") }>
+				if data.PendingInvitations > 0 {
+					<li class="nav-item">
+						<a href="/shares">
+							<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
+							<span>{ fmt.Sprintf(t(ctx, "nav.shareInvitations"), data.PendingInvitations) }</span>
+						</a>
+					</li>
+				}
+				for _, g := range groupSharedByOwner(data.Folders) {
+					<li class="nav-item shared-owner">
+						<span class="sidebar-label">{ g.Label }</span>
+					</li>
+					for _, f := range g.Folders {
+						<li class="nav-item">
+							<a
+								href={ templ.SafeURL(SharedFolderURL(f.OwnerID, f.ID)) }
+								if sharedSelected(ctx, f) {
+									class="active"
+								}
+								hx-get={ SharedFolderURL(f.OwnerID, f.ID) }
+								hx-target="#main-content"
+								hx-push-url="true"
+								data-shared-folder={ f.ID }
+							>
+								<span class="nav-icon" aria-hidden="true">@Icon("folder", "")</span>
+								<span>{ f.Name }</span>
+								if f.Counted && f.Unread > 0 {
+									<span class="unread-badge" data-shared-unread={ f.ID } aria-label={ fmt.Sprintf(t(ctx, "mail.unreadCount"), f.Unread) }>{ fmt.Sprint(f.Unread) }</span>
+								}
+							</a>
+						</li>
+					}
+				}
+			</ul>
+		</div>
+	}
+}
+
+// SharedMailboxPage is a shared folder's list as a complete document.
+templ SharedMailboxPage(view SharedFolderView, mailboxes []MailboxInfo, tags []SidebarTagInfo, counts ListCounts, messages []MessageSummary, page, totalPages int, email string) {
+	@LayoutWithContent(view.Name, email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@Sidebar(mailboxes, tags, "")
+		</aside>
+		<main class="content" id="main-content">
+			@SharedMailboxContent(view, counts, messages, page, totalPages)
+		</main>
+	}
+}
+
+// SharedMailboxContent is the list itself, with no bulk selection, drag or
+// compose: a shared folder offers only what its rights allow, message by message.
+templ SharedMailboxContent(view SharedFolderView, counts ListCounts, messages []MessageSummary, page, totalPages int) {
+	<div class="mail-view" data-shared-list={ view.ID }>
+		<div class="mail-head">
+			<h1 class="mail-head-title">{ view.Name }</h1>
+			<span class="mail-head-meta">{ listCountsText(ctx, counts) }</span>
+			<div class="tool-spacer"></div>
+			<span class="mail-head-meta">{ fmt.Sprintf(t(ctx, "sharedMail.sharedBy"), view.OwnerEmail) }</span>
+			<span class="page-info">
+				if page > 0 && totalPages > 0 {
+					{ fmt.Sprintf(t(ctx, "mailbox.pageOf"), page, totalPages) }
+				}
+			</span>
+		</div>
+		<div class="msg-list" role="list">
+			if len(messages) == 0 {
+				@EmptyState(t(ctx, "mail.noMessages"), "")
+			}
+			for _, msg := range messages {
+				<div id={ fmt.Sprintf("msg-%d", msg.UID) } class={ "msg-row", "msg-row-grid", templ.KV("unread", !msg.Seen) } role="listitem">
+					// Keeps the grid's first column, which holds the bulk checkbox on own folders.
+					<span class="msg-row-slot" aria-hidden="true"></span>
+					<span class={ "msg-star", templ.KV("flagged", msg.Flagged) } aria-hidden="true">
+						if msg.Flagged {
+							&#9733;
+						} else {
+							&#9734;
+						}
+					</span>
+					<div class="msg-main">
+						<div class="msg-line">
+							<span class="msg-from">
+								<a href={ templ.SafeURL(fmt.Sprintf("%s/%d", view.BaseURL(), msg.UID)) } hx-get={ fmt.Sprintf("%s/%d", view.BaseURL(), msg.UID) } hx-target="#main-content" hx-push-url="true">{ msg.From }</a>
+							</span>
+							<span class="msg-date">{ formatDate(msg.Date) }</span>
+						</div>
+						<div class="msg-line">
+							<span class="msg-subject">
+								<a href={ templ.SafeURL(fmt.Sprintf("%s/%d", view.BaseURL(), msg.UID)) } hx-get={ fmt.Sprintf("%s/%d", view.BaseURL(), msg.UID) } hx-target="#main-content" hx-push-url="true">{ msg.Subject }</a>
+							</span>
+							if msg.HasAttachments {
+								<span class="msg-attach" role="img" aria-label={ t(ctx, "mail.hasAttachments") } title={ t(ctx, "mail.hasAttachments") }>@Icon("paperclip", "")</span>
+							}
+						</div>
+						if msg.Preview != "" {
+							<div class="msg-preview">{ msg.Preview }</div>
+						}
+					</div>
+				</div>
+			}
+		</div>
+		@Pagination(page, totalPages, view.BaseURL())
+	</div>
+}
+
+// SharedMessageFullPage is one shared message as a complete document.
+templ SharedMessageFullPage(p SharedMessagePage, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string) {
+	@LayoutWithContent(p.Message.Subject, email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@Sidebar(mailboxes, tags, "")
+		</aside>
+		<main class="content" id="main-content">
+			@SharedMessageContent(p)
+		</main>
+	}
+}
+
+// SharedMessageContent shows the message. Every button comes from the rights
+// string; the handlers check the rights again on every request.
+templ SharedMessageContent(p SharedMessagePage) {
+	{{ msg := p.Message }}
+	{{ base := fmt.Sprintf("%s/%d", p.Folder.BaseURL(), msg.UID) }}
+	<div class="toolbar" role="toolbar" aria-label={ t(ctx, "mail.messageActions") }>
+		<a href={ templ.SafeURL(p.Folder.BaseURL()) } class="tool-btn" hx-get={ p.Folder.BaseURL() } hx-target="#main-content" hx-push-url="true">&larr; { t(ctx, "mail.back") }</a>
+		if SharedCanSeen(p.Folder.Rights) {
+			if msg.Seen {
+				<button type="button" class="tool-btn" data-action="mark-unread" hx-post={ base + "/flags" } hx-vals='{"flag":"seen","action":"remove"}'>{ t(ctx, "mail.markUnread") }</button>
+			} else {
+				<button type="button" class="tool-btn" data-action="mark-read" hx-post={ base + "/flags" } hx-vals='{"flag":"seen","action":"add"}'>{ t(ctx, "mail.markRead") }</button>
+			}
+		}
+		if SharedCanFlag(p.Folder.Rights) {
+			if msg.Flagged {
+				<button type="button" class="tool-btn" data-action="unstar" hx-post={ base + "/flags" } hx-vals='{"flag":"flagged","action":"remove"}'>{ t(ctx, "mail.unstarMessage") }</button>
+			} else {
+				<button type="button" class="tool-btn" data-action="star" hx-post={ base + "/flags" } hx-vals='{"flag":"flagged","action":"add"}'>{ t(ctx, "mail.starMessage") }</button>
+			}
+		}
+		if SharedCanRead(p.Folder.Rights) {
+			<a href={ templ.SafeURL(base + "/source") } class="tool-btn">{ t(ctx, "mail.viewSource") }</a>
+			<a href={ templ.SafeURL(base + "/export") } class="tool-btn">{ t(ctx, "mail.export") }</a>
+		}
+		if SharedCanDelete(p.Folder.Rights) {
+			<button type="button" class="tool-btn msg-act-danger" data-action="delete" hx-post={ base + "/delete" } hx-confirm={ t(ctx, "sharedMail.confirmDelete") }>{ t(ctx, "sharedMail.delete") }</button>
+		}
+	</div>
+	<div class="thread-header">
+		<h1 class="thread-subject">{ msg.Subject }</h1>
+	</div>
+	<div class="thread-messages">
+		<article class="message">
+			<div class="msg-card">
+				<div class="msg-sender-bar">
+					<div class="msg-sender-id">
+						<div class="msg-sender-line"><span class="msg-sender">{ msg.From }</span></div>
+						<div class="msg-recipients">{ t(ctx, "mail.to") }: { joinStrings(msg.To) }</div>
+					</div>
+					<div class="msg-sender-actions">
+						<span class="msg-date">{ msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</span>
+					</div>
+				</div>
+				if msg.HasBlockedImages {
+					<div class="blocked-banner" role="alert">
+						<span class="inline-icon">@Icon("alert", "") { t(ctx, "mail.remoteImagesBlocked") }</span>
+					</div>
+				}
+				<div class="msg-body">
+					if msg.MIMETooComplex {
+						<p><em>{ t(ctx, "mail.tooComplex") }</em></p>
+					}
+					if msg.HTMLBody != "" {
+						<div class="email-body">
+							@templ.Raw(msg.HTMLBody)
+						</div>
+					} else {
+						<pre class="text-body u-white-space-prewrap u-font-inherit">
+							@templ.Raw(formatQuotedText(msg.TextBody))
+						</pre>
+					}
+				</div>
+				if len(msg.Attachments) > 0 {
+					@attachmentList(msg.Attachments)
+				}
+			</div>
+		</article>
+	</div>
+}
+
+// SharedSourceFullPage shows the raw source of a shared message. The back and
+// download links stay under the shared folder's prefix.
+templ SharedSourceFullPage(view SharedFolderView, uid uint32, subject, source string, truncated bool, email string) {
+	@LayoutWithContent(t(ctx, "mail.sourceTitle"), email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			<nav class="sidebar-scroll" aria-label={ t(ctx, "nav.mailboxNav") }>
+				<ul class="nav-list">
+					<li>
+						<a href={ templ.SafeURL(fmt.Sprintf("%s/%d", view.BaseURL(), uid)) }>
+							&larr; { t(ctx, "mail.back") }
+						</a>
+					</li>
+				</ul>
+			</nav>
+			@AppSwitcher("mail")
+		</aside>
+		<main class="content" id="main-content">
+			<div class="msg-source-page u-p-20">
+				<div class="page-head">
+					<h1>{ t(ctx, "mail.sourceTitle") }</h1>
+					<span class="meta">{ subject }</span>
+				</div>
+				if truncated {
+					<div class="banner warn" role="alert">
+						@Icon("alert", "")
+						<span>{ t(ctx, "mail.sourceTruncated") }</span>
+						<span class="spacer"></span>
+						<a href={ templ.SafeURL(fmt.Sprintf("%s/%d/export", view.BaseURL(), uid)) } class="tool-btn">
+							{ t(ctx, "mail.sourceDownloadFull") }
+						</a>
+					</div>
+				}
+				<div class="card source-card">
+					<div class="card-body flush source-wrap">
+						<pre class="msg-source">{ source }</pre>
+					</div>
+				</div>
+			</div>
+		</main>
+	}
+}

@@ -968,6 +968,16 @@ Found while building v0.16.0 (2026-11-15):
 - **Release note for v0.16.0:** CardDAV now requires the path's user segment
   to be the authenticated user's id; a client configured by hand with an
   email address there gets 404.
+- **Shared folders in the web UI, actions not offered yet** (39.16, from the
+  advisor plan): reply and forward (compose reads the session user's
+  mailbox), move, copy and archive (cross-owner needs the transfer command
+  and a quota check), spam and not-spam (Bayes training belongs to the
+  owner), tag editing (owner's tag cap, IMAP `checkSharedStore` parity),
+  bulk select, the thread view, iMIP answer, sharing by a delegate who holds
+  `a` (IMAP SETACL covers it), and live SSE row and unread-count updates for
+  shared folders. Delete on a shared message is permanent (no Trash move).
+- **The /shares page uses the calendar layout** (sidebar and "Back to
+  Calendar"), which reads oddly for a folder or address-book invitation.
 
 Audit corrections found while writing this PRD (2026-10-26):
 

@@ -59,6 +59,10 @@ type MessageDetail struct {
 	// Invitation is the card for a message that carries an iTIP REQUEST or
 	// CANCEL; nil for every other message and for thread siblings.
 	Invitation *InvitationCard
+	// AttachmentBase, when set, is the URL prefix of a shared folder. The
+	// message's attachments are then linked under it by index, never through
+	// /mail/blob or the session user's own folder routes.
+	AttachmentBase string
 }
 
 // tagPaletteColours maps colour_index (0-15) to a CSS hex colour.
