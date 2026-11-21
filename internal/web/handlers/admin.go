@@ -411,6 +411,7 @@ func (h *AdminHandler) renderUserForm(w http.ResponseWriter, r *http.Request, em
 		Capacity:     profile.Capacity,
 
 		AppPasswordsAvailable: h.appPasswords != nil,
+		TwoFactorEnabled:      profile.TotpEnabled && !viewerIs(r, userID),
 	}
 
 	// Populate the address list from the SQLite derived index (best-effort;
@@ -3272,4 +3273,10 @@ func (h *AdminHandler) loadAliases() []templates.AliasInfo {
 		}
 	}
 	return aliases
+}
+
+// viewerIs reports whether the signed-in user is userID.
+func viewerIs(r *http.Request, userID string) bool {
+	id, _ := middleware.UserFromContext(r.Context())
+	return id != "" && id == userID
 }

@@ -212,6 +212,7 @@ var (
 	flashRuleDeleted                 = flashKey{"rule-deleted"}
 	flashAppPasswordRevoked          = flashKey{"app-password-revoked"}
 	flashAppPasswordsRevokedAll      = flashKey{"app-passwords-revoked-all"}
+	flashTwoFactorReset              = flashKey{"two-factor-reset"}
 
 	// Password change with an app password revoke that did not finish, and the
 	// per-account switch (all on the Security page).
@@ -330,6 +331,7 @@ var flashMessages = map[string]string{
 	flashRuleDeleted.id:                 "flash.ruleDeleted",
 	flashAppPasswordRevoked.id:          "flash.appPasswordRevoked",
 	flashAppPasswordsRevokedAll.id:      "flash.appPasswordsRevokedAll",
+	flashTwoFactorReset.id:              "flash.twoFactorReset",
 
 	flashSecurityRevokeIncomplete.id:     "flash.securityRevokeIncomplete",
 	flashSecurityAppPasswordsReadd.id:    "flash.securityAppPasswordsReadd",
