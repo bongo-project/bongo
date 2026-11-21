@@ -1122,6 +1122,8 @@ func (a *Agent) Run(ctx context.Context) error {
 				userH.SetMailboxes(a.Mailboxes)
 			}
 			cr.Post("/internal/user/create", userH.Create)
+			tfaH := handlers.NewTwoFactorResetHandler(a.Store, a, a.logger)
+			cr.Post("/internal/user/reset-2fa", tfaH.Reset)
 		}
 	})
 
@@ -1413,6 +1415,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/users/{userID}", adminH.UpdateUser)
 		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
 		r.Post("/admin/users/{userID}/reset-password", adminH.ResetPassword)
+		r.Post("/admin/users/{userID}/reset-2fa", adminH.ResetTwoFactor)
 		r.Post("/admin/users/{userID}/app-passwords/revoke", adminH.RevokeAllAppPasswords)
 		r.Get("/admin/users/{userID}/bookings", adminH.ResourceBookings)
 		r.Post("/admin/users/{userID}/bookings/{guid}/cancel", adminH.CancelResourceBooking)

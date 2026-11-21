@@ -78,6 +78,22 @@ request. The per-user lock that serialises this is per node; two nodes (or a
 follower that has not applied the previous write) can race inside a few
 milliseconds. DAV Basic Auth and protocol logins do not use TOTP.
 
+**Two-factor reset.** An administrator can turn off a user's two-factor
+authentication (Admin → Users → Reset two-factor), with the same scope as a
+password reset: a domain administrator only for users of their domains and
+never for a global administrator. `bongo user reset-2fa` does the same through
+the HMAC-authenticated control listener. The reset clears the TOTP secret, the
+recovery codes and the require-app-passwords switch, and bumps the session
+generation, so every web session of the account ends. App passwords are kept.
+The action is logged with the acting administrator and the user ID; no secret
+is logged. Anyone who can reset a user's password can also reset their second
+factor, so the reset adds no new power to an administrator account. An
+administrator cannot reset their own second factor this way; that goes through
+the Security page, which asks for the password and a code. The per-user lock is
+per node, as for a password reset: on a cluster, a login on another node that
+read the profile before the reset can write the old second factor back, so
+check the user page after a reset there.
+
 App passwords are per-device credentials for IMAP, POP3, SMTP submission and
 CalDAV/CardDAV. They never sign in to the web interface. An account with
 two-factor authentication can turn on "Require app passwords", after which
