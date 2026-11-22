@@ -86,10 +86,13 @@ func (s *ContactStore) Create(userID string, contact *bongov1.Contact) (string, 
 func (s *ContactStore) Get(userID, guid string) (*bongov1.Contact, error) {
 	data, err := s.pebble.Get(contactKey(userID, guid))
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, fmt.Errorf("reading contact: %w: %w", ErrContactNotFound, err)
+		}
 		return nil, fmt.Errorf("reading contact: %w", err)
 	}
 	if len(data) == 0 {
-		return nil, fmt.Errorf("contact not found")
+		return nil, ErrContactNotFound
 	}
 
 	var contact bongov1.Contact
@@ -141,6 +144,10 @@ func (s *ContactStore) Delete(userID, guid string) error {
 	if s.search != nil {
 		_ = s.search.DeleteContactIndex(userID, guid)
 	}
+
+	// A CardDAV client can PUT a new card at the same href, so the preference
+	// must not outlive the card it named.
+	s.clearSelfIfMatch(userID, guid)
 
 	return nil
 }

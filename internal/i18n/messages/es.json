@@ -1478,5 +1478,14 @@
   "admin.sharedErrSync": "Los miembros se guardaron, pero el acceso a las carpetas no se actualizó por completo. Inténtelo de nuevo.",
   "admin.sharedErrMember": "Esa dirección no puede ser miembro.",
   "admin.sharedErrLookup": "No se pudo buscar al miembro.",
-  "admin.sharedMembersFormHelp": "Direcciones de usuarios o grupos de este dominio, una por línea. Los miembros pueden leer y gestionar el correo de todas las carpetas y enviar como la dirección compartida. Use un grupo para muchos miembros."
+  "admin.sharedMembersFormHelp": "Direcciones de usuarios o grupos de este dominio, una por línea. Los miembros pueden leer y gestionar el correo de todas las carpetas y enviar como la dirección compartida. Use un grupo para muchos miembros.",
+  "contacts.thisIsMe": "Este soy yo",
+  "contacts.notMe": "No soy yo",
+  "contacts.meBadge": "Yo",
+  "contacts.errSelfGroup": "Un grupo de contactos no puede ser su propia tarjeta.",
+  "flash.contactSelfSet": "Marcado como su propia tarjeta",
+  "flash.contactSelfCleared": "Ya no está marcado como su propia tarjeta",
+  "compose.attachMyCard": "Adjuntar mi tarjeta",
+  "compose.errSelfCardMissing": "Pidió adjuntar su tarjeta, pero no hay ninguna marcada. Marque una en Contactos o desmarque la casilla.",
+  "compose.errSelfCardTooLarge": "Su tarjeta es demasiado grande para adjuntarla."
 }

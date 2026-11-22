@@ -257,6 +257,8 @@ fails part way the book stays, with the contacts left, and repeating the
 `DELETE` finishes the job. The default book cannot be deleted and answers
 `403`. Renaming is done in the web interface.
 
+Deleting the contact that is marked "This is me" in the web interface, whether by a `DELETE` of its object or of its book, clears that mark, so a card later `PUT` at the same address is not your own card. Marking is done in the web interface.
+
 ## Shared address books
 
 An address book can be shared with a user or a group at `read` or `write`

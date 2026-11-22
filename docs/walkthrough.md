@@ -190,6 +190,15 @@ Press `?` for the full list. Shortcuts are ignored while typing in a field.
   rename it, delete it (its contacts are kept) or remove members. A contact is
   added to a group from the contact's own page, from the same address book.
   **Email group** opens the compose form with the members' addresses.
+- **This is me** on a contact's page marks it as your own card (one at a time;
+  a contact group cannot be it) and shows a **Me** badge. In the compose form,
+  **Attach my card** then adds that card as a `.vcf` file. Only the name,
+  organisation, email, phone, address, web address and birthday go out: notes,
+  photos, categories, custom fields and any extra labels or coordinates attached to an address stay behind. Tick the box before
+  sending; if the card has gone by then, the send is refused and nothing is
+  sent. A draft remembers the tick. Deleting the contact, on the web or over
+  CardDAV, clears the mark. When you send as a shared inbox, your own card is
+  still the one attached.
 - A book you created has a **Sharing** link: share it with a person or a group
   at read or read and write access. Books shared with you are under **Shared
   with me** in the sidebar and are read only on the web.

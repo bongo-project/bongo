@@ -1478,5 +1478,14 @@
   "admin.sharedErrSync": "Les membres ont été enregistrés, mais l'accès aux dossiers n'a pas été entièrement mis à jour. Réessayez.",
   "admin.sharedErrMember": "Cette adresse ne peut pas être membre.",
   "admin.sharedErrLookup": "Le membre n'a pas pu être recherché.",
-  "admin.sharedMembersFormHelp": "Adresses d'utilisateurs ou de groupes de ce domaine, une par ligne. Les membres peuvent lire et gérer le courrier de tous les dossiers et envoyer avec l'adresse partagée. Utilisez un groupe pour de nombreux membres."
+  "admin.sharedMembersFormHelp": "Adresses d'utilisateurs ou de groupes de ce domaine, une par ligne. Les membres peuvent lire et gérer le courrier de tous les dossiers et envoyer avec l'adresse partagée. Utilisez un groupe pour de nombreux membres.",
+  "contacts.thisIsMe": "C'est moi",
+  "contacts.notMe": "Ce n'est pas moi",
+  "contacts.meBadge": "Moi",
+  "contacts.errSelfGroup": "Un groupe de contacts ne peut pas être votre propre fiche.",
+  "flash.contactSelfSet": "Marqué comme votre propre fiche",
+  "flash.contactSelfCleared": "N'est plus marqué comme votre propre fiche",
+  "compose.attachMyCard": "Joindre ma fiche",
+  "compose.errSelfCardMissing": "Vous avez demandé à joindre votre fiche, mais aucune n'est marquée. Marquez-en une dans Contacts ou décochez la case.",
+  "compose.errSelfCardTooLarge": "Votre fiche est trop volumineuse pour être jointe."
 }

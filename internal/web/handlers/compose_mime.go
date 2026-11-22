@@ -386,15 +386,34 @@ func withBccHeader(raw []byte, bcc string) []byte {
 	if strings.TrimSpace(bcc) == "" {
 		return raw
 	}
+	return withHeaderBeforeSubject(raw, "Bcc", bcc)
+}
+
+// withAttachSelfHeader returns raw with the draft-only X-Bongo-Attach-Self
+// header, which records that the draft carries the user's own card. Like Bcc it
+// is for the stored draft only: Send builds from the form and never adds it.
+func withAttachSelfHeader(raw []byte) []byte {
+	return withHeaderBeforeSubject(raw, attachSelfHeader, "1")
+}
+
+// attachSelfHeaderOf reports whether raw carries the draft-only marker.
+func attachSelfHeaderOf(raw []byte) bool {
+	hdr, _ := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw))).ReadMIMEHeader()
+	return strings.TrimSpace(hdr.Get(attachSelfHeader)) == "1"
+}
+
+// withHeaderBeforeSubject adds a header just before Subject in the top-level
+// header block. value must already be safe for a header.
+func withHeaderBeforeSubject(raw []byte, name, value string) []byte {
 	const marker = "\r\nSubject: "
 	i := bytes.Index(raw, []byte(marker))
 	if i < 0 {
 		return raw
 	}
-	out := make([]byte, 0, len(raw)+len(bcc)+8)
+	out := make([]byte, 0, len(raw)+len(name)+len(value)+8)
 	out = append(out, raw[:i]...)
-	out = append(out, "\r\nBcc: "...)
-	out = append(out, bcc...)
+	out = append(out, "\r\n"+name+": "...)
+	out = append(out, value...)
 	out = append(out, raw[i:]...)
 	return out
 }

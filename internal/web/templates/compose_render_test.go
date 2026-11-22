@@ -31,7 +31,7 @@ func renderComposeDoc(t *testing.T, mode, to, cc string, from []string) (*html.N
 	t.Helper()
 	ctx, _ := csrfRenderCtx(t)
 	var buf bytes.Buffer
-	if err := ComposePage(mode, to, cc, "", "Subj", "", "INBOX", 7, from, "", "").Render(ctx, &buf); err != nil {
+	if err := ComposePage(mode, to, cc, "", "Subj", "", "INBOX", 7, from, "", "", SelfCardOption{}).Render(ctx, &buf); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	doc, err := html.Parse(strings.NewReader(buf.String()))

@@ -1478,5 +1478,14 @@
   "admin.sharedErrSync": "The members were saved but folder access was not fully updated. Try again.",
   "admin.sharedErrMember": "That address cannot be a member.",
   "admin.sharedErrLookup": "The member could not be looked up.",
-  "admin.sharedMembersFormHelp": "Addresses of users or groups on this domain, one per line. Members can read and manage mail in every folder and send as the shared address. Use a group for many members."
+  "admin.sharedMembersFormHelp": "Addresses of users or groups on this domain, one per line. Members can read and manage mail in every folder and send as the shared address. Use a group for many members.",
+  "contacts.thisIsMe": "This is me",
+  "contacts.notMe": "Not me",
+  "contacts.meBadge": "Me",
+  "contacts.errSelfGroup": "A contact group cannot be your own card.",
+  "flash.contactSelfSet": "Marked as your own card",
+  "flash.contactSelfCleared": "No longer marked as your own card",
+  "compose.attachMyCard": "Attach my card",
+  "compose.errSelfCardMissing": "You asked to attach your card, but none is marked. Mark one under Contacts, or untick the box.",
+  "compose.errSelfCardTooLarge": "Your card is too large to attach."
 }

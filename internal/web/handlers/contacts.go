@@ -191,6 +191,8 @@ func (h *ContactsHandler) ShowContact(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to load contact group", http.StatusInternalServerError)
 			return
 		}
+	} else {
+		view.Self = h.contacts.IsSelfContact(userID, contact.Guid)
 	}
 
 	templ.Handler(templates.ContactDetailPage(contact, email, view)).ServeHTTP(w, r)

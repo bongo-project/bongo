@@ -321,5 +321,5 @@ func (h *ContactsHandler) cardView(userID string, c *bongov1.Contact) (templates
 		return templates.ContactCardView{Group: gv}, err
 	}
 	groups, err := h.contacts.ListContactGroups(userID, store.ContactBook(c))
-	return templates.ContactCardView{Groups: groups}, err
+	return templates.ContactCardView{Groups: groups, IsSelf: h.contacts.IsSelfContact(userID, c.Guid)}, err
 }

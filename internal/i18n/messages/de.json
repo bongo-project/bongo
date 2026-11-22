@@ -1478,5 +1478,14 @@
   "admin.sharedErrSync": "Die Mitglieder wurden gespeichert, der Ordnerzugriff wurde aber nicht vollständig aktualisiert. Versuchen Sie es erneut.",
   "admin.sharedErrMember": "Diese Adresse kann kein Mitglied sein.",
   "admin.sharedErrLookup": "Das Mitglied konnte nicht gesucht werden.",
-  "admin.sharedMembersFormHelp": "Adressen von Benutzern oder Gruppen dieser Domain, eine pro Zeile. Mitglieder können Mails in allen Ordnern lesen und verwalten und mit der gemeinsamen Adresse senden. Verwenden Sie bei vielen Mitgliedern eine Gruppe."
+  "admin.sharedMembersFormHelp": "Adressen von Benutzern oder Gruppen dieser Domain, eine pro Zeile. Mitglieder können Mails in allen Ordnern lesen und verwalten und mit der gemeinsamen Adresse senden. Verwenden Sie bei vielen Mitgliedern eine Gruppe.",
+  "contacts.thisIsMe": "Das bin ich",
+  "contacts.notMe": "Nicht ich",
+  "contacts.meBadge": "Ich",
+  "contacts.errSelfGroup": "Eine Kontaktgruppe kann nicht Ihre eigene Karte sein.",
+  "flash.contactSelfSet": "Als Ihre eigene Karte markiert",
+  "flash.contactSelfCleared": "Nicht mehr als Ihre eigene Karte markiert",
+  "compose.attachMyCard": "Meine Karte anhängen",
+  "compose.errSelfCardMissing": "Sie wollten Ihre Karte anhängen, aber keine ist markiert. Markieren Sie eine unter Kontakte oder entfernen Sie das Häkchen.",
+  "compose.errSelfCardTooLarge": "Ihre Karte ist zu groß zum Anhängen."
 }

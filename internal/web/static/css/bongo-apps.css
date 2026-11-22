@@ -163,6 +163,7 @@
 .contact-detail-actions .tool-btn.outline:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .contacts-head a.tool-btn,
 .contact-detail-actions .tool-btn { display: inline-flex; align-items: center; text-decoration: none; }
+.contact-detail-actions form { display: contents; }
 .export-menu { position: relative; }
 .export-menu > summary { list-style: none; }
 .export-menu > summary::-webkit-details-marker { display: none; }

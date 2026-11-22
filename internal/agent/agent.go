@@ -1686,6 +1686,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/contacts/groups/{guid}/delete", contactsH.DeleteContactGroup)
 			r.Post("/contacts/groups/{guid}/members/remove", contactsH.RemoveContactGroupMember)
 			r.Post("/contacts/{guid}/add-to-group", contactsH.AddToContactGroup)
+			r.Post("/contacts/{guid}/self", contactsH.MarkSelf)
+			r.Post("/contacts/{guid}/self/clear", contactsH.ClearSelf)
 			if a.ACL != nil && a.AddressBooks != nil {
 				// Shared books have their own tree, outside /contacts/{guid}, so a
 				// contact whose guid is "shared" stays reachable. Every handler

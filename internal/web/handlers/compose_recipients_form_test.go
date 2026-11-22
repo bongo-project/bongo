@@ -24,7 +24,7 @@ import (
 // the server must parse them as before.
 func TestComposeSendRecipientFieldsAreUnchangedByPills(t *testing.T) {
 	var page bytes.Buffer
-	if err := templates.ComposePage("new", "", "", "", "", "", "", 0, nil, "", "").Render(context.Background(), &page); err != nil {
+	if err := templates.ComposePage("new", "", "", "", "", "", "", 0, nil, "", "", templates.SelfCardOption{}).Render(context.Background(), &page); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"to", "cc", "bcc", "subject", "send_id"} {
