@@ -69,54 +69,24 @@ templ ComposePage(mode string, to string, cc string, bcc string, subject string,
 					<div class="field-row">
 						<span class="field-label">{ t(ctx, "compose.to") }</span>
 						<div class="field-content recipient-field" x-data="recipientPills" x-bind:class="{'has-pills': showPills}">
-							<input
-								type="text"
-								id="to"
-								name="to"
-								value={ to }
-								placeholder="recipient@example.com"
-								x-data="galAutocomplete"
-								:value="query"
-								@input.debounce.300ms="onInput($el)"
-								@keydown="onKeydown($event)"
-								aria-label={ t(ctx, "compose.to") }
-							/>
+							@recipientInput("to", t(ctx, "compose.to"), to, "recipient@example.com")
 							@recipientPillList()
+							if n := composeNotice(ctx); n != "" {
+								<p class="recipient-notice" role="status">{ n }</p>
+							}
 						</div>
 					</div>
 					<div class="field-row" x-data="{ showCc: false, showBcc: false }">
 						<span class="field-label">{ t(ctx, "compose.cc") }</span>
 						<div class="field-content recipient-field" x-data="recipientPills" x-bind:class="{'has-pills': showPills}">
-							<input
-								type="text"
-								id="cc"
-								name="cc"
-								value={ cc }
-								placeholder="cc@example.com"
-								x-data="galAutocomplete"
-								:value="query"
-								@input.debounce.300ms="onInput($el)"
-								@keydown="onKeydown($event)"
-								aria-label={ t(ctx, "compose.cc") }
-							/>
+							@recipientInput("cc", t(ctx, "compose.cc"), cc, "cc@example.com")
 							@recipientPillList()
 						</div>
 					</div>
 					<div class="field-row">
 						<span class="field-label">{ t(ctx, "compose.bcc") }</span>
 						<div class="field-content recipient-field" x-data="recipientPills" x-bind:class="{'has-pills': showPills}">
-							<input
-								type="text"
-								id="bcc"
-								name="bcc"
-								value={ bcc }
-								placeholder="bcc@example.com"
-								x-data="galAutocomplete"
-								:value="query"
-								@input.debounce.300ms="onInput($el)"
-								@keydown="onKeydown($event)"
-								aria-label={ t(ctx, "compose.bcc") }
-							/>
+							@recipientInput("bcc", t(ctx, "compose.bcc"), bcc, "bcc@example.com")
 							@recipientPillList()
 						</div>
 					</div>
@@ -212,6 +182,40 @@ templ ComposePage(mode string, to string, cc string, bcc string, subject string,
 				</div>
 			</form>
 		</div>
+	</div>
+}
+
+// recipientInput is a To, Cc or Bcc text input with its suggestion list. The
+// galAutocomplete component wraps the input, not the input itself, so the list
+// can be its child; data-gal-multi makes a pick replace only the entry being
+// typed, and data-gal-groups asks the search to include contact groups.
+templ recipientInput(name, label, value, placeholder string) {
+	<div class="recipient-autocomplete" x-data="galAutocomplete" data-gal-multi data-gal-groups>
+		<input
+			type="text"
+			id={ name }
+			name={ name }
+			value={ value }
+			placeholder={ placeholder }
+			autocomplete="off"
+			:value="query"
+			@input.debounce.300ms="onInput($el)"
+			@keydown="onKeydown($event)"
+			@blur="hide()"
+			aria-label={ label }
+		/>
+		<ul class="recipient-suggestions" x-show="show" x-cloak role="listbox">
+			<template x-for="(r, i) in results" :key="r.key">
+				<li role="option">
+					<button type="button" class="recipient-suggestion" :class="rowClass(i)" @mousedown.prevent="select(r)">
+						<span x-text="r.display_name"></span>
+						<span class="recipient-suggestion-detail" x-text="r.email"></span>
+						<span class="recipient-suggestion-detail" x-text="r.label"></span>
+					</button>
+				</li>
+			</template>
+		</ul>
+		<p class="recipient-notice" x-show="notice" x-cloak role="status" x-text="notice"></p>
 	</div>
 }
 

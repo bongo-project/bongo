@@ -134,10 +134,35 @@ func TestComposeRendersPreservedHooks(t *testing.T) {
 					if _, ok := a["required"]; ok != f.required {
 						t.Errorf("%s required = %v, want %v", f.name, ok, f.required)
 					}
-					if a["x-data"] != "galAutocomplete" || a[":value"] != "query" ||
+					if a[":value"] != "query" ||
 						a["@input.debounce.300ms"] != "onInput($el)" ||
 						a["@keydown"] != "onKeydown($event)" {
 						t.Errorf("%s lost its galAutocomplete bindings: %v", f.name, a)
+					}
+					// The component wraps the input so the suggestion list can be
+					// its child. data-gal-multi: a pick replaces only the entry
+					// being typed; data-gal-groups: contact groups are offered.
+					wrap := attrMap(els[0].Parent)
+					if wrap["x-data"] != "galAutocomplete" {
+						t.Errorf("%s: input is not wrapped in galAutocomplete: %v", f.name, wrap)
+					}
+					if _, ok := wrap["data-gal-multi"]; !ok {
+						t.Errorf("%s: wrapper lacks data-gal-multi", f.name)
+					}
+					if _, ok := wrap["data-gal-groups"]; !ok {
+						t.Errorf("%s: wrapper lacks data-gal-groups", f.name)
+					}
+					lists := 0
+					walk(els[0].Parent, func(n *html.Node) {
+						if n.Type == html.ElementNode && n.Data == "ul" && hasClass(n, "recipient-suggestions") {
+							lists++
+							if attrMap(n)["role"] != "listbox" || attrMap(n)["x-show"] != "show" {
+								t.Errorf("%s: suggestion list lost role/x-show: %v", f.name, attrMap(n))
+							}
+						}
+					})
+					if lists != 1 {
+						t.Errorf("%s: %d suggestion lists, want 1", f.name, lists)
 					}
 				}
 

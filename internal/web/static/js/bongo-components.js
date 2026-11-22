@@ -274,6 +274,12 @@ document.addEventListener('alpine:init', () => {
     show: false,
     loading: false,
     selected: -1,
+    // notice is a short message under the field, left by picking a contact
+    // group (members skipped, over the recipient limit).
+    notice: '',
+    // groups is set by data-gal-groups: the search then includes contact
+    // groups, which only the compose recipient fields can expand.
+    groups: false,
     // multi is set by data-gal-multi on the wrapper: the field then holds a
     // comma-separated list (the event form's attendees) and a search or a pick
     // concerns only the entry being typed, the last one. Every other field is
@@ -282,6 +288,7 @@ document.addEventListener('alpine:init', () => {
 
     init() {
       this.multi = this.$el.hasAttribute('data-gal-multi');
+      this.groups = this.$el.hasAttribute('data-gal-groups');
       // Read the server-rendered value attribute to seed the query.
       // We use getAttribute('value') because it reads the HTML attribute
       // directly, not the DOM property which Alpine may have already cleared.
@@ -298,7 +305,17 @@ document.addEventListener('alpine:init', () => {
     // "query = $el.value; search()", so the two steps live here.
     onInput(el) {
       this.query = el.value;
+      this.notice = '';
       this.search();
+    },
+
+    hide() {
+      this.show = false;
+    },
+
+    // rowClass marks the suggestion the keyboard has reached.
+    rowClass(i) {
+      return { 'is-selected': i === this.selected };
     },
 
     // lastSeparator is the index of the comma that ends the last complete
@@ -335,9 +352,10 @@ document.addEventListener('alpine:init', () => {
       }
       this.loading = true;
       try {
-        const resp = await fetch('/api/gal?q=' + encodeURIComponent(term));
+        const resp = await fetch('/api/gal?q=' + encodeURIComponent(term) + (this.groups ? '&contact_groups=1' : ''));
         if (resp.ok) {
           this.results = await resp.json();
+          this.selected = -1;
           this.show = this.results.length > 0;
         }
       } catch (e) {
@@ -346,7 +364,95 @@ document.addEventListener('alpine:init', () => {
       this.loading = false;
     },
 
+    // entryEmails lists the lower-case addresses of a comma-separated recipient
+    // string; a comma inside a quoted name does not separate entries.
+    entryEmails(str) {
+      const out = [];
+      let cur = '';
+      let quoted = false;
+      const flush = function() {
+        const tok = cur.trim();
+        cur = '';
+        if (tok === '') return;
+        const m = tok.match(/<([^<>]*)>$/);
+        out.push((m ? m[1] : tok).trim().toLowerCase());
+      };
+      for (let i = 0; i < str.length; i++) {
+        const c = str.charAt(i);
+        if (c === '\\' && i + 1 < str.length) {
+          cur += c + str.charAt(i + 1);
+          i++;
+        } else if (c === '"') {
+          quoted = !quoted;
+          cur += c;
+        } else if (c === ',' && !quoted) {
+          flush();
+        } else {
+          cur += c;
+        }
+      }
+      flush();
+      return out;
+    },
+
+    // recipientTotal counts the addresses in this form's To, Cc and Bcc: the
+    // field this component belongs to as it will read once the pick is
+    // written, the others as they stand.
+    recipientTotal() {
+      const own = this.$el.querySelector('input[name]');
+      const form = this.$el.closest('form');
+      let total = this.entryEmails(this.query).length;
+      if (!form) return total;
+      for (const name of ['to', 'cc', 'bcc']) {
+        const input = form.querySelector('input[name="' + name + '"]');
+        if (input && input !== own) total += this.entryEmails(input.value).length;
+      }
+      return total;
+    },
+
+    // pickContactGroup replaces the entry being typed (the group's name) with
+    // the group's member addresses that the field does not hold already. The
+    // server sees ordinary addresses, so every send-time check still applies.
+    async pickContactGroup(entry) {
+      this.show = false;
+      this.results = [];
+      this.notice = '';
+      let data = null;
+      try {
+        const resp = await fetch('/api/contact-groups/' + encodeURIComponent(entry.guid) + '/addresses');
+        if (!resp.ok) {
+          this.notice = (await resp.text()).trim();
+          return;
+        }
+        data = await resp.json();
+      } catch (e) {
+        console.error('contact group lookup failed:', e);
+        return;
+      }
+      const cut = this.lastSeparator() + 1;
+      const head = cut > 0 ? this.query.slice(0, cut).replace(/[,\s]+$/, '') : '';
+      const have = new Set(this.entryEmails(head));
+      const parts = head === '' ? [] : [head];
+      for (const addr of data.addresses || []) {
+        if (!have.has(addr.toLowerCase())) {
+          have.add(addr.toLowerCase());
+          parts.push(addr);
+        }
+      }
+      this.query = parts.join(', ');
+      const notes = [];
+      if (data.skipped_notice) notes.push(data.skipped_notice);
+      if (data.limit > 0 && this.recipientTotal() > data.limit && data.over_limit_notice) {
+        notes.push(data.over_limit_notice);
+      }
+      this.notice = notes.join(' ');
+    },
+
     select(entry) {
+      if (entry.kind === 'contact-group') {
+        this.pickContactGroup(entry);
+        return;
+      }
       if (this.multi) {
         const cut = this.lastSeparator() + 1;
         this.query = (cut > 0 ? this.query.slice(0, cut) + ' ' : '') + entry.email;

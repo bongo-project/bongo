@@ -47,7 +47,9 @@ func generateGUID() string {
 	return hex.EncodeToString(b)
 }
 
-// Create creates a new contact and returns its GUID.
+// Create creates a new contact and returns its GUID. Kind and Members are
+// derived from the vCard; a contact group over MaxContactGroupMembers is
+// refused with ErrContactGroupTooLarge and nothing is written.
 func (s *ContactStore) Create(userID string, contact *bongov1.Contact) (string, error) {
 	if contact.Guid == "" {
 		contact.Guid = generateGUID()
@@ -55,6 +57,9 @@ func (s *ContactStore) Create(userID string, contact *bongov1.Contact) (string, 
 	now := time.Now().Unix()
 	contact.CreatedAt = now
 	contact.UpdatedAt = now
+	if err := deriveContactGroup(contact); err != nil {
+		return "", err
+	}
 
 	data, err := proto.Marshal(contact)
 	if err != nil {
@@ -98,6 +103,9 @@ func (s *ContactStore) Get(userID, guid string) (*bongov1.Contact, error) {
 func (s *ContactStore) Update(userID, guid string, contact *bongov1.Contact) error {
 	contact.Guid = guid
 	contact.UpdatedAt = time.Now().Unix()
+	if err := deriveContactGroup(contact); err != nil {
+		return err
+	}
 
 	data, err := proto.Marshal(contact)
 	if err != nil {

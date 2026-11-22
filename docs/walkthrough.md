@@ -173,6 +173,10 @@ Press `?` for the full list. Shortcuts are ignored while typing in a field.
 - **New Contact** adds one. **Import vCard** and **Export vCard** move
   contacts in and out as `.vcf` files (macOS Contacts, Google Contacts and
   others).
+- The sidebar lists **Contact groups**. Add a name to create one; open it to
+  rename it, delete it (its contacts are kept) or remove members. A contact is
+  added to a group from the contact's own page, from the same address book.
+  **Email group** opens the compose form with the members' addresses.
 
 ### Settings
 

@@ -256,11 +256,40 @@ fails part way the book stays, with the contacts left, and repeating the
 `DELETE` finishes the job. The default book cannot be deleted and answers
 `403`. Renaming is done in the web interface.
 
+## Contact groups
+
+A card with `KIND:group` (vCard 4) or `X-ADDRESSBOOKSERVER-KIND:group` (Apple,
+DAVx5 and Thunderbird, with vCard 3) is a contact group. Its members are the
+`MEMBER` or `X-ADDRESSBOOKSERVER-MEMBER` values, each the `UID` of a member
+card, usually as `urn:uuid:...`; `mailto:` members are accepted too. Bongo
+returns a group in the form it was sent and never mixes the two forms. A group
+made in the web interface is written in Apple's form with vCard version 3.0.
+
+A group lists members of its own address book. A reference to a card in another
+book, to a card that was deleted and to a card that has not synced yet is
+ignored when the group is used, so a client may send a group before its
+members. Contact groups do not nest: a member that is itself a group is not
+expanded. A group holds at most 500 distinct members; a `PUT` of a group with
+more is refused with `403` and nothing is stored.
+
+In the web interface, a contact group is created, renamed and deleted on the
+contacts page, and a contact is added to a group from its own page. Deleting a
+group keeps its contacts. In the compose form, picking a contact group in To, Cc
+or Bcc adds the members' addresses to the field; members without an email
+address are skipped with a notice. A message can have at most 100 recipients in
+all (`smtp.limits.max_recipients`), and the compose form says so when a group
+would exceed it.
+
+Upgrade every node before using contact groups. An older node does not set the
+group fields, which the newer nodes read back from the card, and it has no group
+page and no member limit.
+
 ## Limits
 
 - One request body is at most 10 MiB; a larger one is refused with `413`.
 - A user owns at most 5 calendars; see Creating and deleting calendars.
 - A user owns at most 20 address books besides the default one.
+- A contact group holds at most 500 distinct members; see Contact groups.
 - Events, tasks and contacts count towards the domain's quota, checked at
   every `PUT`.
 - An event can invite at most 100 attendees. Only attendees the server would

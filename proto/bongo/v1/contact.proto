@@ -14,6 +14,14 @@ message Contact {
   bytes vcard_raw = 7;
   int64 created_at = 8;
   int64 updated_at = 9;
+  // kind is "group" for a contact group and empty for a person. Derived from
+  // vcard_raw (KIND or X-ADDRESSBOOKSERVER-KIND) on every write; vcard_raw is
+  // the source of truth.
+  string kind = 10;
+  // members holds a contact group's member references in canonical form (a
+  // member card's UID: 32 lower-case hex, or "mailto:address"). Derived from
+  // vcard_raw on every write.
+  repeated string members = 11;
   // addressbook_id names the address book the contact is filed in. Empty means
   // the default book.
   string addressbook_id = 12;

@@ -11,6 +11,7 @@ import (
 
 	"github.com/emersion/go-vcard"
 
+	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
@@ -24,6 +25,54 @@ type ContactBooksView struct {
 	Active string
 	// ActiveBook is the record of Active when it is one of the user's own books.
 	ActiveBook *bongov1.AddressBook
+	// Groups are the contact groups the sidebar lists: those of the active
+	// book, or of every book when none is active. On a contact's own page they
+	// are the groups of that contact's book, which "Add to group" offers.
+	Groups []*bongov1.Contact
+	// Group is the open contact group's members, set only on a group's own page.
+	Group *ContactGroupView
+}
+
+// ContactGroupMemberView is one resolved member of a contact group: a card in
+// the group's book, or an address-only member (Guid empty).
+type ContactGroupMemberView struct {
+	Ref   string
+	Guid  string
+	Name  string
+	Email string
+}
+
+// ContactGroupView is a contact group's members as they exist now.
+type ContactGroupView struct {
+	Members []ContactGroupMemberView
+	// Nested counts members that are themselves groups: not expanded.
+	Nested int
+	// Full is true when the group is at its member limit.
+	Full bool
+}
+
+// ContactCardView is what a contact's detail card needs beyond the contact.
+type ContactCardView struct {
+	// Groups are the contact groups of the contact's book.
+	Groups []*bongov1.Contact
+	// Group is set when the contact is a contact group.
+	Group *ContactGroupView
+}
+
+// contactGroupMemberCount is the number of members a group row shows.
+func contactGroupMemberCount(c *bongov1.Contact) int {
+	_, members := store.ContactGroupInfo(c)
+	return len(members)
+}
+
+// contactMemberCountLabel is "N member(s)".
+func contactMemberCountLabel(ctx context.Context, n int) string {
+	return fmt.Sprintf(t(ctx, "contacts.groupMembers"), n)
+}
+
+// contactGroupHref is the page of one contact group.
+func contactGroupHref(guid string) string {
+	return "/contacts/" + url.PathEscape(guid)
 }
 
 // contactsBaseURL is the list URL pagination links extend.
@@ -434,12 +483,20 @@ templ ContactRow(c *bongov1.Contact) {
 		tabindex="0"
 		data-contact-select="true"
 	>
-		<div class={ "contact-avatar", avatarClass(c.DisplayName, c.Email) } aria-hidden="true">
-			{ avatarInitials(c.DisplayName, c.Email) }
-		</div>
+		if store.IsContactGroup(c) {
+			<div class="contact-avatar contact-avatar-group" aria-hidden="true">@Icon("users", "")</div>
+		} else {
+			<div class={ "contact-avatar", avatarClass(c.DisplayName, c.Email) } aria-hidden="true">
+				{ avatarInitials(c.DisplayName, c.Email) }
+			</div>
+		}
 		<div class="contact-info">
 			<div class="contact-name">{ c.DisplayName }</div>
-			<div class="contact-email">{ c.Email }</div>
+			if store.IsContactGroup(c) {
+				<div class="contact-email">{ t(ctx, "contacts.groupLabel") } &middot; { contactMemberCountLabel(ctx, contactGroupMemberCount(c)) }</div>
+			} else {
+				<div class="contact-email">{ c.Email }</div>
+			}
 		</div>
 	</a>
 }
@@ -454,7 +511,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string, books ContactBooksView
 				<a href="/contacts" class="tool-btn">&larr; { t(ctx, "common.back") }</a>
 			</div>
 			<div class="contact-detail-pane">
-				@contactCard(c, true)
+				@contactCard(c, true, ContactCardView{Groups: books.Groups, Group: books.Group})
 			</div>
 		</main>
 	}
@@ -619,14 +676,17 @@ templ contactTextField(name, labelKey, value string) {
 	</div>
 }
 
-templ ContactDetailPartial(c *bongov1.Contact) {
-	@contactCard(c, false)
+templ ContactDetailPartial(c *bongov1.Contact, view ContactCardView) {
+	@contactCard(c, false, view)
 }
 
 // contactCard is the read-only detail card with the editor beneath it. The
 // editor is open on the full page (works without JS) and closed in the HTMX
 // pane until Edit is pressed.
-templ contactCard(c *bongov1.Contact, editorOpen bool) {
+templ contactCard(c *bongov1.Contact, editorOpen bool, view ContactCardView) {
+	if view.Group != nil {
+		@contactGroupCard(c, view.Group)
+	} else {
 	<div class="contact-detail-card">
 		<div class="contact-detail-header">
 			<div class={ "contact-avatar", "contact-avatar-lg", avatarClass(c.DisplayName, c.Email) } aria-hidden="true">
@@ -662,10 +722,90 @@ templ contactCard(c *bongov1.Contact, editorOpen bool) {
 		<div class="contact-editor" id={ "contact-editor-" + c.Guid } hidden?={ !editorOpen }>
 			@ContactEditForm(newContactFormData(c), false)
 		</div>
+		if len(view.Groups) > 0 {
+			<form method="post" action={ templ.SafeURL("/contacts/" + url.PathEscape(c.Guid) + "/add-to-group") } class="form-inline-actions contact-group-add">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				<label>
+					<span class="settings-row-title">{ t(ctx, "contacts.addToGroup") }</span>
+					<select name="group" class="settings-input" required>
+						for _, g := range view.Groups {
+							<option value={ g.Guid }>{ g.DisplayName }</option>
+						}
+					</select>
+				</label>
+				<button type="submit" class="btn-secondary">{ t(ctx, "contacts.addToGroupButton") }</button>
+			</form>
+		}
 		<div class="contact-dates">
 			<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
 			<span>{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>
 		</div>
+	</div>
+	}
+}
+
+// contactGroupCard is the detail card of a contact group: rename, delete, the
+// way to email the group and its members as they exist now. A group has no
+// contact details of its own, so there is no editor.
+templ contactGroupCard(c *bongov1.Contact, g *ContactGroupView) {
+	<div class="contact-detail-card contact-group-card">
+		<div class="contact-detail-header">
+			<div class="contact-avatar contact-avatar-lg contact-avatar-group" aria-hidden="true">@Icon("users", "")</div>
+			<div class="contact-detail-meta">
+				<h2>{ c.DisplayName }</h2>
+				<div class="sub">{ t(ctx, "contacts.groupLabel") } &middot; { contactMemberCountLabel(ctx, len(g.Members)) }</div>
+			</div>
+			<div class="contact-detail-actions">
+				if len(g.Members) > 0 {
+					<a class="tool-btn primary" href={ templ.URL("/compose?contact_group=" + url.QueryEscape(c.Guid)) }>{ t(ctx, "contacts.emailGroup") }</a>
+				}
+			</div>
+		</div>
+		<form method="post" action={ templ.SafeURL("/contacts/groups/" + url.PathEscape(c.Guid) + "/rename") } class="form-inline-actions">
+			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+			<label>
+				<span class="settings-row-title">{ t(ctx, "contacts.groupName") }</span>
+				<input type="text" name="name" class="settings-input" value={ c.DisplayName } maxlength="100" required/>
+			</label>
+			<button type="submit" class="btn-secondary">{ t(ctx, "contacts.renameGroup") }</button>
+		</form>
+		<h3 class="contact-group-heading">{ t(ctx, "contacts.groupMembersHeading") }</h3>
+		if len(g.Members) == 0 {
+			<p class="meta">{ t(ctx, "contacts.groupEmpty") }</p>
+		} else {
+			<ul class="contact-group-members">
+				for _, m := range g.Members {
+					<li class="contact-group-member">
+						if m.Guid != "" {
+							<a href={ templ.SafeURL(contactGroupHref(m.Guid)) }>{ m.Name }</a>
+						} else {
+							<span>{ m.Email }</span>
+						}
+						if m.Guid != "" && m.Email != "" {
+							<span class="meta">{ m.Email }</span>
+						}
+						<form method="post" action={ templ.SafeURL("/contacts/groups/" + url.PathEscape(c.Guid) + "/members/remove") }>
+							<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+							<input type="hidden" name="member" value={ m.Ref }/>
+							<button type="submit" class="btn-flush">{ t(ctx, "contacts.removeFromGroup") }</button>
+						</form>
+					</li>
+				}
+			</ul>
+		}
+		if g.Nested > 0 {
+			<p class="meta">{ fmt.Sprintf(t(ctx, "contacts.groupNested"), g.Nested) }</p>
+		}
+		<form
+			method="post"
+			action={ templ.SafeURL("/contacts/groups/" + url.PathEscape(c.Guid) + "/delete") }
+			hx-post={ "/contacts/groups/" + url.PathEscape(c.Guid) + "/delete" }
+			hx-confirm={ t(ctx, "contacts.deleteGroupConfirm") }
+			class="u-mt-075"
+		>
+			<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+			<button type="submit" class="btn-danger">{ t(ctx, "contacts.deleteGroup") }</button>
+		</form>
 	</div>
 }
 
@@ -708,6 +848,29 @@ templ ContactsSidebar(books ContactBooksView) {
 				</form>
 			</div>
 		}
+		<div class="sidebar-group">
+			<div class="sidebar-label">{ t(ctx, "contacts.groups") }</div>
+			if len(books.Groups) > 0 {
+				<ul class="nav-list">
+					for _, g := range books.Groups {
+						<li class="nav-item">
+							<a href={ templ.SafeURL(contactGroupHref(g.Guid)) }>
+								<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
+								<span>{ g.DisplayName }</span>
+							</a>
+						</li>
+					}
+				</ul>
+			}
+			<form method="post" action="/contacts/groups" class="u-p-18">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				if books.Enabled && books.Active != "" {
+					<input type="hidden" name="addressbook" value={ books.Active }/>
+				}
+				<input type="text" name="name" class="settings-input u-w-full" maxlength="100" required placeholder={ t(ctx, "contacts.groupName") } aria-label={ t(ctx, "contacts.newGroup") }/>
+				<button type="submit" class="btn-secondary u-mt-075">{ t(ctx, "contacts.createGroup") }</button>
+			</form>
+		</div>
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "contacts.navigation") }</div>
 			<ul class="nav-list">

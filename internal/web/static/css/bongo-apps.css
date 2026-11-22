@@ -182,6 +182,14 @@
 }
 .contact-fields dt { color: var(--text-muted); font-weight: 500; }
 .contact-fields dd { color: var(--text-primary); margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.contact-avatar-group { background: var(--accent-subtle); color: var(--accent-accessible); }
+.contact-avatar-group svg { width: 55%; height: 55%; }
+.contact-group-card > form, .contact-group-heading, .contact-group-members, .contact-group-card > p, .contact-group-add { margin: 0; padding: 0 1.75rem 1rem; }
+.contact-group-heading { font-size: .95rem; font-weight: 600; }
+.contact-group-members { list-style: none; }
+.contact-group-member { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .4rem 0; border-bottom: 1px solid var(--border-subtle); }
+.contact-group-member form { margin-left: auto; padding: 0; }
+.contact-group-add { border-top: 1px solid var(--border-subtle); padding-top: 1rem; }
 .contact-editor { border-top: 1px solid var(--border-subtle); }
 .contact-editor[hidden] { display: none; }
 .contact-dates {

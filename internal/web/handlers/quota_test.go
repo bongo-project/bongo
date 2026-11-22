@@ -469,9 +469,11 @@ func TestContactsQuota(t *testing.T) {
 		createForm := url.Values{"display_name": {"Ada"}, "email": {"ada@x.example"}, "notes": {strings.Repeat("n", 1337)}}
 		c := &bongov1.Contact{}
 		buildVCardFromForm(c, formReq(http.MethodPost, "/", createForm))
+		giveNewContactUID(c) // a new card carries a UID, as the handler writes it
 		createSize := store.ContactRecordSize(c)
 		q := &bongov1.Contact{DisplayName: "Q", Email: "q@x.example"}
 		syncQuickFieldsToVCard(q)
+		giveNewContactUID(q)
 		quickSize := store.ContactRecordSize(q)
 		for _, tc := range []struct {
 			name string
