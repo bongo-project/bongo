@@ -1,0 +1,24 @@
+package templates
+
+// ContactsImportRefusedPage is the full-page answer to a contact import that was
+// refused whole: a malformed file, too many records, or a failed write. Nothing
+// from the file is shown, only the message, which names a record by number.
+templ ContactsImportRefusedPage(message, email, back string) {
+	@LayoutWithContent(t(ctx, "contacts.importRefusedTitle"), email) {
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					<div class="page-head">
+						<h1>{ t(ctx, "contacts.importRefusedTitle") }</h1>
+					</div>
+					<div class="card">
+						<div class="card-body">
+							@FlashMessage(message, "error")
+							<p class="quota-back"><a href={ templ.SafeURL(back) } class="btn-secondary">{ t(ctx, "contacts.backToBook") }</a></p>
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+	}
+}

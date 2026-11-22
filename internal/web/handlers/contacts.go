@@ -63,19 +63,8 @@ func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 
 	// No book parameter lists every contact, whichever book it is filed in.
 	active := r.URL.Query().Get("book")
-	if active != "" && active != store.DefaultAddressBookID {
-		if h.books == nil || !store.ValidAddressBookID(active) {
-			bookFail(w, r, http.StatusNotFound, "contacts.errBookNotFound")
-			return
-		}
-		if _, err := h.books.Get(userID, active); err != nil {
-			if errors.Is(err, store.ErrAddressBookNotFound) {
-				bookFail(w, r, http.StatusNotFound, "contacts.errBookNotFound")
-				return
-			}
-			http.Error(w, "failed to list contacts", http.StatusInternalServerError)
-			return
-		}
+	if !h.checkListBook(w, r, userID, active) {
+		return
 	}
 	view, err := h.bookView(userID, active)
 	if err != nil {
@@ -106,6 +95,29 @@ func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	flash := flashText(r)
 
 	templ.Handler(templates.ContactsPage(contacts, page, totalPages, email, flash, view)).ServeHTTP(w, r)
+}
+
+// checkListBook validates the optional book query parameter of a list or export
+// request: empty (every book), "default" or the id of one of the user's own
+// books. Anything else is a 404, and a failed read a 500; it writes the response
+// and returns false in both cases.
+func (h *ContactsHandler) checkListBook(w http.ResponseWriter, r *http.Request, userID, active string) bool {
+	if active == "" || active == store.DefaultAddressBookID {
+		return true
+	}
+	if h.books == nil || !store.ValidAddressBookID(active) {
+		bookFail(w, r, http.StatusNotFound, "contacts.errBookNotFound")
+		return false
+	}
+	if _, err := h.books.Get(userID, active); err != nil {
+		if errors.Is(err, store.ErrAddressBookNotFound) {
+			bookFail(w, r, http.StatusNotFound, "contacts.errBookNotFound")
+			return false
+		}
+		bookFail(w, r, http.StatusInternalServerError, "contacts.errBookFailed")
+		return false
+	}
+	return true
 }
 
 // CreateContact handles POST to create a new contact.
@@ -329,153 +341,6 @@ func safeContactReturnPath(raw string) string {
 		return "/contacts"
 	}
 	return u.RequestURI()
-}
-
-// ExportContacts downloads all contacts as a .vcf file.
-func (h *ContactsHandler) ExportContacts(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
-
-	contacts, _, err := h.contacts.List(userID, 0, 0)
-	if err != nil {
-		http.Error(w, "failed to list contacts", http.StatusInternalServerError)
-		return
-	}
-
-	var buf bytes.Buffer
-	for _, c := range contacts {
-		if len(c.VcardRaw) > 0 {
-			buf.Write(c.VcardRaw)
-			if !bytes.HasSuffix(c.VcardRaw, []byte("\n")) {
-				buf.WriteByte('\n')
-			}
-			continue
-		}
-
-		card := make(vcard.Card)
-		card.SetValue(vcard.FieldVersion, "3.0")
-		card.SetValue(vcard.FieldFormattedName, c.DisplayName)
-		if c.Email != "" {
-			card.Set(vcard.FieldEmail, &vcard.Field{Value: c.Email})
-		}
-		if c.Phone != "" {
-			card.Set(vcard.FieldTelephone, &vcard.Field{Value: c.Phone})
-		}
-		if c.Company != "" {
-			card.Set(vcard.FieldOrganization, &vcard.Field{Value: c.Company})
-		}
-		if c.Notes != "" {
-			card.SetValue(vcard.FieldNote, c.Notes)
-		}
-
-		enc := vcard.NewEncoder(&buf)
-		_ = enc.Encode(card)
-	}
-
-	w.Header().Set("Content-Type", "text/vcard")
-	w.Header().Set("Content-Disposition", `attachment; filename="contacts.vcf"`)
-	if _, err := w.Write(buf.Bytes()); err != nil {
-		return
-	}
-}
-
-// ImportContacts uploads and parses a .vcf file to create contacts.
-func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
-
-	if !parseUploadForm(w, r, contactsImportMaxBytes, "/contacts") {
-		return
-	}
-	defer removeUploadTemp(r)
-	book, err := h.formBook(userID, r.FormValue("addressbook"))
-	if err != nil {
-		answerFormBookError(w, r, err)
-		return
-	}
-	file, _, err := r.FormFile("vcf")
-	if err != nil {
-		http.Redirect(w, r, withFlash("/contacts", flashNoFileUploaded), http.StatusSeeOther)
-		return
-	}
-	defer file.Close()
-
-	raw, err := io.ReadAll(file)
-	if err != nil {
-		http.Redirect(w, r, withFlash("/contacts", flashFileReadFailed), http.StatusSeeOther)
-		return
-	}
-
-	// All or nothing, best effort: refuse the whole upload up front when it
-	// would not fit, rather than importing part of it. The upload size is an
-	// approximation: the stored size is roughly the raw bytes plus the copied
-	// quick fields.
-	if quotaExceeded(h.quota, nil, userID, int64(len(raw))) {
-		refuseQuotaFlash(w, r, "/contacts")
-		return
-	}
-
-	// Split into individual vCard blocks for resilient parsing.
-	// Each block that fails to parse is skipped instead of aborting the whole import.
-	blocks := splitVCardBlocks(raw)
-
-	imported := 0
-	withEmail := 0
-	withPhone := 0
-	skipped := 0
-
-	for _, block := range blocks {
-		contact, err := parseVCardBlock(block)
-		if err != nil {
-			skipped++
-			continue
-		}
-
-		if contact.DisplayName == "" && contact.Email == "" {
-			skipped++
-			continue
-		}
-		contact.AddressbookId = book
-
-		if _, err := h.contacts.Create(userID, contact); err != nil {
-			skipped++
-			continue
-		}
-		imported++
-		if contact.Email != "" {
-			withEmail++
-		}
-		if contact.Phone != "" {
-			withPhone++
-		}
-	}
-
-	flash := flashContactsImported
-	if skipped > 0 {
-		flash = flashContactsImportedSomeSkipped
-	}
-
-	http.Redirect(w, r, withFlash("/contacts", flash), http.StatusSeeOther)
-}
-
-// splitVCardBlocks splits raw VCF data into individual BEGIN:VCARD...END:VCARD blocks.
-func splitVCardBlocks(data []byte) [][]byte {
-	var blocks [][]byte
-	text := string(data)
-
-	for {
-		beginIdx := strings.Index(strings.ToUpper(text), "BEGIN:VCARD")
-		if beginIdx < 0 {
-			break
-		}
-		endIdx := strings.Index(strings.ToUpper(text[beginIdx:]), "END:VCARD")
-		if endIdx < 0 {
-			break
-		}
-		// endIdx is relative to beginIdx; add length of "END:VCARD"
-		blockEnd := beginIdx + endIdx + len("END:VCARD")
-		blocks = append(blocks, []byte(text[beginIdx:blockEnd]))
-		text = text[blockEnd:]
-	}
-	return blocks
 }
 
 // parseVCardBlock parses a single vCard block into a Contact protobuf.

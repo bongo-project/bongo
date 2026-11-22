@@ -574,18 +574,27 @@ that reports read-only shares (`internal/caldav/privileges.go`,
 `ExportContacts` and `ImportContacts`); the audit is correct.
 
 **Acceptance Criteria:**
-- [ ] Import accepts CSV with the Google Contacts and Outlook header sets
+- [x] Import accepts CSV with the Google Contacts and Outlook header sets
       (mapped by header name, case-insensitive) and LDIF as Thunderbird
       exports it (`cn`, `givenName`, `sn`, `mail`, `telephoneNumber`, `o`).
       The format is detected from content, not the file name.
-- [ ] Import is all-or-nothing with the existing quota check and the
+- [x] Import is all-or-nothing with the existing quota check and the
       existing upload limits; a malformed row is reported by number and
       nothing is written.
-- [ ] Export offers vCard, CSV (Google header set) and LDIF.
-- [ ] CSV export neutralises formula injection: a cell starting with `=`,
+- [x] Export offers vCard, CSV (Google header set) and LDIF.
+- [x] CSV export neutralises formula injection: a cell starting with `=`,
       `+`, `-`, `@`, tab or carriage return is prefixed with `'`.
-- [ ] Round trip: export then import of 100 contacts in each format gives
+- [x] Round trip: export then import of 100 contacts in each format gives
       the same names, addresses, phones and companies.
+- Done in 40.4 (2026-11-22). Parsing lives in `internal/contactio`; the
+  format and encoding (UTF-8, UTF-16 with BOM, Windows-1252) are detected
+  from content. vCard import is now all-or-nothing too (operator decision).
+  At most 5000 records per import, enforced while parsing; writes are one
+  PUT per contact with compensation on failure, and a crash mid-import can
+  leave a partial import (documented). CSV export neutralises phone numbers
+  too; Bongo strips its own apostrophe on import, Google and Outlook keep it,
+  so vCard is recommended for moving between services. LDIF round-trips
+  contact groups as groupOfNames; CSV skips groups.
 
 ### US-014: "This is me"
 **Source:** audit #78. **Size:** S.
@@ -989,6 +998,22 @@ Found while building v0.16.0 (2026-11-15):
 - **Release note for v0.16.0:** CardDAV now requires the path's user segment
   to be the authenticated user's id; a client configured by hand with an
   email address there gets 404.
+- **Contact import and export, follow-ups** (40.4, 2026-11-22):
+  - Localised (non-English) Outlook headers and two-digit-year Outlook
+    dates; Google Labels as contact groups on CSV import, groups in CSV
+    export.
+  - A per-user contact cap and a per-card size cap; a composite
+    `/__contact_import__/` command if a crash mid-import ever matters.
+  - Latin-2 and other code pages are mis-decoded by the Windows-1252
+    fallback; LDIF `jpegPhoto` URL values refuse the file rather than being
+    ignored; LDIF keeps one work and one home address, untyped emails.
+  - The rows-read bound (4 x the record cap) counts blank CSV lines, so a
+    file with more than about 20,000 blank lines is refused as too many.
+  - Release note: vCard import no longer skips bad cards; it refuses the
+    file and names the card.
+- **Flaky test:** `TestPebbleMetricsAreOptIn` (internal/store) failed once in
+  CI on PR #233 (fsync count moved 9 to 10) and passed on rerun; it reads a
+  process-wide counter that a store opened earlier can still move.
 - **Shared address books, follow-ups** (40.3, 2026-11-22):
   - Share the default book; a "move contact between books" action.
   - Web create, edit and delete for write grantees (CardDAV only today);

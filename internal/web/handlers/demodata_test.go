@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/emersion/go-ical"
+
+	"github.com/bongo-project/bongo/internal/contactio"
 )
 
 // TestDemoContactsParse runs the contact importer's parser over every vCard in
@@ -22,7 +24,11 @@ func TestDemoContactsParse(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, b := range splitVCardBlocks(data) {
+		blocks, err := contactio.SplitVCards(data)
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		for _, b := range blocks {
 			c, err := parseVCardBlock(b)
 			if err != nil {
 				t.Errorf("%s: %v", f, err)

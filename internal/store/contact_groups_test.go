@@ -375,3 +375,23 @@ func TestVCardUIDFoldedAndUnsafe(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateContact(t *testing.T) {
+	ok := &bongov1.Contact{VcardRaw: vcard4Group(distinctMembers(MaxContactGroupMembers)...)}
+	over := &bongov1.Contact{Kind: "stale", Members: []string{"keep"}, VcardRaw: vcard4Group(distinctMembers(MaxContactGroupMembers + 1)...)}
+	person := &bongov1.Contact{VcardRaw: []byte("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:A\r\nEND:VCARD\r\n")}
+
+	if err := ValidateContact(ok); err != nil {
+		t.Errorf("500 members: %v", err)
+	}
+	if err := ValidateContact(person); err != nil {
+		t.Errorf("person: %v", err)
+	}
+	if err := ValidateContact(over); err != ErrContactGroupTooLarge {
+		t.Errorf("501 members: err = %v, want ErrContactGroupTooLarge", err)
+	}
+	// It reads; it never changes the contact.
+	if over.Kind != "stale" || len(over.Members) != 1 {
+		t.Errorf("ValidateContact changed the contact: kind %q members %v", over.Kind, over.Members)
+	}
+}

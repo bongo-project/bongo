@@ -170,9 +170,22 @@ Press `?` for the full list. Shortcuts are ignored while typing in a field.
 
 - The contact list is on the left; a click shows the contact on the right,
   where it can be edited and saved.
-- **New Contact** adds one. **Import vCard** and **Export vCard** move
-  contacts in and out as `.vcf` files (macOS Contacts, Google Contacts and
-  others).
+- **New Contact** adds one. **Import** reads vCard (`.vcf`), CSV (Google
+  Contacts, or Outlook with English column headers) and LDIF (Thunderbird); the
+  format is detected from the content, not the file name. **Export** writes
+  vCard, CSV (Google header set) or LDIF, for the book you have open or for all
+  contacts.
+- An import is all or nothing. The whole file is checked first, and a bad row,
+  card or entry is named by number and nothing is saved. A file may hold up to
+  5000 contacts. Contact groups travel in vCard and LDIF (`groupOfNames`); CSV
+  has no groups and Google labels are ignored.
+- In a CSV export, any cell that starts with `=`, `+`, `-`, `@`, a tab or a
+  carriage return (phone numbers such as `+49 30 123` included) gets a leading
+  apostrophe, so a spreadsheet cannot run it as a formula. Bongo's own import
+  removes that apostrophe again, so a value that already starts with `'` followed
+  by one of those characters loses its apostrophe on a CSV round trip. Google
+  Contacts and Outlook keep it, so use vCard to move contacts between services. An Outlook CSV in another language
+  is refused: export it again with Outlook set to English.
 - The sidebar lists **Contact groups**. Add a name to create one; open it to
   rename it, delete it (its contacts are kept) or remove members. A contact is
   added to a group from the contact's own page, from the same address book.
