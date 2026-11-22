@@ -24,6 +24,7 @@ type bookApplier struct {
 	ps *store.PebbleStore
 
 	mu             sync.Mutex
+	aclMu          sync.Mutex // grant commands are serialised as the FSM applies them
 	failDeleteAt   int
 	contactDeletes int
 }
@@ -32,6 +33,8 @@ var errBookInjected = errors.New("injected apply failure")
 
 func (a *bookApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
 	if cmd.Op == bongov1.Op_OP_PUT && store.IsACLSyntheticCommand(cmd.Key) {
+		a.aclMu.Lock()
+		defer a.aclMu.Unlock()
 		return store.ApplyACLCommand(a.ps, cmd)
 	}
 	if cmd.Op == bongov1.Op_OP_DELETE && strings.Contains(string(cmd.Key), "/contact/") {

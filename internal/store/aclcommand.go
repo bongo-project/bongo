@@ -878,7 +878,7 @@ func (s *ACLStore) ListGrantRefs() ([]GrantRef, error) {
 // profile is gone. A user grantee is probed by its profile and a group grantee
 // by its group record. The resource is probed per kind: a calendar by its
 // key, a mailbox by its id key and the mailbox that carries it; an address book
-// is not probed until address books exist. Only ErrNotFound counts as gone;
+// by its record, the backstop for ErrAddressBookGrantsNotRevoked. Only ErrNotFound counts as gone;
 // any other read error is returned so the caller keeps the grant.
 func (s *ACLStore) GrantOrphaned(ref GrantRef) (bool, error) {
 	probes := [][]byte{[]byte("/user/" + ref.Owner + "/profile")}
@@ -890,6 +890,9 @@ func (s *ACLStore) GrantOrphaned(ref GrantRef) (bool, error) {
 	}
 	if ref.Kind == ACLKindCalendar {
 		probes = append(probes, calendarKey(ref.Owner, ref.Resource))
+	}
+	if ref.Kind == ACLKindAddressBook {
+		probes = append(probes, addressBookKey(ref.Owner, ref.Resource))
 	}
 	var ownerProfile []byte
 	for i, k := range probes {

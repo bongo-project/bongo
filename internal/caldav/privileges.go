@@ -11,7 +11,7 @@ import (
 	"net/url"
 )
 
-// go-webdav v0.7.0 reports every calendar as read-write in
+// go-webdav v0.7.0 reports every calendar and address book as read-write in
 // DAV:current-user-privilege-set and has no backend hook to change that
 // (its source carries a TODO for it). PROPFIND answers are therefore
 // rewritten on the way out: the DAV:write privilege is dropped for the
@@ -27,11 +27,11 @@ const maxPrivilegeRewriteBytes = 8 << 20
 const davNS = "DAV:"
 
 // ReadOnlyFunc reports whether href names a collection the authenticated
-// user holds at read level only.
+// user holds at read level only (CalDAV and CardDAV backends each supply one).
 type ReadOnlyFunc func(ctx context.Context, href string) bool
 
-// PrivilegeFilter wraps a CalDAV handler so PROPFIND answers report read
-// instead of read-write for read-only shares.
+// PrivilegeFilter wraps a CalDAV or CardDAV handler so PROPFIND answers report
+// read instead of read-write for read-only shares.
 func PrivilegeFilter(next http.Handler, readOnly ReadOnlyFunc, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "PROPFIND" {
@@ -44,7 +44,7 @@ func PrivilegeFilter(next http.Handler, readOnly ReadOnlyFunc, logger *slog.Logg
 			out, err := rewritePrivileges(body, func(href string) bool { return readOnly(r.Context(), href) })
 			if err != nil {
 				// Never lose the answer over a cosmetic rewrite.
-				logger.Warn("caldav: privilege rewrite failed, sending original", "error", err)
+				logger.Warn("dav: privilege rewrite failed, sending original", "error", err)
 				return body
 			}
 			return out

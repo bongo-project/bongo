@@ -251,6 +251,10 @@ func TestSharesPageListsEveryKind(t *testing.T) {
 	e.grant(t, store.ACLKindMailbox, mixed, "bob", "", "lrswite", store.GrantStatePending, e.now)
 	e.grant(t, store.ACLKindMailbox, custom, "bob", "", "lrw", store.GrantStatePending, e.now)
 	e.grant(t, store.ACLKindMailbox, full, "bob", "", "lrswipkxtea", store.GrantStatePending, e.now)
+	// The book must exist: a grant on a deleted book is not listed.
+	if err := e.ps.Set([]byte("/user/alice/addressbook/"+sharesBookID), []byte("x")); err != nil {
+		t.Fatal(err)
+	}
 	e.grant(t, store.ACLKindAddressBook, sharesBookID, "bob", store.GrantLevelWrite, "", store.GrantStatePending, e.now)
 	// An expired pending grant on a live folder, and an accepted one.
 	exp := e.folder(t, "Expired")

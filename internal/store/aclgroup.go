@@ -123,7 +123,7 @@ func (s *ACLStore) EffectiveGrant(kind, owner, resource, userID string) (Effecti
 // a resource the grantee owns is left out when only a group reaches it. A
 // pending grant is a personal invitation and is read from the user's own
 // grants only. A pending grant expired at now, a permission the kind does not
-// accept and a grant whose calendar or mailbox is gone are left out. Sorted by
+// accept and a grant whose calendar, mailbox or address book is gone are left out. Sorted by
 // kind, owner then resource. Nothing here authorises access; it feeds the
 // shares page and the invitation count, which must agree.
 func (s *ACLStore) ListGrantsHeld(grantee, state string, now time.Time) ([]HeldShare, error) {
@@ -191,6 +191,13 @@ func (s *ACLStore) ListGrantsHeld(grantee, state string, now time.Time) ([]HeldS
 			case ACLKindMailbox:
 				if gone, err = s.mailboxGone(ref.Owner, ref.Resource); err != nil {
 					return nil, err
+				}
+			case ACLKindAddressBook:
+				if _, err := s.pebble.Get(addressBookKey(ref.Owner, ref.Resource)); err != nil {
+					if !errors.Is(err, ErrNotFound) {
+						return nil, fmt.Errorf("reading address book for grant: %w", err)
+					}
+					gone = true
 				}
 			}
 			if gone {

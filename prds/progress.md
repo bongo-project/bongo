@@ -1922,3 +1922,10 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [ui] For a suggestion list under an input, put x-data on a wrapper and use @mousedown.prevent on options so the input's blur handlers do not fire first.
 - PATTERN: [mail] Add a sender-only header (Bcc) to the sender's copies by inserting into the delivered raw; never build with it and strip.
 - PATTERN: [env] 127.0.0.1:8080 is Docker on this machine; reach a dev server via the LAN IP.
+
+## 2026-11-22 — 40.3 part (a): address-book sharing, store and CardDAV
+- Advisor plan (operator took every default: default book not shareable, read-only web view for grantees, no shared contact groups in compose, CardDAV DELETE of a shared book 403, autocomplete 20 books / 10 hits, disabled owner's book stays reachable). Split into (a) store + CardDAV and (b) web.
+- Worker (10 guards mutation-checked), advisor review PASS with minor fixes (owner-via-group no-oracle row added; verified by overlay mutation).
+- Gate: TestSharesPageListsEveryKind granted on a book that never existed; ListGrantsHeld now drops grants on deleted books, so the fixture seeds the book. TestPruneLegacyCalendarShares_LeaderRunsAtStartup failed once under load (worker tests running concurrently) and passed alone.
+- PATTERN: [testing] A new existence guard in a shared lister breaks fixtures that grant on resources that were never created; grep every package's tests for the kind, not just the packages the worker ran.
+- PATTERN: [dav] Resolve a DAV path into a target struct (key owner, id, segment, level) so every read, write and quota check uses the owner's keyspace; build shared-path 404s fresh, never wrapping a store not-found that a caller maps to 409.

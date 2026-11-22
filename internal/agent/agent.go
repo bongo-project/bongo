@@ -1193,6 +1193,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Contacts != nil {
 		carddavBackend = bongocarddav.NewBackend(a.Contacts, a.Search, a.logger)
 		carddavBackend.SetAddressBooks(a.AddressBooks)
+		if a.ACL != nil {
+			carddavBackend.SetGrants(a.ACL)
+		}
 		if a.DomainQuota != nil {
 			carddavBackend.SetQuotaChecker(a.DomainQuota)
 		}
@@ -5458,7 +5461,10 @@ func (h *carddavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Backend: h.backend,
 		Prefix:  "/carddav",
 	}
-	serveDAVBody(w, r, h.budget, h.logger, userID, &handler)
+	// go-webdav reports every address book read-write; tell clients which
+	// shares are read-only. The backend refuses their writes regardless.
+	next := bongocaldav.PrivilegeFilter(&handler, h.backend.ReadOnlyShare, h.logger)
+	serveDAVBody(w, r, h.budget, h.logger, userID, next)
 }
 
 // caldavHTTPHandler wraps a CalDAV backend with throttled HTTP basic auth.

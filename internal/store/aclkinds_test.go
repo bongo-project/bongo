@@ -367,6 +367,9 @@ func TestGrantOrphanedPerKind(t *testing.T) {
 	if err := e.ps.Set(calendarKey("o", "cal"), []byte("x")); err != nil {
 		t.Fatal(err)
 	}
+	if err := e.ps.Set(addressBookKey("o", kindsBookID), []byte("x")); err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name   string
