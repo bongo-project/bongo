@@ -239,7 +239,23 @@ written after the listing, or by an older node, can name a book that no longer e
 contacts, autocomplete, "from my contacts" and usage still count it, and CardDAV does not show it. Listing a book is
 a Pebble prefix scan filtered on `addressbook_id`; there is no SQLite or Bleve column for it, and the contact search
 index is book-agnostic. The default book has the id `default`, which is not 32 hex, so `BuildACLCommand` refuses to
-share it: the sharing work must either give it a materialised 32-hex id or decide it cannot be shared. Mixed
+share it, and that is the decision: the default book is not shareable (a share UI appears only on a created book;
+not in v0.16.1, see the PRD). A book shared with a user is a collection `shared-{owner}-{book}` in the recipient's home set, named
+`{book name} ({owner address})`. `parseSharedBookSegment` is stricter than CalDAV: a lower-case canonical UUID owner
+and exactly 32 lower-case hex for the book (no `default`, no hyphenated or upper-case spelling). `resolveBook` returns a
+`bookTarget` (keyOwner, book, segment, level): the path user must be the authenticated user, then the segment parses,
+the owner is not the user, `ACLStore.AddressBookLevel` (the one resolver, `EffectiveGrant`, read on every request,
+never cached) is read or write, and the owner's book record exists. Every shared failure (no grant, pending, expired,
+revoked, left group, own, malformed, deleted book, another user's home) is the same plain 404 and never wraps
+`ErrAddressBookNotFound`, which PUT would turn into a 409. A store read error on a shared path (grant or book read) is a 500, not the 404. Reads and writes use the OWNER's keyspace and
+`checkQuota(owner)`, so the owner's domain quota is charged; hrefs sit under the recipient's shared segment. A read
+share answers PUT and DELETE with 403 after resolution; a PUT of a guid filed in another of the owner's books is 403
+(own books keep 409), and a DELETE of a missing guid or one filed elsewhere is the same 404; DELETE of a shared
+collection is 403 for every holder (leaving is on the shares page); MKCOL on any `shared-` segment is a constant 403
+before any grant read. A disabled owner's shared book stays reachable, as with CalDAV. The CardDAV handler is wrapped
+in `caldav.PrivilegeFilter` with `Backend.ReadOnlyShare`, so a read share reports read only. A grantee write changes
+the owner's ETag (same content ETag; there is no sync token). Contact groups are raw vCards over DAV, so their
+members are not resolved there. `ListGrantsHeld` drops a grant whose book record is gone, so the shares page and the pending count agree. Mixed
 versions: there is no new command or prefix, and field 12 survives an older node's web edit (unknown fields are
 kept), but an older node's CardDAV shows every contact in the default book and has no MKCOL. Upgrade every node
 before anyone creates a second book.
@@ -301,7 +317,7 @@ mailbox is gone), and the stale grant is inert because the delete removes the `/
 key. A mailbox with no id issues no ACL command. A rename keeps its grants, as the id is unchanged.
 A leader sweep removes grants whose owner, resource or grantee is gone (two consecutive sightings,
 `ErrNotFound` only) for every kind: calendars by key, mailboxes through the `mailboxid` lookup (never a
-scan of the owner's mailboxes), address books not probed yet, and `g:` grants whose `/system/group/{id}` is gone.
+scan of the owner's mailboxes), address books by their record (`GrantOrphaned`, the backstop for `ErrAddressBookGrantsNotRevoked`), and `g:` grants whose `/system/group/{id}` is gone.
 The command and key shapes are unchanged, so no new mixed-version guardrail applies to user grants; for group
 grantees see the guardrail below.
 Domain-admin delegation (`/system/domain_admin/...`) and send-as grants (`AddressRecord.CanSend`/`Verified`)
@@ -374,7 +390,7 @@ through `internal/netx`, whose dialer refuses non-public addresses on every conn
 
 ## Repo-Specific Guardrails
 
-- **Grants are one composite Raft command (`/__acl__/`, `internal/store/aclcommand.go`).** A v0.15 node refuses a `mailbox` or `addressbook` grant at validation (the FSM logs the error and writes nothing, yet the applied index advances), so its replicas stay diverged after an upgrade and replay does not repair them: upgrade every node before anyone shares a folder or address book. An older-binary node applies it as a literal key and holds no grants, so replicas diverge for as long as the cluster runs mixed versions. Upgrade every node before anyone shares a calendar, and before the leader runs the `calendar-grants-v1` migration (it writes `/__acl__/` commands too). Production runs one node. The accept op also refuses a pending grant older than `store.PendingGrantTTL` (30 days, judged from the stored `updated_at` and the command's `at`, never the clock), so a node on an earlier binary would accept what an upgraded one refuses; upgrade every node together. Expired pending grants are never deleted and sit outside the 50-grant cap. Never write `/acl/` or `/aclrev/` keys any other way, and give every test applier that can see a grant an `IsACLSyntheticCommand` dispatch, or the command is stored as a literal key and negative tests pass vacuously.
+- **Grants are one composite Raft command (`/__acl__/`, `internal/store/aclcommand.go`).** A v0.15 node refuses a `mailbox` or `addressbook` grant at validation (the FSM logs the error and writes nothing, yet the applied index advances), so its replicas stay diverged after an upgrade and replay does not repair them: upgrade every node before anyone shares a folder or address book. An older-binary node applies it as a literal key and holds no grants, so replicas diverge for as long as the cluster runs mixed versions. An older v0.16.0 node lists no shared books and answers 404 on `shared-` address-book paths, so a client balanced across nodes would see a book appear and vanish and could drop its local copy: upgrade every node before anyone shares an address book. Upgrade every node before anyone shares a calendar, and before the leader runs the `calendar-grants-v1` migration (it writes `/__acl__/` commands too). Production runs one node. The accept op also refuses a pending grant older than `store.PendingGrantTTL` (30 days, judged from the stored `updated_at` and the command's `at`, never the clock), so a node on an earlier binary would accept what an upgraded one refuses; upgrade every node together. Expired pending grants are never deleted and sit outside the 50-grant cap. Never write `/acl/` or `/aclrev/` keys any other way, and give every test applier that can see a grant an `IsACLSyntheticCommand` dispatch, or the command is stored as a literal key and negative tests pass vacuously.
 
 - **Cross-owner COPY and MOVE are one composite Raft command** (`/__mailbox_xfer__/{dst owner}`, `internal/store/mailbox_transfer.go`, dispatched with the rest of the mailbox family by `IsMailboxSyntheticCommand`). The caller supplies the new guids (32 lowercase hex) and the flag mask; the FSM reads the source records, the destination mailbox and uid_next, refuses the whole command (writing nothing, so a COPY is all or nothing) on a missing destination mailbox or source, an existing or duplicate guid, a bad guid, equal owners or an owner containing `/`, and never reads the clock or randomness. Blobs are never copied or deleted. An older-binary node stores the command as a literal key, so the destination copy is missing there and, for a MOVE, the source is still present; replicas diverge and replay does not repair them: upgrade every node before anyone copies across owners. A request beyond `MaxMailboxTransferItems` is several commands that are NOT atomic together; an earlier chunk stays applied when a later one is refused, and a MOVE answers the error without per-message expunges. Test appliers must route it through `IsMailboxSyntheticCommand`, serialised as the FSM is (the IMAP test applier has `mailboxMu`), or it is stored literally and negative tests pass vacuously.
 

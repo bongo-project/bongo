@@ -162,6 +162,7 @@ OpenTasks when one of them is installed.
 | Subscribed calendars | as calendars | Read-only. A `PUT` or `DELETE` of an object inside one answers `403`. A `DELETE` of the collection itself answers `409`: unsubscribe in the web interface. |
 | Address book | `/carddav/{user}/addressbooks/default/` | Contacts (vCard). The default book. |
 | More address books | `/carddav/{user}/addressbooks/{book}/` | Contacts (vCard) filed in that book. See Address books below. |
+| Address books shared with the user | `/carddav/{user}/addressbooks/shared-{owner}-{book}/` | Read or read-write, as the owner granted. See Shared address books below. |
 
 From v0.15.0 the server also handles calendar scheduling (RFC 6638). It
 sends invitations, updates, cancellations and replies for events saved by a
@@ -255,6 +256,34 @@ A `DELETE` of a book removes its contacts one by one and then the book. If it
 fails part way the book stays, with the contacts left, and repeating the
 `DELETE` finishes the job. The default book cannot be deleted and answers
 `403`. Renaming is done in the web interface.
+
+## Shared address books
+
+An address book can be shared with a user or a group at `read` or `write`
+level. The recipient accepts the invitation first; a pending or expired
+invitation shows nothing. An accepted book appears in the recipient's home set
+as `shared-{owner}-{book}`, named like `Work (owner@example.com)`, and its
+contacts are addressed under that collection.
+
+- A read share can be listed and read. A `PUT` or `DELETE` of an object answers
+  `403`, and the collection is reported read-only to clients.
+- A write share can add, change and delete contacts. They are stored in the
+  owner's address book and count against the owner's storage quota. A `PUT` of a
+  contact id that exists in one of the owner's other books answers `403`.
+- A `DELETE` of the shared collection answers `403` for every recipient, and
+  `MKCOL` of any `shared-` name answers `403`. To stop using a shared book, leave
+  it on the shares page in the web interface.
+- A book, user or share that does not exist, is not shared with you, is still
+  pending, or was revoked answers `404`, identical in every case. Revoking
+  takes effect on the next request.
+- The default address book cannot be shared. Share a book created with `MKCOL`
+  or in the web interface.
+- A shared book stays reachable while its owner's account is disabled, as shared
+  calendars do.
+
+Sharing a book, accepting the invitation and browsing it in the web interface
+are covered with the web pages (they arrive in a later change); this section
+describes the CardDAV side only.
 
 ## Contact groups
 

@@ -23,8 +23,9 @@ import (
 // /                               → root (depth 0)
 // /{userID}/                      → user principal (depth 1)
 // /{userID}/addressbooks/         → address book home set (depth 2)
-// /{userID}/addressbooks/{book}/  → address book (depth 3); {book} is "default"
-//                                   or the 32-hex id of one of the user's books
+// /{userID}/addressbooks/{book}/  → address book (depth 3); {book} is "default",
+//                                   the 32-hex id of one of the user's books, or
+//                                   shared-{owner}-{book} for a book shared with the user
 // /{userID}/addressbooks/{book}/{guid}.vcf → address object (depth 4)
 
 // Backend implements the carddav.Backend interface.
@@ -41,6 +42,10 @@ type Backend struct {
 	// storage refuses PUT while the data volume is nearly full. Nil means
 	// never refuse. DELETE and reads are not gated.
 	storage StorageGate
+
+	// grants resolves address books other users shared with the caller. Nil
+	// means no sharing: every shared path answers 404.
+	grants BookGrantReader
 }
 
 // StorageGate is satisfied by *diskspace.Monitor.
@@ -162,50 +167,106 @@ func notFound(msg string) error {
 	return webdav.NewHTTPError(http.StatusNotFound, errors.New(msg))
 }
 
-// resolveBook maps a request path to the authenticated user and one of their
-// books. The path's user segment must be the authenticated user, and the book
-// is read from that user's own keys, so another user's book id answers 404 and
-// never reaches their data. The default book needs no record. A missing book
-// wraps store.ErrAddressBookNotFound.
-func (b *Backend) resolveBook(ctx context.Context, p string) (userID, bookID, object string, err error) {
-	userID = getUserID(ctx)
+// bookTarget is a resolved request path: the authenticated user, whose keyspace
+// holds the book (keyOwner: the user for an own book, the owner for a shared
+// one), the book id there, the collection segment as it appears in the path, the
+// object file segment if any, and the level the user holds on it.
+type bookTarget struct {
+	user     string
+	keyOwner string
+	bookID   string
+	seg      string
+	object   string
+	level    string // store.GrantLevelRead or store.GrantLevelWrite
+	shared   bool
+}
+
+func (t *bookTarget) writable() bool { return t.level == store.GrantLevelWrite }
+
+// resolveBook maps a request path to the authenticated user and a book they own
+// or hold a share of. The path's user segment must be the authenticated user,
+// and the book is read from the owning user's keys, so another user's book id
+// answers 404 and never reaches their data. The default book needs no record. A
+// missing own book wraps store.ErrAddressBookNotFound. Every failure on a shared
+// segment is the same plain 404 and never wraps it: a missing, unshared,
+// pending, revoked and malformed share must be indistinguishable.
+func (b *Backend) resolveBook(ctx context.Context, p string) (*bookTarget, error) {
+	userID := getUserID(ctx)
 	if userID == "" {
-		return "", "", "", fmt.Errorf("no user in context")
+		return nil, fmt.Errorf("no user in context")
 	}
 	user, seg, object, ok := parseBookPath(p)
 	if !ok || user != userID {
-		return "", "", "", notFound("not found")
+		return nil, notFound("not found")
 	}
-	bookID, ok = store.CanonicalAddressBookSegment(seg)
+	if strings.HasPrefix(seg, sharedPrefix) {
+		return b.resolveShared(userID, seg, object)
+	}
+	bookID, ok := store.CanonicalAddressBookSegment(seg)
 	if !ok {
-		return "", "", "", notFound("not found")
+		return nil, notFound("not found")
 	}
+	t := &bookTarget{user: userID, keyOwner: userID, bookID: bookID, seg: bookID, object: object, level: store.GrantLevelWrite}
 	if bookID == store.DefaultAddressBookID {
-		return userID, bookID, object, nil
+		return t, nil
 	}
 	if b.books == nil {
-		return "", "", "", notFound("not found")
+		return nil, notFound("not found")
 	}
 	if _, err := b.books.Get(userID, bookID); err != nil {
 		if errors.Is(err, store.ErrAddressBookNotFound) {
-			return "", "", "", webdav.NewHTTPError(http.StatusNotFound, err)
+			return nil, webdav.NewHTTPError(http.StatusNotFound, err)
 		}
-		return "", "", "", fmt.Errorf("reading address book: %w", err)
+		return nil, fmt.Errorf("reading address book: %w", err)
 	}
-	return userID, bookID, object, nil
+	return t, nil
+}
+
+// resolveShared resolves a shared-{owner}-{book} segment. The grant is read on
+// every call.
+func (b *Backend) resolveShared(userID, seg, object string) (*bookTarget, error) {
+	owner, bookID, ok := parseSharedBookSegment(seg)
+	if !ok || owner == userID || b.grants == nil || b.books == nil {
+		return nil, notFound("not found")
+	}
+	level, err := b.grants.AddressBookLevel(owner, bookID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("reading address book grant: %w", err)
+	}
+	if level != store.GrantLevelRead && level != store.GrantLevelWrite {
+		return nil, notFound("not found")
+	}
+	if _, err := b.books.Get(owner, bookID); err != nil {
+		if errors.Is(err, store.ErrAddressBookNotFound) {
+			return nil, notFound("not found")
+		}
+		return nil, fmt.Errorf("reading shared address book: %w", err)
+	}
+	return &bookTarget{user: userID, keyOwner: owner, bookID: bookID, seg: seg, object: object, level: level, shared: true}, nil
 }
 
 // resolveObject is resolveBook for a path that must name an address object.
-func (b *Backend) resolveObject(ctx context.Context, p string) (userID, bookID, guid string, err error) {
-	userID, bookID, object, err := b.resolveBook(ctx, p)
+func (b *Backend) resolveObject(ctx context.Context, p string) (t *bookTarget, guid string, err error) {
+	t, err = b.resolveBook(ctx, p)
 	if err != nil {
-		return "", "", "", err
+		return nil, "", err
 	}
-	guid = guidFromPath(object)
-	if object == "" || guid == "" {
-		return "", "", "", notFound("not found")
+	guid = guidFromPath(t.object)
+	if t.object == "" || guid == "" {
+		return nil, "", notFound("not found")
 	}
-	return userID, bookID, guid, nil
+	return t, guid, nil
+}
+
+var errReadOnlyShare = errors.New("this address book is shared read-only")
+
+// ReadOnlyShare reports whether href names a collection (or an object in one)
+// that the authenticated user holds a read-only share of. It feeds the
+// privilege filter, which only tells clients not to offer edits: PUT and DELETE
+// are refused with 403 by the backend itself.
+func (b *Backend) ReadOnlyShare(ctx context.Context, href string) bool {
+	t, err := b.resolveBook(ctx, href)
+	return err == nil && t.shared && t.level == store.GrantLevelRead
 }
 
 // CurrentUserPrincipal returns the principal path for the current user.
@@ -259,28 +320,31 @@ func (b *Backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, 
 	for _, ab := range books {
 		out = append(out, toDAVAddressBook(userID, ab))
 	}
-	return out, nil
+	return append(out, b.sharedAddressBooks(userID)...), nil
 }
 
 // GetAddressBook returns address book metadata, or 404 for a book the user
 // does not own.
 func (b *Backend) GetAddressBook(ctx context.Context, path string) (*carddav.AddressBook, error) {
-	userID, bookID, object, err := b.resolveBook(ctx, path)
+	t, err := b.resolveBook(ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	if object != "" {
+	if t.object != "" {
 		return nil, notFound("not found")
 	}
-	if bookID == store.DefaultAddressBookID {
-		ab := defaultAddressBook(userID)
+	if t.bookID == store.DefaultAddressBookID {
+		ab := defaultAddressBook(t.user)
 		return &ab, nil
 	}
-	rec, err := b.books.Get(userID, bookID)
+	rec, err := b.books.Get(t.keyOwner, t.bookID)
 	if err != nil {
-		return nil, webdav.NewHTTPError(http.StatusNotFound, err)
+		return nil, notFound("not found")
 	}
-	ab := toDAVAddressBook(userID, rec)
+	ab := toDAVAddressBook(t.user, rec)
+	if t.shared {
+		ab = b.sharedDAVAddressBook(t.user, t.keyOwner, rec)
+	}
 	return &ab, nil
 }
 
@@ -297,6 +361,11 @@ func (b *Backend) CreateAddressBook(ctx context.Context, addressBook *carddav.Ad
 	user, seg, object, ok := parseBookPath(addressBook.Path)
 	if !ok || object != "" || user != userID {
 		return webdav.NewHTTPError(http.StatusForbidden, errors.New("address books are created under your own home set"))
+	}
+	if strings.HasPrefix(seg, sharedPrefix) {
+		// Constant answer, before any grant is read: the shared- namespace is
+		// the server's, so MKCOL there says nothing about what exists.
+		return webdav.NewHTTPError(http.StatusForbidden, errors.New("invalid address book name"))
 	}
 	id, ok := store.CanonicalAddressBookSegment(seg)
 	if !ok {
@@ -329,13 +398,19 @@ func (b *Backend) CreateAddressBook(ctx context.Context, addressBook *carddav.Ad
 // store.PurgeAddressBook. A failure part way answers 500 and leaves the book in
 // place, so repeating the DELETE finishes the job.
 func (b *Backend) DeleteAddressBook(ctx context.Context, path string) error {
-	userID, bookID, object, err := b.resolveBook(ctx, path)
+	t, err := b.resolveBook(ctx, path)
 	if err != nil {
 		return err
 	}
-	if object != "" {
+	if t.object != "" {
 		return notFound("not found")
 	}
+	if t.shared {
+		// A holder of any level may not delete the owner's book, and there is
+		// no leave-the-share DELETE: that is done on the shares page.
+		return webdav.NewHTTPError(http.StatusForbidden, errors.New("a shared address book cannot be deleted by a recipient"))
+	}
+	userID, bookID := t.user, t.bookID
 	if bookID == store.DefaultAddressBookID {
 		return webdav.NewHTTPError(http.StatusForbidden, store.ErrAddressBookProtected)
 	}
@@ -358,37 +433,37 @@ func (b *Backend) DeleteAddressBook(ctx context.Context, path string) error {
 // GetAddressObject returns a single contact as a CardDAV address object. A
 // contact filed in another book answers 404 under this path.
 func (b *Backend) GetAddressObject(ctx context.Context, path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
-	userID, bookID, guid, err := b.resolveObject(ctx, path)
+	t, guid, err := b.resolveObject(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 
-	contact, err := b.contacts.Get(userID, guid)
-	if err != nil || store.ContactBook(contact) != bookID {
+	contact, err := b.contacts.Get(t.keyOwner, guid)
+	if err != nil || store.ContactBook(contact) != t.bookID {
 		return nil, webdav.NewHTTPError(http.StatusNotFound, errors.New("contact not found"))
 	}
 
-	return contactToAddressObject(userID, contact)
+	return contactToAddressObject(t.user, t.seg, contact)
 }
 
 // ListAddressObjects returns the contacts of the book the path names.
 func (b *Backend) ListAddressObjects(ctx context.Context, path string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
-	userID, bookID, object, err := b.resolveBook(ctx, path)
+	t, err := b.resolveBook(ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	if object != "" {
+	if t.object != "" {
 		return nil, notFound("not found")
 	}
 
-	contacts, _, err := b.contacts.ListByBook(userID, bookID, 0, 0)
+	contacts, _, err := b.contacts.ListByBook(t.keyOwner, t.bookID, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("listing contacts: %w", err)
 	}
 
 	var objects []carddav.AddressObject
 	for _, c := range contacts {
-		obj, err := contactToAddressObject(userID, c)
+		obj, err := contactToAddressObject(t.user, t.seg, c)
 		if err != nil {
 			continue
 		}
@@ -415,13 +490,19 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 	if b.storage != nil && b.storage.Low() {
 		return nil, webdav.NewHTTPError(http.StatusInsufficientStorage, ErrStorageLow)
 	}
-	userID, bookID, guid, err := b.resolveObject(ctx, path)
+	t, guid, err := b.resolveObject(ctx, path)
 	if err != nil {
 		if errors.Is(err, store.ErrAddressBookNotFound) {
 			return nil, webdav.NewHTTPError(http.StatusConflict, err)
 		}
 		return nil, err
 	}
+	if !t.writable() {
+		return nil, webdav.NewHTTPError(http.StatusForbidden, errReadOnlyShare)
+	}
+	// Everything below reads and writes the owner's keyspace: for an own book
+	// that is the user's, for a shared one the sharer's.
+	userID, bookID := t.keyOwner, t.bookID
 
 	// Encode vCard to raw bytes.
 	var rawBuf bytes.Buffer
@@ -445,6 +526,11 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 	// Check if contact exists (update vs create).
 	existing, _ := b.contacts.Get(userID, guid)
 	if existing != nil && store.ContactBook(existing) != bookID {
+		if t.shared {
+			// The same answer a read share gets: a recipient learns nothing
+			// about the owner's other books.
+			return nil, webdav.NewHTTPError(http.StatusForbidden, errors.New("not permitted"))
+		}
 		return nil, webdav.NewHTTPError(http.StatusConflict, errors.New("a contact with this id exists in another address book"))
 	}
 
@@ -475,7 +561,7 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 			}
 			return nil, fmt.Errorf("updating contact: %w", err)
 		}
-		b.logger.Info("carddav: contact updated", "user", userID, "guid", guid)
+		b.logger.Info("carddav: contact updated", "user", t.user, "owner", userID, "guid", guid)
 	} else {
 		if _, err := b.contacts.Create(userID, contact); err != nil {
 			if errors.Is(err, store.ErrContactGroupTooLarge) {
@@ -483,35 +569,45 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 			}
 			return nil, fmt.Errorf("creating contact: %w", err)
 		}
-		b.logger.Info("carddav: contact created", "user", userID, "guid", guid)
+		b.logger.Info("carddav: contact created", "user", t.user, "owner", userID, "guid", guid)
 	}
 
-	return contactToAddressObject(userID, contact)
+	return contactToAddressObject(t.user, t.seg, contact)
 }
 
 // DeleteAddressObject removes a contact. A contact filed in another book
 // answers 404 under this path.
 func (b *Backend) DeleteAddressObject(ctx context.Context, path string) error {
-	userID, bookID, guid, err := b.resolveObject(ctx, path)
+	t, guid, err := b.resolveObject(ctx, path)
 	if err != nil {
 		return err
 	}
+	if !t.writable() {
+		return webdav.NewHTTPError(http.StatusForbidden, errReadOnlyShare)
+	}
+	userID := t.keyOwner
 
 	existing, err := b.contacts.Get(userID, guid)
-	if err == nil && store.ContactBook(existing) != bookID {
+	if err == nil && store.ContactBook(existing) != t.bookID {
+		return webdav.NewHTTPError(http.StatusNotFound, errors.New("contact not found"))
+	}
+	if t.shared && err != nil {
+		// A missing contact answers like one filed in another book.
 		return webdav.NewHTTPError(http.StatusNotFound, errors.New("contact not found"))
 	}
 
 	if err := b.contacts.Delete(userID, guid); err != nil {
-		b.logger.Warn("carddav: delete contact failed", "user", userID, "guid", guid, "error", err)
+		b.logger.Warn("carddav: delete contact failed", "user", t.user, "owner", userID, "guid", guid, "error", err)
 		return err
 	}
-	b.logger.Info("carddav: contact deleted", "user", userID, "guid", guid)
+	b.logger.Info("carddav: contact deleted", "user", t.user, "owner", userID, "guid", guid)
 	return nil
 }
 
 // contactToAddressObject converts a Contact proto to a CardDAV AddressObject.
-func contactToAddressObject(userID string, c *bongov1.Contact) (*carddav.AddressObject, error) {
+// seg is the collection segment of the request path, so an object of a shared
+// book is addressed under the recipient's shared-... segment.
+func contactToAddressObject(userID, seg string, c *bongov1.Contact) (*carddav.AddressObject, error) {
 	var card vcard.Card
 
 	if len(c.VcardRaw) > 0 {
@@ -547,7 +643,7 @@ func contactToAddressObject(userID string, c *bongov1.Contact) (*carddav.Address
 	}
 
 	return &carddav.AddressObject{
-		Path:    objectPath(userID, store.ContactBook(c), c.Guid),
+		Path:    objectPath(userID, seg, c.Guid),
 		Card:    card,
 		ModTime: modTime,
 		ETag:    store.ContentETagValue(c.VcardRaw, c.UpdatedAt),

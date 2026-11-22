@@ -19,6 +19,9 @@ func TestListGrantsHeldPerKind(t *testing.T) {
 	work, _ := e.ms.EnsureMailboxID("o", "Work")
 	gone, _ := e.ms.EnsureMailboxID("o", "Gone")
 	stale, _ := e.ms.EnsureMailboxID("o", "Stale")
+	if err := e.ps.Set(addressBookKey("o", kindsBookID), []byte("x")); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []string{"cal", "oldcal", "acc"} {
 		if err := e.ps.Set(calendarKey("o", c), []byte("x")); err != nil {
 			t.Fatal(err)
