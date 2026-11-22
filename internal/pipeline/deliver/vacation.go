@@ -370,7 +370,7 @@ func (p *DeliverProcessor) vacationSenderUser(v *vacationState, userID, sender s
 		return id
 	}
 	if p.authorizer != nil {
-		if ok, err := p.authorizer.CanSendAs(userID, sender); err == nil && ok {
+		if ok, err := p.ownAddress(userID, sender); err == nil && ok {
 			return userID
 		}
 	}
@@ -390,7 +390,7 @@ func (p *DeliverProcessor) vacationAddressedTo(v *vacationState, userID string, 
 			return true
 		}
 		if p.authorizer != nil {
-			if ok, err := p.authorizer.CanSendAs(userID, a); err == nil && ok {
+			if ok, err := p.ownAddress(userID, a); err == nil && ok {
 				return true
 			}
 		}

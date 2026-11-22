@@ -902,3 +902,54 @@ func TestVacationReplySubjectWithoutAnySubject(t *testing.T) {
 		}
 	}
 }
+
+// memberAuthz allows sending as support@ (a shared inbox the user belongs to)
+// but, like store.SendAsPolicy, answers CanSendAsOwn false for it.
+type memberAuthz struct{}
+
+func (memberAuthz) CanSendAs(uid, addr string) (bool, error) {
+	return uid == "user-alice" && strings.EqualFold(addr, "support@example.com"), nil
+}
+
+func (memberAuthz) CanSendAsOwn(string, string) (bool, error) { return false, nil }
+
+// Membership in a shared inbox lets the member send as it but does not make its
+// address the member's own: mail addressed only to support@ is not "addressed
+// to" the member, and mail from support@ is not the member's own mail.
+func TestVacationDoesNotTreatSharedAddressAsOwn(t *testing.T) {
+	h := newVacHarness(t)
+	h.proc.SetSenderAuthorizer(memberAuthz{})
+
+	env, raw := extMsg("bob@example.net")
+	raw = strings.Replace(raw, "To: alice@example.com", "To: support@example.com", 1)
+	if err := h.send(env, raw); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.autoReplies()) + len(h.local.got); n != 0 {
+		t.Fatalf("a message addressed only to the shared inbox was answered %d times", n)
+	}
+
+	// The shared inbox is an account of its own, so its mail is local mail from
+	// someone else, answered like any local sender's.
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := bongomail.NewDKIMRegistry()
+	reg.Add("example.com", bongomail.NewDKIMSignerFromKey("sel", "example.com", key))
+	h.proc.SetVacation(VacationConfig{
+		Accounts: vacAccounts{"alice@example.com": "user-alice", "support@example.com": "user-support"},
+		Profiles: vacProfiles{"user-alice": "alice@example.com"},
+		Tracker:  h.applier, Blobs: h.blobs, Local: h.local, Limiter: h.limiter, DKIM: reg,
+		Now: func() time.Time { return h.now },
+	})
+	env, raw = extMsg("support@example.com")
+	env.AuthUserId = "user-support"
+	env.SpfResult = "none"
+	if err := h.send(env, raw); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.autoReplies()) + len(h.local.got); n != 1 {
+		t.Fatalf("mail from the shared address was treated as the member's own: %d replies, want 1", n)
+	}
+}

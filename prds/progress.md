@@ -1901,3 +1901,12 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Follow-ups to PRD 8.2: reply, forward, move, copy, archive, spam, tags, bulk, thread view, iMIP answer, delegate sharing in the web, live SSE for shared folders. The /shares page still sits in the calendar layout with "Back to Calendar", odd for a folder invitation.
 - PATTERN: [ui] A new list that reuses a CSS grid row class must fill every grid column, or the content lands in the wrong track; check new pages in a browser, since handler tests only assert the HTML.
 - PATTERN: [web] Give a shared resource its own route tree with one resolver rather than threading an owner through existing handlers; the existing handlers stay session-user-only by construction.
+
+## 2026-11-22 — 39.17 shared inboxes (US-010)
+- Advisor plan, worker (tests first), advisor review MINOR with mutation runs (6 of 7 guards caught; the shared Sent dedupe gap got a test).
+- Kind `shared`: CheckStanding refuses any non-empty kind; ResetPassword refuses any non-person kind; created by `auth.CreateShared` with an unusable hash. Members in `UserProfile.shared_members` (field 16), same domain only, cap 50. Grants: accepted `lrswite` per folder, synced strictly (revokes non-members); GrantOrphaned treats a non-member grant on a shared owner as orphaned. No new key or command; upgrade every node first.
+- Review fix: membership first widened "own address" too (reply-all dropped support@, invitations to it not sent, vacation). Split into CanSendAs (authorisation) and CanSendAsOwn (identity).
+- PATTERN: [auth] When one predicate serves both "may send as X" and "is X me?", split them; delegation widens only the authorisation rule.
+- PATTERN: [testing] Add an optional capability interface with a safe fallback rather than widening an interface many test fakes implement.
+- PATTERN: [testing] Running web/handlers and agent packages together can exceed go test's 10m default; use -timeout 30m.
+- PATTERN: [proto] Regenerate with protoc-gen-go v1.36.12 explicitly; the one in ~/go/bin is the old golang/protobuf generator.

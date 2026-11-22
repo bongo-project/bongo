@@ -41,8 +41,12 @@ type UserProfile struct {
 	// SMTP submission, CalDAV and CardDAV; only app passwords work there. An
 	// earlier binary keeps the field as an unknown field but does not enforce it.
 	RequireAppPasswords bool `protobuf:"varint,15,opt,name=require_app_passwords,json=requireAppPasswords,proto3" json:"require_app_passwords,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// kind "shared" only: the members of a shared inbox, "u:{user id}" or
+	// "g:{group id}" (store.GranteeUser, store.GranteeGroup), at most 50. Read on
+	// every send-as check and never cached.
+	SharedMembers []string `protobuf:"bytes,16,rep,name=shared_members,json=sharedMembers,proto3" json:"shared_members,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UserProfile) Reset() {
@@ -180,11 +184,18 @@ func (x *UserProfile) GetRequireAppPasswords() bool {
 	return false
 }
 
+func (x *UserProfile) GetSharedMembers() []string {
+	if x != nil {
+		return x.SharedMembers
+	}
+	return nil
+}
+
 var File_bongo_v1_profile_proto protoreflect.FileDescriptor
 
 const file_bongo_v1_profile_proto_rawDesc = "" +
 	"\n" +
-	"\x16bongo/v1/profile.proto\x12\bbongo.v1\"\x8c\x04\n" +
+	"\x16bongo/v1/profile.proto\x12\bbongo.v1\"\xb3\x04\n" +
 	"\vUserProfile\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12#\n" +
@@ -203,7 +214,8 @@ const file_bongo_v1_profile_proto_rawDesc = "" +
 	"\x04kind\x18\f \x01(\tR\x04kind\x12\x1a\n" +
 	"\bcapacity\x18\r \x01(\x03R\bcapacity\x12#\n" +
 	"\rresource_type\x18\x0e \x01(\tR\fresourceType\x122\n" +
-	"\x15require_app_passwords\x18\x0f \x01(\bR\x13requireAppPasswordsB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"\x15require_app_passwords\x18\x0f \x01(\bR\x13requireAppPasswords\x12%\n" +
+	"\x0eshared_members\x18\x10 \x03(\tR\rsharedMembersB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_bongo_v1_profile_proto_rawDescOnce sync.Once

@@ -72,6 +72,9 @@ type AdminHandler struct {
 	mailHostname       string // configured SMTP hostname; used as MX expected-value hint
 	// resources reaches the calendar side of resource accounts (bookings).
 	resources func() ResourceBookings
+	// acl and groups serve shared inbox members (admin_shared.go).
+	acl    *store.ACLStore
+	groups *store.GroupStore
 }
 
 // GossipLister returns gossip member info.
@@ -316,7 +319,8 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	quotaStr := r.FormValue("quota_bytes")
 
 	resource := isResourceForm(r)
-	if password == "" && !resource {
+	shared := isSharedForm(r)
+	if password == "" && !resource && !shared {
 		http.Error(w, "password is required", http.StatusBadRequest)
 		return
 	}
@@ -345,6 +349,12 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	// A resource has no password, no admin flag and no welcome mail.
 	if resource {
 		h.createResource(w, r, newEmail)
+		return
+	}
+
+	// A shared inbox has no password, no admin flag and no welcome mail.
+	if shared {
+		h.createShared(w, r, newEmail)
 		return
 	}
 
@@ -434,6 +444,10 @@ func (h *AdminHandler) renderUserForm(w http.ResponseWriter, r *http.Request, em
 		}
 	}
 
+	if profile.Kind == auth.SharedKind {
+		info.Members = h.sharedMemberInfos(profile)
+	}
+
 	templ.Handler(templates.AdminUserForm(info, nil, false, email, flash)).ServeHTTP(w, r)
 }
 
@@ -468,7 +482,8 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 			}
 			profile.Capacity = c
 		}
-	} else if scope.Global {
+	} else if scope.Global && profile.Kind != auth.SharedKind {
+		// A shared inbox is never an administrator.
 		profile.IsAdmin = r.FormValue("is_admin") == "1"
 	}
 	if quotaStr != "" {
@@ -538,9 +553,9 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// A resource's password is random and nobody may know it.
-	if first.Kind == auth.ResourceKind {
-		http.Error(w, "a resource has no password", http.StatusBadRequest)
+	// A resource's or shared inbox's password is random and nobody may know it.
+	if first.Kind != "" {
+		http.Error(w, "this account has no password", http.StatusBadRequest)
 		return
 	}
 
@@ -570,9 +585,9 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		unlock()
 		return
 	}
-	if profile.Kind == auth.ResourceKind {
+	if profile.Kind != "" {
 		unlock()
-		http.Error(w, "a resource has no password", http.StatusBadRequest)
+		http.Error(w, "this account has no password", http.StatusBadRequest)
 		return
 	}
 	profile.PasswordHash = hash

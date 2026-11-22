@@ -132,6 +132,9 @@ var (
 	flashVerificationCodeSent        = flashKey{"verification-code-sent"}
 	flashAddressVerified             = flashKey{"address-verified"}
 	flashResourceCreated             = flashKey{"resource-created"}
+	flashSharedCreated               = flashKey{"shared-created"}
+	flashSharedMemberAdded           = flashKey{"shared-member-added"}
+	flashSharedMemberRemoved         = flashKey{"shared-member-removed"}
 	flashBookingCancelled            = flashKey{"booking-cancelled"}
 	flashUserCreated                 = flashKey{"user-created"}
 	flashUserUpdated                 = flashKey{"user-updated"}
@@ -253,6 +256,9 @@ var flashMessages = map[string]string{
 	flashVerificationCodeSent.id:        "flash.verificationCodeSent",
 	flashAddressVerified.id:             "flash.addressVerified",
 	flashResourceCreated.id:             "flash.resourceCreated",
+	flashSharedCreated.id:               "flash.sharedCreated",
+	flashSharedMemberAdded.id:           "flash.sharedMemberAdded",
+	flashSharedMemberRemoved.id:         "flash.sharedMemberRemoved",
 	flashBookingCancelled.id:            "flash.bookingCancelled",
 	flashUserCreated.id:                 "flash.userCreated",
 	flashUserUpdated.id:                 "flash.userUpdated",

@@ -113,3 +113,13 @@ group and cannot leave it themselves; the owner removes the group from the
 sharing list. When a member holds a permission of their own as well, the stronger
 of the two applies. Taking someone out of the group ends their access straight
 away, and deleting a group removes every share made with it.
+
+## Groups as shared inbox members
+
+A group can be a member of a shared inbox (see "Shared inboxes" in
+`shared-folders.md`). Every member of the group then reads the inbox's folders
+and may send from its address, and the same holds for anyone added to the group
+later. Taking someone out of the group ends both on their next request. Deleting
+a group removes the folder access it gave, in the same step. The group must be on
+the shared inbox's own domain. A shared inbox itself cannot be a member of a
+group: only people can.

@@ -7,7 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/bongo-project/bongo/internal/testutil"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // TestComposeSendAs_AgreesWithSharedTable drives web compose through the same
@@ -20,6 +23,15 @@ func TestComposeSendAs_AgreesWithSharedTable(t *testing.T) {
 	email := testutil.SendAsPrimary
 
 	env.seedUser(t, userID, email)
+	for _, sp := range testutil.SendAsProfiles {
+		data, err := proto.Marshal(&bongov1.UserProfile{Email: sp.Email, Kind: sp.Kind, SharedMembers: sp.Members})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := env.ps.Set([]byte("/user/"+sp.UserID+"/profile"), data); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, r := range testutil.SendAsRecords {
 		domain := r.Addr[strings.LastIndex(r.Addr, "@")+1:]
 		env.seedAddress(t, r.Addr, r.UserID, domain, r.CanSend, r.Verified)

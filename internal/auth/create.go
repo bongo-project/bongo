@@ -223,14 +223,9 @@ func CreateResource(applier RaftApplier, metadata *store.MetadataManager, email,
 	if capacity < 0 {
 		return "", fmt.Errorf("capacity must not be negative")
 	}
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		return "", fmt.Errorf("generating resource secret: %w", err)
-	}
-	// bcrypt reads at most 72 bytes; hex keeps the input printable and long.
-	hash, err := bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(secret)), PasswordHashCost)
+	hash, err := unusablePasswordHash()
 	if err != nil {
-		return "", fmt.Errorf("hashing resource secret: %w", err)
+		return "", err
 	}
 	return createAccount(applier, metadata, &bongov1.UserProfile{
 		Email:        store.NormaliseAddress(email),
@@ -240,6 +235,42 @@ func CreateResource(applier RaftApplier, metadata *store.MetadataManager, email,
 		ResourceType: resourceType,
 		Capacity:     capacity,
 	})
+}
+
+// SharedKind is UserProfile.Kind of a shared inbox: an account nobody logs in
+// to, whose members read its folders through grants and send as its address.
+const SharedKind = store.SharedInboxKind
+
+// CreateShared creates a shared inbox account with no members. Kind is in the
+// first and only profile write, so the account is never a person for any
+// window, and its password is random and discarded like a resource's.
+func CreateShared(applier RaftApplier, metadata *store.MetadataManager, email, displayName string) (string, error) {
+	hash, err := unusablePasswordHash()
+	if err != nil {
+		return "", err
+	}
+	return createAccount(applier, metadata, &bongov1.UserProfile{
+		Email:        store.NormaliseAddress(email),
+		DisplayName:  displayName,
+		PasswordHash: hash,
+		Kind:         SharedKind,
+	})
+}
+
+// unusablePasswordHash hashes 32 random bytes that are discarded, at full bcrypt
+// cost, so a non-person account has a hash of the same shape and cost as a
+// person's and refusing it takes as long as a wrong password.
+func unusablePasswordHash() ([]byte, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return nil, fmt.Errorf("generating account secret: %w", err)
+	}
+	// bcrypt reads at most 72 bytes; hex keeps the input printable and long.
+	hash, err := bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(secret)), PasswordHashCost)
+	if err != nil {
+		return nil, fmt.Errorf("hashing account secret: %w", err)
+	}
+	return hash, nil
 }
 
 // createAccount writes profile (whose Email is already normalised and whose

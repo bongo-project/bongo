@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -890,15 +891,27 @@ func (s *ACLStore) GrantOrphaned(ref GrantRef) (bool, error) {
 	if ref.Kind == ACLKindCalendar {
 		probes = append(probes, calendarKey(ref.Owner, ref.Resource))
 	}
-	for _, k := range probes {
-		if _, err := s.pebble.Get(k); err != nil {
+	var ownerProfile []byte
+	for i, k := range probes {
+		data, err := s.pebble.Get(k)
+		if err != nil {
 			if errors.Is(err, ErrNotFound) {
 				return true, nil
 			}
 			return false, fmt.Errorf("probing grant target: %w", err)
 		}
+		if i == 0 {
+			ownerProfile = data
+		}
 	}
 	if ref.Kind == ACLKindMailbox {
+		// Grants on a shared inbox are admin-managed: one whose principal is not
+		// in the account's member list is a leftover of a failed revoke.
+		// A profile that does not decode is not treated as shared: the grant stays.
+		var p bongov1.UserProfile
+		if err := proto.Unmarshal(ownerProfile, &p); err == nil && p.Kind == SharedInboxKind && !slices.Contains(p.SharedMembers, ref.Principal) {
+			return true, nil
+		}
 		return s.mailboxGone(ref.Owner, ref.Resource)
 	}
 	return false, nil

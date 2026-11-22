@@ -477,18 +477,23 @@ member list is stored with the shared account, not derived from folder
 grants, and is read on every request.
 
 **Acceptance Criteria:**
-- [ ] Admins create a shared account with an address and members (users or
+- [x] Admins create a shared account with an address and members (users or
       groups); members get the Write preset on all its folders.
-- [ ] `CheckStanding` refuses kind `shared`, so a shared account cannot
+- [x] `CheckStanding` refuses kind `shared`, so a shared account cannot
       authenticate on any protocol and the response is the same as a wrong
       password. It cannot hold app passwords or device links.
-- [ ] A member can choose the shared address as From in compose and over
+- [x] A member can choose the shared address as From in compose and over
       submission; a non-member cannot (send-as tests for both, over SMTP
       and the web). Folder rights alone never permit sending.
-- [ ] Sent copies go to the sending member's Sent folder and, when the
+- [x] Sent copies go to the sending member's Sent folder and, when the
       shared account has a Sent folder, also there.
-- [ ] Removing a member removes their access and send-as on the next
+- [x] Removing a member removes their access and send-as on the next
       request (no cache).
+- Done in 39.17 (2026-11-22). Sent copies: the web files a best-effort copy
+  in the shared account's Sent; SMTP submission files none server-side,
+  since clients APPEND (operator decision). Membership widens only who may
+  send as the address (`CanSendAs`); "is this my own address" checks
+  (reply-all, invitations, attendee cap, vacation) use `CanSendAsOwn`.
 
 ### Phase D: Contacts
 
@@ -968,6 +973,18 @@ Found while building v0.16.0 (2026-11-15):
 - **Release note for v0.16.0:** CardDAV now requires the path's user segment
   to be the authenticated user's id; a client configured by hand with an
   email address there gets 404.
+- **Shared inboxes, follow-ups** (39.17, 2026-11-22):
+  - Any future folder-create path on a shared account (web form, admin
+    import) must call `store.SyncSharedInboxGrants`; today the folders are
+    the defaults, as members hold no `k` and the account cannot log in.
+  - No server-side copy in the shared Sent for SMTP submission (clients
+    APPEND); no reply-from-shared or move/copy out of a shared folder on the
+    web.
+  - Adding many direct users is sequential grant writes per folder, not
+    atomic; point admins to groups. The member list read-modify-write is
+    locked per node only, as with other admin profile edits.
+  - A failed revoke leaves folder access until the admin retries or the
+    two-pass orphan sweep removes it; send-as ends at once.
 - **Shared folders in the web UI, actions not offered yet** (39.16, from the
   advisor plan): reply and forward (compose reads the session user's
   mailbox), move, copy and archive (cross-owner needs the transfer command

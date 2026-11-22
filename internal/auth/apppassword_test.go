@@ -331,6 +331,8 @@ func TestAuthenticateProtocolCostsOneComparison(t *testing.T) {
 	e.mutateProfile(t, "u3", func(p *bongov1.UserProfile) { p.Disabled = true })
 	e.user(t, "res", "room@example.com", "room-pw")
 	e.mutateProfile(t, "res", func(p *bongov1.UserProfile) { p.Kind = ResourceKind })
+	e.user(t, "shr", "support@example.com", "shr-pw")
+	e.mutateProfile(t, "shr", func(p *bongov1.UserProfile) { p.Kind = SharedKind })
 	// A live user who never created an app password: no record under any id.
 	e.user(t, "bare", "bare@example.com", "bare-pw")
 
@@ -348,6 +350,7 @@ func TestAuthenticateProtocolCostsOneComparison(t *testing.T) {
 	bobGood := e.create(t, "u2", "bob phone")
 	disGood := e.create(t, "u3", "dis phone")
 	resGood := e.create(t, "res", "room")
+	shrGood := e.create(t, "shr", "mailbox")
 
 	tests := []struct {
 		name     string
@@ -365,6 +368,8 @@ func TestAuthenticateProtocolCostsOneComparison(t *testing.T) {
 		{"disabled user, valid app password", "dis@example.com", disGood, ""},
 		{"disabled user, account password", "dis@example.com", "dis-pw", ""},
 		{"resource, valid app password", "room@example.com", resGood, ""},
+		{"shared inbox, valid app password", "support@example.com", shrGood, ""},
+		{"shared inbox, account password", "support@example.com", "shr-pw", ""},
 		{"valid app password", "alice@example.com", good, "u1"},
 		{"valid, typed capitalised without hyphens", "alice@example.com", strings.ToUpper(strings.ReplaceAll(good, "-", "")), "u1"},
 		{"wrong secret on existing lookup, several records", "alice@example.com", wrongSecret, ""},

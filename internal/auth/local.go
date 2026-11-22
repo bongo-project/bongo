@@ -48,7 +48,8 @@ type LocalAuth struct {
 // only.
 func (a *LocalAuth) SetAppPasswords(p *AppPasswords) { a.apps = p }
 
-// CheckStanding refuses a disabled account and a resource account. It runs
+// CheckStanding refuses a disabled account and any account that is not a
+// person (a resource or a shared inbox, or a kind this binary does not know). It runs
 // after the bcrypt compare on every credential path, so the refusal is
 // indistinguishable from a wrong password in error and timing. The device link
 // redemption calls it too, since it has no password to compare.
@@ -56,10 +57,10 @@ func (a *LocalAuth) SetAppPasswords(p *AppPasswords) { a.apps = p }
 // The Pebble profile is the source of truth for the disabled flag; the SQLite
 // users.enabled filter in lookupUserID is derived and can be stale (follower
 // nodes, index rebuild). A room or equipment account has a random password
-// nobody knows; the resource refusal covers the rolling-upgrade case and a
+// nobody knows; the kind refusal covers the rolling-upgrade case and a
 // hash that was somehow set.
 func CheckStanding(profile *bongov1.UserProfile) error {
-	if profile.Disabled || profile.Kind == ResourceKind {
+	if profile.Disabled || profile.Kind != "" {
 		return ErrBadCredentials
 	}
 	return nil
