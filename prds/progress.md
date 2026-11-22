@@ -1933,3 +1933,10 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Found unrelated edits in the working tree made outside this session (bongo.dev→example.net in scripts and tests, prd-admin-enterprise replaced by prd-administration-v0.17, small PRD edits); left untouched and kept out of the 40.3 commit.
 - PATTERN: [git] Commit by explicit paths when the working tree may hold someone else's edits; never `git add -A` after a review flags foreign changes.
 - PATTERN: [security] Autocomplete over another user's data goes through per-book store lists with substring matching, never the owner's search index, which also holds their mail.
+
+## 2026-11-22 — 40.4 contact import and export (US-013)
+- Advisor plan (operator took every default), worker (13 mutants killed, browser check), advisor review MAJOR: quadratic LDIF unfolding (2.2 MB took 10.9 s) and the record cap applied only after building every record (10 MiB of tiny rows: 3.8 GB allocated). Fixed with a strings.Builder, ParseLimit with a record and row bound, and line-by-line reading; recheck PASS (same inputs: ms and ~40 MB), short fuzz runs clean.
+- PR #233 CI hit a flaky TestPebbleMetricsAreOptIn once; rerun passed; recorded in PRD 8.2.
+- PATTERN: [security] A byte cap on an upload does not bound CPU or memory: parsers take a record limit and a row limit and stop early, never strings.Split the whole file, and build continued values in a strings.Builder.
+- PATTERN: [review] Ask the reviewer to measure (timing and allocation probes on the worst input the cap allows) and to fuzz briefly through an overlay; both blockers here were invisible to the functional tests.
+- PATTERN: [data] A quick field the web sync writes back into the vCard must stay the whole value; deriving part of it loses data on the next edit.

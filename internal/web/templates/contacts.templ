@@ -119,6 +119,23 @@ func contactsBookTitle(ctx context.Context, v ContactBooksView) string {
 	return t(ctx, "contacts.contacts")
 }
 
+// contactsExportURL is the download link for one format. vCard is the default
+// format, so its link carries no format parameter; the active book, when there
+// is one, limits the export to it.
+func contactsExportURL(format string, v ContactBooksView) string {
+	q := url.Values{}
+	if format != "vcard" {
+		q.Set("format", format)
+	}
+	if v.Active != "" {
+		q.Set("book", v.Active)
+	}
+	if len(q) == 0 {
+		return "/contacts/export"
+	}
+	return "/contacts/export?" + q.Encode()
+}
+
 // contactExtraField is a labelled read-only value parsed from a contact's vCard
 // for display (the label is an i18n key).
 type contactExtraField struct {
@@ -391,12 +408,19 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 						<input type="hidden" name="addressbook" value={ books.Active }/>
 					}
 					<label class="tool-btn outline">
-						<span>{ t(ctx, "contacts.importVcard") }</span>
-						<input type="file" name="vcf" accept=".vcf" class="sr-only" aria-label={ t(ctx, "contacts.selectVcf") }/>
+						<span>{ t(ctx, "contacts.importFile") }</span>
+						<input type="file" name="vcf" accept=".vcf,.vcard,.csv,.ldif,.ldi,text/vcard,text/csv" class="sr-only" aria-label={ t(ctx, "contacts.selectImportFile") }/>
 					</label>
 					<button type="submit" class="sr-only">{ t(ctx, "contacts.import") }</button>
 				</form>
-				<a href="/contacts/export" class="tool-btn outline">{ t(ctx, "contacts.exportVcard") }</a>
+				<details class="export-menu">
+					<summary class="tool-btn outline">{ t(ctx, "contacts.export") }</summary>
+					<div class="export-menu-list">
+						<a href={ templ.SafeURL(contactsExportURL("vcard", books)) }>{ t(ctx, "contacts.exportVcard") }</a>
+						<a href={ templ.SafeURL(contactsExportURL("csv", books)) }>{ t(ctx, "contacts.exportCsv") }</a>
+						<a href={ templ.SafeURL(contactsExportURL("ldif", books)) }>{ t(ctx, "contacts.exportLdif") }</a>
+					</div>
+				</details>
 				<button type="button" class="tool-btn primary" data-contact-form-toggle="toggle">{ t(ctx, "contacts.newContact") }</button>
 			</div>
 			if books.ActiveBook != nil {

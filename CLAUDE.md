@@ -292,6 +292,26 @@ contacts" and quick-add duplicate checks. No new key or command; the `/__acl__/`
 node lists no shared books and answers 404 on `shared-` paths, so a client balanced across nodes would see the book
 appear and vanish: upgrade every node before anyone shares an address book.
 
+Contact import and export (`internal/contactio`, `internal/web/handlers/contacts_io.go`) add no key and no command.
+`contactio.Parse` decodes the upload (UTF-8, a BOM, UTF-16 with a BOM, or Windows-1252 for bytes that are not UTF-8; a NUL
+byte without a BOM is refused), names the format from the content (never the file name or content type) and returns every record
+with no side effect: vCard blocks, CSV rows (Google new and legacy headers, Outlook with English headers, matched by name,
+case-insensitively; `,` `;` or tab) and LDIF entries (Thunderbird `mozillaAbPersonAlpha`, `groupOfNames`). An LDIF change record
+or `attr:< url` value is refused and nothing is fetched. A file whose headers are not recognised, including a localised Outlook
+export, is refused with a message asking for an English export. Import is validated whole before the first write, vCard included
+(a bad block, a trailing `BEGIN:VCARD` with no `END`, a bad birthday, a ragged CSV row or a group over `MaxContactGroupMembers`
+refuses the file and names the row, card or entry); more than `contactsImportMaxRecords` (5000) records is refused; the quota is
+checked on the sum of `store.ContactRecordSize` of the built contacts, not on the upload size. The write phase is one `ContactStore.Create`
+per contact, people first and groups after, and is NOT atomic: a failed `Create` deletes everything written so far (best effort, each failed
+delete logged by id) and the page says nothing was kept, or, when deletes failed too, how many contacts may remain. A process
+crash between two writes leaves a partial import that nothing undoes. The write deadline is extended to five minutes
+(`http.NewResponseController`). CSV export is the Google header set with a BOM; every data cell starting with `= + - @ TAB CR`
+(phone numbers included) is prefixed with `'`, and import removes a leading `'` only when the next character is one of those six.
+A value that itself starts with `'` followed by one of those six loses its apostrophe on a CSV round trip. Google and Outlook keep the apostrophe, so vCard is the format for moving between services. CSV skips contact groups; LDIF
+writes them as `groupOfNames` with `member` DNs built from one UID-to-DN map. Export takes `format=vcard|csv|ldif` and an optional
+`book` checked as on the list page; download names are fixed. The structured components of N, ADR and ORG are written by go-vcard,
+which escapes `\`, LF and `,` but not `;`, so a `;` inside a component becomes `,` on import. `contactio.ParseLimit(raw, max)` stops with `ErrTooMany` at `max+1` records or `max*4` rows (skipped ones included) before building more, and the readers iterate lines lazily, so a 10 MiB file of tiny rows is refused cheaply; LDIF folds are joined in a builder (linear). CSV row numbers count blank lines, as a spreadsheet does. A file with CR line ends only is read as LF. Two LDIF people with one DN: group members resolve to the first. The quick Company field is the whole ORG value (as the web edit and CardDAV paths set it), not the first component.
+
 Sharing is the grant key space (`/acl/...` and `/aclrev/...`, `internal/store/aclcommand.go`), for kinds
 `calendar`, `mailbox` and `addressbook`. Validation is per kind, in `BuildACLCommand` and again in `PlanACL`:
 a calendar grant has a level (`freebusy`, `read`, `write`) and no rights; an address-book grant has a level

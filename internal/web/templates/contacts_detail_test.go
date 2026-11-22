@@ -137,10 +137,41 @@ func TestContactsPageHeader(t *testing.T) {
 	out := renderToString(t, ContactsPage(nil, 1, 1, "u@x.example", "", ContactBooksView{}))
 	for _, want := range []string{
 		`class="page-head contacts-head"`, `href="/contacts/export"`,
-		`data-contact-form-toggle="toggle"`, contactsTr("contacts.importVcard"), `name="vcf"`,
+		`data-contact-form-toggle="toggle"`, contactsTr("contacts.importFile"), `name="vcf"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("header missing %q", want)
+		}
+	}
+}
+
+func TestContactsPageExportMenu(t *testing.T) {
+	out := renderToString(t, ContactsPage(nil, 1, 1, "u@x.example", "", ContactBooksView{}))
+	for _, want := range []string{
+		`href="/contacts/export"`, `href="/contacts/export?format=csv"`, `href="/contacts/export?format=ldif"`,
+		`accept=".vcf,.vcard,.csv,.ldif,.ldi,text/vcard,text/csv"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("page missing %q", want)
+		}
+	}
+	// With a book open every link carries it, so the download is that book's.
+	out = renderToString(t, ContactsPage(nil, 1, 1, "u@x.example", "", ContactBooksView{Enabled: true, Active: "default"}))
+	for _, want := range []string{
+		`href="/contacts/export?book=default"`, `href="/contacts/export?book=default&amp;format=csv"`,
+		`href="/contacts/export?book=default&amp;format=ldif"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("book page missing %q", want)
+		}
+	}
+}
+
+func TestContactsImportRefusedPage(t *testing.T) {
+	out := renderToString(t, ContactsImportRefusedPage("Row 3: the file is malformed here.", "u@x.example", "/contacts?book=abc"))
+	for _, want := range []string{"Row 3: the file is malformed here.", `href="/contacts?book=abc"`, contactsTr("contacts.importRefusedTitle")} {
+		if !strings.Contains(out, want) {
+			t.Errorf("page missing %q", want)
 		}
 	}
 }

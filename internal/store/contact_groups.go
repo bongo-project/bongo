@@ -195,6 +195,14 @@ func deriveContactGroup(c *bongov1.Contact) error {
 	return nil
 }
 
+// ValidateContact reports the error Create would return for c's group, without
+// writing anything or touching c: ErrContactGroupTooLarge for a group over
+// MaxContactGroupMembers. An import uses it to refuse a whole file before the
+// first write.
+func ValidateContact(c *bongov1.Contact) error {
+	return deriveContactGroup(&bongov1.Contact{VcardRaw: c.VcardRaw})
+}
+
 // ContactGroupInfo reports whether c is a contact group and its member
 // references. It trusts the stored Kind and Members; a record with no Kind whose
 // card says KIND is read from vcard_raw, which covers a group stored before the

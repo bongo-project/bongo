@@ -30,55 +30,6 @@ func TestSafeContactReturnPathRejectsExternalURLs(t *testing.T) {
 	}
 }
 
-func TestSplitVCardBlocks(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  int
-	}{
-		{
-			name:  "empty input",
-			input: "",
-			want:  0,
-		},
-		{
-			name:  "single vcard",
-			input: "BEGIN:VCARD\nVERSION:3.0\nFN:Alice\nEND:VCARD\n",
-			want:  1,
-		},
-		{
-			name: "two vcards",
-			input: "BEGIN:VCARD\nVERSION:3.0\nFN:Alice\nEND:VCARD\n\n" +
-				"BEGIN:VCARD\nVERSION:3.0\nFN:Bob\nEND:VCARD\n",
-			want: 2,
-		},
-		{
-			name:  "garbage before and after",
-			input: "junk\nBEGIN:VCARD\nVERSION:3.0\nFN:Alice\nEND:VCARD\nmore junk\n",
-			want:  1,
-		},
-		{
-			name:  "case insensitive begin/end",
-			input: "begin:vcard\nVERSION:3.0\nFN:Alice\nend:vcard\n",
-			want:  1,
-		},
-		{
-			name:  "missing END:VCARD",
-			input: "BEGIN:VCARD\nVERSION:3.0\nFN:Alice\n",
-			want:  0,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			blocks := splitVCardBlocks([]byte(tc.input))
-			if len(blocks) != tc.want {
-				t.Errorf("got %d blocks, want %d", len(blocks), tc.want)
-			}
-		})
-	}
-}
-
 func TestParseVCardBlock_V30(t *testing.T) {
 	input := "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Alice Smith\r\n" +
 		"EMAIL;TYPE=WORK:alice@example.com\r\n" +
@@ -522,5 +473,17 @@ func TestDecodeVCardField_PrefixMatch(t *testing.T) {
 	got := decodeVCardField(card, "FN")
 	if got != "Heiko" {
 		t.Errorf("got %q, want %q", got, "Heiko")
+	}
+}
+
+// The quick Company field is the whole ORG value on every path (import, web
+// edit, CardDAV), so a later quick-field sync cannot drop the department.
+func TestParseVCardBlockCompanyIsWholeOrg(t *testing.T) {
+	c, err := parseVCardBlock([]byte("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:A\r\nORG:Acme;Sales\r\nEND:VCARD\r\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Company != "Acme;Sales" {
+		t.Errorf("Company = %q, want the whole ORG value", c.Company)
 	}
 }
