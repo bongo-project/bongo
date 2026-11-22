@@ -39,9 +39,15 @@ func indexMailHeaders(metadata *store.MetadataManager, userID, guid string, meta
 // row whose MailMeta may predate Cc and List-Id), so it resumes across
 // restarts and does not revisit a row once it is complete.
 //
+// It also fills the participants table (From, To and Cc addresses, written by
+// SetMailHeaders with the columns) and re-visits every row below
+// store.HeadersRevCurrent, so mail derived before participants existed
+// (headers_rev 1) is repaired once: Cc is read from the blob where MailMeta
+// lacks it. A node's conversation results are partial until its pass is done.
+//
 // to_me is judged against the user's addresses as they are when the backfill
 // reaches the row, not as they were at delivery: the addresses index is itself
-// derived.
+// derived. That includes the one-time pass over rows of the earlier revision.
 //
 // Mail delivered before List-Id was recorded in MailMeta, and mail appended by
 // IMAP or imported before Cc and List-Id were recorded, has an empty ListId or

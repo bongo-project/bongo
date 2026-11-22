@@ -1302,6 +1302,15 @@ func (ms *MailboxStore) ListViewMessages(userID string, guidSet map[string]bool,
 // every one). The predicate runs before paging, so the total and the page both
 // count only the messages it kept.
 func (ms *MailboxStore) ListViewMessagesFiltered(userID string, guidSet map[string]bool, keep func(*bongov1.MailboxMessage) bool, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
+	return ms.ListGUIDMessages(userID, guidSet, HeaderViewExcludes, keep, offset, limit)
+}
+
+// ListGUIDMessages is ListViewMessagesFiltered with the folder exclusion
+// chosen by the caller: a mailbox for which exclude returns true is skipped
+// (nil skips none). Only mailboxes that still hold a MailboxMessage for a guid
+// can list it, so an expunged or moved-away message is never returned from a
+// folder it left.
+func (ms *MailboxStore) ListGUIDMessages(userID string, guidSet map[string]bool, exclude func(string) bool, keep func(*bongov1.MailboxMessage) bool, offset, limit int) ([]*bongov1.MailboxMessage, []string, int, error) {
 	if len(guidSet) == 0 {
 		return nil, nil, 0, nil
 	}
@@ -1312,7 +1321,7 @@ func (ms *MailboxStore) ListViewMessagesFiltered(userID string, guidSet map[stri
 
 	var all []located
 	for _, mb := range mailboxes {
-		if HeaderViewExcludes(mb.Name) {
+		if exclude != nil && exclude(mb.Name) {
 			continue
 		}
 		msgs, err := ms.ListMessages(userID, mb.Name)

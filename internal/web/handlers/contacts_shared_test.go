@@ -397,3 +397,19 @@ func TestSharesPageNamesAddressBook(t *testing.T) {
 		t.Error("a deleted book still has a row")
 	}
 }
+
+// A contact of a shared book links to the viewer's own conversations with its
+// address; the group card does not, and the page stays read-only.
+func TestSharedBookContactShowsConversationsLink(t *testing.T) {
+	e := newBookShareEnv(t)
+	e.seedSharedContacts(t)
+	e.grant(t, store.ACLKindAddressBook, e.book, "bob", store.GrantLevelRead, "", store.GrantStateAccepted, e.now)
+	content := mainOf(t, e.showShared("bob", "alice", e.book, sharedAnn).Body.String())
+	if !strings.Contains(content, `href="/search?participant=ann%40client.test"`) {
+		t.Errorf("the shared contact lacks the conversations link: %s", content)
+	}
+	group := mainOf(t, e.showShared("bob", "alice", e.book, sharedGroup).Body.String())
+	if strings.Contains(group, "/search?") {
+		t.Error("the shared group card must not link to a conversations search")
+	}
+}

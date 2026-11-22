@@ -87,7 +87,10 @@ func TestMailHeaderFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := MailHeaderFields(tt.meta, mine); got != tt.want {
+			got := MailHeaderFields(tt.meta, mine)
+			// Participants have their own tests (participants_test.go).
+			got.Participants = nil
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("MailHeaderFields = %+v, want %+v", got, tt.want)
 			}
 		})

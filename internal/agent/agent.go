@@ -1657,6 +1657,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Search != nil {
 			searchH := handlers.NewSearchHandler(a.Store, a.Mailboxes, a.Search)
 			searchH.SetTagStore(store.NewTagStore(a.Store, a))
+			if mailH != nil {
+				// The conversations view is the mail handler's list, so it
+				// groups threads and acts on real mailboxes.
+				searchH.SetParticipantHandler(mailH.ListParticipants)
+				r.Post("/search/bulk", mailH.BulkParticipant)
+			}
 			r.Get("/search", searchH.Search)
 		}
 

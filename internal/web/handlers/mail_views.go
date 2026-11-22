@@ -15,7 +15,8 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// The To me, From my contacts and Mailing lists views. They are filters over
+// The To me, From my contacts and Mailing lists views (and, below, the
+// participant view, which differs in listing Sent and Drafts). They are filters over
 // the user's derived SQLite index (to_me, sender_addr and list_id), listed from
 // INBOX and the user's folders, never Junk, Trash, Sent or Drafts. Each row is
 // shown with its real mailbox, and actions on it target that mailbox.
@@ -60,6 +61,52 @@ func (h *MailHandler) ListMailingList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.serveList(w, r, view.URL(), &view)
+}
+
+// participantViewFromRequest is the participant view named by the repeatable
+// ?participant= query parameter. Entries that are not an address are dropped,
+// the rest are normalised, de-duplicated and sorted, so one set of addresses
+// has one URL. It reports false for no usable address or more than
+// store.MaxParticipantQuery of them.
+func participantViewFromRequest(r *http.Request) (store.HeaderView, bool) {
+	seen := make(map[string]bool)
+	var addrs []string
+	for _, raw := range r.URL.Query()["participant"] {
+		// BareAddress accepts a quoted local part, so markup or spaces can
+		// survive it; such a value is not a participant and is never shown.
+		if a := store.BareAddress(raw); a != "" && !strings.ContainsAny(a, "<>\" \t\r\n") && !seen[a] {
+			seen[a] = true
+			addrs = append(addrs, a)
+		}
+	}
+	if len(addrs) == 0 || len(addrs) > store.MaxParticipantQuery {
+		return store.HeaderView{}, false
+	}
+	sort.Strings(addrs)
+	return store.HeaderView{Kind: store.ViewParticipant, Participants: addrs}, true
+}
+
+// ListParticipants renders every conversation with one or more addresses: the
+// mail of the session user that has any of them in From, To or Cc, from every
+// folder except Junk and Trash, grouped by thread. GET /search?participant=
+func (h *MailHandler) ListParticipants(w http.ResponseWriter, r *http.Request) {
+	view, ok := participantViewFromRequest(r)
+	if !ok {
+		http.Error(w, "participant must be one to 20 email addresses", http.StatusBadRequest)
+		return
+	}
+	h.serveList(w, r, view.URL(), &view)
+}
+
+// BulkParticipant applies a bulk action to messages of a participant view,
+// which are named as uid:mailbox targets. POST /search/bulk?participant=
+func (h *MailHandler) BulkParticipant(w http.ResponseWriter, r *http.Request) {
+	view, ok := participantViewFromRequest(r)
+	if !ok {
+		http.Error(w, "participant must be one to 20 email addresses", http.StatusBadRequest)
+		return
+	}
+	h.bulkAction(w, r, view.URL(), true)
 }
 
 // BulkToMe applies a bulk action to messages of the To me view, which are named
@@ -185,7 +232,7 @@ func (h *MailHandler) headerViewMessages(userID string, view store.HeaderView, u
 	if unreadOnly {
 		keep = func(m *bongov1.MailboxMessage) bool { return m.Flags&store.FlagSeen == 0 }
 	}
-	msgs, names, _, err := h.mailboxes.ListViewMessagesFiltered(userID, guidSet, keep, 0, maxMessagePageLimit)
+	msgs, names, _, err := h.mailboxes.ListGUIDMessages(userID, guidSet, view.Excludes, keep, 0, maxMessagePageLimit)
 	return msgs, names, err
 }
 
@@ -197,6 +244,8 @@ func (h *MailHandler) headerViewGUIDs(userID string, view store.HeaderView) ([]s
 		return nil, nil
 	}
 	switch {
+	case view.Kind == store.ViewParticipant:
+		return h.metadata.QueryByParticipants(userID, view.Participants)
 	case view.ListID != "":
 		return h.metadata.QueryByListID(userID, view.ListID)
 	case view.Kind == store.ViewToMe:

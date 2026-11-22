@@ -148,6 +148,18 @@ func (u *UserIndex) createSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_message_tags_tag
 		ON message_tags(tag);
+
+		-- Participants: one row per (address, message), roles OR-ed (1 from,
+		-- 2 to, 4 cc). Written only by SetMailHeaders, never by IndexMail. No
+		-- mailbox column: expunge and move leave MailMeta in place, so the
+		-- folder is resolved from the mailbox at read time.
+		CREATE TABLE IF NOT EXISTS participants (
+			address   TEXT NOT NULL,
+			mail_guid TEXT NOT NULL,
+			roles     INTEGER NOT NULL,
+			PRIMARY KEY (address, mail_guid)
+		) WITHOUT ROWID;
+		CREATE INDEX IF NOT EXISTS idx_participants_guid ON participants(mail_guid);
 	`
 	if _, err := u.db.Exec(schema); err != nil {
 		return err
@@ -365,6 +377,7 @@ func (u *UserIndex) DeleteMail(mailGUID string) error {
 
 	for _, stmt := range []string{
 		`DELETE FROM message_tags WHERE mail_guid = ?`,
+		`DELETE FROM participants WHERE mail_guid = ?`,
 		`DELETE FROM maildocument WHERE guid = ?`,
 		`DELETE FROM storeobject WHERE guid = ?`,
 	} {

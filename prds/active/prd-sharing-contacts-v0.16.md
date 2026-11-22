@@ -629,18 +629,27 @@ snapshot restore or an unclean shutdown since bf3a527, and took about
 1,700 s for 75,000 messages, so it is not a migration path.
 
 **Acceptance Criteria:**
-- [ ] Participants are stored in SQLite, not Bleve (decision 13): lowercased
+- [x] Participants are stored in SQLite, not Bleve (decision 13): lowercased
       bare addresses from From, To and Cc, in a per-user table keyed by
       message GUID and address, written by `IndexMail` and derived for
       existing mail by the header backfill, under a bumped `headers_rev`.
       The backfill is resumable and rate-limited. The Bleve mapping does not
       change.
-- [ ] `/search?participant={address}` lists every message with that
+- [x] `/search?participant={address}` lists every message with that
       address in any of those headers, across mailboxes except Trash and
       Junk, grouped by thread.
-- [ ] The contact detail card has "Show conversations", linking there; with
+- [x] The contact detail card has "Show conversations", linking there; with
       several addresses on a card, all of them are included.
-- [ ] A user only ever sees their own messages.
+- [x] A user only ever sees their own messages.
+- Done in 40.6 (2026-11-22). Per-user SQLite table `participants (address,
+  mail_guid, roles)` (From 1, To 2, Cc 4; at most 200 per message), owned by
+  `SetMailHeaders` in one transaction with the header columns; `headers_rev`
+  is 2, so the backfill revisits every v0.15 row once (Cc from the blob).
+  `/search?participant=` (repeatable, at most 20, an OR) lists the session
+  user's own mail from every folder except Trash and Junk and below them,
+  grouped by thread, with bulk actions on `uid:mailbox` targets. The own and
+  shared-book contact cards link there with every address; contact groups do
+  not.
 
 ### Phase E: Scheduled fetch
 
@@ -1017,6 +1026,18 @@ Found while building v0.16.0 (2026-11-15):
 - **Flaky test:** `TestSharedIdleSeesNewMail` (internal/imap) failed once in
   CI on PR #234 (no EXISTS within 5 s) and passed on rerun; the test delivers
   right after IDLE starts and can race the server registering the listener.
+- **Conversations with a contact, follow-ups** (40.6, 2026-11-22):
+  - Bcc and Reply-To are not participants (MailMeta has no Bcc); `q` is
+    ignored when `participant` is present, so a text search cannot be
+    combined with it.
+  - Results on a node are partial until its header backfill pass is done.
+  - The live indexer writes the row from MailMeta alone, so a message whose
+    MailMeta lacks Cc (an old IMAP append or import) loses its blob-derived
+    Cc participants on the next MailMeta write and is not revisited; the
+    same holds for `to_me`.
+  - Every MailMeta write (flag and tag changes included) replaces the
+    message's participant rows; a contact group card has no conversations
+    link.
 - **Contact import and export, follow-ups** (40.4, 2026-11-22):
   - Localised (non-English) Outlook headers and two-digit-year Outlook
     dates; Google Labels as contact groups on CSV import, groups in CSV

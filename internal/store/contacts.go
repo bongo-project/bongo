@@ -330,12 +330,37 @@ func (s *ContactStore) Addresses(userID string) (map[string]bool, error) {
 		if err := proto.Unmarshal(val, &contact); err != nil {
 			continue
 		}
-		if a := BareAddress(contact.Email); a != "" {
-			out[a] = true
-		}
-		for _, a := range vcardEmails(contact.VcardRaw) {
+		for _, a := range contactAddresses(&contact) {
 			out[a] = true
 		}
 	}
 	return out, nil
+}
+
+// contactAddresses returns the normalised addresses of a contact in order: the
+// Email field, then every EMAIL property of the vCard, without repeats.
+func contactAddresses(c *bongov1.Contact) []string {
+	var out []string
+	seen := make(map[string]bool)
+	add := func(a string) {
+		if a != "" && !seen[a] {
+			seen[a] = true
+			out = append(out, a)
+		}
+	}
+	add(BareAddress(c.GetEmail()))
+	for _, a := range vcardEmails(c.GetVcardRaw()) {
+		add(BareAddress(a))
+	}
+	return out
+}
+
+// ContactEmails returns the addresses of a contact for a conversations search,
+// at most MaxParticipantQuery of them.
+func ContactEmails(c *bongov1.Contact) []string {
+	out := contactAddresses(c)
+	if len(out) > MaxParticipantQuery {
+		out = out[:MaxParticipantQuery]
+	}
+	return out
 }

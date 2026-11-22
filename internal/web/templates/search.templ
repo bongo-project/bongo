@@ -1,6 +1,9 @@
 package templates
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 // SearchResult holds data for a single search hit.
 type SearchResult struct {
@@ -62,6 +65,6 @@ templ SearchPage(query string, results []SearchResult, page, totalPages int) {
 				</a>
 			}
 		</div>
-		@Pagination(page, totalPages, "/search?q="+query)
+		@Pagination(page, totalPages, "/search?q="+url.QueryEscape(query))
 	}
 }

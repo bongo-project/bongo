@@ -1487,5 +1487,9 @@
   "flash.contactSelfCleared": "No longer marked as your own card",
   "compose.attachMyCard": "Attach my card",
   "compose.errSelfCardMissing": "You asked to attach your card, but none is marked. Mark one under Contacts, or untick the box.",
-  "compose.errSelfCardTooLarge": "Your card is too large to attach."
+  "compose.errSelfCardTooLarge": "Your card is too large to attach.",
+  "contacts.showConversations": "Show conversations",
+  "search.participantHeading": "Conversations with %s",
+  "view.participantEmpty": "No conversations found",
+  "view.participantHint": "Messages with these addresses in From, To or Cc appear here, except those in Junk and Trash."
 }

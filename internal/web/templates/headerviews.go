@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // MailingList is one row of the Mailing lists overview.
@@ -77,6 +79,8 @@ func viewBulkURL(listMailbox string, view *store.HeaderView) string {
 func mailboxHeading(ctx context.Context, mailbox string, view *store.HeaderView) string {
 	if view != nil {
 		switch {
+		case view.Kind == store.ViewParticipant:
+			return fmt.Sprintf(t(ctx, "search.participantHeading"), strings.Join(view.Participants, ", "))
 		case view.ListID != "":
 			return view.ListID
 		case view.Kind == store.ViewToMe:
@@ -94,6 +98,8 @@ func mailboxHeading(ctx context.Context, mailbox string, view *store.HeaderView)
 func emptyListText(ctx context.Context, view *store.HeaderView) (title, hint string) {
 	if view != nil {
 		switch {
+		case view.Kind == store.ViewParticipant:
+			return t(ctx, "view.participantEmpty"), t(ctx, "view.participantHint")
 		case view.ListID != "":
 			return t(ctx, "view.listEmpty"), t(ctx, "view.listHint")
 		case view.Kind == store.ViewToMe:
@@ -127,4 +133,17 @@ func listLabel(l MailingList) string {
 		return l.Name
 	}
 	return l.ID
+}
+
+// conversationsURL is the participant search for a contact's addresses (all of
+// them: the Email field and every vCard EMAIL, at most store.MaxParticipantQuery),
+// or "" when the contact has none. The addresses are sorted and escaped, so the
+// same card always links to the same URL.
+func conversationsURL(c *bongov1.Contact) string {
+	addrs := store.ContactEmails(c)
+	if len(addrs) == 0 {
+		return ""
+	}
+	sort.Strings(addrs)
+	return store.HeaderView{Kind: store.ViewParticipant, Participants: addrs}.URL()
 }

@@ -1487,5 +1487,9 @@
   "flash.contactSelfCleared": "Nicht mehr als Ihre eigene Karte markiert",
   "compose.attachMyCard": "Meine Karte anhängen",
   "compose.errSelfCardMissing": "Sie wollten Ihre Karte anhängen, aber keine ist markiert. Markieren Sie eine unter Kontakte oder entfernen Sie das Häkchen.",
-  "compose.errSelfCardTooLarge": "Ihre Karte ist zu groß zum Anhängen."
+  "compose.errSelfCardTooLarge": "Ihre Karte ist zu groß zum Anhängen.",
+  "contacts.showConversations": "Unterhaltungen anzeigen",
+  "search.participantHeading": "Unterhaltungen mit %s",
+  "view.participantEmpty": "Keine Unterhaltungen gefunden",
+  "view.participantHint": "Nachrichten mit diesen Adressen in Von, An oder Cc erscheinen hier, ausser denen in Spam und Papierkorb."
 }

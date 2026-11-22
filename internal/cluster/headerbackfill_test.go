@@ -311,6 +311,21 @@ func TestIndexStoreObjectFillsHeaderColumns(t *testing.T) {
 	if g, _ := env.metadata.QueryToMe("u1"); len(g) != 2 {
 		t.Fatalf("to-me after re-index = %v", g)
 	}
+	// Participants come with the headers and survive the re-index.
+	if g, _ := env.metadata.QueryByParticipants("u1", []string{"bob@example.com"}); len(g) != 3 {
+		t.Fatalf("participants for bob = %v, want all three", g)
+	}
+	if g, _ := env.metadata.QueryByParticipants("u1", []string{"friend@example.com"}); len(g) != 1 {
+		t.Fatalf("participants for friend = %v, want m0", g)
+	}
+	// Deleting the message removes its participants with the rest.
+	env.fsm.Apply(makeProtoLog(10, &bongov1.RaftCommand{
+		Op: bongov1.Op_OP_DELETE, Key: []byte("/user/u1/mail/m0"),
+	}))
+	env.fsm.WaitIdle(5 * time.Second)
+	if g, _ := env.metadata.QueryByParticipants("u1", []string{"friend@example.com"}); len(g) != 0 {
+		t.Fatalf("participants after OP_DELETE = %v", g)
+	}
 }
 
 func TestRebuildFillsHeaderColumns(t *testing.T) {
@@ -348,6 +363,10 @@ func TestRebuildFillsHeaderColumns(t *testing.T) {
 	// blob. Marking them done would let a rebuild undo the repair.
 	if p := pendingHeaders(t, env, "u1"); len(p) != 3 {
 		t.Fatalf("pending after rebuild = %v, want all three left for the backfill", p)
+	}
+	// Participants come from MailMeta, with headers_rev left NULL.
+	if g, _ := env.metadata.QueryByParticipants("u1", []string{"x@example.com"}); len(g) != 3 {
+		t.Fatalf("participants after rebuild = %v, want all three", g)
 	}
 	if got := newTestHeaderBackfill(env, 10).RunPass(context.Background()); got != 3 {
 		t.Fatalf("backfill after rebuild filled %d, want 3", got)
