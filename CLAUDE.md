@@ -260,6 +260,38 @@ versions: there is no new command or prefix, and field 12 survives an older node
 kept), but an older node's CardDAV shows every contact in the default book and has no MKCOL. Upgrade every node
 before anyone creates a second book.
 
+Address books on the web (sharing, `internal/web/handlers/contacts_books_share.go` and `contacts_shared.go`). The
+owner's page is `/contacts/books/{id}/sharing`, with `POST .../share` and `.../unshare` (`BookShareHandler`, registered
+in agent.go next to the folder form because the limiter is the calendar handler's `ShareLimiter()`: one 20-per-hour
+budget shared with the calendar form, the folder form and IMAP SETACL). The "Sharing" link shows only on a created book.
+Refusal order: limiter (429 with Retry-After), then the book must be the user's own and created (`default`, malformed,
+another user's and missing are one 404, `contacts.errBookNotFound`), `share_with` empty (400), level `read` or `write`
+(400, before any resolution), the 50-grant cap read, address parse with no display name, `ResolveAccount` or a
+same-domain group (`shareableGroupOf`), self; every negative resolution and a full book for a new grantee is one 400,
+`contacts.errShareRefused`. Then `offerGrant` (user: pending, invitation mail naming the book) or `offerGroupGrant`
+(accepted, no mail). The cap read, the grant and the mail are separate commands and not atomic (concurrent shares can
+overshoot 50), as for folders. Unshare takes a user id or `g:{id}`, is not rate limited, and a missing grant writes
+nothing. `grantDisplayRow` is the one place a grant becomes a label and state for both sharing pages.
+The grantee's web view is read only whatever the level: writes go over CardDAV. `/shared/contacts/{owner}/{book}` and
+`/shared/contacts/{owner}/{book}/{guid}` sit outside `/contacts/{guid}` (as `/shared/mail` does) and call
+`ContactsHandler.resolveSharedBook` on every request: stores wired, owner id well formed, book id 32 hex, owner is not
+the session user, `AddressBookLevel` at least read, the book record exists. Every failure, and a contact that is missing
+or filed in another book, is the same 404 with the constant body `address book not found`. A disabled owner's book stays
+reachable (as CardDAV and shared calendars). The pages never reuse the owner's editor templates: no form, button or
+action URL, and a contact group lists its members by name (`ResolveContactGroup(owner, g)`, no links). The contacts
+sidebar's "Shared with me" group comes from `AddressBooksSharedWith` (accepted, book exists, at most 50), read per page.
+`/shares` names an address-book row by the book's name (`CalendarHandler.SetAddressBooks`) and drops a deleted book.
+Compose autocomplete (`ComposeHandler.eachSharedBookContact`) re-reads `AddressBooksSharedWith` on every request, scans
+at most 20 books in owner then id order with `ListByBook(owner, book)`, matches the query as a case-insensitive
+substring of name and address, skips contact groups and cards with no address, de-duplicates against the caller's own
+contacts, and takes at most 10 hits with `source: "contacts"`. It must never call `SearchContacts(owner, q)`: that runs
+a free-form query on the owner's search index, which also holds their mail, so it would be an oracle on mail. Contact
+groups of a shared book are not offered in compose (expansion is owner-scoped). Not on the web yet: creating, editing or
+deleting in a shared book, sharing the default book, moving a contact between books, shared books in "From my
+contacts" and quick-add duplicate checks. No new key or command; the `/__acl__/` guardrail applies, and an older v0.16.0
+node lists no shared books and answers 404 on `shared-` paths, so a client balanced across nodes would see the book
+appear and vanish: upgrade every node before anyone shares an address book.
+
 Sharing is the grant key space (`/acl/...` and `/aclrev/...`, `internal/store/aclcommand.go`), for kinds
 `calendar`, `mailbox` and `addressbook`. Validation is per kind, in `BuildACLCommand` and again in `PlanACL`:
 a calendar grant has a level (`freebusy`, `read`, `write`) and no rights; an address-book grant has a level
@@ -272,7 +304,7 @@ carries `g:`. A `g:` grantee is accepted on every op for every kind when its id 
 (`groupIDPattern`); that the group exists is the caller's check, and the FSM keeps its shape checks. Every kind is capped
 at `store.MaxGrantsPerResource` (50) live grants per resource (`ACLStore.GrantCapReached`; expired pending
 grants do not count). `GrantOrphaned` probes the owner always, the grantee profile for a user and
-`/system/group/{id}` for a group, and the resource per kind (calendar key, mailbox id, none for address books yet).
+`/system/group/{id}` for a group, and the resource per kind (calendar key, mailbox id, address-book record).
 **Effective rights are the union of grants:** `ACLStore.EffectiveGrant(kind, owner, resource, userID)` is the one
 resolver every authorisation uses (`CalendarAccessLevel`, `HasCalendarAccess` and the held-share listings
 delegate to it). It merges the user's own accepted `u:` grant with the accepted `g:` grants of every group in

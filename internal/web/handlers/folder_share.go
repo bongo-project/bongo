@@ -150,21 +150,43 @@ func (h *FolderShareHandler) ShowFolders(w http.ResponseWriter, r *http.Request)
 	templ.Handler(templates.FolderSharePage(data)).ServeHTTP(w, r)
 }
 
-// grantRow turns one stored grant into a display row. A grantee whose account
-// or group is gone still shows, by id, so the owner can revoke it.
+// grantRow turns one stored grant into a display row.
 func (h *FolderShareHandler) grantRow(g store.ResourceGrant, now time.Time) templates.FolderShareGrant {
-	row := templates.FolderShareGrant{Grantee: g.Principal, Rights: g.Grant.Rights, Preset: folderRightsPreset(g.Grant.Rights)}
+	d := grantDisplayRow(h.acl, h.groups, g, now)
+	return templates.FolderShareGrant{
+		Grantee: d.Grantee, Label: d.Label, State: d.State,
+		Rights: g.Grant.Rights, Preset: folderRightsPreset(g.Grant.Rights),
+	}
+}
+
+// grantDisplay is what the owner's sharing pages show of one grant, whatever
+// the kind of resource: who it names, in which state.
+type grantDisplay struct {
+	// Grantee is what the revoke form sends: a user id, or "g:" and a group id.
+	Grantee string
+	// Label is the grantee's address, or the group's address.
+	Label string
+	// State is "pending", "accepted" or "expired".
+	State string
+}
+
+// grantDisplayRow turns one stored grant into a display row. A grantee whose
+// account or group is gone still shows, by id, so the owner can revoke it. The
+// folder and address-book sharing pages both use it, so labels and states
+// cannot drift apart.
+func grantDisplayRow(acl *store.ACLStore, groups groupLookup, g store.ResourceGrant, now time.Time) grantDisplay {
+	row := grantDisplay{Grantee: g.Principal}
 	if gid, isGroup := strings.CutPrefix(g.Principal, "g:"); isGroup {
 		row.Label = gid
-		if h.groups != nil {
-			if grp, err := h.groups.GetGroup(gid); err == nil && grp != nil && grp.Address != "" {
+		if groups != nil {
+			if grp, err := groups.GetGroup(gid); err == nil && grp != nil && grp.Address != "" {
 				row.Label = grp.Address
 			}
 		}
 	} else {
 		id := strings.TrimPrefix(g.Principal, "u:")
 		row.Grantee = id
-		row.Label = h.acl.UserEmail(id)
+		row.Label = acl.UserEmail(id)
 		if row.Label == "" {
 			row.Label = id
 		}

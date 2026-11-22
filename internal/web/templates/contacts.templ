@@ -31,6 +31,26 @@ type ContactBooksView struct {
 	Groups []*bongov1.Contact
 	// Group is the open contact group's members, set only on a group's own page.
 	Group *ContactGroupView
+	// Shared are the address books other users shared with the viewer.
+	Shared []SharedBookLink
+	// SharedActive is SharedBookKey of the shared book the page shows, "" otherwise.
+	SharedActive string
+}
+
+// SharedBookLink is one address book shared with the viewer, for the sidebar.
+type SharedBookLink struct {
+	Owner      string
+	Book       string
+	Name       string
+	OwnerLabel string
+}
+
+// SharedBookKey identifies a shared book by owner and book id.
+func SharedBookKey(owner, book string) string { return owner + "/" + book }
+
+// sharedBookHref is the read-only page of a shared book.
+func sharedBookHref(owner, book string) string {
+	return "/shared/contacts/" + url.PathEscape(owner) + "/" + url.PathEscape(book)
 }
 
 // ContactGroupMemberView is one resolved member of a contact group: a card in
@@ -390,6 +410,7 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 							</label>
 							<button type="submit" class="btn-secondary">{ t(ctx, "contacts.renameBook") }</button>
 						</form>
+						<a href={ templ.SafeURL("/contacts/books/" + books.ActiveBook.Id + "/sharing") } class="btn-secondary u-mt-075 u-inline-block">{ t(ctx, "contacts.sharing") }</a>
 						<form
 							method="post"
 							action={ templ.SafeURL("/contacts/books/" + books.ActiveBook.Id + "/delete") }
@@ -815,7 +836,7 @@ templ ContactsSidebar(books ContactBooksView) {
 			<div class="sidebar-label">{ t(ctx, "nav.contacts") }</div>
 			<ul class="nav-list">
 				<li class="nav-item">
-					<a href="/contacts" class={ templ.KV("active", !books.Enabled || books.Active == "") }>
+					<a href="/contacts" class={ templ.KV("active", (!books.Enabled || books.Active == "") && books.SharedActive == "") }>
 						<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
 						<span>{ t(ctx, "nav.allContacts") }</span>
 					</a>
@@ -846,6 +867,21 @@ templ ContactsSidebar(books ContactBooksView) {
 					<input type="text" name="name" class="settings-input u-w-full" maxlength="100" required placeholder={ t(ctx, "contacts.bookName") } aria-label={ t(ctx, "contacts.newBook") }/>
 					<button type="submit" class="btn-secondary u-mt-075">{ t(ctx, "contacts.createBook") }</button>
 				</form>
+			</div>
+		}
+		if len(books.Shared) > 0 {
+			<div class="sidebar-group">
+				<div class="sidebar-label">{ t(ctx, "contacts.sharedWithMe") }</div>
+				<ul class="nav-list">
+					for _, b := range books.Shared {
+						<li class="nav-item">
+							<a href={ templ.SafeURL(sharedBookHref(b.Owner, b.Book)) } class={ templ.KV("active", books.SharedActive == SharedBookKey(b.Owner, b.Book)) } data-shared-book={ b.Book } title={ b.OwnerLabel }>
+								<span class="nav-icon" aria-hidden="true">@Icon("users", "")</span>
+								<span>{ b.Name }</span>
+							</a>
+						</li>
+					}
+				</ul>
 			</div>
 		}
 		<div class="sidebar-group">

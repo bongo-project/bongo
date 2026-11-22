@@ -542,23 +542,30 @@ that reports read-only shares (`internal/caldav/privileges.go`,
 `PrivilegeFilter`).
 
 **Acceptance Criteria:**
-- [ ] `/user/{id}/addressbook/{guid}` holds address-book metadata; `Contact`
+- [x] `/user/{id}/addressbook/{guid}` holds address-book metadata; `Contact`
       gains `addressbook_id` (12), empty meaning the default book.
-- [ ] CardDAV lists, creates and deletes address books (MKCOL with the
+- [x] CardDAV lists, creates and deletes address books (MKCOL with the
       CardDAV resource type); deleting a book deletes its contacts with
       documented partial-failure semantics (contacts first, the book last,
       resumable), and revokes its grants in the same request.
-- [ ] Renaming a book is web-only (decision 16); CardDAV PROPPATCH rename is
+- [x] Renaming a book is web-only (decision 16); CardDAV PROPPATCH rename is
       a section 8.2 candidate.
-- [ ] Address books can be shared with users or groups at `read` or `write`
+- [x] Address books can be shared with users or groups at `read` or `write`
       through the pending-invitation flow (decision 8); accepted shared
       books appear in the web UI and in the recipient's CardDAV home as
       `shared-{owner}-{guid}`, parsed with the CalDAV rules (UUID owner, no
       `/`). Privileges are reported through the CalDAV `PrivilegeFilter`
       approach, generalised for CardDAV; writes to a `read` share answer 403.
-- [ ] Compose autocomplete includes accepted shared books.
-- [ ] Every handler checks the grant per request, with a negative test per
+- [x] Compose autocomplete includes accepted shared books.
+- [x] Every handler checks the grant per request, with a negative test per
       route, including a pending grant.
+- Done in 40.2 (books) and 40.3 (sharing, 2026-11-22; PRs #232 and the web
+  follow-up). The default book cannot be shared (operator decision); a
+  grantee gets a read-only web view and writes over CardDAV only; contact
+  groups in shared books are not offered in compose; autocomplete reads at
+  most 20 shared books and 10 hits by substring over the owner's book,
+  never the owner's search index; a disabled owner's shared book stays
+  reachable, as shared calendars do.
 
 ### US-013: CSV and LDIF import and export
 **Source:** audit #83. **Size:** M.
@@ -982,6 +989,16 @@ Found while building v0.16.0 (2026-11-15):
 - **Release note for v0.16.0:** CardDAV now requires the path's user segment
   to be the authenticated user's id; a client configured by hand with an
   email address there gets 404.
+- **Shared address books, follow-ups** (40.3, 2026-11-22):
+  - Share the default book; a "move contact between books" action.
+  - Web create, edit and delete for write grantees (CardDAV only today);
+    a leave-share link on the shared book page; CardDAV DELETE of a shared
+    collection is 403, not "leave".
+  - Contact groups from shared books in compose (expansion is
+    owner-scoped); shared books in "From my contacts", `Addresses` and
+    quick-add duplicate checks.
+  - Autocomplete scans each shared book per keystroke (capped at 20 books);
+    the web share cap check is read-then-write and can overshoot 50.
 - **Contact groups, follow-ups** (40.1, 2026-11-22):
   - The web read-modify-write of a group card is locked per node only, so
     a concurrent add on another node can be lost (CardDAV uses If-Match).

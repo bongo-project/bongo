@@ -126,6 +126,12 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"folder unshare", "/settings/folders/unshare", func(string) url.Values {
 			return url.Values{"folder": {"missing"}, "share_with": {"nobody"}}
 		}},
+		{"book share", "/contacts/books/" + strings.Repeat("a", 32) + "/share", func(string) url.Values {
+			return url.Values{"share_with": {"friend@example.com"}, "level": {"read"}}
+		}},
+		{"book unshare", "/contacts/books/" + strings.Repeat("a", 32) + "/unshare", func(string) url.Values {
+			return url.Values{"share_with": {"nobody"}}
+		}},
 		{"shared message flags", "/shared/mail/nobody/0123456789abcdef0123456789abcdef/1/flags", func(string) url.Values {
 			return url.Values{"flag": {"seen"}, "action": {"add"}}
 		}},
