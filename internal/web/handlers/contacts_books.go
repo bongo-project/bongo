@@ -58,6 +58,7 @@ func (h *ContactsHandler) bookView(userID, active string) (templates.ContactBook
 	}
 	view.Enabled = true
 	view.Books = books
+	view.Shared = h.sharedBooksFor(userID)
 	for _, b := range books {
 		if b.Id == active {
 			view.ActiveBook = b

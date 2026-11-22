@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/emersion/go-vcard"
@@ -32,6 +33,8 @@ const contactsPerPage = 25
 type ContactsHandler struct {
 	contacts *store.ContactStore
 	books    *store.AddressBookStore // nil = the default book only
+	acl      *store.ACLStore         // nil = no shared address books
+	now      func() time.Time        // nil = the wall clock
 	search   *store.SearchManager
 	quota    QuotaChecker // nil = unlimited
 

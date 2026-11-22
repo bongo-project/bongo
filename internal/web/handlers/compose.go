@@ -1379,6 +1379,61 @@ func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.ComposePageFull("draft", to, cc, bcc, subject, plainBody, mailbox, uint32(uid), mailboxInfos, nil, email, fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
 }
 
+// The most address books and hits autocomplete takes from books shared with the
+// caller. Each book costs a scan of its owner's contacts on every request, so
+// the cap keeps that bounded.
+const (
+	maxSharedGALBooks = 20
+	maxSharedGALHits  = 10
+)
+
+// eachSharedBookContact calls accept with each contact that matches q in an
+// address book another user shared with userID; accept reports whether it took
+// the contact, and the scan ends after maxSharedGALHits taken. The grants are re-read on every call, so a revoke or
+// a pending invitation changes the answer at once; at most maxSharedGALBooks
+// books are scanned, in owner then id order. A contact group and a card with no
+// address are skipped, and q is matched as a case-insensitive substring of the
+// name and the address.
+//
+// It deliberately does not use SearchContacts: that runs a free-form query
+// against the owner's search index, which also holds the owner's mail, so a
+// crafted query would be an oracle on mail and the index knows nothing of books.
+func (h *ComposeHandler) eachSharedBookContact(userID, q string, accept func(*bongov1.Contact) bool) {
+	if h.acl == nil || h.contacts == nil || userID == "" || q == "" {
+		return
+	}
+	held, err := h.acl.AddressBooksSharedWith(userID, time.Now())
+	if err != nil {
+		slog.Warn("web: autocomplete: listing shared books failed", "user", userID, "error", err)
+		return
+	}
+	if len(held) > maxSharedGALBooks {
+		held = held[:maxSharedGALBooks]
+	}
+	needle := strings.ToLower(q)
+	hits := 0
+	for _, b := range held {
+		contacts, _, err := h.contacts.ListByBook(b.Owner, b.Resource, 0, 0)
+		if err != nil {
+			slog.Warn("web: autocomplete: reading shared book failed", "owner", b.Owner, "error", err)
+			continue
+		}
+		for _, c := range contacts {
+			if c.Email == "" || store.IsContactGroup(c) {
+				continue
+			}
+			if !strings.Contains(strings.ToLower(c.DisplayName), needle) && !strings.Contains(strings.ToLower(c.Email), needle) {
+				continue
+			}
+			if accept(c) {
+				if hits++; hits >= maxSharedGALHits {
+					return
+				}
+			}
+		}
+	}
+}
+
 // GALSearch returns GAL autocomplete results as JSON.
 func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
@@ -1459,6 +1514,17 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 			result = append(result, galJSON{Key: lower, Email: c.Email, DisplayName: c.DisplayName, Source: "contacts"})
 		}
 	}
+	// Contacts of address books other users shared with the caller. A shared
+	// contact group is not offered: expansion is owner-scoped.
+	h.eachSharedBookContact(userID, q, func(c *bongov1.Contact) bool {
+		lower := strings.ToLower(c.Email)
+		if seen[lower] {
+			return false
+		}
+		seen[lower] = true
+		result = append(result, galJSON{Key: lower, Email: c.Email, DisplayName: c.DisplayName, Source: "contacts"})
+		return true
+	})
 	result = append(result, contactGroups...)
 
 	for _, e := range entries {

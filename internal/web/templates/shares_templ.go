@@ -24,7 +24,7 @@ type PendingShare struct {
 	Owner        string // user ID, posted back
 	OwnerLabel   string // address shown
 	Resource     string // calendar guid or mailbox id, posted back
-	ResourceName string // calendar or folder name; empty for an address book
+	ResourceName string // calendar, folder or address book name
 	Level        string // calendar and address-book permission
 	Rights       string // mailbox rights letters
 	// Via names the groups that give a joined share when the user holds no
@@ -603,10 +603,11 @@ func shareKindLabel(ctx context.Context, kind string) string {
 	}
 }
 
-// shareResourceLabel is the name of what is shared. Address books do not exist
-// yet, so one shows its id; the kind label in front already says what it is.
+// shareResourceLabel is the name of what is shared. A row whose name is not
+// known shows the id, so it is never blank; the kind label in front already
+// says what it is.
 func shareResourceLabel(row PendingShare) string {
-	if row.Kind == "addressbook" {
+	if row.ResourceName == "" {
 		return row.Resource
 	}
 	return row.ResourceName

@@ -177,6 +177,9 @@ Press `?` for the full list. Shortcuts are ignored while typing in a field.
   rename it, delete it (its contacts are kept) or remove members. A contact is
   added to a group from the contact's own page, from the same address book.
   **Email group** opens the compose form with the members' addresses.
+- A book you created has a **Sharing** link: share it with a person or a group
+  at read or read and write access. Books shared with you are under **Shared
+  with me** in the sidebar and are read only on the web.
 
 ### Settings
 

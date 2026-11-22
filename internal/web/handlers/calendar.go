@@ -43,6 +43,8 @@ type CalendarHandler struct {
 	// mailboxes resolves a mailbox grant's id to a folder name for the shares
 	// page. nil lists no mailbox grants.
 	mailboxes *store.MailboxStore
+	// addressBooks resolves an address-book grant to the book name on the shares page.
+	addressBooks *store.AddressBookStore
 	// shareLimiter caps ShareCalendar requests per user. nil = unlimited.
 	shareLimiter shareRateLimiter
 	// freeBusyLimiter caps availability lookups by address per user. nil =

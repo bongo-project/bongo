@@ -251,8 +251,11 @@ func TestSharesPageListsEveryKind(t *testing.T) {
 	e.grant(t, store.ACLKindMailbox, mixed, "bob", "", "lrswite", store.GrantStatePending, e.now)
 	e.grant(t, store.ACLKindMailbox, custom, "bob", "", "lrw", store.GrantStatePending, e.now)
 	e.grant(t, store.ACLKindMailbox, full, "bob", "", "lrswipkxtea", store.GrantStatePending, e.now)
-	// The book must exist: a grant on a deleted book is not listed.
-	if err := e.ps.Set([]byte("/user/alice/addressbook/"+sharesBookID), []byte("x")); err != nil {
+	// The book must exist: a grant on a deleted book is not listed. The row
+	// carries the book's name, not its id.
+	books := store.NewAddressBookStore(e.ps, &directApplierTags{ps: e.ps})
+	e.h.SetAddressBooks(books)
+	if _, err := books.Create("alice", sharesBookID, "Clients", ""); err != nil {
 		t.Fatal(err)
 	}
 	e.grant(t, store.ACLKindAddressBook, sharesBookID, "bob", store.GrantLevelWrite, "", store.GrantStatePending, e.now)
@@ -266,12 +269,12 @@ func TestSharesPageListsEveryKind(t *testing.T) {
 	}
 
 	body := e.page("bob")
-	// The kind label then the id, exactly: the label must not repeat.
-	if want := `<span class="share-target">alice@d.test &middot; Address book ` + sharesBookID + ` &middot; Read and write</span>`; !strings.Contains(body, want) {
+	// The kind label then the name, exactly: the label must not repeat.
+	if want := `<span class="share-target">alice@d.test &middot; Address book Clients &middot; Read and write</span>`; !strings.Contains(body, want) {
 		t.Errorf("address-book row is not rendered as %q", want)
 	}
 	for _, want := range []string{
-		"alice@d.test", "Work", "Projects", "Folder", "Calendar", "Address book " + sharesBookID,
+		"alice@d.test", "Work", "Projects", "Folder", "Calendar", "Address book Clients",
 		"Full access, can share", "Custom (lrw)", "Read and write",
 		`hx-post="/shares/accept"`, `hx-post="/shares/decline"`, `hx-post="/shares/leave"`,
 		`name="kind" value="mailbox"`, `name="_csrf"`,

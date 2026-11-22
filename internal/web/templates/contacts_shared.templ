@@ -1,0 +1,174 @@
+package templates
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+
+	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
+)
+
+// SharedBookPageData is a shared address book's contact list, read only.
+type SharedBookPageData struct {
+	Email      string
+	Owner      string
+	OwnerLabel string
+	BookID     string
+	BookName   string
+	Contacts   []*bongov1.Contact
+	Page       int
+	TotalPages int
+	Books      ContactBooksView
+}
+
+// SharedContactPageData is one contact of a shared address book, read only.
+type SharedContactPageData struct {
+	Email      string
+	Owner      string
+	OwnerLabel string
+	BookID     string
+	BookName   string
+	Contact    *bongov1.Contact
+	// Group is set when the contact is a contact group: its members by name.
+	Group *ContactGroupView
+	Books ContactBooksView
+}
+
+// sharedContactHref is the read-only page of one contact in a shared book.
+func sharedContactHref(owner, book, guid string) string {
+	return sharedBookHref(owner, book) + "/" + url.PathEscape(guid)
+}
+
+// sharedPageHref is the list URL of one page of a shared book.
+func sharedPageHref(owner, book string, page int) string {
+	return fmt.Sprintf("%s?page=%d", sharedBookHref(owner, book), page)
+}
+
+// sharedByLabel is the "Shared by ..." line every shared page carries.
+func sharedByLabel(ctx context.Context, owner string) string {
+	return fmt.Sprintf(t(ctx, "contacts.sharedReadOnly"), owner)
+}
+
+// The shared pages hold no form, no button and no link into /contacts/: the
+// viewer has a read-only view, and writes go through CardDAV. They never reuse
+// the owner's editor templates.
+templ SharedContactsPage(d SharedBookPageData) {
+	@LayoutWithContent(d.BookName, d.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@ContactsSidebar(d.Books)
+		</aside>
+		<main class="content" id="main-content">
+			<div class="page-head contacts-head">
+				<h1>{ d.BookName }</h1>
+			</div>
+			<p class="meta u-p-18" data-shared-readonly>{ sharedByLabel(ctx, d.OwnerLabel) }</p>
+			if len(d.Contacts) == 0 {
+				@EmptyState(t(ctx, "contacts.noContacts"), "")
+			} else {
+				<div class="contact-scroll" role="list" aria-label={ t(ctx, "contacts.contactList") }>
+					for _, c := range d.Contacts {
+						<a href={ templ.SafeURL(sharedContactHref(d.Owner, d.BookID, c.Guid)) } class="contact-card" role="listitem" data-guid={ c.Guid }>
+							if store.IsContactGroup(c) {
+								<div class="contact-avatar contact-avatar-group" aria-hidden="true">@Icon("users", "")</div>
+							} else {
+								<div class={ "contact-avatar", avatarClass(c.DisplayName, c.Email) } aria-hidden="true">
+									{ avatarInitials(c.DisplayName, c.Email) }
+								</div>
+							}
+							<div class="contact-info">
+								<div class="contact-name">{ c.DisplayName }</div>
+								if store.IsContactGroup(c) {
+									<div class="contact-email">{ t(ctx, "contacts.groupLabel") } &middot; { contactMemberCountLabel(ctx, contactGroupMemberCount(c)) }</div>
+								} else {
+									<div class="contact-email">{ c.Email }</div>
+								}
+							</div>
+						</a>
+					}
+				</div>
+				if d.TotalPages > 1 {
+					<nav class="pagination" aria-label={ t(ctx, "common.pagination") }>
+						if d.Page > 1 {
+							<a class="page-btn" href={ templ.SafeURL(sharedPageHref(d.Owner, d.BookID, d.Page-1)) }>{ t(ctx, "common.previous") }</a>
+						}
+						<span class="page-btn active" aria-current="page">{ fmt.Sprint(d.Page) }</span>
+						if d.Page < d.TotalPages {
+							<a class="page-btn" href={ templ.SafeURL(sharedPageHref(d.Owner, d.BookID, d.Page+1)) }>{ t(ctx, "common.next") }</a>
+						}
+					</nav>
+				}
+			}
+		</main>
+	}
+}
+
+templ SharedContactPage(d SharedContactPageData) {
+	@LayoutWithContent(d.Contact.DisplayName, d.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@ContactsSidebar(d.Books)
+		</aside>
+		<main class="content" id="main-content">
+			<div class="toolbar">
+				<a href={ templ.SafeURL(sharedBookHref(d.Owner, d.BookID)) } class="tool-btn">&larr; { d.BookName }</a>
+			</div>
+			<p class="meta u-p-18" data-shared-readonly>{ sharedByLabel(ctx, d.OwnerLabel) }</p>
+			<div class="contact-detail-pane">
+				if d.Group != nil {
+					<div class="contact-detail-card contact-group-card">
+						<div class="contact-detail-header">
+							<div class="contact-avatar contact-avatar-lg contact-avatar-group" aria-hidden="true">@Icon("users", "")</div>
+							<div class="contact-detail-meta">
+								<h2>{ d.Contact.DisplayName }</h2>
+								<div class="sub">{ t(ctx, "contacts.groupLabel") } &middot; { contactMemberCountLabel(ctx, len(d.Group.Members)) }</div>
+							</div>
+						</div>
+						<h3 class="contact-group-heading">{ t(ctx, "contacts.groupMembersHeading") }</h3>
+						if len(d.Group.Members) == 0 {
+							<p class="meta">{ t(ctx, "contacts.groupEmpty") }</p>
+						} else {
+							<ul class="contact-group-members">
+								for _, m := range d.Group.Members {
+									<li class="contact-group-member">
+										if m.Name != "" {
+											<span>{ m.Name }</span>
+											<span class="meta">{ m.Email }</span>
+										} else {
+											<span>{ m.Email }</span>
+										}
+									</li>
+								}
+							</ul>
+						}
+					</div>
+				} else {
+					<div class="contact-detail-card">
+						<div class="contact-detail-header">
+							<div class={ "contact-avatar", "contact-avatar-lg", avatarClass(d.Contact.DisplayName, d.Contact.Email) } aria-hidden="true">
+								{ avatarInitials(d.Contact.DisplayName, d.Contact.Email) }
+							</div>
+							<div class="contact-detail-meta">
+								<h2>{ d.Contact.DisplayName }</h2>
+								if d.Contact.Company != "" {
+									<div class="sub">{ d.Contact.Company }</div>
+								}
+							</div>
+						</div>
+						if fields := contactDetailFields(d.Contact); len(fields) > 0 {
+							<dl class="contact-fields">
+								for _, f := range fields {
+									<dt>{ t(ctx, f.LabelKey) }</dt>
+									<dd>{ f.Value }</dd>
+								}
+							</dl>
+						}
+						<div class="contact-dates">
+							<span>{ t(ctx, "contacts.created") }: { formatContactDate(d.Contact.CreatedAt) }</span>
+							<span>{ t(ctx, "contacts.updated") }: { formatContactDate(d.Contact.UpdatedAt) }</span>
+						</div>
+					</div>
+				}
+			</div>
+		</main>
+	}
+}

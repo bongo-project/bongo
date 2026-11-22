@@ -281,9 +281,26 @@ contacts are addressed under that collection.
 - A shared book stays reachable while its owner's account is disabled, as shared
   calendars do.
 
-Sharing a book, accepting the invitation and browsing it in the web interface
-are covered with the web pages (they arrive in a later change); this section
-describes the CardDAV side only.
+### Sharing from the web interface
+
+The owner opens a created address book in **Contacts** and chooses **Sharing**.
+The page lists who the book is shared with, their access (read, or read and
+write) and the state (pending, accepted or expired), and has a form to add a
+person or a group on the owner's own domain. A person gets an invitation by
+email and must accept it on the **Shares** page; a group gets access at once.
+The same form removes a share. A book holds at most 50 shares, and the form
+shares one hourly limit with calendar and folder sharing. Any address that
+cannot be shared with, including a full book, gets the same refusal. The
+default address book has no **Sharing** link and cannot be shared.
+
+The recipient sees an accepted book under **Shared with me** in the Contacts
+sidebar. In the web interface it is read only at either level: the list and
+each contact can be viewed, and a contact group shows its members by name. To
+add or change contacts in a book shared with write access, use a CardDAV client.
+Compose autocomplete also offers the addresses in accepted shared books (at
+most 20 books, and 10 suggestions from them). A pending, revoked or declined
+share shows nothing, and every page of a book you cannot see answers the same
+"not found".
 
 ## Contact groups
 

@@ -27,6 +27,10 @@ const sharesNotFound = "invitation not found"
 // SetMailboxes wires the mailbox store that names folders on the shares page.
 func (h *CalendarHandler) SetMailboxes(ms *store.MailboxStore) { h.mailboxes = ms }
 
+// SetAddressBooks wires the address book store that names books on the shares
+// page.
+func (h *CalendarHandler) SetAddressBooks(bs *store.AddressBookStore) { h.addressBooks = bs }
+
 // SharesRedirect sends links in invitation mails sent before the page moved to
 // the general shares page. The target is fixed, so it cannot be an open
 // redirect; 302 keeps browsers from caching it.
@@ -101,6 +105,19 @@ func (h *CalendarHandler) shareRows(held []store.HeldShare) []templates.PendingS
 				continue
 			}
 			name = n
+		case store.ACLKindAddressBook:
+			// Without the store the row stays, labelled by its id, so the page
+			// and the pending count agree.
+			if h.addressBooks != nil {
+				b, err := h.addressBooks.Get(g.Owner, g.Resource)
+				if err != nil {
+					if !errors.Is(err, store.ErrAddressBookNotFound) {
+						slog.Warn("calendar-share: resolving address book name failed", "owner", g.Owner, "error", err)
+					}
+					continue
+				}
+				name = b.Name
+			}
 		}
 		label := h.acl.UserEmail(g.Owner)
 		if label == "" {

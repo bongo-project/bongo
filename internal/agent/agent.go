@@ -1665,9 +1665,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/events", sseH.Events)
 		}
 
+		var contactsH *handlers.ContactsHandler
 		if a.Contacts != nil {
-			contactsH := handlers.NewContactsHandler(a.Contacts, a.Search)
+			contactsH = handlers.NewContactsHandler(a.Contacts, a.Search)
 			contactsH.SetAddressBooks(a.AddressBooks)
+			contactsH.SetACL(a.ACL)
 			if a.DomainQuota != nil {
 				contactsH.SetQuotaChecker(a.DomainQuota)
 			}
@@ -1684,6 +1686,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/contacts/groups/{guid}/delete", contactsH.DeleteContactGroup)
 			r.Post("/contacts/groups/{guid}/members/remove", contactsH.RemoveContactGroupMember)
 			r.Post("/contacts/{guid}/add-to-group", contactsH.AddToContactGroup)
+			if a.ACL != nil && a.AddressBooks != nil {
+				// Shared books have their own tree, outside /contacts/{guid}, so a
+				// contact whose guid is "shared" stays reachable. Every handler
+				// resolves the grant on every request.
+				r.Get("/shared/contacts/{owner}/{book}", contactsH.SharedList)
+				r.Get("/shared/contacts/{owner}/{book}/{guid}", contactsH.SharedShow)
+			}
 			r.Get("/contacts/{guid}", contactsH.ShowContact)
 			r.Get("/contacts/{guid}/detail", contactsH.ShowContactDetail)
 			r.Post("/contacts/{guid}", contactsH.UpdateContact)
@@ -1702,6 +1711,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			if a.Mailboxes != nil {
 				calendarH.SetMailboxes(a.Mailboxes)
+			}
+			if a.AddressBooks != nil {
+				calendarH.SetAddressBooks(a.AddressBooks)
 			}
 			calendarH.SetProfiles(a.Store)
 			if a.Preferences != nil {
@@ -1755,6 +1767,23 @@ func (a *Agent) Run(ctx context.Context) error {
 				r.Get("/settings/folders", folderH.ShowFolders)
 				r.Post("/settings/folders/share", folderH.ShareFolder)
 				r.Post("/settings/folders/unshare", folderH.UnshareFolder)
+			}
+			if a.ACL != nil && a.AddressBooks != nil && contactsH != nil {
+				// The book form draws on the same share limiter as the calendar and
+				// folder forms and IMAP SETACL: one budget, so the account oracle
+				// is not multiplied.
+				bookH := handlers.NewBookShareHandler(a.ACL, a.AddressBooks)
+				bookH.SetContacts(contactsH)
+				bookH.SetShareResolver(sharedResolver)
+				bookH.SetShareLimiter(calendarH.ShareLimiter())
+				bookH.SetShareInviter(a.shareInviter)
+				bookH.SetAuthservID(a.Config.SMTP.Hostname)
+				if a.Groups != nil {
+					bookH.SetGroups(a.Groups)
+				}
+				r.Get("/contacts/books/{id}/sharing", bookH.ShowSharing)
+				r.Post("/contacts/books/{id}/share", bookH.ShareBook)
+				r.Post("/contacts/books/{id}/unshare", bookH.UnshareBook)
 			}
 			a.wireCalendarFreeBusyLimiter(calendarH)
 			a.calendarHandler = calendarH

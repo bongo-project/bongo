@@ -1,0 +1,103 @@
+package templates
+
+import "net/url"
+
+// BookShareGrant is one grantee of one own address book.
+type BookShareGrant struct {
+	// Grantee is what the revoke form sends: a user id, or "g:" and a group id.
+	Grantee string
+	// Label is the grantee's address, or the group's address.
+	Label string
+	// State is "pending", "accepted" or "expired".
+	State string
+	// Level is "read" or "write".
+	Level string
+}
+
+// BookSharePageData is the data of the sharing page of one own address book.
+type BookSharePageData struct {
+	BookID   string
+	BookName string
+	Grants   []BookShareGrant
+	Email    string
+	Flash    string
+	Books    ContactBooksView
+}
+
+func bookLevelLabel(level string) string {
+	if level == "write" {
+		return "calendar.levelWrite"
+	}
+	return "calendar.levelRead"
+}
+
+templ BookSharePage(d BookSharePageData) {
+	@LayoutWithContent(d.BookName+" - "+t(ctx, "contacts.sharing"), d.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@ContactsSidebar(d.Books)
+		</aside>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					if d.Flash != "" {
+						@FlashMessage(d.Flash, "success")
+					}
+					<div class="page-head">
+						<h1>{ d.BookName }</h1>
+						<span class="spacer"></span>
+						<a href={ templ.SafeURL("/contacts?book=" + url.QueryEscape(d.BookID)) } class="btn-secondary">&larr; { t(ctx, "contacts.backToBook") }</a>
+					</div>
+					<p class="page-intro">{ t(ctx, "contacts.sharingIntro") }</p>
+					<div class="card" data-book-share-card={ d.BookID }>
+						<div class="card-body">
+							<h3 class="settings-section-title">{ t(ctx, "contacts.sharing") }</h3>
+							if len(d.Grants) == 0 {
+								<p class="u-text-muted u-font-088">{ t(ctx, "contacts.notShared") }</p>
+							} else {
+								<table class="data-table">
+									<thead>
+										<tr>
+											<th scope="col">{ t(ctx, "contacts.sharedWith") }</th>
+											<th scope="col">{ t(ctx, "contacts.shareLevel") }</th>
+											<th scope="col">{ t(ctx, "folders.state") }</th>
+											<th scope="col">{ t(ctx, "common.actions") }</th>
+										</tr>
+									</thead>
+									<tbody>
+										for _, g := range d.Grants {
+											<tr>
+												<td><code class="u-font-088">{ g.Label }</code></td>
+												<td>{ t(ctx, bookLevelLabel(g.Level)) }</td>
+												<td><span class={ folderStateBadge(g.State) } data-grant-state={ g.State }>{ folderStateLabel(ctx, g.State) }</span></td>
+												<td>
+													<form method="post" action={ templ.SafeURL("/contacts/books/" + d.BookID + "/unshare") } hx-post={ "/contacts/books/" + d.BookID + "/unshare" } hx-target="find [data-form-status]" hx-swap="innerHTML">
+														<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+														<input type="hidden" name="share_with" value={ g.Grantee }/>
+														<button type="submit" class="btn-flush">{ t(ctx, "contacts.unshare") }</button>
+														<div data-form-status aria-live="polite"></div>
+													</form>
+												</td>
+											</tr>
+										}
+									</tbody>
+								</table>
+							}
+							<form method="post" action={ templ.SafeURL("/contacts/books/" + d.BookID + "/share") } hx-post={ "/contacts/books/" + d.BookID + "/share" } hx-target="find [data-form-status]" hx-swap="innerHTML" class="u-mt-8px">
+								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+								<div class="u-flex-gap-4">
+									<input type="email" name="share_with" placeholder={ t(ctx, "contacts.shareWithPlaceholder") } aria-label={ t(ctx, "contacts.shareWith") } required class="form-input u-m0 u-flex-1"/>
+									<select name="level" class="form-input u-m0" aria-label={ t(ctx, "contacts.shareLevel") }>
+										<option value="read">{ t(ctx, "calendar.levelRead") }</option>
+										<option value="write">{ t(ctx, "calendar.levelWrite") }</option>
+									</select>
+									<button type="submit" class="btn-primary">{ t(ctx, "contacts.shareButton") }</button>
+								</div>
+								<div data-form-status aria-live="polite"></div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+	}
+}
