@@ -879,7 +879,7 @@
   "admin.storageLowBanner": "Queda poco espacio en disco. El servidor rechaza correos nuevos, importaciones y cargas hasta que se libere espacio.",
   "compose.errInvalidForm": "Formulario no válido",
   "compose.errFormOutdated": "Este formulario de redacción está desactualizado. Vuelva a cargar la página de redacción e inténtelo de nuevo.",
-  "compose.errToSubjectRequired": "Se requieren destinatario y asunto",
+  "compose.errToSubjectRequired": "Se requieren al menos un destinatario y un asunto",
   "compose.errSendAsUnavailable": "El envío como otra dirección no está disponible en este nodo",
   "compose.errAddressLookup": "Error al consultar la dirección",
   "compose.errAddressForbidden": "Prohibido: la dirección no está autorizada para enviar",

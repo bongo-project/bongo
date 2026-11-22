@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"net/textproto"
 	"regexp"
 	"strings"
 	"time"
@@ -373,4 +375,33 @@ func buildMIME(p mimeParts) []byte {
 
 	fmt.Fprintf(&buf, "--%s--\r\n", mixedBoundary)
 	return buf.Bytes()
+}
+
+// withBccHeader returns raw with a Bcc header added to its top-level header
+// block, just before Subject, where buildMIME puts it in a message that has
+// one. An empty bcc returns raw unchanged. The result is for the sender's own
+// copies only (Sent, drafts): a message that is delivered must never carry it.
+func withBccHeader(raw []byte, bcc string) []byte {
+	bcc = mail.SanitizeHeaderValue(bcc)
+	if strings.TrimSpace(bcc) == "" {
+		return raw
+	}
+	const marker = "\r\nSubject: "
+	i := bytes.Index(raw, []byte(marker))
+	if i < 0 {
+		return raw
+	}
+	out := make([]byte, 0, len(raw)+len(bcc)+8)
+	out = append(out, raw[:i]...)
+	out = append(out, "\r\nBcc: "...)
+	out = append(out, bcc...)
+	out = append(out, raw[i:]...)
+	return out
+}
+
+// bccHeaderOf returns the value of the top-level Bcc header of raw, "" when it
+// has none.
+func bccHeaderOf(raw []byte) string {
+	hdr, _ := textproto.NewReader(bufio.NewReader(bytes.NewReader(raw))).ReadMIMEHeader()
+	return strings.TrimSpace(hdr.Get("Bcc"))
 }

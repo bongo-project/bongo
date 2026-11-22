@@ -67,7 +67,7 @@ type ComposeHandler struct {
 	// account may cause per hour (shared with SMTP submission).
 	groups        groupExpander
 	groupFanout   *mail.FanoutLimiter
-	maxRecipients int // per-message cap on To+Cc; <= 0 means defaultMaxRecipients
+	maxRecipients int // per-message cap on To+Cc+Bcc together; <= 0 means defaultMaxRecipients
 	prefs         *store.PreferenceStore
 	resolver      localRecipientResolver // unified address→userID resolver
 	addresses     *store.AddressStore    // for send-as From picker and enforcement
@@ -130,10 +130,11 @@ func (h *ComposeHandler) SetRecipientLimiter(rl *mail.RateLimiter) { h.recipient
 // RecipientLimiter returns the shared per-user external-recipient budget, or nil.
 func (h *ComposeHandler) RecipientLimiter() *mail.RateLimiter { return h.recipientRL }
 
-// SetMaxRecipients sets the per-message cap on To and Cc recipients.
+// SetMaxRecipients sets the per-message cap on To, Cc and Bcc recipients together.
 func (h *ComposeHandler) SetMaxRecipients(n int) { h.maxRecipients = n }
 
-// defaultMaxRecipients matches the SMTP max_recipients default.
+// defaultMaxRecipients matches the SMTP max_recipients default. It caps To, Cc
+// and Bcc together.
 const defaultMaxRecipients = 100
 
 // SetPreferences sets the preference store for per-user settings.
@@ -276,12 +277,12 @@ func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("new", to, "", "", body, "", 0, fromOpts, fromSel, "")).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("new", to, "", "", "", body, "", 0, fromOpts, fromSel, "")).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("new", to, "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel, "")).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("new", to, "", "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
 // maxQuickReplyRunes caps the quick reply text carried by the quick reply form.
@@ -366,12 +367,12 @@ func (h *ComposeHandler) serveReply(w http.ResponseWriter, r *http.Request, toLi
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, replyEmail)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), fromOpts, fromSel, "")).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, "", subject, body, mailbox, uint32(uid), fromOpts, fromSel, "")).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
 func firstNonEmpty(a, b string) string {
@@ -502,12 +503,12 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, fwdEmail)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("forward", "", "", subject, body, mailbox, uint32(uid), fromOpts, fromSel, "")).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("forward", "", "", "", subject, body, mailbox, uint32(uid), fromOpts, fromSel, "")).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("forward", "", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
 // composeText translates a message ID into the request's locale.
@@ -546,13 +547,14 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	to := r.FormValue("to")
 	cc := r.FormValue("cc")
+	bcc := r.FormValue("bcc")
 	subject := r.FormValue("subject")
 	body := r.FormValue("body")
 	mode := r.FormValue("mode")
 	replyMailbox := r.FormValue("reply_mailbox")
 	replyUIDStr := r.FormValue("reply_uid")
 
-	if to == "" || subject == "" {
+	if (strings.TrimSpace(to) == "" && strings.TrimSpace(cc) == "" && strings.TrimSpace(bcc) == "") || subject == "" {
 		composeError(w, r, "compose.errToSubjectRequired", http.StatusBadRequest)
 		return
 	}
@@ -707,11 +709,17 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		searchBody = body
 	}
 
+	// rawMsg is what every recipient receives and never names Bcc. The sender's
+	// Sent copy is the same message with a Bcc header added, so it is a second
+	// blob whenever there is a Bcc recipient; otherwise the two are one.
+	sentMsg := withBccHeader(rawMsg, bcc)
 	msgSize := int64(len(rawMsg))
+	sentSize := int64(len(sentMsg))
 
 	// Split recipients into local and external before any user-visible writes
 	// so pre-delivery rejection does not leave a partial Sent copy behind.
 	allRecipients := append(store.SplitAddressHeader(to), store.SplitAddressHeader(cc)...)
+	allRecipients = append(allRecipients, store.SplitAddressHeader(bcc)...)
 	localRecipients, externalRecipients, groupRecipients := h.splitRecipients(allRecipients)
 
 	// A group address counts as one recipient here: the cap is on what the user
@@ -762,7 +770,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// refused before anything is written: silently replaying the old send
 	// would tell the user their edited message went out.
 	fp := sendFingerprint([]string{
-		fromAddr, to, cc, subject, body, r.FormValue("body_mode"),
+		fromAddr, to, cc, bcc, subject, body, r.FormValue("body_mode"),
 		mode, replyMailbox, replyUIDStr,
 	}, attachmentFiles)
 	unlockSend := h.sendLocks.lock(userID + "/" + sendID)
@@ -823,7 +831,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Steps already recorded done are not re-checked: their copies now count
 	// against quota, so a replay of a delivered send would be refused for a
 	// message that went out.
-	if !stepDone["sent"] && quotaExceeded(h.quota, h.logger, userID, msgSize) {
+	if !stepDone["sent"] && quotaExceeded(h.quota, h.logger, userID, sentSize) {
 		refuseQuota(w, r)
 		return
 	}
@@ -870,29 +878,22 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Blobs are content-addressed and the raw message carries a per-attempt
 	// Date, so a retry may store a second blob. The first is reclaimed by the
 	// blob GC when nothing references it; compose never deletes blobs.
-	rawHash := ""
-	metaAttachments := attachmentMeta
-	var layout []*bongov1.MessageSegment
-	if split, serr := store.StoreSplit(h.blobs, rawMsg, h.dedupMinSize); split != nil {
-		rawHash = split.SkeletonHash
-		metaAttachments = split.Attachments
-		layout = split.Layout
-		h.logger.Info("compose: attachment dedup",
-			"user", userID,
-			"attachments", len(split.Attachments),
-			"blobs_written", split.BlobsWritten,
-			"blobs_deduped", split.BlobsDeduped,
-			"bytes_saved", split.BytesSaved)
-	} else {
-		if serr != nil {
-			h.logger.Warn("compose: attachment split failed, storing whole raw", "user", userID, "error", serr)
-		}
-		wh, err := h.blobs.Put(rawMsg)
+	//
+	// rawHash, metaAttachments and layout describe the delivered message
+	// (queue and envelopes); sentHash, sentAttachments and sentLayout the Sent
+	// copy. Without a Bcc recipient they are the same.
+	rawHash, metaAttachments, layout, err := h.storeSplit(userID, rawMsg, attachmentMeta)
+	if err != nil {
+		composeError(w, r, "compose.errStoreMessage", http.StatusInternalServerError)
+		return
+	}
+	sentHash, sentAttachments, sentLayout := rawHash, metaAttachments, layout
+	if len(sentMsg) != len(rawMsg) {
+		sentHash, sentAttachments, sentLayout, err = h.storeSplit(userID, sentMsg, attachmentMeta)
 		if err != nil {
 			composeError(w, r, "compose.errStoreMessage", http.StatusInternalServerError)
 			return
 		}
-		rawHash = wh
 	}
 
 	guid := derivedSendID(userID, sendID, "sent").String()
@@ -908,13 +909,22 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		Cc:         store.SplitAddressHeader(cc),
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
-			Hash: rawHash,
-			Size: msgSize,
+			Hash: sentHash,
+			Size: sentSize,
 		},
-		Attachments: metaAttachments,
-		Layout:      layout,
+		Attachments: sentAttachments,
+		Layout:      sentLayout,
 		InReplyTo:   inReplyTo,
 		References:  references,
+	}
+	// The shared inbox's Sent copy is read by every member, so it keeps the
+	// delivered message and not the Bcc header; MailMeta carries no Bcc.
+	sharedMeta := meta
+	if sentHash != rawHash {
+		sharedMeta = proto.Clone(meta).(*bongov1.MailMeta)
+		sharedMeta.RawMessage = &bongov1.BlobRef{Hash: rawHash, Size: msgSize}
+		sharedMeta.Attachments = metaAttachments
+		sharedMeta.Layout = layout
 	}
 
 	// Check rate limits for external recipients before persisting sender-visible
@@ -1104,7 +1114,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sharedID != "" && !stepDone[sendStepSentShared] {
-		h.fileSharedSentCopy(lg, sharedID, userID, sendID, meta, subject, searchBody)
+		h.fileSharedSentCopy(lg, sharedID, userID, sendID, sharedMeta, subject, searchBody)
 	}
 
 	if !sentSkipped {
@@ -1139,6 +1149,31 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, withFlash("/mail/Sent", flash), http.StatusSeeOther)
 }
 
+// storeSplit stores raw as a skeleton plus deduplicated attachment blobs when
+// it carries a large attachment, else whole. StoreSplit self-checks byte-exact
+// reconstruction; on any split error it falls back to the whole raw so a
+// message is never stored in a form that cannot be reproduced.
+func (h *ComposeHandler) storeSplit(userID string, raw []byte, attachmentMeta []*bongov1.BlobRef) (hash string, attachments []*bongov1.BlobRef, layout []*bongov1.MessageSegment, err error) {
+	split, serr := store.StoreSplit(h.blobs, raw, h.dedupMinSize)
+	if split != nil {
+		h.logger.Info("compose: attachment dedup",
+			"user", userID,
+			"attachments", len(split.Attachments),
+			"blobs_written", split.BlobsWritten,
+			"blobs_deduped", split.BlobsDeduped,
+			"bytes_saved", split.BytesSaved)
+		return split.SkeletonHash, split.Attachments, split.Layout, nil
+	}
+	if serr != nil {
+		h.logger.Warn("compose: attachment split failed, storing whole raw", "user", userID, "error", serr)
+	}
+	hash, err = h.blobs.Put(raw)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return hash, attachmentMeta, nil, nil
+}
+
 // SaveDraft saves a message as a draft.
 func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
@@ -1151,6 +1186,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 
 	to := r.FormValue("to")
 	cc := r.FormValue("cc")
+	bcc := r.FormValue("bcc")
 	subject := r.FormValue("subject")
 	body := r.FormValue("body")
 	bodyMode := r.FormValue("body_mode")
@@ -1212,6 +1248,9 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	} else {
 		rawMsg = buildRFC5322WithAttachments(email, to, cc, subject, body, draftMessageID, "", "", attachmentFiles)
 	}
+	// A draft is never delivered, so it keeps its Bcc recipients as a header
+	// to fill the field again when it is reopened.
+	rawMsg = withBccHeader(rawMsg, bcc)
 
 	// A draft is always a new message, so it is a create: refuse it if it does
 	// not fit, before any blob is written. The size is what the usage recompute
@@ -1298,12 +1337,14 @@ func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
 	to := strings.Join(meta.To, ", ")
 	cc := strings.Join(meta.Cc, ", ")
 	subject := meta.Subject
+	var bcc string
 
 	// Extract the body: prefer the HTML part (rich draft), else plain text.
 	// htmlBody drives the rich editor; plainBody seeds the plain textarea.
 	var htmlBody, plainBody string
 	if meta.RawMessage != nil && h.blobs != nil {
 		if raw, err := store.RawMessageBytes(h.blobs, meta); err == nil {
+			bcc = bccHeaderOf(raw)
 			if env, _, err := mimesafe.ReadEnvelope(raw); err == nil {
 				if env.HTML != "" {
 					htmlBody = sanitize.Compose(env.HTML)
@@ -1316,12 +1357,12 @@ func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("draft", to, cc, subject, plainBody, mailbox, uint32(uid), fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("draft", to, cc, bcc, subject, plainBody, mailbox, uint32(uid), fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("draft", to, cc, subject, plainBody, mailbox, uint32(uid), mailboxInfos, nil, email, fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("draft", to, cc, bcc, subject, plainBody, mailbox, uint32(uid), mailboxInfos, nil, email, fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
 }
 
 // GALSearch returns GAL autocomplete results as JSON.

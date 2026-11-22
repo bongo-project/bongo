@@ -74,7 +74,7 @@ func TestMultipartFormsRenderCSRFFirst(t *testing.T) {
 		name string
 		comp templ.Component
 	}{
-		{"compose", ComposePage("new", "", "", "", "", "", 0, nil, "", "")},
+		{"compose", ComposePage("new", "", "", "", "", "", "", 0, nil, "", "")},
 		{"import", ImportPage([]string{"INBOX"}, "u1@example.com")},
 		{"contacts", ContactsPage(nil, 1, 1, "u1@example.com", "", ContactBooksView{})},
 		{"calendar", CalendarSidebar(nil)},
@@ -145,7 +145,7 @@ func TestComposeFormCarriesFreshSendID(t *testing.T) {
 	ctx, _ := csrfRenderCtx(t)
 	render := func() string {
 		var buf bytes.Buffer
-		if err := ComposePage("new", "", "", "", "", "", 0, nil, "", "").Render(ctx, &buf); err != nil {
+		if err := ComposePage("new", "", "", "", "", "", "", 0, nil, "", "").Render(ctx, &buf); err != nil {
 			t.Fatalf("render: %v", err)
 		}
 		m := sendIDFieldRe.FindStringSubmatch(buf.String())

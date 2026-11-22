@@ -879,7 +879,7 @@
   "admin.storageLowBanner": "Disk space is low. The server is refusing new mail, imports and uploads until space is freed.",
   "compose.errInvalidForm": "Invalid form",
   "compose.errFormOutdated": "This compose form is out of date. Please reload the compose page and try again.",
-  "compose.errToSubjectRequired": "To and Subject are required",
+  "compose.errToSubjectRequired": "At least one recipient and a subject are required",
   "compose.errSendAsUnavailable": "Send-as is not available on this node",
   "compose.errAddressLookup": "Address lookup failed",
   "compose.errAddressForbidden": "Forbidden: address is not authorised for sending",
