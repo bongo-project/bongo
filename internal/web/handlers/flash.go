@@ -200,6 +200,8 @@ var (
 	flashContactGroupDeleted         = flashKey{"contact-group-deleted"}
 	flashContactGroupMemberAdded     = flashKey{"contact-group-member-added"}
 	flashContactGroupMemberRemoved   = flashKey{"contact-group-member-removed"}
+	flashContactSelfSet              = flashKey{"contact-self-set"}
+	flashContactSelfCleared          = flashKey{"contact-self-cleared"}
 	flashFileReadFailed              = flashKey{"file-read-failed"}
 	flashQuarantineReleased          = flashKey{"quarantine-message-released"}
 	flashQuarantineDeleted           = flashKey{"quarantine-message-deleted"}
@@ -331,6 +333,8 @@ var flashMessages = map[string]string{
 	flashContactGroupDeleted.id:         "flash.contactGroupDeleted",
 	flashContactGroupMemberAdded.id:     "flash.contactGroupMemberAdded",
 	flashContactGroupMemberRemoved.id:   "flash.contactGroupMemberRemoved",
+	flashContactSelfSet.id:              "flash.contactSelfSet",
+	flashContactSelfCleared.id:          "flash.contactSelfCleared",
 	flashFileReadFailed.id:              "flash.fileReadFailed",
 	flashQuarantineReleased.id:          "flash.quarantineMessageReleased",
 	flashQuarantineDeleted.id:           "flash.quarantineMessageDeleted",

@@ -2,18 +2,26 @@ package templates
 
 import "fmt"
 
-templ ComposePageFull(mode string, to string, cc string, bcc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string, fromOptions []string, selectedFrom string, htmlBody string) {
+// SelfCardOption describes the "Attach my card" checkbox. The zero value (no
+// Name) means the user has no own card and the box is not offered.
+type SelfCardOption struct {
+	// Name is the display name of the card, shown as the checkbox's tooltip.
+	Name    string
+	Checked bool
+}
+
+templ ComposePageFull(mode string, to string, cc string, bcc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string, fromOptions []string, selectedFrom string, htmlBody string, selfCard SelfCardOption) {
 	@LayoutWithContent(t(ctx, "compose.compose"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, "")
 		</aside>
 		<main class="content" id="main-content">
-			@ComposePage(mode, to, cc, bcc, subject, body, replyMailbox, replyUID, fromOptions, selectedFrom, htmlBody)
+			@ComposePage(mode, to, cc, bcc, subject, body, replyMailbox, replyUID, fromOptions, selectedFrom, htmlBody, selfCard)
 		</main>
 	}
 }
 
-templ ComposePage(mode string, to string, cc string, bcc string, subject string, body string, replyMailbox string, replyUID uint32, fromOptions []string, selectedFrom string, htmlBody string) {
+templ ComposePage(mode string, to string, cc string, bcc string, subject string, body string, replyMailbox string, replyUID uint32, fromOptions []string, selectedFrom string, htmlBody string, selfCard SelfCardOption) {
 	<div class="compose-area">
 		<div
 			class="compose-card"
@@ -177,6 +185,12 @@ templ ComposePage(mode string, to string, cc string, bcc string, subject string,
 					<label for="attachments" class="compose-attach" title={ t(ctx, "compose.attach") } aria-label={ t(ctx, "compose.attach") }>
 						@Icon("paperclip", "")
 					</label>
+					if selfCard.Name != "" {
+						<label class="compose-attach-self" title={ selfCard.Name }>
+							<input type="checkbox" name="attach_self" value="1" checked?={ selfCard.Checked }/>
+							{ t(ctx, "compose.attachMyCard") }
+						</label>
+					}
 					<span class="reply-spacer"></span>
 					<a href="/mail/INBOX" class="btn-secondary">{ t(ctx, "compose.discard") }</a>
 				</div>

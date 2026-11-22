@@ -291,12 +291,12 @@ func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("new", to, "", "", "", body, "", 0, fromOpts, fromSel, "")).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("new", to, "", "", "", body, "", 0, fromOpts, fromSel, "", h.selfCardOption(userID, false))).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("new", to, "", "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel, "")).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("new", to, "", "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel, "", h.selfCardOption(userID, false))).ServeHTTP(w, r)
 }
 
 // maxQuickReplyRunes caps the quick reply text carried by the quick reply form.
@@ -381,12 +381,12 @@ func (h *ComposeHandler) serveReply(w http.ResponseWriter, r *http.Request, toLi
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, replyEmail)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, "", subject, body, mailbox, uint32(uid), fromOpts, fromSel, "")).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, "", subject, body, mailbox, uint32(uid), fromOpts, fromSel, "", h.selfCardOption(userID, false))).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail, fromOpts, fromSel, "", h.selfCardOption(userID, false))).ServeHTTP(w, r)
 }
 
 func firstNonEmpty(a, b string) string {
@@ -517,12 +517,12 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, fwdEmail)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("forward", "", "", "", subject, body, mailbox, uint32(uid), fromOpts, fromSel, "")).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("forward", "", "", "", subject, body, mailbox, uint32(uid), fromOpts, fromSel, "", h.selfCardOption(userID, false))).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("forward", "", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("forward", "", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail, fromOpts, fromSel, "", h.selfCardOption(userID, false))).ServeHTTP(w, r)
 }
 
 // composeText translates a message ID into the request's locale.
@@ -680,6 +680,30 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 				Data:        data,
 			})
 		}
+	}
+
+	// "Attach my card": the user's own card, cut down to what they would hand
+	// out (contactio.ShareCard), joins the uploads and so the message, the send
+	// fingerprint and the Sent copy. Asked for but not resolvable (no card
+	// marked, or it went away since the form was drawn) is refused here, before
+	// any blob, send log, queue or limiter write: the user ticked the box, so
+	// sending without the card would be a silent omission.
+	if r.FormValue("attach_self") == "1" {
+		att, ref, err := h.selfCardAttachment(userID)
+		switch {
+		case errors.Is(err, errNoSelfCard):
+			composeError(w, r, "compose.errSelfCardMissing", http.StatusBadRequest)
+			return
+		case errors.Is(err, errSelfCardTooLarge):
+			composeError(w, r, "compose.errSelfCardTooLarge", http.StatusBadRequest)
+			return
+		case err != nil:
+			h.logger.Error("web: building own card attachment failed", "user", userID, "error", err)
+			composeError(w, r, "compose.errBuildMessage", http.StatusInternalServerError)
+			return
+		}
+		attachmentFiles = append(attachmentFiles, att)
+		attachmentMeta = append(attachmentMeta, ref)
 	}
 
 	// Generate a single Message-ID scoped to the sender's domain, used both in
@@ -1238,6 +1262,20 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// "Attach my card": a draft that cannot resolve the card is saved without it
+	// rather than losing the draft. The marker header lets EditDraft tick the
+	// box again; it exists only on the stored draft.
+	attachedSelf := false
+	if r.FormValue("attach_self") == "1" {
+		if att, ref, err := h.selfCardAttachment(userID); err == nil {
+			attachmentFiles = append(attachmentFiles, att)
+			attachmentMeta = append(attachmentMeta, ref)
+			attachedSelf = true
+		} else if !errors.Is(err, errNoSelfCard) {
+			h.logger.Warn("web: own card not attached to draft", "user", userID, "error", err)
+		}
+	}
+
 	draftMessageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(email))
 
 	// body_mode='rich' stores the draft as multipart/alternative with the
@@ -1265,6 +1303,9 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	// A draft is never delivered, so it keeps its Bcc recipients as a header
 	// to fill the field again when it is reopened.
 	rawMsg = withBccHeader(rawMsg, bcc)
+	if attachedSelf {
+		rawMsg = withAttachSelfHeader(rawMsg)
+	}
 
 	// A draft is always a new message, so it is a create: refuse it if it does
 	// not fit, before any blob is written. The size is what the usage recompute
@@ -1356,9 +1397,11 @@ func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
 	// Extract the body: prefer the HTML part (rich draft), else plain text.
 	// htmlBody drives the rich editor; plainBody seeds the plain textarea.
 	var htmlBody, plainBody string
+	var attachSelf bool
 	if meta.RawMessage != nil && h.blobs != nil {
 		if raw, err := store.RawMessageBytes(h.blobs, meta); err == nil {
 			bcc = bccHeaderOf(raw)
+			attachSelf = attachSelfHeaderOf(raw)
 			if env, _, err := mimesafe.ReadEnvelope(raw); err == nil {
 				if env.HTML != "" {
 					htmlBody = sanitize.Compose(env.HTML)
@@ -1371,12 +1414,12 @@ func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("draft", to, cc, bcc, subject, plainBody, mailbox, uint32(uid), fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("draft", to, cc, bcc, subject, plainBody, mailbox, uint32(uid), fromOpts, fromSel, htmlBody, h.selfCardOption(userID, attachSelf))).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("draft", to, cc, bcc, subject, plainBody, mailbox, uint32(uid), mailboxInfos, nil, email, fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("draft", to, cc, bcc, subject, plainBody, mailbox, uint32(uid), mailboxInfos, nil, email, fromOpts, fromSel, htmlBody, h.selfCardOption(userID, attachSelf))).ServeHTTP(w, r)
 }
 
 // The most address books and hits autocomplete takes from books shared with the

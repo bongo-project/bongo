@@ -35,6 +35,9 @@ type ContactBooksView struct {
 	Shared []SharedBookLink
 	// SharedActive is SharedBookKey of the shared book the page shows, "" otherwise.
 	SharedActive string
+	// Self is true on a contact's own page when that contact is the user's own
+	// card ("This is me").
+	Self bool
 }
 
 // SharedBookLink is one address book shared with the viewer, for the sidebar.
@@ -77,6 +80,8 @@ type ContactCardView struct {
 	Groups []*bongov1.Contact
 	// Group is set when the contact is a contact group.
 	Group *ContactGroupView
+	// IsSelf is true when the contact is marked "This is me".
+	IsSelf bool
 }
 
 // contactGroupMemberCount is the number of members a group row shows.
@@ -556,7 +561,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string, books ContactBooksView
 				<a href="/contacts" class="tool-btn">&larr; { t(ctx, "common.back") }</a>
 			</div>
 			<div class="contact-detail-pane">
-				@contactCard(c, true, ContactCardView{Groups: books.Groups, Group: books.Group})
+				@contactCard(c, true, ContactCardView{Groups: books.Groups, Group: books.Group, IsSelf: books.Self})
 			</div>
 		</main>
 	}
@@ -739,6 +744,9 @@ templ contactCard(c *bongov1.Contact, editorOpen bool, view ContactCardView) {
 			</div>
 			<div class="contact-detail-meta">
 				<h2>{ c.DisplayName }</h2>
+				if view.IsSelf {
+					<span class="badge green contact-self-badge">{ t(ctx, "contacts.meBadge") }</span>
+				}
 				if c.Company != "" {
 					<div class="sub">{ c.Company }</div>
 				}
@@ -753,6 +761,17 @@ templ contactCard(c *bongov1.Contact, editorOpen bool, view ContactCardView) {
 				>{ t(ctx, "contacts.edit") }</button>
 				if c.Email != "" {
 					<a class="tool-btn primary" href={ templ.URL("/compose?to=" + url.QueryEscape(c.Email)) }>{ t(ctx, "contacts.emailAction") }</a>
+				}
+				if view.IsSelf {
+					<form method="post" action={ templ.SafeURL("/contacts/" + url.PathEscape(c.Guid) + "/self/clear") }>
+						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+						<button type="submit" class="tool-btn outline">{ t(ctx, "contacts.notMe") }</button>
+					</form>
+				} else {
+					<form method="post" action={ templ.SafeURL("/contacts/" + url.PathEscape(c.Guid) + "/self") }>
+						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+						<button type="submit" class="tool-btn outline">{ t(ctx, "contacts.thisIsMe") }</button>
+					</form>
 				}
 			</div>
 		</div>

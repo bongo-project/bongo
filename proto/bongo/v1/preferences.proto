@@ -60,4 +60,8 @@ message UserPreferences {
   // Page that / and a successful login go to: "summary" or "inbox". Empty
   // (a record written before the field existed) is read as "summary".
   string start_page = 21;
+
+  // GUID of the contact marked "This is me", in the owner's own contact
+  // keyspace. Empty, dangling or naming a contact group all mean unset.
+  string self_contact_guid = 22;
 }

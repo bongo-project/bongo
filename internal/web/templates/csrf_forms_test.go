@@ -14,6 +14,7 @@ import (
 	"github.com/a-h/templ"
 
 	"github.com/bongo-project/bongo/internal/web/middleware"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 var (
@@ -74,7 +75,7 @@ func TestMultipartFormsRenderCSRFFirst(t *testing.T) {
 		name string
 		comp templ.Component
 	}{
-		{"compose", ComposePage("new", "", "", "", "", "", "", 0, nil, "", "")},
+		{"compose", ComposePage("new", "", "", "", "", "", "", 0, nil, "", "", SelfCardOption{})},
 		{"import", ImportPage([]string{"INBOX"}, "u1@example.com")},
 		{"contacts", ContactsPage(nil, 1, 1, "u1@example.com", "", ContactBooksView{})},
 		{"calendar", CalendarSidebar(nil)},
@@ -145,7 +146,7 @@ func TestComposeFormCarriesFreshSendID(t *testing.T) {
 	ctx, _ := csrfRenderCtx(t)
 	render := func() string {
 		var buf bytes.Buffer
-		if err := ComposePage("new", "", "", "", "", "", "", 0, nil, "", "").Render(ctx, &buf); err != nil {
+		if err := ComposePage("new", "", "", "", "", "", "", 0, nil, "", "", SelfCardOption{}).Render(ctx, &buf); err != nil {
 			t.Fatalf("render: %v", err)
 		}
 		m := sendIDFieldRe.FindStringSubmatch(buf.String())
@@ -162,5 +163,41 @@ func TestComposeFormCarriesFreshSendID(t *testing.T) {
 	}
 	if a == b {
 		t.Errorf("two renders share send_id %q", a)
+	}
+}
+
+// The "This is me" and "Not me" forms are cookie-authenticated POSTs: each
+// carries the request's CSRF token as its first field.
+func TestSelfContactFormsCarryCSRF(t *testing.T) {
+	ctx, token := csrfRenderCtx(t)
+	for _, tc := range []struct {
+		name   string
+		isSelf bool
+		action string
+	}{
+		{"mark", false, `action="/contacts/g1/self"`},
+		{"clear", true, `action="/contacts/g1/self/clear"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			c := &bongov1.Contact{Guid: "g1", DisplayName: "Ada"}
+			if err := ContactDetailPartial(c, ContactCardView{IsSelf: tc.isSelf}).Render(ctx, &buf); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			i := strings.Index(out, tc.action)
+			if i < 0 {
+				t.Fatalf("no form with %s", tc.action)
+			}
+			rest := out[i:]
+			end := strings.Index(rest, "</form>")
+			form := rest[:end]
+			if !strings.Contains(form, `name="_csrf"`) || !strings.Contains(form, `value="`+token+`"`) {
+				t.Errorf("form lacks the CSRF token:\n%s", form)
+			}
+			if !strings.Contains(out[max(0, i-40):i], `method="post"`) {
+				t.Error("not a POST form")
+			}
+		})
 	}
 }

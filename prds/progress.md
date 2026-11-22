@@ -1940,3 +1940,9 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [security] A byte cap on an upload does not bound CPU or memory: parsers take a record limit and a row limit and stop early, never strings.Split the whole file, and build continued values in a strings.Builder.
 - PATTERN: [review] Ask the reviewer to measure (timing and allocation probes on the worst input the cap allows) and to fuzz briefly through an overlay; both blockers here were invisible to the functional tests.
 - PATTERN: [data] A quick field the web sync writes back into the vCard must stay the whole value; deriving part of it loses data on the next edit.
+
+## 2026-11-22 — 40.5 "This is me" and "Attach my card" (US-014)
+- Advisor plan (operator took every default), worker (9 mutants killed, browser check found and fixed a misaligned button), advisor review MINOR: ShareCard copied every parameter on allowed properties, so a vCard 4 GEO parameter on ADR or any X- parameter went out. Fixed with a parameter allowlist (TYPE, PREF, VALUE, CHARSET) and a CR test on params and groups.
+- PR #234 CI hit a flaky TestSharedIdleSeesNewMail once; rerun passed; recorded in PRD 8.2.
+- PATTERN: [privacy] An allowlist on vCard properties is not enough: parameters carry data too (GEO, X-*), so allowlist parameters as well.
+- PATTERN: [data] A preference that names another record gets an eager clear at the one Delete choke point and a lazy guard in the single resolver; lazy-only breaks when a client-chosen id (CardDAV href) is reused.

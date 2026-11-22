@@ -972,6 +972,7 @@ select.settings-select {
 .compose-card .compose-attach:hover { background: var(--surface-2); color: var(--text-primary); }
 .compose-card .compose-attach:focus-within,
 .compose-card:has(#attachments:focus-visible) .compose-attach { outline: 2px solid var(--accent); outline-offset: 2px; }
+.compose-card .compose-attach-self { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; }
 
 @media (max-width: 600px) {
   .compose-card .compose-body .field-row {

@@ -600,11 +600,18 @@ that reports read-only shares (`internal/caldav/privileges.go`,
 **Source:** audit #78. **Size:** S.
 
 **Acceptance Criteria:**
-- [ ] A contact can be marked "This is me" (one per user, stored as
+- [x] A contact can be marked "This is me" (one per user, stored as
       `UserPreferences.self_contact_guid`, field 22).
-- [ ] Compose offers "Attach my card", which attaches that contact as
+- [x] Compose offers "Attach my card", which attaches that contact as
       `.vcf`.
-- [ ] Deleting the contact clears the preference.
+- [x] Deleting the contact clears the preference.
+- Done in 40.5 (2026-11-22). `UserPreferences.self_contact_guid` (22), set
+  and cleared on the contact page; a contact group, another user's contact
+  or a shared-book contact cannot be marked. `ContactStore.Delete` clears it
+  eagerly (every delete path), and the resolver treats a dangling or group
+  GUID as unset. "Attach my card" sends an allowlisted card (no NOTE, UID,
+  PHOTO, GEO or X- properties or parameters); a ticked box with no card is
+  refused before any write.
 
 ### US-015: All conversations with a contact
 **Source:** audit #79. **Size:** M.
@@ -998,6 +1005,18 @@ Found while building v0.16.0 (2026-11-15):
 - **Release note for v0.16.0:** CardDAV now requires the path's user segment
   to be the authenticated user's id; a client configured by hand with an
   email address there gets 404.
+- **"This is me", follow-ups** (40.5, 2026-11-22):
+  - A grantee with write access to an own book shared out can edit the card
+    the owner attaches (allowed, documented).
+  - An older node ignores `attach_self`, and its delete does not clear the
+    mark (the lazy guard covers it).
+  - A card edited between retries turns a retried send into a 409; a
+    reopened draft re-attaches the current card (draft attachments are not
+    restored); no "Me" marker in list rows; no PHOTO; a vCard 4 card stays
+    4.0, which older Outlook handles poorly.
+- **Flaky test:** `TestSharedIdleSeesNewMail` (internal/imap) failed once in
+  CI on PR #234 (no EXISTS within 5 s) and passed on rerun; the test delivers
+  right after IDLE starts and can race the server registering the listener.
 - **Contact import and export, follow-ups** (40.4, 2026-11-22):
   - Localised (non-English) Outlook headers and two-digit-year Outlook
     dates; Google Labels as contact groups on CSV import, groups in CSV
