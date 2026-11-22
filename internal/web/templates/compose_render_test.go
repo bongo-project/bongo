@@ -31,7 +31,7 @@ func renderComposeDoc(t *testing.T, mode, to, cc string, from []string) (*html.N
 	t.Helper()
 	ctx, _ := csrfRenderCtx(t)
 	var buf bytes.Buffer
-	if err := ComposePage(mode, to, cc, "Subj", "", "INBOX", 7, from, "", "").Render(ctx, &buf); err != nil {
+	if err := ComposePage(mode, to, cc, "", "Subj", "", "INBOX", 7, from, "", "").Render(ctx, &buf); err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	doc, err := html.Parse(strings.NewReader(buf.String()))
@@ -119,7 +119,7 @@ func TestComposeRendersPreservedHooks(t *testing.T) {
 				for _, f := range []struct {
 					name, value string
 					required    bool
-				}{{"to", `"Doe, Jane" <j@x.example>`, true}, {"cc", quotedCc, false}, {"bcc", "", false}} {
+				}{{"to", `"Doe, Jane" <j@x.example>`, false}, {"cc", quotedCc, false}, {"bcc", "", false}} {
 					els := findByName(doc, f.name)
 					if len(els) != 1 {
 						t.Fatalf("%s: %d inputs", f.name, len(els))
@@ -128,11 +128,7 @@ func TestComposeRendersPreservedHooks(t *testing.T) {
 					if a["id"] != f.name || a["type"] != "text" {
 						t.Errorf("%s: id/type changed: %v", f.name, a)
 					}
-					if f.name == "bcc" {
-						if _, ok := a["value"]; ok {
-							t.Errorf("bcc gained a value attribute")
-						}
-					} else if a["value"] != f.value {
+					if a["value"] != f.value {
 						t.Errorf("%s value = %q, want %q", f.name, a["value"], f.value)
 					}
 					if _, ok := a["required"]; ok != f.required {

@@ -879,7 +879,7 @@
   "admin.storageLowBanner": "L'espace disque est faible. Le serveur refuse les nouveaux courriels, les importations et les envois de fichiers tant que de l'espace n'est pas libéré.",
   "compose.errInvalidForm": "Formulaire invalide",
   "compose.errFormOutdated": "Ce formulaire de rédaction est périmé. Veuillez recharger la page de rédaction et réessayer.",
-  "compose.errToSubjectRequired": "Le destinataire et l'objet sont requis",
+  "compose.errToSubjectRequired": "Au moins un destinataire et un objet sont requis",
   "compose.errSendAsUnavailable": "L'envoi en tant qu'autre adresse n'est pas disponible sur ce nœud",
   "compose.errAddressLookup": "Échec de la recherche de l'adresse",
   "compose.errAddressForbidden": "Interdit : l'adresse n'est pas autorisée à envoyer",

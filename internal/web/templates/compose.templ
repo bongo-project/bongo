@@ -2,18 +2,18 @@ package templates
 
 import "fmt"
 
-templ ComposePageFull(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string, fromOptions []string, selectedFrom string, htmlBody string) {
+templ ComposePageFull(mode string, to string, cc string, bcc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string, fromOptions []string, selectedFrom string, htmlBody string) {
 	@LayoutWithContent(t(ctx, "compose.compose"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, "")
 		</aside>
 		<main class="content" id="main-content">
-			@ComposePage(mode, to, cc, subject, body, replyMailbox, replyUID, fromOptions, selectedFrom, htmlBody)
+			@ComposePage(mode, to, cc, bcc, subject, body, replyMailbox, replyUID, fromOptions, selectedFrom, htmlBody)
 		</main>
 	}
 }
 
-templ ComposePage(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, fromOptions []string, selectedFrom string, htmlBody string) {
+templ ComposePage(mode string, to string, cc string, bcc string, subject string, body string, replyMailbox string, replyUID uint32, fromOptions []string, selectedFrom string, htmlBody string) {
 	<div class="compose-area">
 		<div
 			class="compose-card"
@@ -74,7 +74,6 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								id="to"
 								name="to"
 								value={ to }
-								required
 								placeholder="recipient@example.com"
 								x-data="galAutocomplete"
 								:value="query"
@@ -110,6 +109,7 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								type="text"
 								id="bcc"
 								name="bcc"
+								value={ bcc }
 								placeholder="bcc@example.com"
 								x-data="galAutocomplete"
 								:value="query"
