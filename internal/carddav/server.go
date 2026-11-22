@@ -470,11 +470,17 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 
 	if existing != nil {
 		if err := b.contacts.Update(userID, guid, contact); err != nil {
+			if errors.Is(err, store.ErrContactGroupTooLarge) {
+				return nil, webdav.NewHTTPError(http.StatusForbidden, err)
+			}
 			return nil, fmt.Errorf("updating contact: %w", err)
 		}
 		b.logger.Info("carddav: contact updated", "user", userID, "guid", guid)
 	} else {
 		if _, err := b.contacts.Create(userID, contact); err != nil {
+			if errors.Is(err, store.ErrContactGroupTooLarge) {
+				return nil, webdav.NewHTTPError(http.StatusForbidden, err)
+			}
 			return nil, fmt.Errorf("creating contact: %w", err)
 		}
 		b.logger.Info("carddav: contact created", "user", userID, "guid", guid)

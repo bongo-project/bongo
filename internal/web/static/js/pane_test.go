@@ -383,7 +383,44 @@ func TestGalAutocompleteMultiValueField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(compose), "data-gal-multi") {
-		t.Error("compose fields must keep the single-value behaviour")
+	// The compose recipient fields hold comma-separated lists, so a pick must
+	// replace only the entry being typed; they also ask for contact groups.
+	if !strings.Contains(string(compose), `x-data="galAutocomplete" data-gal-multi data-gal-groups`) {
+		t.Error("compose recipient fields must set data-gal-multi and data-gal-groups")
+	}
+}
+
+// Compose renders the suggestion list its autocomplete fills, and a contact
+// group pick goes through the addresses endpoint, never into the field as a
+// name. The buttons use mousedown so the input's blur (which swaps in the
+// recipient pills) does not fire before the pick.
+func TestComposeAutocompleteContactGroups(t *testing.T) {
+	js := readJS(t, "bongo.js")
+	start := strings.Index(js, "Alpine.data('galAutocomplete'")
+	if start < 0 {
+		t.Fatal("bongo.js has no galAutocomplete component")
+	}
+	end := strings.Index(js[start:], "onKeydown(event)")
+	body := js[start : start+end]
+	for _, want := range []string{
+		"'&contact_groups=1'",
+		"entry.kind === 'contact-group'",
+		"'/api/contact-groups/' + encodeURIComponent(entry.guid) + '/addresses'",
+		"data.skipped_notice",
+		"data.over_limit_notice",
+		"this.recipientTotal() > data.limit",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("galAutocomplete lost %q", want)
+		}
+	}
+	compose, err := os.ReadFile("../../templates/compose.templ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`class="recipient-suggestions"`, `@mousedown.prevent="select(r)"`, `x-for="(r, i) in results"`, `role="status"`} {
+		if !strings.Contains(string(compose), want) {
+			t.Errorf("compose.templ lost %q", want)
+		}
 	}
 }

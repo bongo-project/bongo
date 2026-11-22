@@ -49,7 +49,7 @@ func TestContactDetailFields(t *testing.T) {
 
 func TestContactDetailPartialEmailLink(t *testing.T) {
 	c := &bongov1.Contact{Guid: "g1", DisplayName: "Ada", Email: "a+b@x.example"}
-	out := renderToString(t, ContactDetailPartial(c))
+	out := renderToString(t, ContactDetailPartial(c, ContactCardView{}))
 	if !strings.Contains(out, `href="/compose?to=a%2Bb%40x.example"`) {
 		t.Errorf("missing escaped compose link in %s", out)
 	}
@@ -59,7 +59,7 @@ func TestContactDetailPartialEmailLink(t *testing.T) {
 }
 
 func TestContactDetailPartialNoEmailNoLink(t *testing.T) {
-	out := renderToString(t, ContactDetailPartial(&bongov1.Contact{Guid: "g1", DisplayName: "Ada", Phone: "555"}))
+	out := renderToString(t, ContactDetailPartial(&bongov1.Contact{Guid: "g1", DisplayName: "Ada", Phone: "555"}, ContactCardView{}))
 	if strings.Contains(out, "/compose") {
 		t.Errorf("compose link rendered for a contact without email")
 	}
@@ -67,7 +67,7 @@ func TestContactDetailPartialNoEmailNoLink(t *testing.T) {
 
 func TestContactDetailGridOnlyForValues(t *testing.T) {
 	c := &bongov1.Contact{Guid: "g1", DisplayName: "Ada", Email: "a@x.example"}
-	out := renderToString(t, ContactDetailPartial(c))
+	out := renderToString(t, ContactDetailPartial(c, ContactCardView{}))
 	if !strings.Contains(out, "<dt>"+contactsTr("contacts.email")+"</dt>") {
 		t.Errorf("email dt missing")
 	}
@@ -76,7 +76,7 @@ func TestContactDetailGridOnlyForValues(t *testing.T) {
 			t.Errorf("dt for empty field %s rendered", k)
 		}
 	}
-	none := renderToString(t, ContactDetailPartial(&bongov1.Contact{Guid: "g2", DisplayName: "Bob"}))
+	none := renderToString(t, ContactDetailPartial(&bongov1.Contact{Guid: "g2", DisplayName: "Bob"}, ContactCardView{}))
 	if strings.Contains(none, "<dl") {
 		t.Errorf("empty dl rendered for contact without fields")
 	}
@@ -84,7 +84,7 @@ func TestContactDetailGridOnlyForValues(t *testing.T) {
 
 func TestContactDetailWebsiteIsPlainText(t *testing.T) {
 	raw := "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:J\r\nURL:javascript:alert(1)\r\nEND:VCARD\r\n"
-	out := renderToString(t, ContactDetailPartial(&bongov1.Contact{Guid: "g", DisplayName: "J", VcardRaw: []byte(raw)}))
+	out := renderToString(t, ContactDetailPartial(&bongov1.Contact{Guid: "g", DisplayName: "J", VcardRaw: []byte(raw)}, ContactCardView{}))
 	if !strings.Contains(out, "<dd>javascript:alert(1)</dd>") {
 		t.Errorf("website not rendered as plain text dd")
 	}
@@ -95,7 +95,7 @@ func TestContactDetailWebsiteIsPlainText(t *testing.T) {
 
 func TestContactEditorHiddenState(t *testing.T) {
 	c := &bongov1.Contact{Guid: "g1", DisplayName: "Ada", Email: "a@x.example"}
-	partial := renderToString(t, ContactDetailPartial(c))
+	partial := renderToString(t, ContactDetailPartial(c, ContactCardView{}))
 	page := renderToString(t, ContactDetailPage(c, "me@x.example", ContactBooksView{}))
 	idx := func(s string) string {
 		i := strings.Index(s, `id="contact-editor-g1"`)

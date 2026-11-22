@@ -1645,6 +1645,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.With(refuseLowStorage).Post("/compose/send", composeH.Send)
 			r.With(refuseLowStorage).Post("/compose/draft", composeH.SaveDraft)
 			r.Get("/api/gal", composeH.GALSearch)
+			if a.Contacts != nil {
+				composeH.SetContacts(a.Contacts)
+				r.Get("/api/contact-groups/{guid}/addresses", composeH.ContactGroupAddresses)
+			}
 		}
 
 		if a.Search != nil {
@@ -1672,6 +1676,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/contacts/books", contactsH.CreateAddressBook)
 			r.Post("/contacts/books/{id}/rename", contactsH.RenameAddressBook)
 			r.Post("/contacts/books/{id}/delete", contactsH.DeleteAddressBook)
+			r.Post("/contacts/groups", contactsH.CreateContactGroup)
+			r.Post("/contacts/groups/{guid}/rename", contactsH.RenameContactGroup)
+			r.Post("/contacts/groups/{guid}/delete", contactsH.DeleteContactGroup)
+			r.Post("/contacts/groups/{guid}/members/remove", contactsH.RemoveContactGroupMember)
+			r.Post("/contacts/{guid}/add-to-group", contactsH.AddToContactGroup)
 			r.Get("/contacts/{guid}", contactsH.ShowContact)
 			r.Get("/contacts/{guid}/detail", contactsH.ShowContactDetail)
 			r.Post("/contacts/{guid}", contactsH.UpdateContact)

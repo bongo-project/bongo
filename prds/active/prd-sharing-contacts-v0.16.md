@@ -508,15 +508,24 @@ every conversation with them.
 by a client is stored raw and round-trips, but nothing interprets it.
 
 **Acceptance Criteria:**
-- [ ] `Contact` gains `kind` (10: empty or `group`) and `members` (11,
+- [x] `Contact` gains `kind` (10: empty or `group`) and `members` (11,
       repeated contact GUIDs). vCard 4 `KIND:group` with `MEMBER:urn:uuid:…`
       and Apple's `X-ADDRESSBOOKSERVER-KIND`/`X-ADDRESSBOOKSERVER-MEMBER`
       both map to it, and are written back in the form they arrived in.
-- [ ] The contacts page lists groups, lets the user create, rename and
+- [x] The contacts page lists groups, lets the user create, rename and
       delete them and add or remove members.
-- [ ] Typing a group name in compose expands to the members' addresses;
+- [x] Typing a group name in compose expands to the members' addresses;
       members without an address are skipped with a notice.
-- [ ] At most 500 members per group; members that are deleted drop out.
+- [x] At most 500 members per group; members that are deleted drop out.
+- Done in 40.1 (2026-11-22). Members are canonical member references (the
+  member card's UID, `urn:uuid:` stripped, lower-case 32 hex; `mailto:`
+  kept), equal to the GUID for Bongo-made cards, resolved at read time
+  within the group's own book; the cap is 500 distinct references.
+  `vcard_raw` is the source of truth and `kind`/`members` are derived on
+  every write, with a read fallback for older records. Web-made groups use
+  Apple form (vCard 3.0); no nesting. Compose expands a group in the
+  browser into ordinary addresses, so every send-time guard applies; a
+  group larger than the 100-recipient cap is inserted with a warning.
 
 ### US-012: Several address books, and sharing them
 **Source:** audit #82. **Size:** L. **Needs:** US-001.
@@ -973,6 +982,20 @@ Found while building v0.16.0 (2026-11-15):
 - **Release note for v0.16.0:** CardDAV now requires the path's user segment
   to be the authenticated user's id; a client configured by hand with an
   email address there gets 404.
+- **Contact groups, follow-ups** (40.1, 2026-11-22):
+  - The web read-modify-write of a group card is locked per node only, so
+    a concurrent add on another node can be lost (CardDAV uses If-Match).
+  - The sidebar, expansion and resolution each scan the owner's contacts;
+    fine at personal scale.
+  - Members are added from the member's page only; no picker on the group
+    page. Nested groups are skipped with a count.
+  - `?contact_group=` with a large group builds a long URL; Bleve
+    autocomplete does not prefix-match (existing behaviour).
+  - An older node's CardDAV PUT drops fields 10 and 11 (the `vcard_raw`
+    fallback covers it) and has no group page or cap.
+- **Bcc was silently dropped by web compose** (found while planning 40.1,
+  fixed in PR #230 before the v0.16 release; candidate for a v0.15.x
+  patch).
 - **Shared inboxes, follow-ups** (39.17, 2026-11-22):
   - Any future folder-create path on a shared account (web form, admin
     import) must call `store.SyncSharedInboxGrants`; today the folders are

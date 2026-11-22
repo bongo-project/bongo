@@ -34,6 +34,11 @@ type ContactsHandler struct {
 	books    *store.AddressBookStore // nil = the default book only
 	search   *store.SearchManager
 	quota    QuotaChecker // nil = unlimited
+
+	// groupLocks serialises the read-modify-write of one contact group's card on
+	// this node. A concurrent edit on another node can still lose an add; CardDAV
+	// writes are protected by If-Match.
+	groupLocks keyedMutex
 }
 
 // NewContactsHandler creates a ContactsHandler.
@@ -113,6 +118,7 @@ func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) 
 	contact := &bongov1.Contact{AddressbookId: book}
 	// Build the full vCard from the edit form (also sets the derived quick fields).
 	buildVCardFromForm(contact, r)
+	giveNewContactUID(contact)
 
 	// Best-effort domain quota (usage is a periodic recompute). The estimate is
 	// the stored record size, the same quantity the recompute counts.
@@ -127,6 +133,18 @@ func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) 
 	}
 
 	http.Redirect(w, r, withFlash(contactsReturnURL(book), flashContactCreated), http.StatusSeeOther) // #nosec G710 -- fixed same-origin /contacts path, book id validated
+}
+
+// giveNewContactUID chooses the GUID of a card about to be created and writes
+// the matching UID into it, so a contact group can refer to the card by UID from
+// the start and a client that names the resource <UID>.vcf finds it. A card that
+// already has a UID keeps it.
+func giveNewContactUID(c *bongov1.Contact) {
+	c.Guid = store.NewContactGUID()
+	uid, _ := store.UUIDFromGUID(c.Guid)
+	if raw, _, changed, err := store.EnsureContactUID(c.VcardRaw, uid); err == nil && changed {
+		c.VcardRaw = raw
+	}
 }
 
 // contactsReturnURL is the list a request returns to: the book it filed into,
@@ -153,6 +171,12 @@ func (h *ContactsHandler) ShowContact(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load address books", http.StatusInternalServerError)
 		return
 	}
+	if store.IsContactGroup(contact) {
+		if view.Group, err = h.groupView(userID, contact); err != nil {
+			http.Error(w, "failed to load contact group", http.StatusInternalServerError)
+			return
+		}
+	}
 
 	templ.Handler(templates.ContactDetailPage(contact, email, view)).ServeHTTP(w, r)
 }
@@ -168,7 +192,13 @@ func (h *ContactsHandler) ShowContactDetail(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	templ.Handler(templates.ContactDetailPartial(contact)).ServeHTTP(w, r)
+	card, err := h.cardView(userID, contact)
+	if err != nil {
+		http.Error(w, "failed to load contact", http.StatusInternalServerError)
+		return
+	}
+
+	templ.Handler(templates.ContactDetailPartial(contact, card)).ServeHTTP(w, r)
 }
 
 // UpdateContact handles PUT to update a contact.
@@ -179,6 +209,12 @@ func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) 
 	existing, err := h.contacts.Get(userID, guid)
 	if err != nil {
 		http.Error(w, "contact not found", http.StatusNotFound)
+		return
+	}
+	// A contact group has no contact details: the person form would add EMAIL and
+	// TEL to it. It is renamed through its own route.
+	if store.IsContactGroup(existing) {
+		bookFail(w, r, http.StatusBadRequest, "contacts.errGroupNotEditable")
 		return
 	}
 
@@ -208,9 +244,15 @@ func (h *ContactsHandler) DeleteContact(w http.ResponseWriter, r *http.Request) 
 	userID, _ := middleware.UserFromContext(r.Context())
 	guid := chi.URLParam(r, "guid")
 
+	existing, _ := h.contacts.Get(userID, guid)
 	if err := h.contacts.Delete(userID, guid); err != nil {
 		http.Error(w, "failed to delete contact", http.StatusInternalServerError)
 		return
+	}
+	// Best-effort: a reference to a deleted card is inert (it drops out when the
+	// group is read), this only removes it from the group cards.
+	if existing != nil {
+		h.dropFromGroups(userID, existing)
 	}
 
 	// HTMX request: redirect to reload the contacts list.
@@ -258,6 +300,7 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 		AddressbookId: book,
 	}
 	syncQuickFieldsToVCard(contact)
+	giveNewContactUID(contact)
 	if quotaExceeded(h.quota, nil, userID, store.ContactRecordSize(contact)) {
 		refuseQuotaFlash(w, r, returnTo)
 		return

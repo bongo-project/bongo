@@ -1910,3 +1910,15 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [testing] Add an optional capability interface with a safe fallback rather than widening an interface many test fakes implement.
 - PATTERN: [testing] Running web/handlers and agent packages together can exceed go test's 10m default; use -timeout 30m.
 - PATTERN: [proto] Regenerate with protoc-gen-go v1.36.12 explicitly; the one in ~/go/bin is the old golang/protobuf generator.
+
+## 2026-11-22 — Bcc fix (PR #230) and 40.1 contact groups (US-011)
+- The 40.1 plan found web compose never read Bcc (recipients silently got nothing). Fixed first as its own PR: Bcc goes through every send guard, delivered copies never carry it, Sent and drafts keep it, fingerprint includes it.
+- 40.1: advisor plan, worker (tests first, browser check), advisor review MINOR (5 mutations, 4 caught; name-injection test added), fixes applied.
+- Fixed a date-dependent test from 39.16: TestSharedSidebar created a pending grant at the env's fixed 2026-10-23 clock while the page render reads the real clock, so it expired after 30 days.
+- PATTERN: [testing] A test that seeds time-limited state at a fixed clock must also check it at that clock; when the code under test reads time.Now(), seed with time.Now() too, or the test fails once the TTL passes.
+- PATTERN: [data] Keep vcard_raw as the source of truth and derive quick fields in ContactStore.Create/Update, with a read fallback, so CardDAV, import, web and older-node writes need no migration.
+- PATTERN: [web] Expand a recipient group in the browser into ordinary addresses, so every send-time guard applies unchanged.
+- PATTERN: [web] Opt in with a query flag when a shared JSON endpoint serves several callers.
+- PATTERN: [ui] For a suggestion list under an input, put x-data on a wrapper and use @mousedown.prevent on options so the input's blur handlers do not fire first.
+- PATTERN: [mail] Add a sender-only header (Bcc) to the sender's copies by inserting into the delivered raw; never build with it and strip.
+- PATTERN: [env] 127.0.0.1:8080 is Docker on this machine; reach a dev server via the LAN IP.

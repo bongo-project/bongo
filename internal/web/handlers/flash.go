@@ -193,6 +193,11 @@ var (
 	flashAddressBookCreated          = flashKey{"addressbook-created"}
 	flashAddressBookRenamed          = flashKey{"addressbook-renamed"}
 	flashAddressBookDeleted          = flashKey{"addressbook-deleted"}
+	flashContactGroupCreated         = flashKey{"contact-group-created"}
+	flashContactGroupRenamed         = flashKey{"contact-group-renamed"}
+	flashContactGroupDeleted         = flashKey{"contact-group-deleted"}
+	flashContactGroupMemberAdded     = flashKey{"contact-group-member-added"}
+	flashContactGroupMemberRemoved   = flashKey{"contact-group-member-removed"}
 	flashFileReadFailed              = flashKey{"file-read-failed"}
 	flashQuarantineReleased          = flashKey{"quarantine-message-released"}
 	flashQuarantineDeleted           = flashKey{"quarantine-message-deleted"}
@@ -317,6 +322,11 @@ var flashMessages = map[string]string{
 	flashAddressBookCreated.id:          "flash.addressBookCreated",
 	flashAddressBookRenamed.id:          "flash.addressBookRenamed",
 	flashAddressBookDeleted.id:          "flash.addressBookDeleted",
+	flashContactGroupCreated.id:         "flash.contactGroupCreated",
+	flashContactGroupRenamed.id:         "flash.contactGroupRenamed",
+	flashContactGroupDeleted.id:         "flash.contactGroupDeleted",
+	flashContactGroupMemberAdded.id:     "flash.contactGroupMemberAdded",
+	flashContactGroupMemberRemoved.id:   "flash.contactGroupMemberRemoved",
 	flashFileReadFailed.id:              "flash.fileReadFailed",
 	flashQuarantineReleased.id:          "flash.quarantineMessageReleased",
 	flashQuarantineDeleted.id:           "flash.quarantineMessageDeleted",

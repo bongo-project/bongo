@@ -68,13 +68,16 @@ type ComposeHandler struct {
 	groups        groupExpander
 	groupFanout   *mail.FanoutLimiter
 	maxRecipients int // per-message cap on To+Cc+Bcc together; <= 0 means defaultMaxRecipients
-	prefs         *store.PreferenceStore
-	resolver      localRecipientResolver // unified address→userID resolver
-	addresses     *store.AddressStore    // for send-as From picker and enforcement
-	logger        *slog.Logger
-	quota         QuotaChecker    // nil = unlimited
-	acl           *store.ACLStore // finds the shared inboxes a user may send as
-	spool         localSpooler    // inbound pipeline spool for local recipients
+	// contacts expands a contact group in autocomplete and on ?contact_group=.
+	// nil = no contact groups.
+	contacts  *store.ContactStore
+	prefs     *store.PreferenceStore
+	resolver  localRecipientResolver // unified address→userID resolver
+	addresses *store.AddressStore    // for send-as From picker and enforcement
+	logger    *slog.Logger
+	quota     QuotaChecker    // nil = unlimited
+	acl       *store.ACLStore // finds the shared inboxes a user may send as
+	spool     localSpooler    // inbound pipeline spool for local recipients
 
 	// dedupMinSize is the attachment-dedup threshold. > 0 stores sent mail as a
 	// skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
@@ -129,6 +132,10 @@ func (h *ComposeHandler) SetRecipientLimiter(rl *mail.RateLimiter) { h.recipient
 
 // RecipientLimiter returns the shared per-user external-recipient budget, or nil.
 func (h *ComposeHandler) RecipientLimiter() *mail.RateLimiter { return h.recipientRL }
+
+// SetContacts enables contact groups in compose: autocomplete offers them and
+// their addresses are looked up. Without it compose behaves as before.
+func (h *ComposeHandler) SetContacts(cs *store.ContactStore) { h.contacts = cs }
 
 // SetMaxRecipients sets the per-message cap on To, Cc and Bcc recipients together.
 func (h *ComposeHandler) SetMaxRecipients(n int) { h.maxRecipients = n }
@@ -273,6 +280,13 @@ func composeToPrefill(raw string) string {
 func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 	to := composeToPrefill(r.URL.Query().Get("to"))
 	userID, email := middleware.UserFromContext(r.Context())
+	if guid := r.URL.Query().Get("contact_group"); guid != "" && to == "" {
+		var notice string
+		to, notice = h.contactGroupPrefill(userID, middleware.LocaleFromContext(r.Context()), guid)
+		if notice != "" {
+			r = r.WithContext(templates.WithComposeNotice(r.Context(), notice))
+		}
+	}
 	body := h.signatureBody(userID)
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
 
@@ -1390,34 +1404,62 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type galJSON struct {
+		// Key is unique within one answer: the lower-case address, or
+		// "contact-group:" and the group's guid.
+		Key         string `json:"key"`
 		Email       string `json:"email"`
 		DisplayName string `json:"display_name"`
 		Source      string `json:"source"`
-		// Kind is "resource" for a room or equipment account; ResourceType is
-		// "room" or "equipment"; Label is the translated word for it. All are
-		// empty for a person.
+		// Kind is "resource" for a room or equipment account, "group" for a
+		// distribution group and "contact-group" for one of the caller's contact
+		// groups; ResourceType is "room" or "equipment"; Label is the translated
+		// word for it. All are empty for a person.
 		Kind         string `json:"kind,omitempty"`
 		ResourceType string `json:"resource_type,omitempty"`
 		Label        string `json:"label,omitempty"`
+		// GUID and MemberCount are set for a contact group, which has no email.
+		GUID        string `json:"guid,omitempty"`
+		MemberCount int    `json:"member_count,omitempty"`
 	}
 	locale := middleware.LocaleFromContext(r.Context())
+	wantContactGroups := r.URL.Query().Get("contact_groups") == "1"
 
 	// Merge personal contacts (first) with GAL entries.
 	seen := make(map[string]bool)
 	var result []galJSON
+	var contactGroups []galJSON
 
 	userID, _ := middleware.UserFromContext(r.Context())
 	if userID != "" && h.search != nil {
 		contactResults, _ := h.search.SearchContacts(userID, q, 10)
 		for _, c := range contactResults {
+			// A contact group has no address of its own. Only a caller that can
+			// expand one is offered it (the stored record is the authority: at
+			// most 10 reads); every other caller never sees it.
+			if h.contacts != nil {
+				if rec, err := h.contacts.Get(userID, c.GUID); err == nil && store.IsContactGroup(rec) {
+					if wantContactGroups && !seen["contact-group:"+rec.Guid] {
+						seen["contact-group:"+rec.Guid] = true
+						n := contactGroupMemberTotal(rec)
+						contactGroups = append(contactGroups, galJSON{
+							Key: "contact-group:" + rec.Guid, DisplayName: rec.DisplayName, Source: "contacts",
+							Kind: "contact-group", GUID: rec.Guid, MemberCount: n,
+							Label: i18n.T(locale, "compose.contactGroupLabel") + " \u00b7 " + fmt.Sprintf(i18n.T(locale, "contacts.groupMembers"), n),
+						})
+					}
+					continue
+				}
+			}
+			// A contact with no address cannot be a recipient.
 			lower := strings.ToLower(c.Email)
-			if seen[lower] {
+			if lower == "" || seen[lower] {
 				continue
 			}
 			seen[lower] = true
-			result = append(result, galJSON{Email: c.Email, DisplayName: c.DisplayName, Source: "contacts"})
+			result = append(result, galJSON{Key: lower, Email: c.Email, DisplayName: c.DisplayName, Source: "contacts"})
 		}
 	}
+	result = append(result, contactGroups...)
 
 	for _, e := range entries {
 		lower := strings.ToLower(e.Email)
@@ -1425,7 +1467,7 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		seen[lower] = true
-		item := galJSON{Email: e.Email, DisplayName: e.DisplayName, Source: "gal"}
+		item := galJSON{Key: lower, Email: e.Email, DisplayName: e.DisplayName, Source: "gal"}
 		// The stored profile is the authority on the account kind: at most
 		// 10 reads, and no change to the index.
 		if p := h.galProfile(e); p != nil && p.Kind == "resource" {
@@ -1447,7 +1489,7 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[lower] = true
 		result = append(result, galJSON{
-			Email: g.Address, DisplayName: g.DisplayName, Source: "gal",
+			Key: lower, Email: g.Address, DisplayName: g.DisplayName, Source: "gal",
 			Kind: "group", Label: i18n.T(locale, "compose.groupLabel"),
 		})
 	}

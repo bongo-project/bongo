@@ -872,6 +872,23 @@ select.settings-select {
   color: var(--text-primary);
 }
 
+/* Compose suggestions: the list under a To/Cc/Bcc input, and the notice a
+   contact group pick can leave. */
+.compose-card .recipient-autocomplete { position: relative; }
+.compose-card .recipient-suggestions {
+  position: absolute; left: 0; right: 0; z-index: 20;
+  margin: 0; padding: 0.25rem; list-style: none;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.compose-card .recipient-suggestion {
+  display: flex; gap: 0.5rem; width: 100%; padding: 0.35rem 0.5rem;
+  background: none; border: 0; color: inherit; text-align: left; cursor: pointer;
+}
+.compose-card .recipient-suggestion:hover, .compose-card .recipient-suggestion:focus-visible,
+.compose-card .recipient-suggestion.is-selected { background: var(--accent-subtle); }
+.compose-card .recipient-suggestion-detail { opacity: 0.7; }
+.compose-card .recipient-notice { margin: 0.25rem 0 0; font-size: 0.82rem; color: var(--text-muted); }
+
 /* Recipient pills: a read-only view of the input. While the input holds
    parsed text and is blurred, it is hidden with a class (still focusable, so
    form validation and Tab order work) and the pills show in its place. */

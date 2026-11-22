@@ -566,7 +566,7 @@ func TestSharedSidebar(t *testing.T) {
 		t.Fatal(err)
 	}
 	pendingID, _ := e.mailboxes.EnsureMailboxID("alice", "Pending")
-	e.grant(t, store.ACLKindMailbox, pendingID, "bob", "", "lrs", store.GrantStatePending, e.now)
+	e.grant(t, store.ACLKindMailbox, pendingID, "bob", "", "lrs", store.GrantStatePending, time.Now()) // the page render reads the real clock; a fixed date would expire after 30 days
 	e.share(t, "bob", "lrs")
 
 	data := sharedMailSidebar(e.acl, e.mailboxes, "bob", time.Now())

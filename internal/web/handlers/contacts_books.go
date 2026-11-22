@@ -42,6 +42,13 @@ func bookRedirect(w http.ResponseWriter, r *http.Request, to string) {
 // already checked.
 func (h *ContactsHandler) bookView(userID, active string) (templates.ContactBooksView, error) {
 	view := templates.ContactBooksView{Active: active}
+	// The sidebar lists the contact groups of the active book, or of every book.
+	// One more prefix scan of the user's contacts per page.
+	groups, err := h.contacts.ListContactGroups(userID, active)
+	if err != nil {
+		return view, err
+	}
+	view.Groups = groups
 	if h.books == nil {
 		return view, nil
 	}
