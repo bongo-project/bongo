@@ -1487,5 +1487,9 @@
   "flash.contactSelfCleared": "Ya no está marcado como su propia tarjeta",
   "compose.attachMyCard": "Adjuntar mi tarjeta",
   "compose.errSelfCardMissing": "Pidió adjuntar su tarjeta, pero no hay ninguna marcada. Marque una en Contactos o desmarque la casilla.",
-  "compose.errSelfCardTooLarge": "Su tarjeta es demasiado grande para adjuntarla."
+  "compose.errSelfCardTooLarge": "Su tarjeta es demasiado grande para adjuntarla.",
+  "contacts.showConversations": "Mostrar conversaciones",
+  "search.participantHeading": "Conversaciones con %s",
+  "view.participantEmpty": "No se encontraron conversaciones",
+  "view.participantHint": "Aquí aparecen los mensajes con estas direcciones en De, Para o Cc, salvo los de Spam y Papelera."
 }

@@ -136,3 +136,10 @@ func TestEmojiReplacementsRenderIcons(t *testing.T) {
 	mustContain(t, out, translated("editor.linkShort"), translated("editor.imageShort"),
 		fmt.Sprintf(`aria-label="%s"`, translated("editor.insertLink")))
 }
+
+// The pagination links of a search escape the query, so "a&b=c" stays one value.
+func TestSearchPaginationEscapesQuery(t *testing.T) {
+	results := []SearchResult{{UID: 1, Mailbox: "INBOX", Subject: "s"}}
+	out := renderToString(t, SearchPage("a&b=c d", results, 1, 3))
+	mustContain(t, out, `href="/search?q=a%26b%3Dc+d&amp;page=2"`)
+}

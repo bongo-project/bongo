@@ -1487,5 +1487,9 @@
   "flash.contactSelfCleared": "N'est plus marqué comme votre propre fiche",
   "compose.attachMyCard": "Joindre ma fiche",
   "compose.errSelfCardMissing": "Vous avez demandé à joindre votre fiche, mais aucune n'est marquée. Marquez-en une dans Contacts ou décochez la case.",
-  "compose.errSelfCardTooLarge": "Votre fiche est trop volumineuse pour être jointe."
+  "compose.errSelfCardTooLarge": "Votre fiche est trop volumineuse pour être jointe.",
+  "contacts.showConversations": "Afficher les conversations",
+  "search.participantHeading": "Conversations avec %s",
+  "view.participantEmpty": "Aucune conversation trouvée",
+  "view.participantHint": "Les messages comportant ces adresses dans De, À ou Cc apparaissent ici, sauf ceux du dossier Indésirables et de la corbeille."
 }

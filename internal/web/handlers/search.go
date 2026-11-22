@@ -23,6 +23,9 @@ type SearchHandler struct {
 	mailboxes *store.MailboxStore
 	search    *store.SearchManager
 	tags      *store.TagStore
+	// participant serves /search?participant=, which is the mail handler's
+	// thread-grouped list. nil leaves the parameter ignored.
+	participant http.Handler
 }
 
 // NewSearchHandler creates a SearchHandler.
@@ -37,8 +40,17 @@ func NewSearchHandler(pebble *store.PebbleStore, mailboxes *store.MailboxStore, 
 // SetTagStore injects the tag store for sidebar rendering.
 func (h *SearchHandler) SetTagStore(ts *store.TagStore) { h.tags = ts }
 
-// Search performs a full-text search.
+// SetParticipantHandler hands /search?participant= to the mail handler.
+func (h *SearchHandler) SetParticipantHandler(fn http.HandlerFunc) { h.participant = fn }
+
+// Search performs a full-text search. A request with a participant parameter is
+// the conversations view instead and q is ignored: the header search box sends
+// only q, so a new search leaves the view.
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
+	if h.participant != nil && r.URL.Query().Has("participant") {
+		h.participant.ServeHTTP(w, r)
+		return
+	}
 	userID, email := middleware.UserFromContext(r.Context())
 	query := r.URL.Query().Get("q")
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))

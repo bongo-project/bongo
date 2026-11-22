@@ -30,6 +30,7 @@ type fsmTestEnv struct {
 	blobs    *store.BlobStore
 	metadata *store.MetadataManager
 	fsm      *FSM
+	dir      string
 }
 
 func newFSMTestEnv(t *testing.T) *fsmTestEnv {
@@ -60,7 +61,7 @@ func newFSMTestEnv(t *testing.T) *fsmTestEnv {
 		ps.Close()
 	})
 
-	return &fsmTestEnv{pebble: ps, blobs: bs, metadata: mm, fsm: fsm}
+	return &fsmTestEnv{pebble: ps, blobs: bs, metadata: mm, fsm: fsm, dir: dir}
 }
 
 func makeProtoLog(index uint64, cmd *bongov1.RaftCommand) *raft.Log {

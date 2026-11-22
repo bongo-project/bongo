@@ -25,6 +25,8 @@ const (
 	ViewToMe HeaderViewKind = iota + 1
 	ViewFromContacts
 	ViewLists
+	// ViewParticipant lists the conversations with one or more addresses.
+	ViewParticipant
 )
 
 // ViewPathPrefix is the URL prefix of the header views.
@@ -49,7 +51,36 @@ type MailHeaderValues struct {
 	// header the views read (Cc and List-Id included), so the header backfill
 	// need not revisit the row. A rebuild leaves it false.
 	Complete bool
+	// Participants are the distinct From, To and Cc addresses of the message,
+	// at most MaxParticipantsPerMessage, in the order From, To, Cc.
+	Participants []Participant
 }
+
+// Participant roles, OR-ed together when one address appears in several headers.
+const (
+	RoleFrom = 1 << iota
+	RoleTo
+	RoleCc
+)
+
+// Participant is one address of a message with the headers it appeared in.
+type Participant struct {
+	Addr  string
+	Roles int
+}
+
+const (
+	// MaxParticipantsPerMessage bounds the participant rows of one message.
+	// It is above the 100-recipient send cap, so a user's own mail is never cut.
+	MaxParticipantsPerMessage = 200
+	// MaxParticipantQuery bounds the addresses of one participant search.
+	MaxParticipantQuery = 20
+	// maxParticipantAddrLen drops an address too long to be real.
+	maxParticipantAddrLen = 254
+	// HeadersRevCurrent is the headers_rev a complete derivation writes.
+	// Revision 2 added the participants table.
+	HeadersRevCurrent = 2
+)
 
 // MaxStoredHeaderBytes bounds the Reply-To, List-Id and List-Post values kept
 // on MailMeta, which every replica carries in its Raft log and Pebble.
@@ -165,7 +196,42 @@ func MailHeaderFields(meta *bongov1.MailMeta, mine map[string]bool) MailHeaderVa
 		}
 	}
 	v.ListID, v.ListName = ParseListID(meta.GetListId())
+	v.Participants = messageParticipants(meta)
 	return v
+}
+
+// messageParticipants lists the distinct addresses of From, To and Cc, in that
+// order, one entry per address with its roles OR-ed. Reply-To is left out: it
+// is as forgeable as From and the participant search is not about replies.
+// Entries that hold no address (a group such as undisclosed-recipients:;) and
+// addresses too long to be real are dropped, and the list stops at
+// MaxParticipantsPerMessage so a message with a huge header cannot flood the table.
+func messageParticipants(meta *bongov1.MailMeta) []Participant {
+	var out []Participant
+	at := make(map[string]int)
+	add := func(entry string, role int) {
+		a := BareAddress(entry)
+		if a == "" || len(a) > maxParticipantAddrLen {
+			return
+		}
+		if i, ok := at[a]; ok {
+			out[i].Roles |= role
+			return
+		}
+		if len(out) >= MaxParticipantsPerMessage {
+			return
+		}
+		at[a] = len(out)
+		out = append(out, Participant{Addr: a, Roles: role})
+	}
+	add(meta.GetFrom(), RoleFrom)
+	for _, e := range meta.GetTo() {
+		add(e, RoleTo)
+	}
+	for _, e := range meta.GetCc() {
+		add(e, RoleCc)
+	}
+	return out
 }
 
 // BareAddress returns the normalised address inside a header value such as
@@ -264,11 +330,18 @@ func ValidListID(id string) bool {
 type HeaderView struct {
 	Kind   HeaderViewKind
 	ListID string // set for a single list's view; must satisfy ValidListID
+	// Participants are the normalised, de-duplicated, sorted addresses of a
+	// participant view.
+	Participants []string
 }
 
-// URL is the path of the view, without any query. The list id is escaped.
+// URL is the path of the view. The list id is escaped. A participant view is
+// /search with one escaped participant parameter per address ("a+b@x" is
+// "a%2Bb%40x"), so the URL is also what pagination and refresh come back to.
 func (v HeaderView) URL() string {
 	switch {
+	case v.Kind == ViewParticipant:
+		return "/search?" + v.participantQuery()
 	case v.Kind == ViewToMe:
 		return ViewPathPrefix + "to-me"
 	case v.Kind == ViewFromContacts:
@@ -281,5 +354,23 @@ func (v HeaderView) URL() string {
 
 // BulkURL is the path bulk actions on the view's messages are posted to.
 func (v HeaderView) BulkURL() string {
+	if v.Kind == ViewParticipant {
+		return "/search/bulk?" + v.participantQuery()
+	}
 	return v.URL() + "/bulk"
+}
+
+func (v HeaderView) participantQuery() string {
+	return url.Values{"participant": v.Participants}.Encode()
+}
+
+// Excludes reports whether the view skips a mailbox. The To me, From my
+// contacts and Mailing lists views skip Junk, Trash, Sent and Drafts; a
+// participant view skips only Junk and Trash (and what is below them), since
+// the mail a user sent to someone is part of the conversation with them.
+func (v HeaderView) Excludes(mailbox string) bool {
+	if v.Kind == ViewParticipant {
+		return VirtualExcludes(mailbox)
+	}
+	return HeaderViewExcludes(mailbox)
 }

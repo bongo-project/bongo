@@ -175,3 +175,32 @@ func TestContactsImportRefusedPage(t *testing.T) {
 		}
 	}
 }
+
+func TestContactCardShowConversationsLink(t *testing.T) {
+	label := ">" + contactsTr("contacts.showConversations") + "<"
+	card := &bongov1.Contact{
+		Guid: "g1", DisplayName: "Ada", Email: "A+b@x.example",
+		VcardRaw: []byte("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Ada\r\nEMAIL:a+b@x.example\r\nEMAIL:second@y.example\r\nEND:VCARD\r\n"),
+	}
+	out := renderToString(t, ContactDetailPartial(card, ContactCardView{}))
+	// Every address of the card is in the link, once, escaped and sorted.
+	want := `href="/search?participant=a%2Bb%40x.example&amp;participant=second%40y.example"`
+	if !strings.Contains(out, want) {
+		t.Errorf("missing %s in %s", want, out)
+	}
+	if !strings.Contains(out, label) {
+		t.Errorf("missing the Show conversations label")
+	}
+
+	none := renderToString(t, ContactDetailPartial(&bongov1.Contact{Guid: "g2", DisplayName: "No Mail"}, ContactCardView{}))
+	if strings.Contains(none, "/search?") || strings.Contains(none, label) {
+		t.Error("a contact with no email gets no conversations link")
+	}
+
+	group := renderToString(t, ContactDetailPartial(
+		&bongov1.Contact{Guid: "g3", DisplayName: "Team", Email: "team@x.example"},
+		ContactCardView{Group: &ContactGroupView{}}))
+	if strings.Contains(group, "/search?") || strings.Contains(group, label) {
+		t.Error("a contact group gets no conversations link")
+	}
+}

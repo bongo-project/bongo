@@ -29,6 +29,9 @@ type viewFixture struct {
 	contacts  *store.ContactStore
 	prefs     *store.PreferenceStore
 	logs      *bytes.Buffer // what the mail handler logged
+	ps        *store.PebbleStore
+	applier   *directApplierTags
+	handler   *MailHandler
 }
 
 func newViewFixture(t *testing.T) *viewFixture {
@@ -79,11 +82,16 @@ func newViewFixture(t *testing.T) *viewFixture {
 	r.Post("/mail/view/to-me/bulk", h.BulkToMe)
 	r.Post("/mail/view/from-contacts/bulk", h.BulkFromContacts)
 	r.Post("/mail/view/lists/{listID}/bulk", h.BulkMailingList)
+	// As agent.go wires /search: the participant view is the mail handler's.
+	sh := NewSearchHandler(nil, mailboxes, nil)
+	sh.SetParticipantHandler(h.ListParticipants)
+	r.Get("/search", sh.Search)
+	r.Post("/search/bulk", h.BulkParticipant)
 	r.Get("/mail/{mailbox}", h.ListMessages)
 	r.Post("/mail/{mailbox}/bulk", h.BulkAction)
 	r.Post("/mail/{mailbox}/{uid}/flags", h.ToggleFlags)
 
-	return &viewFixture{t: t, router: r, mailboxes: mailboxes, metadata: meta, contacts: contacts, prefs: prefs, logs: logs}
+	return &viewFixture{t: t, ps: ps, applier: applier, handler: h, router: r, mailboxes: mailboxes, metadata: meta, contacts: contacts, prefs: prefs, logs: logs}
 }
 
 func TestToggleFlagsReturnsReusableMessageStarButton(t *testing.T) {
@@ -120,8 +128,10 @@ func TestToggleFlagsReturnsReusableMessageStarButton(t *testing.T) {
 type seedMsg struct {
 	user, mailbox, guid string
 	from                string
-	to                  []string
+	to, cc              []string
 	listID              string
+	messageID           string
+	inReplyTo           string
 	at                  int64
 	flags               uint32
 }
@@ -139,7 +149,7 @@ func (f *viewFixture) deliver(m seedMsg) uint32 {
 		f.t.Fatalf("CreateMailbox: %v", err)
 	}
 	meta := &bongov1.MailMeta{
-		Guid: m.guid, Subject: "subj-" + m.guid, From: m.from, To: m.to, ListId: m.listID, ReceivedAt: m.at,
+		Guid: m.guid, Subject: "subj-" + m.guid, From: m.from, To: m.to, Cc: m.cc, ListId: m.listID, MessageId: m.messageID, InReplyTo: m.inReplyTo, ReceivedAt: m.at,
 	}
 	uid, err := f.mailboxes.DeliverMessage(m.user, m.mailbox, meta, m.flags)
 	if err != nil {
@@ -268,6 +278,22 @@ func TestHeaderViewsListFromRealFoldersNewestFirst(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The To me, From my contacts and Mailing lists views keep skipping Sent and
+// Drafts (only the participant view lists them).
+func TestHeaderViewsExcludeSentAndDrafts(t *testing.T) {
+	f := newViewFixture(t)
+	me := []string{"user1@example.com"}
+	f.deliver(seedMsg{mailbox: "INBOX", guid: "in", to: me, at: 100, listID: "<l.example.org>"})
+	f.deliver(seedMsg{mailbox: "Sent", guid: "sent", to: me, at: 200, listID: "<l.example.org>"})
+	f.deliver(seedMsg{mailbox: "Drafts", guid: "draft", to: me, at: 300, listID: "<l.example.org>"})
+	for _, path := range []string{"/mail/view/to-me", "/mail/view/lists/l.example.org"} {
+		_, body := f.get(path, "", false)
+		if got := subjectsInOrder(body); !equalStrings(got, []string{"subj-in"}) {
+			t.Errorf("%s lists %v, want only subj-in", path, got)
+		}
 	}
 }
 

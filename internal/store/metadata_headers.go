@@ -3,11 +3,17 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
-// SetMailHeaders records the header-derived view columns of an indexed mail.
-// It is a separate UPDATE so IndexMail, which re-runs on every flag or tag
-// change, never resets them. An empty listID is stored as NULL.
+// SetMailHeaders records the header-derived view columns of an indexed mail
+// and replaces its participants. It is a separate write from IndexMail, which
+// re-runs on every flag or tag change and so never resets them. An empty
+// listID is stored as NULL.
+//
+// Everything happens in one transaction. When no maildocument row exists the
+// call writes nothing: a participant row with no document could never be
+// found by PendingHeaders again, and DeleteMail would not know to remove it.
 func (u *UserIndex) SetMailHeaders(guid string, v MailHeaderValues) error {
 	toMe := 0
 	if v.ToMe {
@@ -19,26 +25,79 @@ func (u *UserIndex) SetMailHeaders(guid string, v MailHeaderValues) error {
 	}
 	var rev any
 	if v.Complete {
-		rev = 1
+		rev = HeadersRevCurrent
 	}
-	if _, err := u.db.Exec(
+	tx, err := u.db.Begin()
+	if err != nil {
+		return fmt.Errorf("setting mail headers: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
 		`UPDATE maildocument SET to_me = ?, sender_addr = ?, list_id = ?, list_name = ?, headers_rev = ? WHERE guid = ?`,
-		toMe, v.SenderAddr, listID, listName, rev, guid); err != nil {
+		toMe, v.SenderAddr, listID, listName, rev, guid)
+	if err != nil {
+		return fmt.Errorf("setting mail headers: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return nil
+	}
+	if _, err := tx.Exec(`DELETE FROM participants WHERE mail_guid = ?`, guid); err != nil {
+		return fmt.Errorf("replacing participants: %w", err)
+	}
+	if len(v.Participants) > 0 {
+		stmt, err := tx.Prepare(`INSERT INTO participants (address, mail_guid, roles) VALUES (?, ?, ?)
+			ON CONFLICT(address, mail_guid) DO UPDATE SET roles = roles | excluded.roles`)
+		if err != nil {
+			return fmt.Errorf("replacing participants: %w", err)
+		}
+		defer stmt.Close()
+		for _, p := range v.Participants {
+			if _, err := stmt.Exec(p.Addr, guid, p.Roles); err != nil {
+				return fmt.Errorf("replacing participants: %w", err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("setting mail headers: %w", err)
 	}
 	return nil
 }
 
 // PendingHeaders returns up to limit guids whose header columns have not been
-// derived yet or were derived from a MailMeta that may lack Cc and List-Id and which sort after afterGUID.
+// derived yet, were derived from a MailMeta that may lack Cc and List-Id, or
+// were derived by a revision before participants (headers_rev < 2), and which
+// sort after afterGUID.
 func (u *UserIndex) PendingHeaders(afterGUID string, limit int) ([]string, error) {
-	return u.queryGUIDs(`SELECT guid FROM maildocument WHERE (to_me IS NULL OR headers_rev IS NULL) AND guid > ? ORDER BY guid LIMIT ?`,
+	return u.queryGUIDs(`SELECT guid FROM maildocument WHERE (to_me IS NULL OR headers_rev IS NULL OR headers_rev < 2) AND guid > ? ORDER BY guid LIMIT ?`,
 		afterGUID, limit)
 }
 
 // QueryToMe returns the guids of mail addressed to the user, newest first.
 func (u *UserIndex) QueryToMe() ([]string, error) {
 	return u.queryGUIDs(`SELECT guid FROM maildocument WHERE to_me = 1 ORDER BY received_at DESC, guid`)
+}
+
+// QueryByParticipants returns the guids of mail in which any of addrs (already
+// normalised, at most MaxParticipantQuery) is a participant. Each guid appears
+// once. The order is not meaningful: the caller sorts by the mailbox date.
+func (u *UserIndex) QueryByParticipants(addrs []string) ([]string, error) {
+	if len(addrs) == 0 {
+		return nil, nil
+	}
+	if len(addrs) > MaxParticipantQuery {
+		addrs = addrs[:MaxParticipantQuery]
+	}
+	args := make([]any, len(addrs))
+	for i, a := range addrs {
+		args[i] = a
+	}
+	return u.queryGUIDs(participantsQuery(len(addrs)), args...)
+}
+
+// participantsQuery is the lookup of QueryByParticipants for n addresses; the
+// query-plan test explains this very text.
+func participantsQuery(n int) string {
+	return `SELECT DISTINCT mail_guid FROM participants WHERE address IN (` + strings.TrimSuffix(strings.Repeat("?,", n), ",") + `)`
 }
 
 // QueryByListID returns the guids of mail carrying the given list id, newest first.
@@ -152,6 +211,16 @@ func (m *MetadataManager) QueryToMe(userID string) ([]string, error) {
 		return nil, err
 	}
 	return idx.QueryToMe()
+}
+
+// QueryByParticipants opens the user's database and returns the guids of mail
+// that has any of addrs among its participants. Only that user's database is read.
+func (m *MetadataManager) QueryByParticipants(userID string, addrs []string) ([]string, error) {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return idx.QueryByParticipants(addrs)
 }
 
 // QueryByListID opens the user's database and returns the guids of one list's mail.

@@ -153,6 +153,11 @@ templ SharedContactPage(d SharedContactPageData) {
 									<div class="sub">{ d.Contact.Company }</div>
 								}
 							</div>
+							if u := conversationsURL(d.Contact); u != "" {
+								<div class="contact-detail-actions">
+									<a class="tool-btn outline" href={ templ.URL(u) }>{ t(ctx, "contacts.showConversations") }</a>
+								</div>
+							}
 						</div>
 						if fields := contactDetailFields(d.Contact); len(fields) > 0 {
 							<dl class="contact-fields">

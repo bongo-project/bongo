@@ -1946,3 +1946,8 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PR #234 CI hit a flaky TestSharedIdleSeesNewMail once; rerun passed; recorded in PRD 8.2.
 - PATTERN: [privacy] An allowlist on vCard properties is not enough: parameters carry data too (GEO, X-*), so allowlist parameters as well.
 - PATTERN: [data] A preference that names another record gets an eager clear at the one Delete choke point and a lazy guard in the single resolver; lazy-only breaks when a client-chosen id (CardDAV href) is reused.
+
+## 2026-11-22 — 40.6 conversations with a contact (US-015)
+- Advisor plan (operator took every default), worker (15 mutants killed, browser check), full gate green. Advisor review MINOR: 8 of 9 mutations caught; the survivor wrote the participant heading unescaped. Fixes: heading-escape test and address shape check, a handler guard that to-me still excludes Sent, the query-plan test now explains the production SQL and asserts a positive plan, and the Cc-loss limitation documented (CLAUDE.md, PRD 8.2).
+- PATTERN: [security] A heading built from a request parameter needs a test that renders markup through it; templ escaping alone is safe until someone switches to templ.Raw.
+- PATTERN: [testing] A query-plan test must explain the production query text (shared constant), and assert the index it expects, not only the absence of a scan.

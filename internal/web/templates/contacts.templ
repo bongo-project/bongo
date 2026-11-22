@@ -762,6 +762,9 @@ templ contactCard(c *bongov1.Contact, editorOpen bool, view ContactCardView) {
 				if c.Email != "" {
 					<a class="tool-btn primary" href={ templ.URL("/compose?to=" + url.QueryEscape(c.Email)) }>{ t(ctx, "contacts.emailAction") }</a>
 				}
+				if u := conversationsURL(c); u != "" {
+					<a class="tool-btn outline" href={ templ.URL(u) }>{ t(ctx, "contacts.showConversations") }</a>
+				}
 				if view.IsSelf {
 					<form method="post" action={ templ.SafeURL("/contacts/" + url.PathEscape(c.Guid) + "/self/clear") }>
 						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
