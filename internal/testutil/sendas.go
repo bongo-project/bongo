@@ -7,6 +7,22 @@ const (
 	SendAsPrimary = "alice@example.com"
 )
 
+// SendAsProfile is a shared inbox profile to seed before running SendAsCases.
+// Members are typed principals ("u:{id}" or "g:{id}").
+type SendAsProfile struct {
+	UserID  string
+	Email   string
+	Kind    string
+	Members []string
+}
+
+// SendAsProfiles are the shared inboxes SendAsCases is evaluated against:
+// SendAsUserID is a member of support@ and not of team@.
+var SendAsProfiles = []SendAsProfile{
+	{"u-support", "support@example.com", "shared", []string{"u:" + SendAsUserID}},
+	{"u-team", "team@example.com", "shared", []string{"u:u-bob"}},
+}
+
 // SendAsRecord is an AddressRecord to seed before running SendAsCases.
 type SendAsRecord struct {
 	Addr     string
@@ -23,6 +39,8 @@ var SendAsRecords = []SendAsRecord{
 	{"alias@example.com", SendAsUserID, "alias", false, true},
 	{"bobs@gmail.com", "u-bob", "identity", true, true},
 	{"bob@example.com", "u-bob", "primary", true, true},
+	{"support@example.com", "u-support", "primary", true, true},
+	{"team@example.com", "u-team", "primary", true, true},
 }
 
 // SendAsCase is one row of the send-as agreement table. The same rows drive
@@ -41,6 +59,9 @@ var SendAsCases = []SendAsCase{
 	{"primary upper", "ALICE@EXAMPLE.COM", "From: ALICE@EXAMPLE.COM\r\n", true},
 	{"display name", "Alice@Example.com", "From: \"Name\" <Alice@Example.com>\r\n", true},
 	{"verified external identity", "verified@gmail.com", "From: verified@gmail.com\r\n", true},
+	{"shared inbox, member", "support@example.com", "From: support@example.com\r\n", true},
+	{"shared inbox, not a member", "team@example.com", "From: team@example.com\r\n", false},
+	{"shared inbox in a list with a non-member one", "", "From: alice@example.com, team@example.com\r\n", false},
 	{"other tenant", "ceo@tenantb.example", "From: ceo@tenantb.example\r\n", false},
 	{"unverified identity", "unverified@gmail.com", "From: unverified@gmail.com\r\n", false},
 	{"alias without can_send", "alias@example.com", "From: alias@example.com\r\n", false},

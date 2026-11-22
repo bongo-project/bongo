@@ -1687,7 +1687,7 @@ func (h *CalendarHandler) checkAttendeeCap(userID, email string, atts []*bongov1
 	// Over the limit: only now spend a lookup per address on what the user
 	// sends as, which the sender skips as well.
 	own := func(addr string) bool {
-		ok, err := store.CanSendAs(h.addresses, userID, email, addr)
+		ok, err := store.CanSendAsOwn(h.addresses, userID, email, addr)
 		return err == nil && ok
 	}
 	if icalevent.CountInvited(atts, organiser, skip, own) > icalevent.MaxAttendees {

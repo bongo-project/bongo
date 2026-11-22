@@ -47,6 +47,15 @@ func newSendAsFixture(t *testing.T) *sendAsFixture {
 			t.Fatal(err)
 		}
 	}
+	for _, sp := range testutil.SendAsProfiles {
+		data, err := proto.Marshal(&bongov1.UserProfile{Email: sp.Email, Kind: sp.Kind, SharedMembers: sp.Members})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ps.Set([]byte("/user/"+sp.UserID+"/profile"), data); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, r := range testutil.SendAsRecords {
 		rec := &bongov1.AddressRecord{UserId: r.UserID, Kind: r.Kind, CanSend: r.CanSend, Verified: r.Verified}
 		if err := as.Put(r.Addr, rec); err != nil {

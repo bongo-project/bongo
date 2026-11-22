@@ -36,7 +36,7 @@ func TestAuthenticateRefusesResource(t *testing.T) {
 		},
 	}
 	for name, enter := range entries {
-		for _, kind := range []string{"", ResourceKind} {
+		for _, kind := range []string{"", ResourceKind, SharedKind, "made-up"} {
 			t.Run(fmt.Sprintf("%s kind=%q", name, kind), func(t *testing.T) {
 				a, mm, kv := setupTestAuth(t)
 				createTestUser(t, kv, mm, userID, email, password)
@@ -59,7 +59,7 @@ func TestAuthenticateRefusesResource(t *testing.T) {
 					return
 				}
 				if !errors.Is(err, ErrBadCredentials) || id != "" {
-					t.Fatalf("resource: id=%q err=%v, want ErrBadCredentials", id, err)
+					t.Fatalf("kind %q: id=%q err=%v, want ErrBadCredentials", kind, id, err)
 				}
 			})
 		}
@@ -98,5 +98,31 @@ func TestCreateResourceHasUnusableRealHash(t *testing.T) {
 		if _, err := CreateResource(&mockRaftApplier{store: kv}, mm, "x@example.com", "X", tc.typ, tc.cap); err == nil {
 			t.Errorf("CreateResource(%q, %d) accepted", tc.typ, tc.cap)
 		}
+	}
+}
+
+func TestCreateSharedHasUnusableRealHash(t *testing.T) {
+	old := PasswordHashCost
+	PasswordHashCost = bcrypt.MinCost + 1
+	defer func() { PasswordHashCost = old }()
+
+	a, mm, kv := setupTestAuth(t)
+	id, err := CreateShared(&mockRaftApplier{store: kv}, mm, "Support@Example.com", "Support")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p bongov1.UserProfile
+	if err := proto.Unmarshal(kv.data["/user/"+id+"/profile"], &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Kind != SharedKind || p.IsAdmin || p.Email != "support@example.com" || len(p.SharedMembers) != 0 {
+		t.Fatalf("profile = %v", &p)
+	}
+	cost, err := bcrypt.Cost(p.PasswordHash)
+	if err != nil || cost != PasswordHashCost {
+		t.Fatalf("hash cost = %d, err %v, want %d", cost, err, PasswordHashCost)
+	}
+	if _, err := a.Authenticate("support@example.com", ""); !errors.Is(err, ErrBadCredentials) {
+		t.Fatalf("empty password: %v", err)
 	}
 }

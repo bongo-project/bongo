@@ -332,7 +332,7 @@ func (h *CalendarHandler) inviteRecipients(userID, email, organiser string, atte
 			continue
 		}
 		seen[key] = true
-		if own, err := store.CanSendAs(h.addresses, userID, email, a.Address); err == nil && own {
+		if own, err := store.CanSendAsOwn(h.addresses, userID, email, a.Address); err == nil && own {
 			continue
 		}
 		out = append(out, a.Address)

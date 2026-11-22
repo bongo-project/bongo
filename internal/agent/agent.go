@@ -1362,6 +1362,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Wire the DKIM registry so GenerateDKIMKey can register signers
 		// immediately after key generation (registry was created above).
 		adminH.SetDKIMRegistry(a.DKIMRegistry)
+		adminH.SetSharedInbox(a.ACL, a.Groups)
 		adminH.SetSearchManager(a.Search)
 		if a.AppPasswords != nil {
 			adminH.SetAppPasswords(a.AppPasswords)
@@ -1411,6 +1412,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/users/new", adminH.NewUserForm)
 		r.Post("/admin/users", adminH.CreateUser)
 		r.Get("/admin/resources/new", adminH.NewResourceForm)
+		r.Get("/admin/shared-inboxes/new", adminH.NewSharedInboxForm)
+		r.Post("/admin/users/{userID}/members", adminH.AddSharedMember)
+		r.Post("/admin/users/{userID}/members/remove", adminH.RemoveSharedMember)
 		r.Get("/admin/users/{userID}", adminH.ShowUser)
 		r.Post("/admin/users/{userID}", adminH.UpdateUser)
 		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
@@ -1628,6 +1632,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			// Address store for From picker and server-side send-as enforcement.
 			if a.AddressStore != nil {
 				composeH.SetAddressStore(a.AddressStore)
+				composeH.SetACLStore(a.ACL)
 			}
 			r.Get("/compose", composeH.NewMessage)
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)

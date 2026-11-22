@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	netmail "net/mail"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -71,8 +72,9 @@ type ComposeHandler struct {
 	resolver      localRecipientResolver // unified address→userID resolver
 	addresses     *store.AddressStore    // for send-as From picker and enforcement
 	logger        *slog.Logger
-	quota         QuotaChecker // nil = unlimited
-	spool         localSpooler // inbound pipeline spool for local recipients
+	quota         QuotaChecker    // nil = unlimited
+	acl           *store.ACLStore // finds the shared inboxes a user may send as
+	spool         localSpooler    // inbound pipeline spool for local recipients
 
 	// dedupMinSize is the attachment-dedup threshold. > 0 stores sent mail as a
 	// skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
@@ -153,6 +155,42 @@ func (h *ComposeHandler) SetAddressStore(as *store.AddressStore) {
 	h.addresses = as
 }
 
+// SetACLStore sets the grant store the From picker uses to find the shared
+// inboxes the user belongs to. Without it the picker lists no shared inbox.
+func (h *ComposeHandler) SetACLStore(acl *store.ACLStore) { h.acl = acl }
+
+// sharedFromOptions returns the primary addresses of the shared inboxes userID
+// may send as. Candidates come from the mailbox shares the user holds (the
+// folder grants made for each member), and each is kept only when CanSendAs
+// agrees, so the member list stays the authority and rights alone add nothing.
+func (h *ComposeHandler) sharedFromOptions(userID, primaryEmail string) []string {
+	if h.acl == nil || h.addresses == nil {
+		return nil
+	}
+	held, err := h.acl.MailboxesSharedWith(userID, time.Now())
+	if err != nil {
+		h.logger.Warn("web: listing shared inboxes for the From picker failed", "user", userID, "error", err)
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, hs := range held {
+		if hs.Owner == userID || seen[hs.Owner] {
+			continue
+		}
+		seen[hs.Owner] = true
+		addr, err := h.acl.PrimaryAddressOf(hs.Owner)
+		if err != nil {
+			continue
+		}
+		if ok, err := store.CanSendAs(h.addresses, userID, primaryEmail, addr); err == nil && ok {
+			out = append(out, strings.ToLower(addr))
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // buildFromPickerOptions returns the list of addresses the authenticated user
 // may send from (those owned by userID with CanSend=true AND Verified=true),
 // plus the currently selected address (defaults to the session primary email).
@@ -161,6 +199,16 @@ func (h *ComposeHandler) SetAddressStore(as *store.AddressStore) {
 // slice containing primaryEmail is returned so the template hides the picker and
 // the send path falls back to the session email as before.
 func (h *ComposeHandler) buildFromPickerOptions(userID, primaryEmail string) (options []string, selected string) {
+	options, selected = h.ownFromPickerOptions(userID, primaryEmail)
+	for _, addr := range h.sharedFromOptions(userID, primaryEmail) {
+		if !slices.ContainsFunc(options, func(o string) bool { return strings.EqualFold(o, addr) }) {
+			options = append(options, addr)
+		}
+	}
+	return options, selected
+}
+
+func (h *ComposeHandler) ownFromPickerOptions(userID, primaryEmail string) (options []string, selected string) {
 	primaryLower := strings.ToLower(primaryEmail)
 	selected = primaryLower
 
@@ -419,7 +467,7 @@ func (h *ComposeHandler) isOwnAddress(userID, primary, addr string) bool {
 			return true
 		}
 	}
-	if ok, err := store.CanSendAs(h.addresses, userID, primary, addr); err == nil && ok {
+	if ok, err := store.CanSendAsOwn(h.addresses, userID, primary, addr); err == nil && ok {
 		return true
 	}
 	return false
@@ -547,6 +595,16 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fromAddr = chosenFrom
+	}
+
+	// The shared inbox the From address belongs to, if any: its Sent folder
+	// gets a copy too. Best-effort, so a lookup failure only skips the copy.
+	sharedID := ""
+	if !strings.EqualFold(fromAddr, email) {
+		var err error
+		if sharedID, err = h.addresses.SharedInboxOf(fromAddr); err != nil {
+			h.logger.Warn("web: shared inbox lookup failed; no shared Sent copy", "user", userID, "error", err)
+		}
 	}
 
 	// Build threading headers for replies.
@@ -712,6 +770,9 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	lg := &sendLog{h: h, userID: userID, sendID: sendID, fingerprint: fp}
 	stepDone := make(map[string]bool)
 	steps := []string{"sent"}
+	if sharedID != "" {
+		steps = append(steps, sendStepSentShared)
+	}
 	if len(externalRecipients) > 0 {
 		steps = append(steps, "external")
 	}
@@ -1040,6 +1101,10 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			composeError(w, r, "compose.errStoreSent", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	if sharedID != "" && !stepDone[sendStepSentShared] {
+		h.fileSharedSentCopy(lg, sharedID, userID, sendID, meta, subject, searchBody)
 	}
 
 	if !sentSkipped {

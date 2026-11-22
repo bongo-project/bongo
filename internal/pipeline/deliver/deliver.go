@@ -74,6 +74,23 @@ type SenderAuthorizer interface {
 	CanSendAs(userID, addr string) (bool, error)
 }
 
+// OwnAddressChecker is implemented by an authorizer that can tell the user's
+// own addresses from shared inbox addresses reached only through membership
+// (store.SendAsPolicy does). Vacation uses it so that membership in a shared
+// inbox does not make that address the member's own.
+type OwnAddressChecker interface {
+	CanSendAsOwn(userID, addr string) (bool, error)
+}
+
+// ownAddress reports whether addr is one of the user's own addresses. An
+// authorizer without OwnAddressChecker (test fakes) answers by CanSendAs.
+func (p *DeliverProcessor) ownAddress(userID, addr string) (bool, error) {
+	if oc, ok := p.authorizer.(OwnAddressChecker); ok {
+		return oc.CanSendAsOwn(userID, addr)
+	}
+	return p.authorizer.CanSendAs(userID, addr)
+}
+
 // SRSCodec rewrites a forward's envelope sender and reverses a bounce's
 // recipient. It is satisfied by *srs.Codec.
 type SRSCodec interface {

@@ -85,8 +85,8 @@ func (s *GroupStore) checkAccounts(what string, ids []string) error {
 		if err := proto.Unmarshal(data, &p); err != nil {
 			return fmt.Errorf("decoding profile %s: %w", id, err)
 		}
-		if p.Kind == "resource" {
-			return invalidGroup("%s: a resource account cannot belong to a group", what)
+		if p.Kind != "" {
+			return invalidGroup("%s: only a person can belong to a group", what)
 		}
 	}
 	return nil

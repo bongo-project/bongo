@@ -588,6 +588,9 @@ func TestRedeemRechecksTheAccount(t *testing.T) {
 		{"became a resource", func(t *testing.T, e *linkEnv) {
 			e.mutate(t, secUserA, func(p *bongov1.UserProfile) { p.Kind = auth.ResourceKind })
 		}},
+		{"became a shared inbox", func(t *testing.T, e *linkEnv) {
+			e.mutate(t, secUserA, func(p *bongov1.UserProfile) { p.Kind = auth.SharedKind })
+		}},
 		{"password changed", func(t *testing.T, e *linkEnv) {
 			e.mutate(t, secUserA, func(p *bongov1.UserProfile) { p.PasswordHash = []byte("a different hash") })
 		}},

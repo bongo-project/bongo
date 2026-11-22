@@ -128,7 +128,7 @@ func crlf(s string) string {
 func (p *DeliverProcessor) vacationFromAddress(c *vacationCandidate) (string, error) {
 	v := p.vacation
 	if a, err := mail.ParseAddress(strings.TrimSpace(c.rcpt)); err == nil && p.authorizer != nil {
-		if ok, cerr := p.authorizer.CanSendAs(c.userID, a.Address); cerr == nil && ok {
+		if ok, cerr := p.ownAddress(c.userID, a.Address); cerr == nil && ok {
 			return a.Address, nil
 		}
 	}

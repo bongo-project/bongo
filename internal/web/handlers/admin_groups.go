@@ -245,7 +245,7 @@ func (h *AdminGroupsHandler) checkInput(g *bongov1.Group, domain string) (int, s
 			h.logger.Error("admin: reading a group member failed", "error", err)
 			return http.StatusInternalServerError, "admin.groupErrFailed"
 		}
-		if p.Kind == "resource" || strings.ToLower(domainFromEmail(p.Email)) != domain {
+		if p.Kind != "" || strings.ToLower(domainFromEmail(p.Email)) != domain {
 			return http.StatusUnprocessableEntity, "admin.groupErrMember"
 		}
 	}
@@ -346,7 +346,7 @@ func (h *AdminGroupsHandler) domainUsers(domain string) ([]templates.GroupUserOp
 		if strings.ToLower(domainFromEmail(name)) != domain {
 			continue
 		}
-		if p, err := h.profile(id); err != nil || p.Kind == "resource" {
+		if p, err := h.profile(id); err != nil || p.Kind != "" {
 			continue
 		}
 		out = append(out, templates.GroupUserOption{ID: id, Email: name})

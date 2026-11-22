@@ -75,9 +75,21 @@ type AdminUserInfo struct {
 	// AppPasswordsAvailable is false when the node has no app password
 	// service, so the page offers no action that would fail.
 	AppPasswordsAvailable bool
+	// Members lists the members of a shared inbox (Kind "shared").
+	Members []AdminMemberInfo
 	// TwoFactorEnabled shows the Reset two-factor action: only an account with
 	// 2FA on has anything to reset.
 	TwoFactorEnabled bool
+}
+
+// AdminMemberInfo is one member of a shared inbox on the detail page.
+type AdminMemberInfo struct {
+	// Principal is the typed member ("u:{id}" or "g:{id}"), posted to remove it.
+	Principal string
+	// Label is the member's address; empty when the user or group is gone.
+	Label string
+	Group bool
+	Live  bool
 }
 
 // DNSCheckRow holds one DNS verification row for the domain detail page.
@@ -329,6 +341,7 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 				</div>
 				<div class="admin-toolbar-group">
 					<a href="/admin/resources/new" class="btn-outline">{ t(ctx, "admin.createResource") }</a>
+					<a href="/admin/shared-inboxes/new" class="btn-outline">{ t(ctx, "admin.createShared") }</a>
 					<a href="/admin/users/new" class="btn-primary">{ t(ctx, "admin.createUser") }</a>
 				</div>
 			</div>
@@ -359,6 +372,8 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 								<td>
 									if u.Kind == "resource" {
 										<span class="badge badge-user">{ t(ctx, "admin.roleResource") }</span>
+									} else if u.Kind == "shared" {
+										<span class="badge badge-user">{ t(ctx, "admin.roleShared") }</span>
 									} else if u.IsAdmin {
 										<span class="badge badge-admin">{ t(ctx, "admin.roleAdmin") }</span>
 									} else {
@@ -448,6 +463,8 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 						<label for="capacity" class="form-label">{ t(ctx, "admin.resourceCapacity") }</label>
 						<input type="number" name="capacity" id="capacity" class="form-input" value={ fmt.Sprint(user.Capacity) } min="0" max="100000"/>
 						<p class="u-text-muted u-font-082">{ t(ctx, "admin.resourceType") }: { t(ctx, resourceTypeKey(user.ResourceType)) }. { t(ctx, "admin.resourceNoLogin") }</p>
+					} else if isSharedUser(user) {
+						<p class="u-text-muted u-font-082">{ t(ctx, "admin.sharedNoLogin") }</p>
 					} else {
 						<fieldset>
 							<label class="form-check">
@@ -483,7 +500,7 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 						</form>
 						if isResourceUser(user) {
 							<a href={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/bookings", user.UserID)) } class="btn-outline">{ t(ctx, "admin.resourceBookings") }</a>
-						} else {
+						} else if !isSharedUser(user) {
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/reset-password", user.UserID)) }>
 								<button type="submit" class="btn-outline">{ t(ctx, "admin.resetPassword") }</button>
 							</form>
@@ -509,6 +526,9 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 						</button>
 					</div>
 				</div>
+				if isSharedUser(user) {
+					@adminSharedMembers(user)
+				}
 				<div class="form-card">
 					<h3>{ t(ctx, "admin.addresses") }</h3>
 					<p class="u-text-muted u-font-082">{ t(ctx, "admin.addressesHelp") }</p>
@@ -1364,6 +1384,8 @@ func userFormAction(u *AdminUserInfo, isNew bool) string {
 }
 
 func isResourceUser(u *AdminUserInfo) bool { return u != nil && u.Kind == "resource" }
+
+func isSharedUser(u *AdminUserInfo) bool { return u != nil && u.Kind == "shared" }
 
 func resourceTypeKey(typ string) string {
 	if typ == "equipment" {
