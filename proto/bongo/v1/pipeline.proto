@@ -30,6 +30,7 @@ message QueueEnvelope {
   uint32 dsn_notify = 22;                // NOTIFY bitmask (1 SUCCESS, 2 FAILURE, 4 DELAY, 8 NEVER); 0 = not given
   string dsn_orcpt_type = 23;            // "rfc822" or "utf-8"
   string dsn_orcpt = 24;                 // Decoded original recipient
+  string fetch_account = 25;             // Set only by the remote-account fetcher: the account guid
 }
 
 // ForwardRequest is one forward asked for by a rule, attributed to the user

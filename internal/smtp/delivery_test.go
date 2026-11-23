@@ -286,6 +286,40 @@ func TestEnqueueLocalTrustedFlag(t *testing.T) {
 	}
 }
 
+// The remote-account fetcher marks its envelopes with the account guid; the
+// mark is carried to every envelope and is empty for all other sources.
+func TestEnqueueLocalCarriesFetchAccount(t *testing.T) {
+	tests := []struct {
+		name string
+		meta *InboundMeta
+		want string
+	}{
+		{"fetcher", &InboundMeta{FetchAccount: "0123456789abcdef0123456789abcdef"}, "0123456789abcdef0123456789abcdef"},
+		{"mx", &InboundMeta{SPFResult: "pass"}, ""},
+		{"no meta", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dp, _, spool := setupTestPipeline(t)
+			if err := dp.EnqueueLocal("", []string{"alice@example.com", "bob@example.com"}, "someblobhash", tt.meta); err != nil {
+				t.Fatalf("EnqueueLocal: %v", err)
+			}
+			envs, err := spool.List("incoming")
+			if err != nil || len(envs) != 2 {
+				t.Fatalf("spool = %d envelopes, %v", len(envs), err)
+			}
+			for _, env := range envs {
+				if env.FetchAccount != tt.want {
+					t.Errorf("fetch_account = %q, want %q", env.FetchAccount, tt.want)
+				}
+				if env.Sender != "" || env.Trusted || env.AuthUserId != "" {
+					t.Errorf("envelope identity leaked: %+v", env)
+				}
+			}
+		})
+	}
+}
+
 // TestBouncePathDeliverArrivesUntrusted covers the 3-arg Deliver interface
 // used by mail.BounceGenerator (internal/mail/bounce.go). Bounces are
 // DKIM-signed and do not need trust; this proves the spooled

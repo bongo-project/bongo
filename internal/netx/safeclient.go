@@ -10,7 +10,6 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
-	"syscall"
 	"time"
 	"unicode"
 )
@@ -71,6 +70,9 @@ var forbiddenPrefixes = mustPrefixes(
 	"2001:2::/48",     // benchmarking
 	"2001:db8::/32",   // documentation
 	"64:ff9b::/96",    // NAT64: embeds an IPv4 address
+	"64:ff9b:1::/48",  // RFC 8215 local-use NAT64: embeds an IPv4 address
+	"::/96",           // IPv4-compatible (deprecated): ::7f00:1 is 127.0.0.1 to some stacks
+	"100::/64",        // discard-only (RFC 6666)
 	"2002::/16",       // 6to4: embeds an IPv4 address
 )
 
@@ -153,32 +155,21 @@ func NewClient(opts Options) *Client {
 // AllowsPrivateNetworks reports whether the address rule is lifted.
 func (c *Client) AllowsPrivateNetworks() bool { return c.opts.AllowPrivateNetworks }
 
-func (c *Client) portAllowed(port string) bool {
+func (c *Client) portAllowed(port uint16) bool {
 	switch port {
-	case "80", "443", "8443":
+	case 80, 443, 8443:
 		return true
 	}
-	return c.extraPorts[port]
+	return c.extraPorts[fmt.Sprint(port)]
 }
 
 // dialer builds the net.Dialer whose Control hook enforces the address and
-// port rules on every connection attempt.
+// port rules on every connection attempt. The hook is controlFor, shared with
+// the mail dialer.
 func (c *Client) dialer() *net.Dialer {
 	return &net.Dialer{
-		Timeout: 10 * time.Second,
-		ControlContext: func(_ context.Context, _, address string, _ syscall.RawConn) error {
-			ap, err := netip.ParseAddrPort(address)
-			if err != nil {
-				return fmt.Errorf("%w: unparsable dial address", ErrForbiddenAddress)
-			}
-			if !c.portAllowed(fmt.Sprint(ap.Port())) {
-				return ErrForbiddenPort
-			}
-			if !c.opts.AllowPrivateNetworks && IsForbiddenAddr(ap.Addr()) {
-				return ErrForbiddenAddress
-			}
-			return nil
-		},
+		Timeout:        10 * time.Second,
+		ControlContext: controlFor(c.portAllowed, c.opts.AllowPrivateNetworks),
 	}
 }
 

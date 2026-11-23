@@ -472,6 +472,31 @@ caldav {
 #   }
 # }
 
+# -----------------------------------------------------------------------------
+# fetch — collect mail from users' remote POP3 and IMAP accounts
+# -----------------------------------------------------------------------------
+# Off unless a credentials key is set. The key encrypts the remote passwords
+# users store (AES-256-GCM); without it no password can be saved or read. Put
+# it in BONGO_FETCH_CREDENTIALS_KEY, or here if the config file lives OUTSIDE
+# storage.data_dir: startup is refused when keys sit in a config file inside
+# the data directory, because backups copy that directory. Every node of a
+# cluster needs the same keys. All keys here need a RESTART.
+#
+# fetch {
+#   # Standard base64 of exactly 32 random bytes: openssl rand -base64 32
+#   credentials_key = "REPLACE-WITH-OUTPUT-OF-openssl-rand-base64-32"
+#
+#   # Rotation: set a new credentials_key, move the old one here, restart every
+#   # node. Stored passwords are re-encrypted under the new key as accounts are
+#   # fetched. Remove the old key once none are left under it.
+#   previous_credentials_keys = []
+#
+#   # Set true only to fetch from a server inside your own network. It lifts
+#   # the address rule alone (loopback, private and link-local addresses); the
+#   # port rule (993, 995, 143, 110) stays.
+#   allow_private_networks = true
+# }
+
 
 # -----------------------------------------------------------------------------
 # antispam — inbound spam scoring + DMARC evaluation

@@ -31,7 +31,10 @@ type Config struct {
 	CalDAV  CalDAVConfig  `hcl:"caldav,block" mapstructure:"caldav"`
 	// Calendar is a pointer block so a config file without it still decodes:
 	// gohcl treats a non-pointer block field as mandatory.
-	Calendar    *CalendarConfig `hcl:"calendar,block" mapstructure:"calendar"`
+	Calendar *CalendarConfig `hcl:"calendar,block" mapstructure:"calendar"`
+	// Fetch is a pointer block for the same reason. A nil block means the
+	// remote-account fetcher is off.
+	Fetch       *FetchConfig    `hcl:"fetch,block" mapstructure:"fetch"`
 	Antispam    AntispamConfig  `hcl:"antispam,block" mapstructure:"antispam"`
 	Antivirus   AntivirusConfig `hcl:"antivirus,block" mapstructure:"antivirus"`
 	Pipeline    PipelineConfig  `hcl:"pipeline,block" mapstructure:"pipeline"`
@@ -960,6 +963,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := c.validateFetch(); err != nil {
+		return err
+	}
+
 	if c.SMTP.Limits.GroupFanoutPerHour < 0 {
 		return fmt.Errorf("smtp.limits.group_fanout_per_hour: must not be negative, got %d (0 disables the limit)", c.SMTP.Limits.GroupFanoutPerHour)
 	}
@@ -1675,6 +1682,14 @@ func ApplyOverrides(v *viper.Viper, cfg *Config) {
 	// can be kept out of the config file (e.g. Docker/12-factor deployments).
 	if s := v.GetString("web.session_secret"); s != "" {
 		cfg.Web.SessionSecret = s
+	}
+	// The remote-account credentials key is injected the same way, so it can
+	// stay out of the config file. Setting it switches fetch on.
+	if s := v.GetString("fetch.credentials_key"); s != "" {
+		if cfg.Fetch == nil {
+			cfg.Fetch = &FetchConfig{}
+		}
+		cfg.Fetch.CredentialsKey = s
 	}
 }
 
