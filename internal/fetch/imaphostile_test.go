@@ -418,3 +418,18 @@ func TestBudgetConnResetsControlBudgetWhenIdle(t *testing.T) {
 		t.Fatalf("cmd budget after idle = %d, want 1000", got)
 	}
 }
+
+// A server that repeats the UID item in one answer must not move the size to
+// the second UID: Sizes keeps the first, as UIDs does.
+func TestIMAPSizesKeepFirstUIDItem(t *testing.T) {
+	s := hostileSession(t, 1, "", func(string) string {
+		return "* 1 FETCH (UID 1 RFC822.SIZE 10 UID 2)\r\n"
+	}, Limits{})
+	m, err := s.Sizes([]uint32{1, 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m[1] != 10 || len(m) != 1 {
+		t.Fatalf("Sizes = %v, want only {1:10}", m)
+	}
+}

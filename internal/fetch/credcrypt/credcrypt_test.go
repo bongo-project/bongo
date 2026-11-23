@@ -280,3 +280,58 @@ func TestFixedLengthLimits(t *testing.T) {
 		t.Fatal("over-long password sealed")
 	}
 }
+
+func TestLoopTokens(t *testing.T) {
+	cur, prev := randKey(t), randKey(t)
+	kr, err := NewKeyring(cur, [][]byte{prev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const g1, g2 = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
+
+	toks := kr.LoopTokens(g1)
+	if len(toks) != 2 {
+		t.Fatalf("tokens = %v, want current and previous", toks)
+	}
+	for _, tok := range toks {
+		if len(tok) != 16 {
+			t.Fatalf("token %q is not 16 hex chars", tok)
+		}
+	}
+	if toks[0] == toks[1] {
+		t.Fatal("current and previous key give one token")
+	}
+	t.Run("stable", func(t *testing.T) {
+		if again := kr.LoopTokens(g1); again[0] != toks[0] || again[1] != toks[1] {
+			t.Fatalf("not stable: %v vs %v", again, toks)
+		}
+	})
+	t.Run("differs per guid", func(t *testing.T) {
+		other := kr.LoopTokens(g2)
+		if other[0] == toks[0] || other[1] == toks[1] {
+			t.Fatalf("guid does not change the token: %v vs %v", other, toks)
+		}
+	})
+	t.Run("previous key token is the one a previous-only keyring makes current", func(t *testing.T) {
+		old, err := NewKeyring(prev, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := old.LoopTokens(g1); len(got) != 1 || got[0] != toks[1] {
+			t.Fatalf("previous-key token = %v, want %q", got, toks[1])
+		}
+	})
+	t.Run("never the key id", func(t *testing.T) {
+		for _, tok := range toks {
+			if tok == kr.CurrentID() || tok == KeyIDHex(prev) {
+				t.Fatalf("token %q equals a key id", tok)
+			}
+		}
+	})
+	t.Run("nil keyring", func(t *testing.T) {
+		var nilKr *Keyring
+		if got := nilKr.LoopTokens(g1); got != nil {
+			t.Fatalf("nil keyring tokens = %v", got)
+		}
+	})
+}

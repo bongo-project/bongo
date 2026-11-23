@@ -537,6 +537,18 @@ func (p *BuiltinProcessor) applyDMARC(ctx context.Context, env *bongov1.QueueEnv
 		return action, reasons, dmarcResult
 	}
 
+	// Mail collected from a remote account has no SPF result and a null
+	// sender, so only an intact aligned DKIM signature can pass, and the
+	// remote provider already applied DMARC at its own MX. A p=reject here
+	// would send a mail the user asked us to collect to the admin quarantine
+	// where they cannot see it (and, in delete mode, the remote copy is gone),
+	// so it is capped at Junk. The cap is keyed on fetch_account alone: it
+	// grants no trust, and the scorer's own verdict is never weakened (the
+	// escalation below only ever raises the severity).
+	if dmarcAction == "reject" && env.GetFetchAccount() != "" {
+		dmarcAction = "tag"
+	}
+
 	if actionSeverity(dmarcAction) > actionSeverity(action) {
 		action = dmarcAction
 		reasons = append(reasons, "dmarc_"+res.Disposition)

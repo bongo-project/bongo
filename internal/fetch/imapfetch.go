@@ -266,12 +266,19 @@ func (s *IMAPSession) Sizes(uids []uint32) (map[uint32]int64, error) {
 			for msg := cmd.Next(); msg != nil; msg = cmd.Next() {
 				var uid imap.UID
 				var size int64 = -1
+				sizeSeen := false
 				for item := msg.Next(); item != nil; item = msg.Next() {
 					switch it := item.(type) {
 					case imapclient.FetchItemDataUID:
-						uid = it.UID
+						// The first UID item, as UIDs keeps: a repeated item
+						// must not move the size to another message.
+						if uid == 0 {
+							uid = it.UID
+						}
 					case imapclient.FetchItemDataRFC822Size:
-						size = it.Size
+						if !sizeSeen {
+							size, sizeSeen = it.Size, true
+						}
 					}
 				}
 				if uid != 0 && size >= 0 && len(out) < len(uids)+uidChunk {
