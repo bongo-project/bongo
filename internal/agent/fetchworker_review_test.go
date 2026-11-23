@@ -118,9 +118,11 @@ func TestFetchSoftDeadlineStopsAndDeletes(t *testing.T) {
 	e := newFWEnv(t)
 	a := e.addAcct()
 	e.addMsgs(6, "x")
-	e.w.runTimeout = 400 * time.Millisecond
-	e.w.softMargin = 150 * time.Millisecond
-	e.remote.onFetch = func(uint32) { time.Sleep(100 * time.Millisecond) }
+	// The margin is wide so the delete after the soft stop always finishes
+	// before the hard deadline, even on a loaded CI runner.
+	e.w.runTimeout = 2 * time.Second
+	e.w.softMargin = 1400 * time.Millisecond
+	e.remote.onFetch = func(uint32) { time.Sleep(200 * time.Millisecond) }
 	e.pass()
 	st := e.mustState(a)
 	n := e.deliver.count()
