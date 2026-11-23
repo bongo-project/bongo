@@ -29,6 +29,11 @@ var (
 	// ErrQuota is the worker's code for a recipient over quota; it is defined
 	// here so Code and the UI share one list of codes.
 	ErrQuota = errors.New("over quota")
+
+	// ErrSeenLimit is the worker's code for an account that has more handled
+	// messages on record than a run may track; it stops importing until the
+	// remote folder shrinks.
+	ErrSeenLimit = errors.New("too many handled messages")
 )
 
 // The state and UI codes. A code is all that is ever stored, logged or shown
@@ -44,6 +49,7 @@ const (
 	CodeQuotaExceeded  = "quota_exceeded"
 	CodeNeedsPassword  = "needs_password"
 	CodeKeyUnavailable = "key_unavailable"
+	CodeSeenLimit      = "seen_limit"
 	CodeInternal       = "internal"
 )
 
@@ -51,7 +57,7 @@ const (
 var Codes = []string{
 	CodeConnectFailed, CodeTLSFailed, CodeAuthFailed, CodeFolderMissing, CodeNoUIDL,
 	CodeProtocolError, CodeTooLarge, CodeQuotaExceeded, CodeNeedsPassword,
-	CodeKeyUnavailable, CodeInternal,
+	CodeKeyUnavailable, CodeSeenLimit, CodeInternal,
 }
 
 // Code maps an error to its code. Everything about reaching the server
@@ -74,6 +80,8 @@ func Code(err error) string {
 		return CodeTooLarge
 	case errors.Is(err, ErrQuota):
 		return CodeQuotaExceeded
+	case errors.Is(err, ErrSeenLimit):
+		return CodeSeenLimit
 	case errors.Is(err, credcrypt.ErrKeyUnknown), errors.Is(err, credcrypt.ErrCredentialInvalid):
 		return CodeNeedsPassword
 	case errors.Is(err, credcrypt.ErrNoKey):

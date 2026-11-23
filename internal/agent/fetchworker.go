@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"math/big"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -96,6 +97,11 @@ const (
 	fetchMinInterval       = 15
 	fetchMaxInterval       = 1440
 	fetchPruneMax          = 1000
+	// fetchMaxTooLargePerRun bounds the too-large skips (one Raft write each) a
+	// run records; fetchMaxSeenPerAccount bounds the seen records an account
+	// may hold before it stops importing.
+	fetchMaxTooLargePerRun = 50
+	fetchMaxSeenPerAccount = 50000
 	fetchSweepEvery        = time.Hour
 	fetchSweepMax          = 2000
 	fetchHeaderPeek        = 64 << 10
@@ -175,9 +181,12 @@ type fetchWorker struct {
 	softMargin time.Duration // 0 disables the soft stop
 	// pruneMax and sweepMax bound the delete writes of one run and one sweep.
 	pruneMax, sweepMax int
-	now                func() time.Time
-	jitter             func() time.Duration
-	logger             *slog.Logger
+	// tooLargeMax and seenMax override the per-run and per-account caps; zero
+	// means the defaults.
+	tooLargeMax, seenMax int
+	now                  func() time.Time
+	jitter               func() time.Duration
+	logger               *slog.Logger
 
 	stop            atomic.Bool // set when a write found this node is no longer the leader
 	sightings       map[string]int
@@ -248,8 +257,7 @@ func (w *fetchWorker) pass(ctx context.Context) {
 		w.logger.Warn("fetch: listing users failed", "error", err)
 		return
 	}
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, fetchConcurrency)
+	var jobs []fetchJob
 	var rotating int64
 users:
 	for _, userID := range ids {
@@ -282,19 +290,10 @@ users:
 			if st.Paused || st.NextRunAt > now.Unix() {
 				continue
 			}
-			sem <- struct{}{}
-			if w.stop.Load() || !w.isLeader() {
-				<-sem
-				break users
-			}
-			wg.Add(1)
-			go func() {
-				defer func() { <-sem; wg.Done() }()
-				w.runAccount(ctx, userID, email, acct.Guid)
-			}()
+			jobs = append(jobs, fetchJob{userID: userID, email: email, guid: acct.Guid})
 		}
 	}
-	wg.Wait()
+	w.dispatch(ctx, jobs)
 	w.rotationPending.Store(rotating)
 	if ctx.Err() != nil || w.stop.Load() || !w.isLeader() {
 		return
@@ -306,6 +305,62 @@ users:
 			w.logger.Info("fetch: accounts still sealed under a previous key", "count", n)
 		}
 	}
+}
+
+// fetchJob is one due account.
+type fetchJob struct{ userID, email, guid string }
+
+// dispatch runs the due accounts, fetchConcurrency at a time and at most one
+// per user, and waits for them. A user whose account is slow therefore holds
+// one slot, not all of them, and the other users' accounts keep running. Each
+// account is started once.
+func (w *fetchWorker) dispatch(ctx context.Context, jobs []fetchJob) {
+	var wg sync.WaitGroup
+	busy := map[string]bool{}
+	running := 0
+	done := make(chan string, len(jobs))
+	for len(jobs) > 0 || running > 0 {
+		if ctx.Err() != nil || !w.isLeader() || w.stop.Load() {
+			jobs = nil
+		}
+		for i := 0; i < len(jobs) && running < fetchConcurrency; {
+			j := jobs[i]
+			if busy[j.userID] {
+				i++
+				continue
+			}
+			jobs = slices.Delete(jobs, i, i+1)
+			busy[j.userID] = true
+			running++
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				w.runAccount(ctx, j.userID, j.email, j.guid)
+				done <- j.userID
+			}()
+		}
+		if running == 0 {
+			break
+		}
+		userID := <-done
+		busy[userID] = false
+		running--
+	}
+	wg.Wait()
+}
+
+func (w *fetchWorker) tooLargeCap() int {
+	if w.tooLargeMax > 0 {
+		return w.tooLargeMax
+	}
+	return fetchMaxTooLargePerRun
+}
+
+func (w *fetchWorker) seenCap() int {
+	if w.seenMax > 0 {
+		return w.seenMax
+	}
+	return fetchMaxSeenPerAccount
 }
 
 // outcome is what one run produced.
@@ -603,6 +658,16 @@ func (w *fetchWorker) fetchOnce(ctx context.Context, userID, email string, acct 
 		dup[it.hash] = struct{}{}
 		fresh = append(fresh, it)
 	}
+	if len(fresh) > 0 && len(seen) >= w.seenCap() {
+		// Too many handled messages on record: importing more would only grow
+		// the set. Pruning still runs (the listing is complete), so a folder
+		// that shrinks brings the account back under the cap.
+		if len(listed) > 0 {
+			w.prune(userID, acct, seen, allHashes)
+		}
+		out.err = fetch.ErrSeenLimit
+		return out
+	}
 	candidates := fresh[:min(len(fresh), fetchMaxMessagesPerRun)]
 	if len(candidates) > 0 {
 		if imap {
@@ -656,6 +721,12 @@ loop:
 			return out
 		}
 		if it.size > w.maxMessage {
+			if out.tooLarge >= uint32(w.tooLargeCap()) { // #nosec G115 -- the cap is a small positive constant
+				// Each skip is a Raft write: carry on at the next run.
+				out.backlog = true
+				stopped = true
+				break loop
+			}
 			if err := w.markSeen(userID, acct, it.hash, store.FetchSeenTooLarge, uv); err != nil {
 				out.err, out.abandoned = err, w.stop.Load()
 				return out

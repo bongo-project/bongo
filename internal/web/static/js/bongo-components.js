@@ -1876,6 +1876,13 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // A form that asks before it submits; the question is in data-confirm.
+  Alpine.data('confirmSubmit', () => ({
+    confirmSubmit(event) {
+      if (!window.confirm(event.target.dataset.confirm)) event.preventDefault();
+    }
+  }));
+
   Alpine.data('quarantineBulk', () => ({
     selected: [],
     allIds: [],

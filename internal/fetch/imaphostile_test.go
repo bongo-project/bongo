@@ -409,9 +409,9 @@ func TestBudgetConnResetsControlBudgetWhenIdle(t *testing.T) {
 	defer a.Close()
 	defer b.Close()
 	bc := newBudgetConn(a, Limits{Idle: time.Second, Budget: 1 << 30, Control: 1000})
-	bc.beginUnbounded()
-	if bc.cmd.Load() <= 1000 {
-		t.Fatal("download budget not lifted")
+	bc.beginDownload(5000)
+	if got := bc.cmd.Load(); got != 6000 {
+		t.Fatalf("download budget = %d, want the message limit plus the control budget (6000)", got)
 	}
 	bc.setBusy(false)
 	if got := bc.cmd.Load(); got != 1000 {
@@ -431,5 +431,38 @@ func TestIMAPSizesKeepFirstUIDItem(t *testing.T) {
 	}
 	if m[1] != 10 || len(m) != 1 {
 		t.Fatalf("Sizes = %v, want only {1:10}", m)
+	}
+}
+
+// A download may read the message limit plus the control budget and not a byte
+// more: an unrequested literal in the same answer cannot ride on an unbounded
+// command budget.
+func TestBudgetConnDownloadIsBoundedByMessageLimit(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	bc := newBudgetConn(a, Limits{Idle: time.Second, Budget: 1 << 30, Control: 1000})
+	bc.beginDownload(100)
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			if _, err := b.Write(buf); err != nil {
+				return
+			}
+		}
+	}()
+	var total int64
+	buf := make([]byte, 512)
+	var err error
+	for err == nil {
+		var n int
+		n, err = bc.Read(buf)
+		total += int64(n)
+	}
+	if !errors.Is(err, fetchx.ErrBudget) {
+		t.Fatalf("err = %v, want ErrBudget", err)
+	}
+	if total != 1100 {
+		t.Fatalf("read %d bytes, want exactly 1100 (limit 100 + control 1000)", total)
 	}
 }

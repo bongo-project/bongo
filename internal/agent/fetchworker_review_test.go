@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -194,9 +195,27 @@ func TestFetchStopFlagEndsRunMidway(t *testing.T) {
 // starts.
 func TestFetchStopFlagCheckedAfterSemaphore(t *testing.T) {
 	e := newFWEnv(t)
-	for range fetchConcurrency + 1 {
-		e.addAcct()
+	// One account for each of fetchConcurrency+1 users: a user's own accounts
+	// run one at a time, so only different users fill the slots.
+	var users []string
+	for i := range fetchConcurrency + 1 {
+		u := fmt.Sprintf("00000000-0000-0000-0000-%012d", i+1)
+		users = append(users, u)
+		a := &bongov1.FetchAccount{
+			Guid: e.newGUID(), Protocol: fetch.ProtocolIMAP, Security: fetch.SecurityTLS, Host: "imap.example",
+			Port: 993, Username: "remote-user-xyz", IntervalMinutes: 15, Generation: 1, CreatedAt: 1, UpdatedAt: 1,
+		}
+		cred, err := e.kr.Seal(u, a, fwPassword)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.Credential = cred
+		if err := e.fs.Put(u, a); err != nil {
+			t.Fatal(err)
+		}
 	}
+	e.w.users = func() ([]string, error) { return users, nil }
+	e.profile = func(id string) (string, bool) { return id + "@example.test", true }
 	e.addMsgs(1, "x")
 	e.remote.dialGate = make(chan struct{})
 	done := make(chan struct{})

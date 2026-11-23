@@ -1939,6 +1939,18 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/settings/vacation", vacationH.Save)
 		}
 
+		// Remote POP3 and IMAP accounts. Without the credentials key the page
+		// lists and deletes only; the handler answers 503 to the other writes.
+		if a.Fetch != nil {
+			fetchH := handlers.NewFetchHandler(a.Fetch, a.logger)
+			fetchH.SetKeyring(a.FetchKeyring)
+			if a.fetchClient != nil {
+				fetchH.SetTester(a.fetchClient)
+			}
+			fetchH.SetLimiters(mail.NewRateLimiter(10), mail.NewRateLimiter(120))
+			fetchH.Register(r)
+		}
+
 		if a.Rules != nil && a.Mailboxes != nil {
 			rulesH := handlers.NewRulesHandler(a.Rules, a.Mailboxes, a.Store, a.Blobs)
 			rulesH.SetForwardVerifier(fwdVerifier)

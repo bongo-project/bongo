@@ -101,7 +101,7 @@ func (s *POP3Session) Sizes() (map[int]int64, error) {
 
 // Retr retrieves one message, bounded by max and by its listed size.
 func (s *POP3Session) Retr(num int, listed, max int64, fn func(io.Reader) error) error {
-	s.bc.beginUnbounded()
+	s.bc.beginDownload(max)
 	return s.mapErr(s.c.Retr(num, listed, max, fn))
 }
 

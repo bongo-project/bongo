@@ -109,7 +109,13 @@ type fwRemote struct {
 	uidlErr     error
 	blockDial   bool
 	dialGate    chan struct{} // when set, a dial waits for it to close
-	params      []fetch.Params
+	// tarpit makes a dial for that remote user name wait for tarpitGate (or
+	// the context) and counts how many wait at once.
+	tarpit        string
+	tarpitGate    chan struct{}
+	tarpitNow     atomic.Int32
+	tarpitMaxSeen atomic.Int32
+	params        []fetch.Params
 
 	selectedRO   []bool
 	selectedName []string
@@ -155,6 +161,22 @@ func (r *fwRemote) dial(ctx context.Context, p fetch.Params) error {
 	if block {
 		<-ctx.Done()
 		return ctx.Err()
+	}
+	if r.tarpit != "" && p.Username == r.tarpit {
+		n := r.tarpitNow.Add(1)
+		for {
+			m := r.tarpitMaxSeen.Load()
+			if n <= m || r.tarpitMaxSeen.CompareAndSwap(m, n) {
+				break
+			}
+		}
+		defer r.tarpitNow.Add(-1)
+		select {
+		case <-r.tarpitGate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		return errors.New("tarpit released")
 	}
 	if r.dialGate != nil {
 		<-r.dialGate
