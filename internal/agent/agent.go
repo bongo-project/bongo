@@ -42,6 +42,8 @@ import (
 	"github.com/bongo-project/bongo/internal/cluster"
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/diskspace"
+	"github.com/bongo-project/bongo/internal/fetch"
+	"github.com/bongo-project/bongo/internal/fetch/credcrypt"
 	"github.com/bongo-project/bongo/internal/i18n"
 	bongoimap "github.com/bongo-project/bongo/internal/imap"
 	"github.com/bongo-project/bongo/internal/logfilter"
@@ -262,7 +264,15 @@ type Agent struct {
 	usageCancel           context.CancelFunc
 	subscriptionsCancel   context.CancelFunc
 	// subscriptionClient is the SSRF-safe feed fetcher; tests read its options.
-	subscriptionClient   *netx.Client
+	subscriptionClient *netx.Client
+	// fetchCancel stops the remote-account fetch worker; fetchClient is its
+	// SSRF-safe protocol client (tests read its dialer).
+	fetchCancel context.CancelFunc
+	fetchClient *fetch.Client
+	// FetchKeyring holds the credentials key for remote accounts; nil means
+	// fetch is off. Fetch is the account store.
+	FetchKeyring         *credcrypt.Keyring
+	Fetch                *store.FetchStore
 	rulesMigrationCancel context.CancelFunc
 	tasksMigrationCancel context.CancelFunc
 	// migrationApplier, if set, carries the tasks job's marker writes in
@@ -599,6 +609,9 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		// max_storage_bytes limits + recomputed usage. The Agent itself is the
 		// RaftApplier so all writes go through Raft consensus.
 		a.DomainQuota = store.NewDomainQuotaStore(pebbleStore, a)
+
+		// Remote-account fetch records (accounts, worker state, seen set).
+		a.Fetch = store.NewFetchStore(pebbleStore, a)
 	}
 
 	return a, nil
@@ -1018,6 +1031,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Agent role has a fundamentally different startup path.
 	if a.Config.Server.Role == "agent" {
 		return a.runAgent(ctx)
+	}
+
+	if err := a.initFetch(); err != nil {
+		return err
 	}
 
 	// Sample free disk space for the lifetime of the server. Only paths that add
@@ -2554,6 +2571,16 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.goWorker("calendar-subscriptions", func() {
 			a.runCalendarSubscriptions(subsCtx, subscriptionTick, a.IsLeader, feedClient)
 		})
+	}
+
+	// Collect mail from users' remote POP3 and IMAP accounts. Leader-only,
+	// periodic; see fetchworker.go. Off without a credentials key.
+	if a.Raft != nil && a.FetchKeyring != nil && a.Fetch != nil && a.fetchClient != nil &&
+		smtpPipeline != nil && a.DomainQuota != nil && a.Metadata != nil && a.Store != nil {
+		fetchCtx, fetchCancel := context.WithCancel(ctx)
+		a.fetchCancel = fetchCancel
+		w := a.newFetchWorker(smtpPipeline)
+		a.goWorker("fetch", func() { w.run(fetchCtx, fetchTick) })
 	}
 
 	// Send-as verification mail is built and queued off the request path. The
@@ -5089,6 +5116,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	}
 	if a.orphanGCCancel != nil {
 		a.orphanGCCancel()
+	}
+	if a.fetchCancel != nil {
+		a.fetchCancel()
 	}
 	if a.subscriptionsCancel != nil {
 		a.subscriptionsCancel()

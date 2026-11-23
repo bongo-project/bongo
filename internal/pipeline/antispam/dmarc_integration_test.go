@@ -472,3 +472,67 @@ func TestBuiltinProcessorTrustedSubmissionBypassesDMARCQuarantine(t *testing.T) 
 		}
 	}
 }
+
+// A message collected from a remote account (fetch_account set) has no SPF
+// result and a null sender, so SPF can never align and a p=reject domain that
+// signs nothing would otherwise land in the admin quarantine, out of the
+// user's reach. The remote provider already applied DMARC at its own MX, so
+// the cap is Junk. The cap is keyed on fetch_account alone and grants nothing
+// else: a delivered message from the wire still escalates to reject.
+func TestDMARCRejectCappedToJunkForFetchedMail(t *testing.T) {
+	const msg = "From: CEO <ceo@example.com>\r\nTo: user@example.net\r\nSubject: hi\r\n\r\nHello.\r\n"
+	tests := []struct {
+		name         string
+		fetchAccount string
+		wantAction   string
+		wantMailbox  string
+	}{
+		{"fetched is capped at tag and filed in Junk", "0123456789abcdef0123456789abcdef", "tag", "Junk"},
+		{"wire message still rejects", "", "reject", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proc := newDMARCProcessor(t, true)
+			env := &bongov1.QueueEnvelope{
+				Recipients:   []string{"user@example.net"},
+				FetchAccount: tt.fetchAccount,
+			}
+			res, err := proc.Process(context.Background(), env, strings.NewReader(msg))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Action != tt.wantAction {
+				t.Errorf("Action = %q, want %q", res.Action, tt.wantAction)
+			}
+			if env.GetTargetMailbox() != tt.wantMailbox {
+				t.Errorf("TargetMailbox = %q, want %q", env.GetTargetMailbox(), tt.wantMailbox)
+			}
+			if res.DmarcResult != "fail" {
+				t.Errorf("DmarcResult = %q, want fail: the verdict is still recorded", res.DmarcResult)
+			}
+			if env.GetTrusted() {
+				t.Error("envelope became trusted")
+			}
+		})
+	}
+}
+
+// The cap never weakens the scorer: content that the scorer alone sends to
+// quarantine or reject stays there for a fetched message, whatever DMARC says.
+func TestDMARCFetchCapDoesNotWeakenScorer(t *testing.T) {
+	eval := mail.NewDMARCEvaluatorWithResolver(&dmarcMockResolver{
+		txt: map[string][]string{"_dmarc.example.com": {"v=DMARC1; p=reject"}},
+	})
+	proc := NewBuiltinProcessor(antispam.NewScorer(), WithDMARC(eval, true), WithThreshold(0.05), WithHighThreshold(0.1))
+	const msg = "From: spammer@example.com\r\nSubject: \r\nContent-Type: text/plain\r\n\r\nBuy cheap meds now!"
+	for _, fetched := range []string{"", "0123456789abcdef0123456789abcdef"} {
+		env := &bongov1.QueueEnvelope{Recipients: []string{"user@example.net"}, FetchAccount: fetched}
+		res, err := proc.Process(context.Background(), env, strings.NewReader(msg))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Action != "quarantine" && res.Action != "reject" {
+			t.Fatalf("fetch_account=%q: action %q, want the scorer's quarantine or reject kept", fetched, res.Action)
+		}
+	}
+}

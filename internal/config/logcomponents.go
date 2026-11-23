@@ -16,7 +16,7 @@ var LogComponents = []string{
 	"blob-gc", "blobsync", "bounce", "caldav", "calendar", "calendar-grants",
 	"calendar-share", "calendar-subscriptions", "calendars", "carddav", "cluster",
 	"compose", "control", "dav", "dedup", "deliver", "dispatch", "dkim", "dmarc",
-	"dnsbl", "dry-run", "forward-verify", "fsm", "groups", "header-backfill", "i18n", "imap",
+	"dnsbl", "dry-run", "fetch", "forward-verify", "fsm", "groups", "header-backfill", "i18n", "imap",
 	"imaps", "index", "login", "logout", "memberlist", "mimesafe", "orphan-gc",
 	"pebble", "peer", "pipeline", "pop3", "pop3s", "preview-backfill", "quarantine",
 	"queue", "raft", "relay", "reminders", "rules", "rules-migration", "scan",

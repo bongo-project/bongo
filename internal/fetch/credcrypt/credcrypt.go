@@ -35,11 +35,12 @@ const (
 	// MaxPasswordLen is the longest password Seal accepts.
 	MaxPasswordLen = 1024
 
-	version    = 1
-	nonceLen   = 12
-	encPurpose = "bongo/fetch/credential-aes256gcm/v1"
-	idPurpose  = "bongo/fetch/key-id/v1"
-	aadDomain  = "bongo/fetch-credential/v1\x00"
+	version     = 1
+	nonceLen    = 12
+	encPurpose  = "bongo/fetch/credential-aes256gcm/v1"
+	idPurpose   = "bongo/fetch/key-id/v1"
+	loopPurpose = "bongo/fetch/loop/v1"
+	aadDomain   = "bongo/fetch-credential/v1\x00"
 )
 
 var (
@@ -54,8 +55,9 @@ var (
 )
 
 type key struct {
-	id   string
-	aead cipher.AEAD
+	id      string
+	aead    cipher.AEAD
+	loopKey []byte
 }
 
 // Keyring holds the current key and the decrypt-only previous keys. A nil
@@ -64,6 +66,9 @@ type key struct {
 type Keyring struct {
 	current key
 	byID    map[string]key
+	// order lists the keys current first, then the previous keys in the order
+	// given, for LoopTokens.
+	order []key
 }
 
 // KeyIDHex returns the id of a raw key: the first 16 hex characters of an
@@ -85,7 +90,7 @@ func newKey(raw []byte) (key, error) {
 	if err != nil {
 		return key{}, fmt.Errorf("building cipher: %w", err)
 	}
-	return key{id: KeyIDHex(raw), aead: aead}, nil
+	return key{id: KeyIDHex(raw), aead: aead, loopKey: security.DeriveKey(raw, loopPurpose)}, nil
 }
 
 // NewKeyring builds a keyring from the raw 32-byte current key and the raw
@@ -95,7 +100,7 @@ func NewKeyring(current []byte, previous [][]byte) (*Keyring, error) {
 	if err != nil {
 		return nil, err
 	}
-	kr := &Keyring{current: cur, byID: map[string]key{cur.id: cur}}
+	kr := &Keyring{current: cur, byID: map[string]key{cur.id: cur}, order: []key{cur}}
 	for _, p := range previous {
 		k, err := newKey(p)
 		if err != nil {
@@ -105,6 +110,7 @@ func NewKeyring(current []byte, previous [][]byte) (*Keyring, error) {
 			return nil, errors.New("previous key equals another key")
 		}
 		kr.byID[k.id] = k
+		kr.order = append(kr.order, k)
 	}
 	return kr, nil
 }
@@ -176,4 +182,20 @@ func (k *Keyring) Open(userID string, acct *bongov1.FetchAccount) (string, error
 // current one.
 func (k *Keyring) NeedsRotation(cred *bongov1.FetchCredential) bool {
 	return k != nil && cred != nil && cred.GetKeyId() != k.current.id
+}
+
+// LoopTokens returns the loop-detection tokens for an account, the current
+// key's first and then each previous key's, so a key rotation does not turn
+// loop detection off for mail the old key already marked. A token is a short
+// hex string derived from a per-key loop key and the account guid; it is not
+// the key id and reveals nothing of the key. A nil keyring returns nil.
+func (k *Keyring) LoopTokens(guid string) []string {
+	if k == nil {
+		return nil
+	}
+	out := make([]string, 0, len(k.order))
+	for _, key := range k.order {
+		out = append(out, hex.EncodeToString(security.DeriveKey(key.loopKey, guid))[:16])
+	}
+	return out
 }
