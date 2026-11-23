@@ -92,6 +92,7 @@ var restartKeys = []string{
 	"smtp.enabled", "smtp.port", "smtp.submission_port", "smtp.submissions_port", "smtp.hostname", "smtp.proxy_protocol", "smtp.srs_max_age_days", "smtp.postmaster_account",
 	"smtp.srs_bounces_per_address_per_hour", "smtp.srs_bounces_per_hour",
 	"calendar.subscriptions.allow_private_networks",
+	"fetch.credentials_key", "fetch.previous_credentials_keys", "fetch.allow_private_networks",
 	"smtp.tls.cert_file", "smtp.tls.key_file",
 	"smtp.limits.max_message_size", "smtp.limits.max_recipients", "smtp.limits.max_connections",
 	"smtp.limits.flood_threshold", "smtp.limits.messages_per_minute",
@@ -132,6 +133,8 @@ var secretKeys = []string{
 	"cluster.gossip.encryption_key",
 	"smtp.relay.password",
 	"smtp.relay.username",
+	"fetch.credentials_key",
+	"fetch.previous_credentials_keys",
 }
 
 // keyClasses is keyed by schema path (hcl tag names joined with "."), never

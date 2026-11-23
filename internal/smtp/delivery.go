@@ -26,6 +26,11 @@ type InboundMeta struct {
 	// AuthUserID is the SMTP AUTH user, set only for authenticated sessions.
 	// Empty for trusted-network and unauthenticated sources.
 	AuthUserID string
+	// FetchAccount is the guid of the remote account a message was collected
+	// from. Only the remote-account fetcher sets it. It is a mark for logs and
+	// diagnostics and grants nothing: it does not affect trust, SPF or the
+	// authenticated sender.
+	FetchAccount string
 
 	// DSN parameters (RFC 3461) of the transaction. DSNRcpts lines up with the
 	// recipients handed to EnqueueLocal; it may be nil or shorter, in which
@@ -167,6 +172,8 @@ func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHa
 			AuthUserId: meta.AuthUserID,
 			DsnRet:     meta.DSNRet,
 			DsnEnvid:   meta.DSNEnvID,
+
+			FetchAccount: meta.FetchAccount,
 		}
 		if i < len(meta.DSNRcpts) {
 			d := meta.DSNRcpts[i]

@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
+
+// FetchAccount is one remote POP3 or IMAP account a user has asked the server
+// to collect mail from, stored at /user/{user_id}/fetch/{guid}. Only the
+// user's own web requests write it. The worker's progress lives in FetchState,
+// so neither writer can overwrite the other.
+message FetchAccount {
+  // guid is 32 lowercase hex and is also the last key segment.
+  string guid = 1;
+  // protocol is "imap" or "pop3".
+  string protocol = 2;
+  // security is "tls" (implicit TLS) or "starttls". There is no plaintext.
+  string security = 3;
+  // host is a lower-case ASCII hostname or IP literal, no port, at most 253.
+  string host = 4;
+  // port is derived from protocol and security, stored for display only.
+  uint32 port = 5;
+  // username is at most 320 bytes with no CR, LF or NUL.
+  string username = 6;
+  // folder is IMAP only, default "INBOX".
+  string folder = 7;
+  bool leave_on_server = 8;
+  // interval_minutes is one of 15, 30, 60, 180, 360, 720, 1440.
+  uint32 interval_minutes = 9;
+  // credential is the sealed password. The password is never stored in clear.
+  FetchCredential credential = 10;
+  // generation is bumped on every user save and on resume.
+  uint64 generation = 11;
+  // label is an optional display name, at most 64.
+  string label = 12;
+  int64 created_at = 13;
+  int64 updated_at = 14;
+}
+
+// FetchCredential is an AES-256-GCM sealed password. key_id names the key that
+// sealed it (derived from the key, not secret and not operator-chosen). The
+// associated data binds the record to its user, account, host, protocol,
+// security, username and key id; see internal/fetch/credcrypt.
+message FetchCredential {
+  uint32 version = 1;
+  string key_id = 2;
+  bytes nonce = 3;
+  bytes ciphertext = 4;
+}
+
+// FetchState is the worker's progress for one account, stored at
+// /user/{user_id}/fetchstate/{guid}. Only the leader worker writes it. A state
+// whose generation differs from the account's is treated as absent.
+message FetchState {
+  // generation is the account generation this state belongs to.
+  uint64 generation = 1;
+  // next_run_at is unix seconds; 0 means due now.
+  int64 next_run_at = 2;
+  int64 last_attempt_at = 3;
+  int64 last_success_at = 4;
+  // last_error is a fixed code, never server text.
+  string last_error = 5;
+  // auth_failures counts consecutive sign-in failures.
+  uint32 auth_failures = 6;
+  bool paused = 7;
+  // paused_reason is "auth_failed" or "needs_password".
+  string paused_reason = 8;
+  // failures counts consecutive non-auth failures, for back-off.
+  uint32 failures = 9;
+  // uid_validity is the last UIDVALIDITY seen (IMAP).
+  uint32 uid_validity = 10;
+  uint32 last_run_imported = 11;
+  uint32 last_run_too_large = 12;
+  int64 imported_total = 13;
+}
+
+// FetchSeen records that one remote message was handled, stored at
+// /user/{user_id}/fetchseen/{guid}/{32 hex}. The last segment is a hash of the
+// server-chosen identifier, so server text never reaches a key.
+message FetchSeen {
+  int64 at = 1;
+  // status: 1 imported, 2 too_large.
+  uint32 status = 2;
+  uint32 uid_validity = 3;
+}

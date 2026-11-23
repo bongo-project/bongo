@@ -272,6 +272,12 @@ func loadServeConfig(v *viper.Viper) (*config.Config, string, config.FileStamp, 
 	if err := cfg.Validate(); err != nil {
 		return nil, "", config.FileStamp{}, fmt.Errorf("invalid config: %w", err)
 	}
+	// The fetch keys must not travel with the data they protect: refuse a
+	// config file inside the data directory that holds any of them. The check
+	// reads the file's own block, so the environment cannot excuse a key in it.
+	if err := cfg.ValidateFetchKeyPlacement(configFile); err != nil {
+		return nil, "", config.FileStamp{}, fmt.Errorf("invalid config: %w", err)
+	}
 	return cfg, configFile, stamp, nil
 }
 
