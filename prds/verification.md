@@ -1,56 +1,73 @@
-# Verification: App passwords v0.15.3
+# Verification: Sharing, groups, contacts and fetch v0.16
 
-**Date:** 2026-11-06
-**Commit verified:** `67fa569`, then re-checked after the fixes in Phase 36 tasks 36.10 to 36.12 and 36.14
-**PRD:** [done/prd-app-passwords-v0.15.3.md](done/prd-app-passwords-v0.15.3.md)
-**Rigor:** adversarial. Three requirement groups each had two read-only verifiers, one judging whether tests would go red and one attacking the behaviour. A completeness critic then reviewed the whole result and settled disagreements. Operator decisions in PRD 8.1 override the story text where they differ.
-**Scale:** 7 agents, 255 tool calls, 67 minutes. The fix batch used 13 more agents.
-
-**Previous report:** the v0.15.2 verification, still in git history.
+PRD: `prds/active/prd-sharing-contacts-v0.16.md`. Verified 2026-11-25 on `main` at
+`04c3964`, rigour `adversarial`: two opus verifiers per PRD phase (implementation and
+tests; edge cases and constraints), one for the cross-cutting requirements, and a
+completeness critic. Raw verdicts: 12 agents, every key test run narrowly and passing.
 
 ## Summary
 
-The first pass had no FAIL. Its 82 verdicts across the lenses were 45 PASS and 37 PARTIAL, most of them missing tests. One fix batch followed. Verdicts after that batch:
+| Item | Verdict |
+|------|---------|
+| US-001, US-002, US-005, US-006 | PASS |
+| US-008 to US-016 | PASS |
+| US-004 | PASS (test gap noted) |
+| US-003 | PARTIAL: upstream branch not prepared, fork syntax tests incomplete |
+| US-007 | PARTIAL: cross-owner transfer indexing untested |
+| FR-csrf, FR-persist, FR-config, FR-logcomp, FR-keytable | PASS |
+| TC-security, TC-atomicity | PASS |
+| FR-authz | PARTIAL: expired-pending negative tests missing on three read paths |
+| FR-i18n | PARTIAL: about 48 untranslated http.Error bodies |
+| FR-mixedversion | PARTIAL: cluster checklist not updated |
+| Success metric: 50-member group | PARTIAL: no test at that scale |
+| Success metric: manual client check | Not recorded |
 
-| Requirement | Verdict | Main reason |
-|-------------|---------|-------------|
-| US-001 generate | PASS | Created date was untested; now tested at store and row level. |
-| US-002 protocol login | PASS | Real /caldav/ and /carddav/ route test added. |
-| US-003 no web access | PASS | One-compare test added on the web path. |
-| US-004 revoke | PASS | Revoking now also ends open sessions (decision 20). |
-| US-005 what is in use | PASS | Created date as US-001. |
-| US-006 Apple profile | PASS by operator acceptance | Server side verified. Not checked on a device (decision 24). |
-| US-007 QR link | PASS by operator acceptance | Server side verified. POST on iOS Safari and prefetch not checked on a device (decision 24). |
-| US-008 other clients | PASS | Page values now compared row by row with a non-default fixture. |
-| US-009 switch | PASS | Finish no longer shown without 2FA. Per-protocol rows added. |
-| US-010 admin revoke | PASS | Open sessions end; route added to the CSRF table. |
-| FR-2 and the no-plaintext metric | PASS | Swapped-fields log line fixed (decision 23). |
-| FR-8 and Goal 3 | PASS | Guess limit reset fixed (decision 23). |
-| Other FRs, decisions 5 to 19 | PASS | |
+Stories: 14 PASS, 2 PARTIAL, 0 FAIL. Cross-cutting: 7 PASS, 3 PARTIAL.
 
-## Behaviour defects
+## Gaps
 
-Each was reproduced before any action was taken.
+### US-003 (go-imap fork)
+- **Upstream branch (criterion FAIL).** The story is done only when a QUOTA-first
+  branch, rebased on upstream v2, is ready on bongo-project/go-imap for the operator's
+  upstream pull request. Only the combined `bongo` branch exists. TASKS 39.1 is marked
+  DONE regardless. The pull request text itself stays with the operator.
+- The fork's ACL tests use atom mailbox names only; no quoted or literal name for
+  SETACL, DELETEACL, GETACL, LISTRIGHTS or MYRIGHTS. No fork test checks that an ACL
+  command answers BAD when the session lacks `SessionACL` (QUOTA has one).
 
-1. **A leaked app password lifted the guess limit on the account password.** `Limiter.Succeed` forgives (IP, account) failures after any success. Reproduced: 400 wrong guesses from one IP with no throttle, then the right password accepted; the control locked at 5. **Fixed** in 36.14: an app password success forgives nothing, on all four protocols.
-2. **A revoked app password left open sessions working.** A held SMTP session kept relaying, and IMAP and POP3 sessions survived, including after Revoke all. **Fixed** in 36.10. A session keeps the lookup ID and `AccountState` checks the record.
-3. **Swapped user name and password fields logged the app password in plain text.** Reproduced on IMAP; POP3 and SMTP log the same field. **Fixed** in 36.14: `auth.LogUsername` replaces a name with that shape. A swapped account password is still logged; recorded in 8.2.
-4. **Docs contradicted the switch.** `docs/caldav-carddav.md`, `docs/sendmail.md`, `docs/walkthrough.md` and `SECURITY.md` are corrected.
-5. **Finish was shown to an account without 2FA** at `/settings/security/devices?setup=1`. The server refused the POST. **Fixed** in 36.11.
-6. **The plain create form answered a throttled user in bare English text.** **Fixed** in 36.11. `reauthenticate` keeps this for change password, disable 2FA and switch-off; recorded in 8.2.
+### US-007 (shared folders over IMAP)
+- No test covers the FSM indexing the destination owner's MailMeta from a cross-owner
+  COPY or MOVE (`NewMails`, `internal/cluster/fsm.go:507`). Removing that loop fails
+  no test.
 
-## Test gaps closed
+### US-004 (per-user quota)
+- Domain usage is never reported over IMAP by construction, but no test seeds a domain
+  quota and asserts GETQUOTA and GETQUOTAROOT stay silent. Test gap only.
 
-All 16 are closed in 36.12: DAV routes, web comparison count, first-use label, a user with no records, writes through Raft, dummy hash cost, CSRF table rows and admin refusal, Add a device values and wiring, created date, wrong password with the revoke box, the lock in Redeem, the 5 minute TTL as a literal, no-store on refusals, per-protocol switch rows and decision 17 at session level, POP3 and DAV lockout, and the decision 16 copy.
+### FR-authz
+- Expired-pending negative tests are missing for compose autocomplete over shared
+  books (`TestGALSearchSharedBooks`), the shared-mail sidebar and the contacts
+  sidebar "Shared with me". Pending is covered; expiry relies on store tests.
 
-The reviewers ran mutants through `go test -overlay`: 11 by the 36.10 worker and 6 more by its reviewer, and 23 by the 36.12 reviewer. All went red on assertion failures. Not re-run in review: the item 8 hard-coded port and host mutants, and the `PasswordHashCost` mutant for item 6. The password-change box cannot be proven alone for session ending, because a password change moves the epoch anyway.
+### FR-i18n
+- About 48 new literal English `http.Error` bodies in `internal/web/handlers`
+  (for example `shares.go:200`, `contacts_self.go:47`, `folder_share.go:123`,
+  `mail_shared.go`). `bongo-pages.js:381-393` shows the response text on an htmx
+  error, so users see them in English. The deliberate constant bodies
+  (`folder not found`, `address book not found`) are documented and stay.
+- All 300 new locale keys exist in de, es and fr; the templ second pass is clean.
+
+### FR-mixedversion
+- PRD 6.4 asks `docs/multi-node-cluster-checklist.md` to list every composite command
+  that needs a full upgrade. It predates v0.16 and names none of `/__group__/`,
+  `/__mailbox_assignid__/`, `/__mailbox_xfer__/`, `/__user_usage__/` or the new
+  `/__acl__/` kinds and grantees. CLAUDE.md's guardrails do cover them.
+
+### Success metrics
+- No test or recorded check delivers to a 50-member group and asserts one copy each
+  with one blob.
+- The Thunderbird and Apple Mail check (shared folder under Other Users, ACL and quota
+  in folder properties) is not recorded.
 
 ## Sweep
-
-A separate `sweep invariants` run was not done. Each batch ran its own mutants, the verifiers ran dozens more, and 36.12 closed the survivors.
-
-## Not proved
-
-- Real-device install, POST on iOS Safari, iOS prefetch, and the Apple password key names. The operator accepted these without a device check (decision 24).
-- CSRF is proven in a test agent in the server role, not on a deployed server.
-- `govulncheck` was not run in the verification pass.
+Not yet run (invariants mode, scoped to the PASS requirements). Awaiting the operator.
