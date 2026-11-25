@@ -282,3 +282,70 @@ func TestAppendPerUserQuotaRefusal(t *testing.T) {
 		t.Errorf("small APPEND = %q, want OK", got)
 	}
 }
+
+// A domain quota and its usage are never reported over IMAP: GETQUOTA and
+// GETQUOTAROOT show the user's own figure or nothing. The real
+// DomainQuotaStore is wired, so the domain figures are live in the process.
+func TestQuotaDomainNeverReported(t *testing.T) {
+	const domainLimit, domainUsage = 7 << 20, 3 << 20 // 7168 and 3072 KiB
+	seedDomain := func(t *testing.T, ps *store.PebbleStore) {
+		t.Helper()
+		dq := store.NewDomainQuotaStore(ps, &imapDirectApplier{store: ps})
+		if err := dq.SetQuota("localhost", &bongov1.DomainQuota{MaxStorageBytes: domainLimit}); err != nil {
+			t.Fatalf("SetQuota: %v", err)
+		}
+		if err := dq.SetUsage("localhost", domainUsage); err != nil {
+			t.Fatalf("SetUsage: %v", err)
+		}
+		if q, err := dq.GetQuota("localhost"); err != nil || q == nil || q.MaxStorageBytes != domainLimit {
+			t.Fatalf("GetQuota = %v, %v; want the seeded limit", q, err)
+		}
+	}
+	noLeak := func(t *testing.T, lines []string) {
+		t.Helper()
+		for _, l := range lines {
+			if strings.Contains(l, "7168") || strings.Contains(l, "3072") {
+				t.Errorf("domain figure leaked: %q", l)
+			}
+		}
+	}
+
+	t.Run("no user quota", func(t *testing.T) {
+		ms, ps := newSubscriptionTestStore(t, "INBOX")
+		seedDomain(t, ps)
+		seedQuotaUser(t, ps, 0, 1500)
+		raw := dialRawIMAP(t, startQuotaTestServer(t, ms, ps, true))
+
+		lines, status := raw.execLines("GETQUOTAROOT INBOX")
+		if !strings.HasPrefix(status, "OK") || len(lines) != 1 || lines[0] != "* QUOTAROOT INBOX" {
+			t.Errorf("GETQUOTAROOT INBOX = %q, %s; want only a bare QUOTAROOT", lines, status)
+		}
+		noLeak(t, lines)
+		for _, root := range []string{"user", "localhost", `""`} {
+			lines, status := raw.execLines("GETQUOTA %s", root)
+			if !strings.HasPrefix(status, "NO [NONEXISTENT]") {
+				t.Errorf("GETQUOTA %s = %q, %s; want NO [NONEXISTENT]", root, lines, status)
+			}
+			noLeak(t, lines)
+		}
+	})
+
+	t.Run("user quota set", func(t *testing.T) {
+		ms, ps := newSubscriptionTestStore(t, "INBOX")
+		seedDomain(t, ps)
+		seedQuotaUser(t, ps, 2048, 1500)
+		raw := dialRawIMAP(t, startQuotaTestServer(t, ms, ps, true))
+
+		lines, status := raw.execLines("GETQUOTAROOT INBOX")
+		want := []string{`* QUOTAROOT INBOX "user"`, `* QUOTA "user" (STORAGE 2 2)`}
+		if !strings.HasPrefix(status, "OK") || strings.Join(lines, "\n") != strings.Join(want, "\n") {
+			t.Errorf("GETQUOTAROOT INBOX = %q, %s; want %q", lines, status, want)
+		}
+		noLeak(t, lines)
+		lines, status = raw.execLines("GETQUOTA user")
+		if !strings.HasPrefix(status, "OK") || len(lines) != 1 || lines[0] != want[1] {
+			t.Errorf("GETQUOTA user = %q, %s; want %q", lines, status, want[1])
+		}
+		noLeak(t, lines)
+	})
+}

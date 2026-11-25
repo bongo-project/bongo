@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -68,7 +69,7 @@ func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := h.bookView(userID, active)
 	if err != nil {
-		http.Error(w, "failed to list contacts", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errList"), http.StatusInternalServerError)
 		return
 	}
 
@@ -83,7 +84,7 @@ func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		contacts, total, err = h.contacts.ListByBook(userID, active, offset, contactsPerPage)
 	}
 	if err != nil {
-		http.Error(w, "failed to list contacts", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errList"), http.StatusInternalServerError)
 		return
 	}
 
@@ -183,12 +184,12 @@ func (h *ContactsHandler) ShowContact(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := h.bookView(userID, store.ContactBook(contact))
 	if err != nil {
-		http.Error(w, "failed to load address books", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errLoadBooks"), http.StatusInternalServerError)
 		return
 	}
 	if store.IsContactGroup(contact) {
 		if view.Group, err = h.groupView(userID, contact); err != nil {
-			http.Error(w, "failed to load contact group", http.StatusInternalServerError)
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errLoadGroup"), http.StatusInternalServerError)
 			return
 		}
 	} else {
@@ -211,7 +212,7 @@ func (h *ContactsHandler) ShowContactDetail(w http.ResponseWriter, r *http.Reque
 
 	card, err := h.cardView(userID, contact)
 	if err != nil {
-		http.Error(w, "failed to load contact", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errLoad"), http.StatusInternalServerError)
 		return
 	}
 

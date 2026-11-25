@@ -555,7 +555,7 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	// A resource's or shared inbox's password is random and nobody may know it.
 	if first.Kind != "" {
-		http.Error(w, "this account has no password", http.StatusBadRequest)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errNoPassword"), http.StatusBadRequest)
 		return
 	}
 
@@ -587,7 +587,7 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if profile.Kind != "" {
 		unlock()
-		http.Error(w, "this account has no password", http.StatusBadRequest)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errNoPassword"), http.StatusBadRequest)
 		return
 	}
 	profile.PasswordHash = hash
@@ -2712,7 +2712,7 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 	// here would leave the group and its member keys behind, unreachable, and
 	// free the address for someone else to claim.
 	if ok && (existing.Kind == store.AddressKindGroup || existing.GroupId != "") {
-		http.Error(w, "this address belongs to a group", http.StatusConflict)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errAddressIsGroup"), http.StatusConflict)
 		return
 	}
 

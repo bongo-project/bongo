@@ -9,6 +9,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -51,20 +52,20 @@ func (h *CalendarHandler) ShareInvitations(w http.ResponseWriter, r *http.Reques
 		now := h.clock()
 		held, err := h.acl.ListGrantsHeld(userID, store.GrantStatePending, now)
 		if err != nil {
-			http.Error(w, "failed to load invitations", http.StatusInternalServerError)
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errLoadInvitations"), http.StatusInternalServerError)
 			return
 		}
 		rows = h.shareRows(held)
 		accepted, err := h.acl.ListGrantsHeld(userID, store.GrantStateAccepted, now)
 		if err != nil {
-			http.Error(w, "failed to load shares", http.StatusInternalServerError)
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errLoadShares"), http.StatusInternalServerError)
 			return
 		}
 		joined = h.shareRows(accepted)
 	}
 	calendars, err := h.calendars.List(userID)
 	if err != nil {
-		http.Error(w, "failed to load calendars", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errLoadCalendars"), http.StatusInternalServerError)
 		return
 	}
 	r = clockRequest(r, h.nowIn(userID))
@@ -197,12 +198,12 @@ func (h *CalendarHandler) AcceptShare(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.acl.AcceptGrant(kind, owner, res, store.GranteeUser(userID), now); err != nil {
 		slog.Error("calendar-share: accept failed", "user", userID, "owner", owner, "kind", kind, "resource", res, "error", err)
-		http.Error(w, "failed to accept invitation", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errAccept"), http.StatusInternalServerError)
 		return
 	}
 	g, err := h.acl.GetGrant(kind, owner, res, store.GranteeUser(userID))
 	if err != nil {
-		http.Error(w, "failed to accept invitation", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errAccept"), http.StatusInternalServerError)
 		return
 	}
 	if g == nil || g.State != store.GrantStateAccepted {
@@ -216,7 +217,7 @@ func (h *CalendarHandler) AcceptShare(w http.ResponseWriter, r *http.Request) {
 //
 // POST /shares/decline (and the older /calendar/shares/decline)
 func (h *CalendarHandler) DeclineShare(w http.ResponseWriter, r *http.Request) {
-	h.revokeHeld(w, r, store.GrantStatePending, "decline", "failed to decline invitation")
+	h.revokeHeld(w, r, store.GrantStatePending, "decline", "shares.errDecline")
 }
 
 // LeaveShare removes an accepted grant held by the session user. Like accept
@@ -226,10 +227,10 @@ func (h *CalendarHandler) DeclineShare(w http.ResponseWriter, r *http.Request) {
 //
 // POST /shares/leave (and the older /calendar/shares/leave)
 func (h *CalendarHandler) LeaveShare(w http.ResponseWriter, r *http.Request) {
-	h.revokeHeld(w, r, store.GrantStateAccepted, "leave", "failed to leave share")
+	h.revokeHeld(w, r, store.GrantStateAccepted, "leave", "shares.errLeave")
 }
 
-func (h *CalendarHandler) revokeHeld(w http.ResponseWriter, r *http.Request, state, action, failure string) {
+func (h *CalendarHandler) revokeHeld(w http.ResponseWriter, r *http.Request, state, action, failureKey string) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	kind, owner, res, ok := h.heldGrant(w, r, userID, state, h.clock())
 	if !ok {
@@ -237,7 +238,7 @@ func (h *CalendarHandler) revokeHeld(w http.ResponseWriter, r *http.Request, sta
 	}
 	if err := h.acl.RevokeGrant(kind, owner, res, store.GranteeUser(userID)); err != nil {
 		slog.Error("calendar-share: "+action+" failed", "user", userID, "owner", owner, "kind", kind, "resource", res, "error", err)
-		http.Error(w, failure, http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), failureKey), http.StatusInternalServerError)
 		return
 	}
 	shareAnswered(w, r)
@@ -251,7 +252,7 @@ func (h *CalendarHandler) revokeHeld(w http.ResponseWriter, r *http.Request, sta
 // answers the same 404.
 func (h *CalendarHandler) heldGrant(w http.ResponseWriter, r *http.Request, userID, state string, now time.Time) (kind, owner, resource string, ok bool) {
 	if h.acl == nil {
-		http.Error(w, "sharing is unavailable", http.StatusServiceUnavailable)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errUnavailable"), http.StatusServiceUnavailable)
 		return "", "", "", false
 	}
 	kind, owner, resource = r.FormValue("kind"), r.FormValue("owner"), r.FormValue("resource")
@@ -268,7 +269,7 @@ func (h *CalendarHandler) heldGrant(w http.ResponseWriter, r *http.Request, user
 	// The grantee is the session user, never a form field.
 	g, err := h.acl.GetGrant(kind, owner, resource, store.GranteeUser(userID))
 	if err != nil {
-		http.Error(w, "failed to read invitation", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errReadInvitation"), http.StatusInternalServerError)
 		return "", "", "", false
 	}
 	if g == nil || g.State != state || store.PendingGrantExpired(g, now.Unix()) {

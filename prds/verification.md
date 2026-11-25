@@ -71,3 +71,18 @@ Stories: 14 PASS, 2 PARTIAL, 0 FAIL. Cross-cutting: 7 PASS, 3 PARTIAL.
 
 ## Sweep
 Not yet run (invariants mode, scoped to the PASS requirements). Awaiting the operator.
+
+## Gaps closed (Phase 42, 2026-11-26)
+- US-003: QUOTA-only branch `upstream/quota` (72dbdd3) on bongo-project/go-imap, one commit on
+  upstream v2, ready for the operator's upstream pull request. Fork ACL tests with quoted and
+  literal names, and BAD without `SessionACL` (bongo-project/go-imap#2).
+- US-007: `TestFSMCrossOwnerTransferIndexesDestinationAndNotifiesOnce` checks SQLite and Bleve
+  for the destination owner; fails with the `NewMails` loop removed.
+- US-004 and FR-authz: `TestQuotaDomainNeverReported`, `TestGALSearchSharedBooksExpiredPending`,
+  `TestSharedSidebarExpiredPending`, `TestContactsSidebarSkipsExpiredPending`.
+- FR-i18n: 49 `http.Error` bodies translated (36 keys, en/de/es/fr); guard test
+  `TestHandlerErrorBodiesAreLocalized`. `Forbidden` in admin_groups.go stays literal so it matches
+  the out-of-scope body (no existence oracle).
+- FR-mixedversion: "Mixed-version clusters" section in `docs/multi-node-cluster-checklist.md`.
+- Success metric: `TestGroupFiftyMembersOneCopyEachOneBlob` (50 envelopes, one blob).
+- Still open: the manual Thunderbird and Apple Mail check (operator).

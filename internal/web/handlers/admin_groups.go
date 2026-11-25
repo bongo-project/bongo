@@ -208,7 +208,7 @@ func (h *AdminGroupsHandler) loadScoped(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		if errors.Is(err, store.ErrGroupNotFound) {
 			if scope.Global {
-				http.Error(w, "group not found", http.StatusNotFound)
+				http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errGroupNotFound"), http.StatusNotFound)
 			} else {
 				http.Error(w, "Forbidden", http.StatusForbidden)
 			}

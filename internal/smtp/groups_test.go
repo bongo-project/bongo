@@ -60,6 +60,7 @@ func (f *fakeGroups) ExpandMembers(id string) (*bongov1.Group, []store.GroupMemb
 func (f *fakeGroups) PostingAllowed(*bongov1.Group, string) error { return nil }
 
 type groupEnv struct {
+	dir    string
 	b      *Backend
 	groups *fakeGroups
 	blobs  interface {
@@ -78,7 +79,7 @@ const (
 
 func newGroupEnv(t *testing.T, fanoutLimit int) *groupEnv {
 	t.Helper()
-	dp, blobs, spool := setupTestPipeline(t)
+	dp, blobs, spool, dir := setupTestPipelineDir(t)
 	users := map[string]bool{"alice@example.com": true}
 	for _, u := range []string{"m1", "m2", "m3", "m4"} {
 		users[u+"@example.com"] = true
@@ -111,7 +112,7 @@ func newGroupEnv(t *testing.T, fanoutLimit int) *groupEnv {
 	}
 	b.SetGroups(fg)
 	b.SetGroupFanoutLimiter(fan)
-	return &groupEnv{b: b, groups: fg, blobs: blobs, spool: spool, relay: relay, fan: fan, quota: quota}
+	return &groupEnv{b: b, dir: dir, groups: fg, blobs: blobs, spool: spool, relay: relay, fan: fan, quota: quota}
 }
 
 func (e *groupEnv) mx() *Session {

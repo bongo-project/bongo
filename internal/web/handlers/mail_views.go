@@ -9,6 +9,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -92,7 +93,7 @@ func participantViewFromRequest(r *http.Request) (store.HeaderView, bool) {
 func (h *MailHandler) ListParticipants(w http.ResponseWriter, r *http.Request) {
 	view, ok := participantViewFromRequest(r)
 	if !ok {
-		http.Error(w, "participant must be one to 20 email addresses", http.StatusBadRequest)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "search.errParticipant"), http.StatusBadRequest)
 		return
 	}
 	h.serveList(w, r, view.URL(), &view)
@@ -103,7 +104,7 @@ func (h *MailHandler) ListParticipants(w http.ResponseWriter, r *http.Request) {
 func (h *MailHandler) BulkParticipant(w http.ResponseWriter, r *http.Request) {
 	view, ok := participantViewFromRequest(r)
 	if !ok {
-		http.Error(w, "participant must be one to 20 email addresses", http.StatusBadRequest)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "search.errParticipant"), http.StatusBadRequest)
 		return
 	}
 	h.bulkAction(w, r, view.URL(), true)
@@ -140,7 +141,7 @@ func (h *MailHandler) ListMailingLists(w http.ResponseWriter, r *http.Request) {
 	lists, err := h.mailingLists(userID)
 	if err != nil {
 		h.logger.Warn("web: listing mailing lists", "user", userID, "error", err)
-		http.Error(w, "Error loading messages", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errLoadMessages"), http.StatusInternalServerError)
 		return
 	}
 

@@ -189,3 +189,37 @@ func TestGALSearchSharedBooksLimits(t *testing.T) {
 		}
 	})
 }
+
+// A pending grant older than the TTL offers nothing, before and after an
+// accept attempt (the FSM refuses to accept an expired one).
+func TestGALSearchSharedBooksExpiredPending(t *testing.T) {
+	s := newSharedGAL(t)
+	book := s.book(t, "u-owner", "Clients")
+	s.contact(t, "u-owner", book, g32("1"), "Zelda Client", "zelda@client.test")
+	old := s.now.Add(-2 * time.Duration(store.PendingGrantTTL) * time.Second)
+	grantee := store.GranteeUser("u-alice")
+	if err := s.acl.SetGrantKeepState(store.ACLKindAddressBook, "u-owner", book, grantee, store.GrantLevelRead, "", store.GrantStatePending, "u-owner", old); err != nil {
+		t.Fatal(err)
+	}
+	g, err := s.acl.GetGrant(store.ACLKindAddressBook, "u-owner", book, grantee)
+	if err != nil || g == nil || g.State != store.GrantStatePending || !store.PendingGrantExpired(g, s.now.Unix()) {
+		t.Fatalf("seed grant = %v, %v; want an expired pending grant", g, err)
+	}
+	if em := emails(s.gal(t, "u-alice", "q=zelda")); len(em) != 0 {
+		t.Fatalf("an expired pending share is offered: %v", em)
+	}
+	if err := s.acl.AcceptGrant(store.ACLKindAddressBook, "u-owner", book, grantee, s.now); err != nil {
+		t.Fatal(err)
+	}
+	if em := emails(s.gal(t, "u-alice", "q=zelda")); len(em) != 0 {
+		t.Fatalf("an expired pending share is offered after an accept attempt: %v", em)
+	}
+
+	// Positive control: a live accepted share on another book is offered.
+	live := s.book(t, "u-owner", "Live")
+	s.contact(t, "u-owner", live, g32("2"), "Zelda Live", "zelda@live.test")
+	s.share(t, "u-owner", live, "u-alice", store.GrantStateAccepted)
+	if em := emails(s.gal(t, "u-alice", "q=zelda")); len(em) != 1 || !em["zelda@live.test"] {
+		t.Fatalf("control: offers %v, want only zelda@live.test", em)
+	}
+}

@@ -741,3 +741,53 @@ func TestSharedRoutesWithoutACLAnswerNotFound(t *testing.T) {
 		t.Fatalf("= %d %q", rr.Code, rr.Body.String())
 	}
 }
+
+// A pending grant older than the TTL neither lists the folder nor counts as an
+// invitation, before and after an accept attempt.
+func TestSharedSidebarExpiredPending(t *testing.T) {
+	e := newSharedMailEnv(t)
+	if err := e.mailboxes.CreateMailbox("alice", "Stale"); err != nil {
+		t.Fatal(err)
+	}
+	staleID, err := e.mailboxes.EnsureMailboxID("alice", "Stale")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.deliver(t, "alice", "Stale", "stale mail", 0)
+	now := time.Now() // the page render reads the real clock
+	old := now.Add(-2 * time.Duration(store.PendingGrantTTL) * time.Second)
+	e.grant(t, store.ACLKindMailbox, staleID, "bob", "", "lrs", store.GrantStatePending, old)
+	g, err := e.acl.GetGrant(store.ACLKindMailbox, "alice", staleID, store.GranteeUser("bob"))
+	if err != nil || g == nil || g.State != store.GrantStatePending || !store.PendingGrantExpired(g, now.Unix()) {
+		t.Fatalf("seed grant = %v, %v; want an expired pending grant", g, err)
+	}
+
+	check := func(stage string) {
+		t.Helper()
+		data := sharedMailSidebar(e.acl, e.mailboxes, "bob", time.Now())
+		for _, f := range data.Folders {
+			if f.ID == staleID {
+				t.Errorf("%s: expired pending folder listed: %+v", stage, f)
+			}
+		}
+		if data.PendingInvitations != 0 {
+			t.Errorf("%s: pending invitations = %d, want 0", stage, data.PendingInvitations)
+		}
+		page := e.req(http.MethodGet, "bob", "/mail/INBOX", nil, false).Body.String()
+		if strings.Contains(page, `data-shared-folder="`+staleID+`"`) || strings.Contains(page, "Invitations (") {
+			t.Errorf("%s: sidebar shows the expired pending share", stage)
+		}
+	}
+	check("before accept")
+	if err := e.acl.AcceptGrant(store.ACLKindMailbox, "alice", staleID, store.GranteeUser("bob"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	check("after accept")
+
+	// Positive control: an accepted share is listed.
+	e.share(t, "bob", "lrs")
+	data := sharedMailSidebar(e.acl, e.mailboxes, "bob", time.Now())
+	if len(data.Folders) != 1 || data.Folders[0].Name != "Projects" {
+		t.Fatalf("control: folders = %+v, want Projects", data.Folders)
+	}
+}
