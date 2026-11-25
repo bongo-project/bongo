@@ -35,6 +35,10 @@ func TestIsForbiddenAddr(t *testing.T) {
 		"64:ff9b:1::1", "64:ff9b:1:ffff::1", "64:ff9b:1::7f00:1", // RFC 8215 local-use NAT64
 		"::7f00:1", "::a00:1", "::8.8.8.8", "::1:0", // IPv4-compatible
 		"100::1", "100::ffff:ffff:ffff:ffff", // discard-only
+		"::ffff:0:7f00:1", "::ffff:0:0:0", "::ffff:0:ffff:ffff", // SIIT (::ffff:0:0:0/96)
+		"fec0::1", "feff:ffff::1", // site-local
+		"2001::1", "2001:0:4136:e378:8000:63bf:3fff:fdd2", "2001:0:ffff:ffff::1", // Teredo
+		"192.88.99.1", "192.88.99.255", "::ffff:192.88.99.1", // 6to4 relay anycast
 	}
 	for _, s := range forbidden {
 		if !IsForbiddenAddr(netip.MustParseAddr(s)) {
@@ -46,6 +50,7 @@ func TestIsForbiddenAddr(t *testing.T) {
 		"192.167.255.255", "192.169.0.1", "100.63.255.255", "100.128.0.1", "198.17.255.255", "198.20.0.1",
 		"223.255.255.255", "2606:4700:4700::1111", "::ffff:8.8.8.8", "2001:4860:4860::8888",
 		"64:ff9b:2::1", "::1:0:0:1", "100:0:0:1::1", "101::1",
+		"192.88.98.255", "192.88.100.0", "2001:1::1", "2001:4:112::1", "fe00::1", "::ffff:1:0:0:1",
 	}
 	for _, s := range allowed {
 		if IsForbiddenAddr(netip.MustParseAddr(s)) {

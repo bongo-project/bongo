@@ -217,10 +217,15 @@ func (b *budgetConn) beginControl() {
 	b.setBusy(true)
 }
 
-// beginUnbounded starts a message download, bounded only by the session budget
-// and the caller's own limit.
-func (b *budgetConn) beginUnbounded() {
-	b.cmd.Store(1 << 62)
+// beginDownload starts a message download. The command may read the message
+// limit plus the control budget (the protocol text around the body): a server
+// cannot use the download to push an unrequested literal past it. The session
+// budget applies on top.
+func (b *budgetConn) beginDownload(max int64) {
+	if max < 0 {
+		max = 0
+	}
+	b.cmd.Store(max + b.control)
 	b.setBusy(true)
 }
 

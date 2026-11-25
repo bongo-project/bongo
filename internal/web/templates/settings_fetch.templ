@@ -1,0 +1,275 @@
+package templates
+
+import "strconv"
+
+// FetchIntervals are the check intervals a user may pick, in minutes. The
+// handler validates against the same list.
+var FetchIntervals = []int{15, 30, 60, 180, 360, 720, 1440}
+
+// FetchFormView is the editable part of a remote account. It never carries
+// the password: the page never renders one, and a refused form is shown again
+// with the password field empty.
+type FetchFormView struct {
+	Protocol      string
+	Security      string
+	Host          string
+	Username      string
+	Folder        string
+	Label         string
+	Interval      int
+	LeaveOnServer bool
+}
+
+// FetchStatusView is the worker's progress for one account. Known is false
+// when there is no state of the account's current generation.
+type FetchStatusView struct {
+	Known         bool
+	Paused        bool
+	PausedCode    string
+	LastError     string
+	LastSuccess   string
+	NextRun       string
+	ImportedLast  uint32
+	TooLarge      uint32
+	ImportedTotal int64
+}
+
+// FetchAccountView is one account in the list.
+type FetchAccountView struct {
+	GUID   string
+	Title  string
+	Port   uint32
+	Form   FetchFormView
+	Status FetchStatusView
+}
+
+// FetchPageData is the data of the remote-account settings page. Notice is
+// already translated; NoticeLevel is "success", "warning" or "error".
+type FetchPageData struct {
+	Email       string
+	Notice      string
+	NoticeLevel string
+	Unavailable bool
+	AtCap       bool
+	Max         int
+	Accounts    []FetchAccountView
+	Form        FetchFormView
+}
+
+// FetchEditData is the data of the edit page of one account.
+type FetchEditData struct {
+	Email       string
+	Notice      string
+	NoticeLevel string
+	GUID        string
+	Port        uint32
+	Form        FetchFormView
+}
+
+func fetchIntervalKey(m int) string { return "fetch.interval." + strconv.Itoa(m) }
+
+// fetchFormFields is the shared body of the add and edit forms. keep is true on
+// the edit form, where a blank password keeps the stored one.
+templ fetchFormFields(f FetchFormView, keep bool) {
+	<div class="settings-card">
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-protocol">{ t(ctx, "fetch.protocol") }</label>
+			</div>
+			<select name="protocol" id="fetch-protocol" class="settings-select">
+				<option value="imap" selected?={ f.Protocol != "pop3" }>IMAP</option>
+				<option value="pop3" selected?={ f.Protocol == "pop3" }>POP3</option>
+			</select>
+		</div>
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-security">{ t(ctx, "fetch.security") }</label>
+				<div class="settings-row-desc">{ t(ctx, "fetch.securityDesc") }</div>
+			</div>
+			<select name="security" id="fetch-security" class="settings-select">
+				<option value="tls" selected?={ f.Security != "starttls" }>{ t(ctx, "fetch.security.tls") }</option>
+				<option value="starttls" selected?={ f.Security == "starttls" }>{ t(ctx, "fetch.security.starttls") }</option>
+			</select>
+		</div>
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-host">{ t(ctx, "fetch.host") }</label>
+			</div>
+			<input type="text" name="host" id="fetch-host" class="settings-input" maxlength="253" autocomplete="off" required value={ f.Host }/>
+		</div>
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-username">{ t(ctx, "fetch.username") }</label>
+			</div>
+			<input type="text" name="username" id="fetch-username" class="settings-input" maxlength="320" autocomplete="off" required value={ f.Username }/>
+		</div>
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-password">{ t(ctx, "fetch.password") }</label>
+				if keep {
+					<div class="settings-row-desc">{ t(ctx, "fetch.passwordKeep") }</div>
+				} else {
+					<div class="settings-row-desc">{ t(ctx, "fetch.passwordDesc") }</div>
+				}
+			</div>
+			<input type="password" name="password" id="fetch-password" class="settings-input" maxlength="1024" autocomplete="new-password" required?={ !keep } value=""/>
+		</div>
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-folder">{ t(ctx, "fetch.folder") }</label>
+				<div class="settings-row-desc">{ t(ctx, "fetch.folderDesc") }</div>
+				if keep {
+					<div class="settings-row-desc">{ t(ctx, "fetch.folderWarning") }</div>
+				}
+			</div>
+			<input type="text" name="folder" id="fetch-folder" class="settings-input" maxlength="255" autocomplete="off" value={ f.Folder }/>
+		</div>
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-leave">{ t(ctx, "fetch.leaveOnServer") }</label>
+				<div class="settings-row-desc">{ t(ctx, "fetch.leaveOnServerDesc") }</div>
+				<div class="settings-row-desc">{ t(ctx, "fetch.uidplusNote") }</div>
+			</div>
+			<label class="toggle">
+				<input type="checkbox" name="leave_on_server" id="fetch-leave" value="1" checked?={ f.LeaveOnServer }/>
+				<span class="toggle-slider"></span>
+			</label>
+		</div>
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-interval">{ t(ctx, "fetch.interval") }</label>
+			</div>
+			<select name="interval" id="fetch-interval" class="settings-select">
+				for _, m := range FetchIntervals {
+					<option value={ strconv.Itoa(m) } selected?={ m == f.Interval }>{ t(ctx, fetchIntervalKey(m)) }</option>
+				}
+			</select>
+		</div>
+		<div class="settings-row">
+			<div class="settings-row-label">
+				<label class="settings-row-title" for="fetch-label">{ t(ctx, "fetch.label") }</label>
+			</div>
+			<input type="text" name="label" id="fetch-label" class="settings-input" maxlength="64" autocomplete="off" value={ f.Label }/>
+		</div>
+	</div>
+}
+
+templ fetchNotice(msg, level string) {
+	if msg != "" {
+		if level == "" {
+			@FlashMessage(msg, "success")
+		} else {
+			@FlashMessage(msg, level)
+		}
+	}
+}
+
+templ FetchPage(d FetchPageData) {
+	@LayoutWithContent(t(ctx, "fetch.title"), d.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("fetch")
+		</aside>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container" x-data="confirmSubmit()">
+					@fetchNotice(d.Notice, d.NoticeLevel)
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "fetch.title") }</h2>
+					<p class="settings-section-desc">{ t(ctx, "fetch.intro") }</p>
+					if d.Unavailable {
+						<div class="banner warn" role="note">{ t(ctx, "fetch.unavailable") }</div>
+					}
+					if len(d.Accounts) > 0 {
+						<div class="settings-card" id="fetch-accounts">
+							for _, a := range d.Accounts {
+								<div class="settings-row settings-row-stacked" data-fetch-account={ a.GUID }>
+									<div class="settings-row-label">
+										<div class="settings-row-title">{ a.Title }</div>
+										<div class="settings-row-desc">
+											{ a.Form.Host }, { t(ctx, "fetch.port") } { strconv.Itoa(int(a.Port)) }
+										</div>
+										if a.Status.Known {
+											if a.Status.Paused {
+												<div class="settings-row-desc"><span class="badge badge-disabled">{ t(ctx, "fetch.paused") }</span> { t(ctx, "fetch.err."+a.Status.PausedCode) }</div>
+											} else if a.Status.LastError != "" {
+												<div class="settings-row-desc"><span class="badge badge-disabled">{ t(ctx, "fetch.err."+a.Status.LastError) }</span></div>
+											}
+											if a.Status.LastSuccess != "" {
+												<div class="settings-row-desc">{ t(ctx, "fetch.lastSuccess") }: { a.Status.LastSuccess }</div>
+											}
+											if a.Status.NextRun != "" && !a.Status.Paused {
+												<div class="settings-row-desc">{ t(ctx, "fetch.nextRun") }: { a.Status.NextRun }</div>
+											}
+											<div class="settings-row-desc">{ t(ctx, "fetch.importedLast") }: { strconv.FormatUint(uint64(a.Status.ImportedLast), 10) }, { t(ctx, "fetch.importedTotal") }: { strconv.FormatInt(a.Status.ImportedTotal, 10) }</div>
+											if a.Status.TooLarge > 0 {
+												<div class="settings-row-desc">{ t(ctx, "fetch.tooLarge") }: { strconv.FormatUint(uint64(a.Status.TooLarge), 10) }</div>
+											}
+										}
+									</div>
+									<div class="u-flex-gap-4">
+										<a class="btn-outline" href={ templ.SafeURL("/settings/fetch/" + a.GUID) }>{ t(ctx, "fetch.edit") }</a>
+										if !d.Unavailable {
+											<form method="post" action={ templ.SafeURL("/settings/fetch/" + a.GUID + "/test") } class="u-m0">
+												<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+												<button type="submit" class="btn-outline">{ t(ctx, "fetch.test") }</button>
+											</form>
+											if a.Status.Known && a.Status.Paused && a.Status.PausedCode != "needs_password" {
+												<form method="post" action={ templ.SafeURL("/settings/fetch/" + a.GUID + "/resume") } class="u-m0">
+													<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+													<button type="submit" class="btn-outline">{ t(ctx, "fetch.resume") }</button>
+												</form>
+											}
+										}
+										<form method="post" action={ templ.SafeURL("/settings/fetch/" + a.GUID + "/delete") } class="u-m0" x-on:submit="confirmSubmit" data-confirm={ t(ctx, "fetch.deleteConfirm") }>
+											<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+											<button type="submit" class="btn-danger">{ t(ctx, "fetch.delete") }</button>
+										</form>
+									</div>
+								</div>
+							}
+						</div>
+					}
+					if !d.Unavailable {
+						if d.AtCap {
+							<p class="settings-section-desc">{ t(ctx, "fetch.limit") }</p>
+						} else {
+							<h3 class="settings-section-title">{ t(ctx, "fetch.add") }</h3>
+							<form method="post" action="/settings/fetch">
+								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+								@fetchFormFields(d.Form, false)
+								<div class="settings-save">
+									<button type="submit" class="btn-primary">{ t(ctx, "fetch.add") }</button>
+									<button type="submit" formaction="/settings/fetch/test" class="btn-outline">{ t(ctx, "fetch.test") }</button>
+								</div>
+							</form>
+						}
+					}
+				</div>
+			</div>
+		</main>
+	}
+}
+
+templ FetchEditPage(d FetchEditData) {
+	@LayoutWithContent(t(ctx, "fetch.title"), d.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("fetch")
+		</aside>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					@fetchNotice(d.Notice, d.NoticeLevel)
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "fetch.edit") }</h2>
+					<p class="settings-section-desc">{ t(ctx, "fetch.port") }: { strconv.Itoa(int(d.Port)) }</p>
+					<form method="post" action={ templ.SafeURL("/settings/fetch/" + d.GUID) }>
+						<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+						@fetchFormFields(d.Form, true)
+						<div class="settings-save">
+							<button type="submit" class="btn-primary">{ t(ctx, "fetch.save") }</button>
+							<a href="/settings/fetch" class="btn-cancel">{ t(ctx, "settings.cancel") }</a>
+						</div>
+					</form>
+				</div>
+			</div>
+		</main>
+	}
+}

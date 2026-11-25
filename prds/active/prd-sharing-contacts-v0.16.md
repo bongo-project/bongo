@@ -666,33 +666,42 @@ is unexported (line 166) and its port rules are for HTTP; only
 (`internal/security/derive.go:18`) exists; nothing uses AES-GCM yet.
 
 **Acceptance Criteria:**
-- [ ] `/settings/fetch` lets a user add up to 5 remote accounts (protocol,
+- [x] `/settings/fetch` lets a user add up to 5 remote accounts (protocol,
       host, port, user name, password, folder or INBOX, leave on server,
       interval of at least 15 minutes). Mutations carry CSRF.
-- [ ] Only implicit TLS (993, 995) or STARTTLS (143, 110) is allowed, with
+- [x] Only implicit TLS (993, 995) or STARTTLS (143, 110) is allowed, with
       certificate verification; plaintext is refused.
-- [ ] Remote hosts go through a raw-TCP dialer added to `internal/netx` that
+- [x] Remote hosts go through a raw-TCP dialer added to `internal/netx` that
       shares the safe client's address check (the same `Control` hook and
       `IsForbiddenAddr`): private, loopback and link-local addresses are
       refused after resolution, on every connection.
-- [ ] Passwords are encrypted at rest with AES-GCM under a separate
+- [x] Passwords are encrypted at rest with AES-GCM under a separate
       configured secret, `fetch.credentials_key` (decision 19), and never
       returned to the browser. Fetching does not start without the key.
       Each stored password records the id of the key that encrypted it, so
       the key can be rotated; a password under an unknown key makes the
       user re-enter it (shown as an error on the settings page). The key is
       never stored in the data directory or in backups.
-- [ ] A leader-only worker fetches due accounts. Fetched messages go through
+- [x] A leader-only worker fetches due accounts. Fetched messages go through
       the local inbound pipeline (rules, antispam, quota); seen messages are
       tracked by UID (IMAP) or UIDL (POP3) at
       `/user/{id}/fetchseen/{account_guid}/{hash}` so nothing is imported
       twice, and the remote copy is deleted only after the local write
       succeeds, when "leave on server" is off.
-- [ ] Per-message size is capped at the SMTP message limit; per run at most
+- [x] Per-message size is capped at the SMTP message limit; per run at most
       500 messages.
-- [ ] After 5 consecutive authentication failures the account is paused and
+- [x] After 5 consecutive authentication failures the account is paused and
       the user sees why; other errors back off.
-- [ ] No password, and no message content, appears in logs.
+- [x] No password, and no message content, appears in logs.
+
+**Done in 41.1** (2026-11-23, 41.1a foundations, 41.1b1 worker, 41.1b2
+page). The port is derived from protocol and security (993/143, 995/110),
+not typed (operator decision 3). Fetched mail failing DMARC `p=reject` goes
+to Junk, not the admin quarantine (operator decision D1). The dedicated
+security review (decision 7) found a process crash and a memory blow-up in
+the go-imap client (fixed in the fork, bongo-project/go-imap#1) plus
+fairness, rate-limit, storage and address-list gaps; all fixed, recheck
+verdict SHIP. User guide: `docs/fetching-mail.md`.
 
 ## 4. Functional Requirements
 
@@ -1038,6 +1047,19 @@ Found while building v0.16.0 (2026-11-15):
   - Every MailMeta write (flag and tag changes included) replaces the
     message's participant rows; a contact group card has no conversations
     link.
+- **Scheduled fetch, follow-ups** (41.1, 2026-11-23, from the security
+  review recheck, all LOW):
+  - Quoted strings are not capped in the go-imap client decoder (about 5x
+    allocation, bounded by the per-command budget); cap them client-side.
+  - A pass waits for every run it started, so one user's slow accounts
+    push newly due accounts of others to the next pass; use a persistent
+    pool.
+  - A label, interval or folder save bumps the generation and resets the
+    failure back-off and auth-failure count for free; carry them across
+    unless the password or a connection field changed.
+  - Leave-on-server accounts on mailboxes over 50,000 messages stop at the
+    seen-record cap; seen but not deleted messages are never retried; a
+    per-account target folder.
 - **Contact import and export, follow-ups** (40.4, 2026-11-22):
   - Localised (non-English) Outlook headers and two-digit-year Outlook
     dates; Google Labels as contact groups on CSV import, groups in CSV

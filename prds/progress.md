@@ -1971,3 +1971,16 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [workers] A run cap must fit inside the run deadline: pair a hard deadline with a soft one and record a timed-out run that made progress as backlog, not a connection failure.
 - PATTERN: [testing] "Must not appear in logs" needles must not match log metadata: "10." matches a timestamp's seconds.
 - PATTERN: [testing] Every test that constructs an Agent must call isolatePorts inline; the guard test scans function bodies.
+
+## 2026-11-23 — 41.1 part (b2): settings page, security review — 41.1 DONE
+- Worker (golang-pro, tests first): `/settings/fetch` (FetchHandler, templ page, nav, routes inside the CSRF group with /test before /{guid}), i18n en/de/es/fr, docs/fetching-mail.md, CLAUDE.md fetch rows and guardrail points 1, 9, 10.
+- Advisor review MINOR: es/fr strings had no diacritics, de spellings, docs wrong about keyless nodes, untested 30 s timeout and SetTester wiring, small budget-order points. All fixed; a blank-password save whose stored credential no longer opens is now 422.
+- Dedicated security review (decision 7): DO NOT SHIP. C1 a deeply nested BODYSTRUCTURE overflowed the go-imap client stack (unrecoverable crash, reachable from the test button over plaintext STARTTLS); H1 unrequested literals were buffered whole (64 MiB literal -> 523 MiB heap). Also M1 one user could hold all worker slots, L1 saves bypassed the rate limit and the auth pause, L2 seen records were free storage, L3 four address ranges missing. Operator approved fixing the fork and all four.
+- go-imap fork fix (bongo-project/go-imap#1): BODYSTRUCTURE depth cap 100, Options.MaxBufferedLiteralSize (64 KiB default); Bongo pins v2.0.0-20261123174617-de7456fb1989. Bongo: beginDownload(max) budget, one run per user, budgeted saves, 50 too-large skips per run, 50,000 seen records (seen_limit), four more forbidden prefixes, regression tests replayed against the old fork with -modfile (they fail there).
+- Rechecks: security SHIP; advisor MINOR (wrong seen_limit recovery advice in docs and all locales, fixed; prune-at-cap test added). LOW follow-ups in PRD 8.2.
+- Gate: test-all, lint, sec pass.
+- Operator: no session links in commits or PRs; all 217 PR bodies cleaned; history rewrite of bongo and go-imap prepared, waiting for branch protection to be lifted; re-pin go-imap in a follow-up after it.
+- PATTERN: [security] A protocol library's recursive parsers that open levels with a raw token instead of the list helper bypass the depth limit; audit every recursion, and run crash tests in a re-exec'd child process.
+- PATTERN: [i18n] Generated translations can lose diacritics; compare the share of non-ASCII values in new keys against the existing file.
+- PATTERN: [docs] Trace every recovery instruction in docs or UI text through the code before shipping it.
+- PATTERN: [git] git filter-repo strips commit signatures and normalises messages, changing hashes of untouched commits; to rewrite only affected commits, recreate them with hash-object and remap descendants.

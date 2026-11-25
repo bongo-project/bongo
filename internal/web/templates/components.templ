@@ -96,6 +96,7 @@ templ SettingsSidebar(active string) {
 				<li class="nav-item"><a href="/settings/folders" class={ templ.KV("active", active == "folders") } aria-current?={ active == "folders" }><span class="nav-icon" aria-hidden="true">@Icon("folder", "")</span><span>{ t(ctx, "nav.folderSharing") }</span></a></li>
 				<li class="nav-item"><a href="/settings/tags" class={ templ.KV("active", active == "tags") } aria-current?={ active == "tags" }><span class="nav-icon" aria-hidden="true">@Icon("tag", "")</span><span>{ t(ctx, "nav.tags") }</span></a></li>
 				<li class="nav-item"><a href="/settings/addresses" class={ templ.KV("active", active == "addresses") } aria-current?={ active == "addresses" }><span class="nav-icon" aria-hidden="true">@Icon("send", "")</span><span>{ t(ctx, "settings.sendAsAddresses") }</span></a></li>
+				<li class="nav-item"><a href="/settings/fetch" class={ templ.KV("active", active == "fetch") } aria-current?={ active == "fetch" }><span class="nav-icon" aria-hidden="true">@Icon("inbox", "")</span><span>{ t(ctx, "settings.fetch") }</span></a></li>
 				<li class="nav-item"><a href="/settings/security" class={ templ.KV("active", active == "security") } aria-current?={ active == "security" }><span class="nav-icon" aria-hidden="true">@Icon("shield", "")</span><span>{ t(ctx, "settings.security") }</span></a></li>
 			</ul>
 		</div>

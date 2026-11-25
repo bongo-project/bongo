@@ -115,6 +115,10 @@ var (
 	flashRuleCreated                 = flashKey{"rule-created"}
 	flashRuleUpdated                 = flashKey{"rule-updated"}
 	flashVacationSaved               = flashKey{"vacation-saved"}
+	flashFetchCreated                = flashKey{"fetch-created"}
+	flashFetchSaved                  = flashKey{"fetch-saved"}
+	flashFetchDeleted                = flashKey{"fetch-deleted"}
+	flashFetchResumed                = flashKey{"fetch-resumed"}
 	flashSendAsRequested             = flashKey{"send-as-requested"}
 	flashFwdCodeSent                 = flashKey{"forward-code-sent"}
 	flashFwdVerified                 = flashKey{"forward-verified"}
@@ -241,6 +245,10 @@ var (
 )
 
 var flashMessages = map[string]string{
+	flashFetchCreated.id:                "fetch.flashCreated",
+	flashFetchSaved.id:                  "fetch.flashSaved",
+	flashFetchDeleted.id:                "fetch.flashDeleted",
+	flashFetchResumed.id:                "fetch.flashResumed",
 	flashSent.id:                        "compose.flashSent",
 	flashSentLocalQueued.id:             "compose.flashSentLocalQueued",
 	flashQueued.id:                      "compose.flashQueued",

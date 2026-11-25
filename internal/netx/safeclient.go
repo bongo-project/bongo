@@ -74,6 +74,10 @@ var forbiddenPrefixes = mustPrefixes(
 	"::/96",           // IPv4-compatible (deprecated): ::7f00:1 is 127.0.0.1 to some stacks
 	"100::/64",        // discard-only (RFC 6666)
 	"2002::/16",       // 6to4: embeds an IPv4 address
+	"::ffff:0:0:0/96", // IPv4-translated (RFC 2765, SIIT): embeds an IPv4 address
+	"fec0::/10",       // site-local (deprecated), still routed inside some networks
+	"2001::/32",       // Teredo: embeds an IPv4 address
+	"192.88.99.0/24",  // deprecated 6to4 relay anycast
 )
 
 func mustPrefixes(s ...string) []netip.Prefix {

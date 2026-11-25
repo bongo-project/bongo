@@ -300,7 +300,7 @@ func (s *IMAPSession) Sizes(uids []uint32) (map[uint32]int64, error) {
 // the connection is closed, since draining an unbounded literal is not safe,
 // and the session is finished. fn's own error is returned unchanged.
 func (s *IMAPSession) FetchBody(uid uint32, max int64, fn func(io.Reader) error) (rerr error) {
-	s.bc.beginUnbounded()
+	s.bc.beginDownload(max)
 	defer s.bc.setBusy(false)
 	defer recoverProtocol(&rerr)
 

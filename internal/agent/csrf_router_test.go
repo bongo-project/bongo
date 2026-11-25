@@ -120,6 +120,12 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"calendar unshare", "/calendar/missing/unshare", func(string) url.Values {
 			return url.Values{"share_with": {"nobody"}}
 		}},
+		{"fetch create", "/settings/fetch", func(string) url.Values { return url.Values{"host": {"imap.example.com"}} }},
+		{"fetch test form", "/settings/fetch/test", func(string) url.Values { return url.Values{"host": {"imap.example.com"}} }},
+		{"fetch update", "/settings/fetch/" + strings.Repeat("a", 32), func(string) url.Values { return url.Values{} }},
+		{"fetch delete", "/settings/fetch/" + strings.Repeat("a", 32) + "/delete", func(string) url.Values { return url.Values{} }},
+		{"fetch test", "/settings/fetch/" + strings.Repeat("a", 32) + "/test", func(string) url.Values { return url.Values{} }},
+		{"fetch resume", "/settings/fetch/" + strings.Repeat("a", 32) + "/resume", func(string) url.Values { return url.Values{} }},
 		{"folder share", "/settings/folders/share", func(string) url.Values {
 			return url.Values{"folder": {"missing"}, "share_with": {"friend@example.com"}, "preset": {"read"}}
 		}},
