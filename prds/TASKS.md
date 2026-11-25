@@ -281,3 +281,16 @@ PRD: [prd-sharing-contacts-v0.16.md](active/prd-sharing-contacts-v0.16.md). Phas
 | ID | Task | Source | Status | Notes |
 |----|------|--------|--------|-------|
 | 41.1 | US-016: scheduled POP3 and IMAP fetch: settings page, TLS only, raw-TCP safe dialer in `internal/netx`, AES-GCM credentials, leader worker through the inbound pipeline, fetchseen records, limits, pause after 5 auth failures, nothing secret logged | [prd-sharing-contacts-v0.16.md](active/prd-sharing-contacts-v0.16.md) | DONE (2026-11-23) | Split: 41.1a foundations (#237), 41.1b1 leader worker (#238), 41.1b2 settings page. Own security review done (verdict SHIP after fixes, incl. go-imap fork bongo-project/go-imap#1). Follow-ups in PRD 8.2. |
+
+## Phase 42: v0.16 verification gaps
+
+Report in [verification.md](verification.md) (2026-11-25). Fixes only what verify found; the invariants sweep runs after this phase.
+
+| ID | Task | Source | Status | Notes |
+|----|------|--------|--------|-------|
+| 42.1 | US-003: prepare a QUOTA-only branch on bongo-project/go-imap, rebased on upstream v2, with its own tests, ready for the operator's upstream PR. Add fork tests: quoted and literal mailbox names for SETACL, DELETEACL, GETACL, LISTRIGHTS and MYRIGHTS; ACL commands answer BAD without `SessionACL` | [verification.md](verification.md) | TODO | Fork repo only. No PR is opened and no PR text is written: both stay with the operator. Any fork change to `bongo` needs a re-pin in go.mod. |
+| 42.2 | US-007: test that a cross-owner COPY and MOVE index the destination owner's MailMeta (SQLite and Bleve) from `NewMails` (`internal/cluster/fsm.go:507`) | [verification.md](verification.md) | TODO | Test must fail with the loop removed. |
+| 42.3 | US-004 and FR-authz negative tests: a seeded domain quota never shows in GETQUOTA or GETQUOTAROOT; expired-pending grants for compose autocomplete over shared books, the shared-mail sidebar and the contacts sidebar "Shared with me" | [verification.md](verification.md) | TODO | Tests only. |
+| 42.4 | FR-i18n: translate the new user-visible `http.Error` bodies in `internal/web/handlers` (about 48) in en, de, es and fr; keep the deliberate constant bodies (`folder not found`, `address book not found`, `invitation not found`) | [verification.md](verification.md) | TODO | Second grep pass required. Extend `TestKnownUserFacingStringsAreLocalized` or similar so a new literal fails. |
+| 42.5 | FR-mixedversion: list `/__group__/`, `/__mailbox_assignid__/`, `/__mailbox_xfer__/`, `/__user_usage__/` and the new `/__acl__/` kinds and `g:` grantees in `docs/multi-node-cluster-checklist.md`, with what breaks on a mixed cluster | [verification.md](verification.md) | TODO | Docs only. |
+| 42.6 | Success metric: test that a message to a 50-member distribution group delivers one copy to each member and stores one blob | [verification.md](verification.md) | TODO | Integration or SMTP package test. The manual Thunderbird and Apple Mail check stays with the operator. |
