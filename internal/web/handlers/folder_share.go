@@ -115,12 +115,12 @@ func (h *FolderShareHandler) SetNamespacePrefixes(otherUsers, shared string) {
 func (h *FolderShareHandler) ShowFolders(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 	if h.acl == nil || h.mailboxes == nil {
-		http.Error(w, "sharing is unavailable", http.StatusServiceUnavailable)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errUnavailable"), http.StatusServiceUnavailable)
 		return
 	}
 	mbs, err := h.mailboxes.ListMailboxes(userID)
 	if err != nil {
-		http.Error(w, "failed to load folders", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errLoadFolders"), http.StatusInternalServerError)
 		return
 	}
 	ns := h.namespaces.OrDefaults()
@@ -135,7 +135,7 @@ func (h *FolderShareHandler) ShowFolders(w http.ResponseWriter, r *http.Request)
 		if mb.Id != "" {
 			grants, err := h.acl.ListResourceGrants(store.ACLKindMailbox, userID, mb.Id)
 			if err != nil {
-				http.Error(w, "failed to load grants", http.StatusInternalServerError)
+				http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "shares.errLoadGrants"), http.StatusInternalServerError)
 				return
 			}
 			for _, g := range grants {

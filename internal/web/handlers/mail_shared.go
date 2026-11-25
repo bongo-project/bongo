@@ -13,6 +13,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -110,14 +111,14 @@ func (h *MailHandler) resolveSharedFolder(r *http.Request, need string) (sharedF
 	return f, 0
 }
 
-func writeSharedStatus(w http.ResponseWriter, status int) {
+func writeSharedStatus(w http.ResponseWriter, r *http.Request, status int) {
 	switch status {
 	case http.StatusNotFound:
 		http.Error(w, sharedNotFoundBody, status)
 	case http.StatusForbidden:
 		http.Error(w, sharedForbiddenBody, status)
 	default:
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errInternal"), http.StatusInternalServerError)
 	}
 }
 
@@ -125,7 +126,7 @@ func writeSharedStatus(w http.ResponseWriter, status int) {
 func (h *MailHandler) sharedFolderFor(w http.ResponseWriter, r *http.Request, need string) (sharedFolder, bool) {
 	f, status := h.resolveSharedFolder(r, need)
 	if status != 0 {
-		writeSharedStatus(w, status)
+		writeSharedStatus(w, r, status)
 		return sharedFolder{}, false
 	}
 	return f, true
@@ -148,14 +149,14 @@ func (h *MailHandler) sharedMessageFor(w http.ResponseWriter, r *http.Request, n
 
 // sharedMessage reads the message from the owner's folder and its metadata
 // from the owner's keyspace.
-func (h *MailHandler) sharedMessage(w http.ResponseWriter, f sharedFolder, uid uint32) (*sharedMsg, bool) {
+func (h *MailHandler) sharedMessage(w http.ResponseWriter, r *http.Request, f sharedFolder, uid uint32) (*sharedMsg, bool) {
 	msg, err := h.mailboxes.GetMessage(f.Owner, f.Name, uid)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		http.Error(w, sharedNotFoundBody, http.StatusNotFound)
 		return nil, false
 	case err != nil:
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errInternal"), http.StatusInternalServerError)
 		return nil, false
 	}
 	meta := h.loadMailMeta(f.Owner, msg.MailGuid)
@@ -186,7 +187,7 @@ func (h *MailHandler) SharedList(w http.ResponseWriter, r *http.Request) {
 	}
 	msgs, total, err := h.mailboxes.ListMessagesPaged(f.Owner, f.Name, (page-1)*perPage, perPage)
 	if err != nil {
-		http.Error(w, "Error loading messages", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errLoadMessages"), http.StatusInternalServerError)
 		return
 	}
 	summaries := make([]templates.MessageSummary, 0, len(msgs))
@@ -206,7 +207,7 @@ func (h *MailHandler) SharedList(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _, unseen, err := h.mailboxes.CountMessages(f.Owner, f.Name)
 	if err != nil {
-		http.Error(w, "Error loading messages", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errLoadMessages"), http.StatusInternalServerError)
 		return
 	}
 	totalPages := max((total+perPage-1)/perPage, 1)
@@ -230,7 +231,7 @@ func (h *MailHandler) SharedShow(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	sm, ok := h.sharedMessage(w, f, uid)
+	sm, ok := h.sharedMessage(w, r, f, uid)
 	if !ok {
 		return
 	}
@@ -278,10 +279,10 @@ func (h *MailHandler) SharedAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	idx, err := strconv.Atoi(chi.URLParam(r, "idx"))
 	if err != nil || idx < 0 {
-		http.Error(w, "Invalid attachment", http.StatusBadRequest)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errInvalidAttachment"), http.StatusBadRequest)
 		return
 	}
-	sm, ok := h.sharedMessage(w, f, uid)
+	sm, ok := h.sharedMessage(w, r, f, uid)
 	if !ok {
 		return
 	}
@@ -294,7 +295,7 @@ func (h *MailHandler) SharedExport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	sm, ok := h.sharedMessage(w, f, uid)
+	sm, ok := h.sharedMessage(w, r, f, uid)
 	if !ok {
 		return
 	}
@@ -307,7 +308,7 @@ func (h *MailHandler) SharedSource(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	sm, ok := h.sharedMessage(w, f, uid)
+	sm, ok := h.sharedMessage(w, r, f, uid)
 	if !ok {
 		return
 	}
@@ -360,14 +361,14 @@ func (h *MailHandler) SharedFlags(w http.ResponseWriter, r *http.Request) {
 	spec, known := sharedFlagRights[r.FormValue("flag")]
 	action := r.FormValue("action")
 	if !known || (action != "add" && action != "remove") {
-		http.Error(w, "Unknown flag or action", http.StatusBadRequest)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errUnknownFlagAction"), http.StatusBadRequest)
 		return
 	}
 	if !strings.ContainsRune(f.Rights, rune(spec.rights[0])) {
-		writeSharedStatus(w, http.StatusForbidden)
+		writeSharedStatus(w, r, http.StatusForbidden)
 		return
 	}
-	if _, ok := h.sharedMessage(w, f, uid); !ok {
+	if _, ok := h.sharedMessage(w, r, f, uid); !ok {
 		return
 	}
 	var err error
@@ -377,7 +378,7 @@ func (h *MailHandler) SharedFlags(w http.ResponseWriter, r *http.Request) {
 		err = h.mailboxes.RemoveFlags(f.Owner, f.Name, uid, spec.bit)
 	}
 	if err != nil {
-		http.Error(w, "Failed to update flag", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errUpdateFlag"), http.StatusInternalServerError)
 		return
 	}
 	userID, _ := middleware.UserFromContext(r.Context())
@@ -395,15 +396,15 @@ func (h *MailHandler) SharedDelete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, ok := h.sharedMessage(w, f, uid); !ok {
+	if _, ok := h.sharedMessage(w, r, f, uid); !ok {
 		return
 	}
 	if err := h.mailboxes.AddFlags(f.Owner, f.Name, uid, store.FlagDeleted); err != nil {
-		http.Error(w, "failed to mark message deleted", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errMarkDeleted"), http.StatusInternalServerError)
 		return
 	}
 	if _, err := h.mailboxes.Expunge(f.Owner, f.Name); err != nil {
-		http.Error(w, "failed to delete message", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "mail.errDeleteMessage"), http.StatusInternalServerError)
 		return
 	}
 	userID, _ := middleware.UserFromContext(r.Context())

@@ -413,3 +413,39 @@ func TestSharedBookContactShowsConversationsLink(t *testing.T) {
 		t.Error("the shared group card must not link to a conversations search")
 	}
 }
+
+// A pending grant older than the TTL is not listed in the sidebar and does not
+// open the book, before and after an accept attempt.
+func TestContactsSidebarSkipsExpiredPending(t *testing.T) {
+	e := newBookShareEnv(t)
+	e.seedSharedContacts(t)
+	page := func() string {
+		rr := httptest.NewRecorder()
+		e.ch.ListContacts(rr, withRoute(httptest.NewRequest(http.MethodGet, "/contacts", nil), "bob", nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d", rr.Code)
+		}
+		return rr.Body.String()
+	}
+	link := "/shared/contacts/alice/" + e.book
+	old := e.now.Add(-2 * time.Duration(store.PendingGrantTTL) * time.Second)
+	e.grant(t, store.ACLKindAddressBook, e.book, "bob", store.GrantLevelRead, "", store.GrantStatePending, old)
+	g, err := e.acl.GetGrant(store.ACLKindAddressBook, "alice", e.book, store.GranteeUser("bob"))
+	if err != nil || g == nil || g.State != store.GrantStatePending || !store.PendingGrantExpired(g, e.now.Unix()) {
+		t.Fatalf("seed grant = %v, %v; want an expired pending grant", g, err)
+	}
+	check := func(stage string) {
+		t.Helper()
+		if strings.Contains(page(), link) {
+			t.Errorf("%s: an expired pending share is listed in the sidebar", stage)
+		}
+		if rr := e.listShared("bob", "alice", e.book); rr.Code != http.StatusNotFound {
+			t.Errorf("%s: shared list status = %d, want 404", stage, rr.Code)
+		}
+	}
+	check("before accept")
+	if err := e.acl.AcceptGrant(store.ACLKindAddressBook, "alice", e.book, store.GranteeUser("bob"), e.now); err != nil {
+		t.Fatal(err)
+	}
+	check("after accept")
+}

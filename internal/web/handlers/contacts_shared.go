@@ -10,6 +10,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	"github.com/bongo-project/bongo/internal/web/templates"
@@ -75,7 +76,7 @@ func (h *ContactsHandler) resolveSharedBook(w http.ResponseWriter, r *http.Reque
 	level, err := h.acl.AddressBookLevel(owner, id, userID)
 	if err != nil {
 		slog.Warn("web: shared book: resolving access failed", "user", userID, "error", err)
-		http.Error(w, "failed to load address book", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errLoadBook"), http.StatusInternalServerError)
 		return nil, false
 	}
 	if level == "" {
@@ -89,7 +90,7 @@ func (h *ContactsHandler) resolveSharedBook(w http.ResponseWriter, r *http.Reque
 		return nil, false
 	case err != nil:
 		slog.Warn("web: shared book: reading book failed", "user", userID, "error", err)
-		http.Error(w, "failed to load address book", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errLoadBook"), http.StatusInternalServerError)
 		return nil, false
 	}
 	return &sharedBook{owner: owner, id: id, level: level, book: book}, true
@@ -160,12 +161,12 @@ func (h *ContactsHandler) SharedList(w http.ResponseWriter, r *http.Request) {
 	}
 	contacts, total, err := h.contacts.ListByBook(sb.owner, sb.id, (page-1)*contactsPerPage, contactsPerPage)
 	if err != nil {
-		http.Error(w, "failed to list contacts", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errList"), http.StatusInternalServerError)
 		return
 	}
 	view, err := h.sharedView(userID, sb)
 	if err != nil {
-		http.Error(w, "failed to load address books", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errLoadBooks"), http.StatusInternalServerError)
 		return
 	}
 	totalPages := max((total+contactsPerPage-1)/contactsPerPage, 1)
@@ -201,7 +202,7 @@ func (h *ContactsHandler) SharedShow(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := h.sharedView(userID, sb)
 	if err != nil {
-		http.Error(w, "failed to load address books", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errLoadBooks"), http.StatusInternalServerError)
 		return
 	}
 	data := templates.SharedContactPageData{
@@ -210,7 +211,7 @@ func (h *ContactsHandler) SharedShow(w http.ResponseWriter, r *http.Request) {
 	}
 	if store.IsContactGroup(contact) {
 		if data.Group, err = h.groupView(sb.owner, contact); err != nil {
-			http.Error(w, "failed to load contact group", http.StatusInternalServerError)
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errLoadGroup"), http.StatusInternalServerError)
 			return
 		}
 	}

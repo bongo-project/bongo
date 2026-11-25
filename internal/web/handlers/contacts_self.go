@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 )
@@ -30,7 +31,7 @@ func (h *ContactsHandler) MarkSelf(w http.ResponseWriter, r *http.Request) {
 		return
 	default:
 		slog.Error("marking own contact failed", "user_id", userID, "contact_id", guid, "error", err)
-		http.Error(w, "failed to save", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errSave"), http.StatusInternalServerError)
 		return
 	}
 	bookRedirect(w, r, withFlash("/contacts/"+url.PathEscape(guid), flashContactSelfSet))
@@ -44,7 +45,7 @@ func (h *ContactsHandler) ClearSelf(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.contacts.ClearSelfContact(userID, guid); err != nil {
 		slog.Error("clearing own contact failed", "user_id", userID, "contact_id", guid, "error", err)
-		http.Error(w, "failed to save", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "contacts.errSave"), http.StatusInternalServerError)
 		return
 	}
 	bookRedirect(w, r, withFlash("/contacts/"+url.PathEscape(guid), flashContactSelfCleared))

@@ -15,6 +15,7 @@ import (
 
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
+	"github.com/bongo-project/bongo/internal/i18n"
 	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 )
@@ -61,16 +62,16 @@ func (h *AdminHandler) ResetTwoFactor(w http.ResponseWriter, r *http.Request) {
 	// asks for the password and a code; this route must not skip that for a
 	// stolen admin session.
 	if adminID == userID {
-		http.Error(w, "turn off your own two-factor authentication on the Security page", http.StatusForbidden)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.err2faSelf"), http.StatusForbidden)
 		return
 	}
 	if !clearTwoFactor(profile) {
-		http.Error(w, "two-factor authentication is not on for this user", http.StatusConflict)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.err2faNotOnUser"), http.StatusConflict)
 		return
 	}
 	if err := h.saveProfile(userID, profile); err != nil {
 		h.logger.Error("admin: two-factor reset failed", "admin_id", adminID, "user_id", userID, "error", err)
-		http.Error(w, "failed to reset two-factor authentication", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.err2faResetFailed"), http.StatusInternalServerError)
 		return
 	}
 	h.logger.Info("admin: two-factor reset", "admin_id", adminID, "user_id", userID)
@@ -102,22 +103,22 @@ func (h *TwoFactorResetHandler) Reset(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errInvalidBody"), http.StatusBadRequest)
 		return
 	}
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if email == "" {
-		http.Error(w, "email is required", http.StatusBadRequest)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errEmailRequired"), http.StatusBadRequest)
 		return
 	}
 	userID, err := h.primaryAccount(email)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no account has that primary address", http.StatusNotFound)
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errNoAccount"), http.StatusNotFound)
 			return
 		}
 		h.logger.Error("control: two-factor reset lookup failed", "error", err)
-		http.Error(w, "lookup failed", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errLookupFailed"), http.StatusInternalServerError)
 		return
 	}
 
@@ -125,11 +126,11 @@ func (h *TwoFactorResetHandler) Reset(w http.ResponseWriter, r *http.Request) {
 	profile, err := h.loadProfile(userID)
 	if err != nil {
 		h.logger.Error("control: two-factor reset failed", "user_id", userID, "error", err)
-		http.Error(w, "failed to read account", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errReadAccount"), http.StatusInternalServerError)
 		return
 	}
 	if !clearTwoFactor(profile) {
-		http.Error(w, "two-factor authentication is not on for this account", http.StatusConflict)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.err2faNotOnAccount"), http.StatusConflict)
 		return
 	}
 	data, err := proto.Marshal(profile)
@@ -142,7 +143,7 @@ func (h *TwoFactorResetHandler) Reset(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		h.logger.Error("control: two-factor reset failed", "user_id", userID, "error", err)
-		http.Error(w, "failed to reset two-factor authentication", http.StatusInternalServerError)
+		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.err2faResetFailed"), http.StatusInternalServerError)
 		return
 	}
 	h.logger.Info("control: two-factor reset", "user_id", userID)

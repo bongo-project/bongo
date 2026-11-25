@@ -1984,3 +1984,10 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [i18n] Generated translations can lose diacritics; compare the share of non-ASCII values in new keys against the existing file.
 - PATTERN: [docs] Trace every recovery instruction in docs or UI text through the code before shipping it.
 - PATTERN: [git] git filter-repo strips commit signatures and normalises messages, changing hashes of untouched commits; to rewrite only affected commits, recreate them with hash-object and remap descendants.
+
+## 2026-11-26 Phase 42: v0.16 verification gaps (42.1-42.6)
+- All six done in one workflow batch (advisor plan, sonnet worker, opus review); every review PASS with nits only. Gate green (test-all, lint, sec).
+- 42.1 cherry-picked the QUOTA commit onto upstream/v2 as `upstream/quota` (72dbdd3), session trailer dropped; ACL wire tests in go-imap#2.
+- PATTERN: [testing] Extend an existing scenario test with the missing assertion rather than cloning it; wire the real index (newEnvWithGAL) so the assertion is not vacuous.
+- PATTERN: [i18n] Two refusal bodies that must be indistinguishable (absent vs out of scope) must stay byte-identical; translate both or neither.
+- PATTERN: [testing] A mutation can fail a test for the wrong reason (a fan-out cap answering 452 before the envelope check); read why the mutant failed.
