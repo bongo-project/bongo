@@ -1996,3 +1996,14 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - 64 guarantees broken with go test -overlay across 13 batches: all guarded, nothing to refute. Harness checked by hand first; two results re-run by hand afterwards.
 - PATTERN: [sweep] When a sweep comes back fully guarded, re-run a sample of breaks by hand before trusting it; an all-green report is exactly what a broken harness also produces.
 - PATTERN: [git] After `git apply --3way` the patch is staged; a later edit to the same file stays unstaged and is left out of a commit made with `git add` of other paths. Check `git diff` before committing.
+
+## 2026-11-26 Phase 43 batch 1: 43.1 (US-020), 43.2 (US-022), 43.4 (US-019)
+- One workflow batch, three isolated worktrees (haiku classify, opus plan review, sonnet worker tests-first, opus review; 43.4 also a security-auditor review). All three DONE, reviews MINOR, security MINOR.
+- 43.1: `sharedunsub` opt-out marker replaces `sharedsub`; store API kept so IMAP call sites did not change; leader pass `sharedsub-cleanup-v1`.
+- 43.2: one validator (`store.ValidateMailboxName`) for IMAP and web; protected folders; rename and delete leave subfolders alone.
+- 43.4: one-click POST only through the netx safe client after DKIM covering both headers; exactly one of each header; link fallback never fetched by the server.
+- Merge: CLAUDE.md conflicted between the three; rebuilt from HEAD plus each task's CLAUDE.md hunks. The gate caught two log prefixes (`folders`, `sharedsub-cleanup`) missing from `config.LogComponents` and `deploy/LOGGING.md`; fixed.
+- MINOR left for later: an unused `folders.manage` locale key; IMAP name-refusal tests check `NO` only, not the response code; no test on the import-target validator branch; createShared does not trim a trailing `/` as the personal path does; one-click failure fragment offers no fallback link; list action uses the newest message even when it is spam-tagged.
+- PATTERN: [workflow] Parallel workers each add to the log-component list without knowing the others' prefixes; the merged tree must run the config tests (TestLogComponentsMatchSource, TestLoggingDocListsComponents).
+- PATTERN: [workflow] When `git apply --3way` conflicts on a long single-line markdown bullet, rebuild the file from HEAD and apply each task's hunks for that file separately; fixing conflict markers by line offsets is error-prone.
+- PATTERN: [testing] A cross-user isolation test must give the other user the same mailbox and uid, or the 404 comes from a missing mailbox rather than from the isolation it means to prove.

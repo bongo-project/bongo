@@ -11,6 +11,25 @@ Shared folders appear to the grantee under the "other users" prefix
 Before anyone shares a folder, upgrade every node of a cluster. A node on an
 older binary cannot apply folder grants, so its replicas would diverge.
 
+## Seeing shared folders in your mail client
+
+A shared folder you can see (an accepted grant that includes the lookup right
+`l`, whether it names you, a group you belong to, or a shared inbox you are a
+member of) is subscribed automatically. It appears in `LSUB` and in
+`LIST (SUBSCRIBED)` with the `\Subscribed` attribute, so clients that show only
+subscribed folders, Thunderbird included, list it with no "subscribe" step.
+
+`UNSUBSCRIBE` hides one folder from those clients without changing your rights;
+plain `LIST` still shows it. The choice is kept per folder, so it survives the
+owner renaming the folder and a change of your rights, and `SUBSCRIBE` undoes
+it. It authorises nothing: what you see always comes from your current grants.
+If a folder is unshared and later shared with you again, it stays unsubscribed
+until you subscribe.
+
+Upgrade every node of a cluster together for this change: an older node still
+reads the previous subscription keys and would show every shared folder as
+unsubscribed.
+
 ## Commands
 
 The server advertises `ACL`. The commands are those of RFC 4314:
@@ -79,6 +98,26 @@ refusal reads the same, and sharing is limited per person and hour, one budget
 for the web calendar form, this form and IMAP. The page lists who has access,
 whether each grant is pending, accepted or expired, and lets you revoke it. A
 set of rights an IMAP client chose that matches no preset shows as "Custom".
+
+### Creating, renaming and deleting folders
+
+The same page makes, renames and deletes your own folders. "New folder" takes
+one name with `/` between levels (`Projects/2027`); the parent does not have to
+exist, as over IMAP. Names under the shared or other-users prefixes, the
+virtual view names (`unread`, `starred`, `all-mail`), empty names and names
+over 255 bytes are refused, over IMAP too.
+
+- **Rename** moves only that folder. Its subfolders keep their names (`A/x`
+  stays `A/x` when `A` becomes `B`), exactly as IMAP `RENAME` does here. The
+  folder keeps its sharing: grants follow it. A new name may sit under another
+  folder.
+- **Delete** asks first. The page shows the folder name and how many messages
+  go with it, and warns when the folder is shared, because deleting it ends
+  everyone's access. Subfolders are kept. If the grants cannot be removed at
+  once the folder is still deleted and the leftovers are cleaned up in the
+  background.
+- INBOX, Sent, Drafts, Trash, Junk and Archive cannot be renamed or deleted
+  from the web.
 
 ### Using a shared folder
 

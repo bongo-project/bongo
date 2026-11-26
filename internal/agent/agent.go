@@ -62,6 +62,7 @@ import (
 	bongosmtp "github.com/bongo-project/bongo/internal/smtp"
 	"github.com/bongo-project/bongo/internal/srs"
 	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/unsubscribe"
 	"github.com/bongo-project/bongo/internal/web/handlers"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -277,12 +278,13 @@ type Agent struct {
 	tasksMigrationCancel context.CancelFunc
 	// migrationApplier, if set, carries the tasks job's marker writes in
 	// place of Raft; tests only.
-	migrationApplier      store.RaftApplier
-	grantsMigrationCancel context.CancelFunc
-	previewCancel         context.CancelFunc
-	headerBackfillCancel  context.CancelFunc
-	addrVerifyCancel      context.CancelFunc
-	shareInviteCancel     context.CancelFunc
+	migrationApplier       store.RaftApplier
+	grantsMigrationCancel  context.CancelFunc
+	sharedSubCleanupCancel context.CancelFunc
+	previewCancel          context.CancelFunc
+	headerBackfillCancel   context.CancelFunc
+	addrVerifyCancel       context.CancelFunc
+	shareInviteCancel      context.CancelFunc
 
 	// pipelineDone is closed by startPipelineRunner once Runner.Run has
 	// returned. Nil when no runner was started.
@@ -1559,6 +1561,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			// 120 training actions per user per hour: each costs a Raft entry
 			// and up to ~2k Pebble reads in the FSM.
 			mailH.SetTrainLimiter(mail.NewRateLimiter(120))
+			// One-click unsubscribe: the safe client keeps its default options
+			// (no private networks) because the URL comes from any sender.
+			// The limiter is in memory, so the budget is per node.
+			mailH.SetUnsubscribe(netx.NewClient(netx.Options{}), func(ctx context.Context, raw []byte) bool {
+				return unsubscribe.VerifyOneClick(ctx, raw, nil)
+			}, mail.NewRateLimiter(handlers.UnsubscribesPerHour))
+			mailH.SetSpamThreshold(a.spamTagThreshold)
 			if a.Metadata != nil {
 				mailH.SetMetadata(a.Metadata)
 			}
@@ -1589,6 +1598,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/mail/view/to-me", mailH.ListToMe)
 			r.Get("/mail/view/from-contacts", mailH.ListFromContacts)
 			r.Get("/mail/view/lists", mailH.ListMailingLists)
+			// Before /mail/view/lists/{listID}: the newest message of a list
+			// supplies its unsubscribe control.
+			r.Get("/mail/view/lists/{listID}/unsubscribe", mailH.ListUnsubscribe)
 			r.Get("/mail/view/lists/{listID}", mailH.ListMailingList)
 			r.Post("/mail/view/to-me/bulk", mailH.BulkToMe)
 			r.Post("/mail/view/from-contacts/bulk", mailH.BulkFromContacts)
@@ -1616,6 +1628,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/mail/{mailbox}/{uid}/spam", mailH.MarkSpam)
 			r.Post("/mail/{mailbox}/{uid}/not-spam", mailH.MarkNotSpam)
 			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)
+			// One-click unsubscribe: CSRF protected, owner only, rate limited.
+			r.Post("/mail/{mailbox}/{uid}/unsubscribe", mailH.Unsubscribe)
 			r.Post("/mail/{mailbox}/{uid}/tags", mailH.UpdateMessageTags)
 			r.Get("/import", mailH.ImportPage)
 			r.With(refuseLowStorage).Post("/import", mailH.ImportMbox)
@@ -1660,6 +1674,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			// GET only: the list address is derived server side from the message.
 			r.Get("/compose/reply-list/{mailbox}/{uid}", composeH.ReplyList)
+			// GET only: the mailto: URI is read from the stored message.
+			composeH.SetSpamThreshold(a.spamTagThreshold)
+			r.Get("/compose/unsubscribe/{mailbox}/{uid}", composeH.UnsubscribeMailto)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
 			r.Get("/compose/draft/{mailbox}/{uid}", composeH.EditDraft)
 			r.With(refuseLowStorage).Post("/compose/send", composeH.Send)
@@ -1790,6 +1807,10 @@ func (a *Agent) Run(ctx context.Context) error {
 					folderH.SetGroups(a.Groups)
 				}
 				r.Get("/settings/folders", folderH.ShowFolders)
+				r.Post("/settings/folders/create", folderH.CreateFolder)
+				r.Post("/settings/folders/rename", folderH.RenameFolder)
+				r.Get("/settings/folders/delete", folderH.ShowDeleteFolder)
+				r.Post("/settings/folders/delete", folderH.DeleteFolder)
 				r.Post("/settings/folders/share", folderH.ShareFolder)
 				r.Post("/settings/folders/unshare", folderH.UnshareFolder)
 			}
@@ -2522,6 +2543,17 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.grantsMigrationCancel = grantsCancel
 		a.goWorker("calendar-grants", func() {
 			a.runCalendarGrantsMigration(grantsCtx, calendarGrantsInterval, a.IsLeader)
+		})
+	}
+
+	// The old per-user shared-folder subscription keys are no longer read
+	// (shared folders are subscribed by default); delete them once.
+	a.cleanupSharedSubPass(a.IsLeader)
+	if a.Raft != nil && a.Store != nil {
+		subCtx, subCancel := context.WithCancel(ctx)
+		a.sharedSubCleanupCancel = subCancel
+		a.goWorker("sharedsub-cleanup", func() {
+			a.runSharedSubCleanup(subCtx, sharedSubCleanupInterval, a.IsLeader)
 		})
 	}
 
@@ -5146,6 +5178,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	}
 	if a.grantsMigrationCancel != nil {
 		a.grantsMigrationCancel()
+	}
+	if a.sharedSubCleanupCancel != nil {
+		a.sharedSubCleanupCancel()
 	}
 	if a.previewCancel != nil {
 		a.previewCancel()

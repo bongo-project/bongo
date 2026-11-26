@@ -410,7 +410,7 @@ func (h *RulesHandler) parseRuleForm(r *http.Request) (*bongov1.FilterRule, stri
 var ruleActionTypes = []string{"move", "copy", "forward", "flag", "mark_read", "delete", "tag"}
 
 // maxMailboxName bounds a folder name taken from the form.
-const maxMailboxName = 255
+const maxMailboxName = store.MaxMailboxNameLen
 
 // parseRuleActions reads the editor's positional action fields. Each row posts
 // action_type, action_target, action_target_forward and action_tags exactly

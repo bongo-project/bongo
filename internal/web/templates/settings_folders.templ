@@ -3,6 +3,9 @@ package templates
 import (
 	"context"
 	"fmt"
+	"net/url"
+
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // Presets a folder share offers, and the rights each stands for. The web form
@@ -34,6 +37,21 @@ type FolderShareFolder struct {
 	Name   string
 	Grants []FolderShareGrant
 }
+
+// FolderDeletePageData is the data of the delete confirmation page.
+type FolderDeletePageData struct {
+	Name     string
+	Messages int
+	Shared   bool
+	Email    string
+}
+
+func folderDeleteBody(ctx context.Context, d FolderDeletePageData) string {
+	return fmt.Sprintf(t(ctx, "folders.deleteBody"), d.Name, d.Messages)
+}
+
+// FolderProtected reports whether the web may not rename or delete the folder.
+func FolderProtected(name string) bool { return store.ProtectedMailbox(name) }
 
 // FolderSharePageData is the data of the folder sharing settings page.
 type FolderSharePageData struct {
@@ -95,13 +113,46 @@ templ FolderSharePage(d FolderSharePageData) {
 					</div>
 					<p class="page-intro">{ t(ctx, "folders.intro") }</p>
 					<p class="u-text-muted u-font-088">{ t(ctx, "folders.presetHelp") }</p>
+					<div class="card" id="new-folder">
+						<div class="card-body">
+							<h3 class="settings-section-title">{ t(ctx, "folders.newTitle") }</h3>
+							<form method="post" action="/settings/folders/create" hx-post="/settings/folders/create" hx-target="find [data-form-status]" hx-swap="innerHTML">
+								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+								<div class="u-flex-gap-4">
+									<input type="text" name="name" maxlength="255" required aria-label={ t(ctx, "folders.newName") } placeholder={ t(ctx, "folders.newName") } class="form-input u-m0 u-flex-1"/>
+									<button type="submit" class="btn-primary">{ t(ctx, "folders.create") }</button>
+								</div>
+								<p class="u-text-muted u-font-088">{ t(ctx, "folders.newHint") }</p>
+								<div data-form-status aria-live="polite"></div>
+							</form>
+						</div>
+					</div>
 					if len(d.Folders) == 0 {
 						<p class="u-text-muted u-font-088">{ t(ctx, "folders.none") }</p>
 					}
+					<div id="folder-list">
 					for _, f := range d.Folders {
-						<div class="card" data-folder-card={ f.Name }>
+						<div class="card" data-folder-card={ f.Name } data-folder-path={ f.Name }>
 							<div class="card-body">
 								<h3 class="settings-section-title">{ f.Name }</h3>
+								if !FolderProtected(f.Name) {
+									<div class="u-flex-gap-4">
+										<details data-rename-for={ f.Name }>
+											<summary>{ t(ctx, "folders.rename") }</summary>
+											<form method="post" action="/settings/folders/rename" hx-post="/settings/folders/rename" hx-target="find [data-form-status]" hx-swap="innerHTML">
+												<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+												<input type="hidden" name="folder" value={ f.Name }/>
+												<div class="u-flex-gap-4">
+													<input type="text" name="new_name" value={ f.Name } maxlength="255" required aria-label={ t(ctx, "folders.renameTo") } class="form-input u-m0 u-flex-1"/>
+													<button type="submit" class="btn-primary">{ t(ctx, "folders.rename") }</button>
+												</div>
+												<p class="u-text-muted u-font-088">{ t(ctx, "folders.renameHint") }</p>
+												<div data-form-status aria-live="polite"></div>
+											</form>
+										</details>
+										<a href={ templ.SafeURL("/settings/folders/delete?folder=" + url.QueryEscape(f.Name)) } data-delete-for={ f.Name }>{ t(ctx, "folders.delete") }</a>
+									</div>
+								}
 								if len(f.Grants) == 0 {
 									<p class="u-text-muted u-font-088">{ t(ctx, "folders.notShared") }</p>
 								} else {
@@ -155,6 +206,38 @@ templ FolderSharePage(d FolderSharePageData) {
 							</div>
 						</div>
 					}
+					</div>
+				</div>
+			</div>
+		</main>
+	}
+}
+
+templ FolderDeletePage(d FolderDeletePageData) {
+	@LayoutWithContent(t(ctx, "folders.deleteTitle"), d.Email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@SettingsSidebar("folders")
+		</aside>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					<div class="page-head">
+						<h1>{ t(ctx, "folders.deleteTitle") }</h1>
+					</div>
+					<div class="card">
+						<div class="card-body">
+							<p data-delete-confirm>{ folderDeleteBody(ctx, d) }</p>
+							if d.Shared {
+								<p class="u-text-muted" data-delete-shared>{ t(ctx, "folders.deleteShared") }</p>
+							}
+							<form method="post" action="/settings/folders/delete">
+								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+								<input type="hidden" name="folder" value={ d.Name }/>
+								<button type="submit" class="btn-danger">{ t(ctx, "folders.deleteConfirm") }</button>
+								<a href="/settings/folders" class="btn-secondary">{ t(ctx, "folders.cancel") }</a>
+							</form>
+						</div>
+					</div>
 				</div>
 			</div>
 		</main>

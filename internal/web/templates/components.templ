@@ -36,15 +36,6 @@ func isSystemMailbox(name string) bool {
 	return false
 }
 
-func hasCustomFolders(mailboxes []MailboxInfo) bool {
-	for _, mb := range mailboxes {
-		if !isSystemMailbox(mb.Name) {
-			return true
-		}
-	}
-	return false
-}
-
 // AppSwitcher is the stable application-level navigation shared by every
 // authenticated sidebar. Contextual navigation scrolls above it, so a long
 // folder tree never hides the other Bongo applications.
@@ -228,21 +219,25 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				</li>
 			</ul>
 		</div>
-		if hasCustomFolders(mailboxes) {
-			<div class="sidebar-group" data-group="folders" x-data="sidebarSection('folders', true)">
-				<button type="button" class="sidebar-label sidebar-label-toggle" x-on:click="toggle()" x-bind:aria-expanded="open">
-					<span>{ t(ctx, "nav.folders") }</span>
-					<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}" aria-hidden="true">&#9660;</span>
-				</button>
-				<ul class="nav-list" x-bind:hidden="!open">
-					for _, mb := range mailboxes {
-						if !isSystemMailbox(mb.Name) {
-							@MailboxTreeNode(mb, selected)
-						}
+		<div class="sidebar-group" data-group="folders" x-data="sidebarSection('folders', true)">
+			<button type="button" class="sidebar-label sidebar-label-toggle" x-on:click="toggle()" x-bind:aria-expanded="open">
+				<span>{ t(ctx, "nav.folders") }</span>
+				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}" aria-hidden="true">&#9660;</span>
+			</button>
+			<ul class="nav-list" x-bind:hidden="!open">
+				for _, mb := range mailboxes {
+					if !isSystemMailbox(mb.Name) {
+						@MailboxTreeNode(mb, selected)
 					}
-				</ul>
-			</div>
-		}
+				}
+				<li class="nav-item">
+					<a href="/settings/folders#new-folder" data-folder-action="new"><span class="nav-icon" aria-hidden="true">@Icon("plus", "")</span><span>{ t(ctx, "nav.newFolder") }</span></a>
+				</li>
+				<li class="nav-item">
+					<a href="/settings/folders" data-folder-action="manage"><span class="nav-icon" aria-hidden="true">@Icon("folder", "")</span><span>{ t(ctx, "nav.manageFolders") }</span></a>
+				</li>
+			</ul>
+		</div>
 		@sharedSidebarSection()
 		if len(tags) > 0 {
 			<div class="sidebar-group" data-group="tags" x-data="sidebarSection('tags', true)">

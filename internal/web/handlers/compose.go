@@ -60,6 +60,9 @@ type ComposeHandler struct {
 	applier     store.RaftApplier
 	queueStore  *queue.QueueStore
 	rateLimiter *mail.RateLimiter
+	// spamTag returns the antispam tag threshold for the unsubscribe gate
+	// (compose_unsubscribe.go); nil means the default.
+	spamTag func() float64
 	// recipientRL is the per-user external-recipient budget shared with SMTP
 	// submission, keyed by user ID. nil = unlimited.
 	recipientRL *mail.RateLimiter

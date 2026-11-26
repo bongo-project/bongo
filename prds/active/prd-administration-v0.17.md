@@ -573,12 +573,12 @@ that refuses non-public addresses on every connection (used by calendar
 subscriptions).
 
 **Acceptance Criteria:**
-- [ ] The message view parses `List-Unsubscribe` (RFC 2369) and
+- [x] The message view parses `List-Unsubscribe` (RFC 2369) and
       `List-Unsubscribe-Post` (RFC 8058) from the stored message and shows
       an Unsubscribe button when the message offers a usable method. No new
       key or `MailMeta` field: the headers are read from the blob when the
       message is shown.
-- [ ] One-click (RFC 8058): offered when there is an `https` URI,
+- [x] One-click (RFC 8058): offered when there is an `https` URI,
       `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, and a valid DKIM
       signature on the stored message that covers both headers (RFC 8058
       section 4), verified when the user clicks. The server sends the POST
@@ -587,24 +587,24 @@ subscriptions).
       redirect, no cookies, a fixed User-Agent that names no user or
       domain, a short timeout and a small response cap. The response body
       is never rendered; the user sees success or a fixed failure message.
-- [ ] Without a valid signature or the `List-Unsubscribe-Post` header, an
+- [x] Without a valid signature or the `List-Unsubscribe-Post` header, an
       `https` URI is shown as a link the user opens in their own browser
       (`rel="noopener noreferrer"`), after a confirmation that names the
       host. The server never fetches it, because a GET can confirm the
       address to a tracker or act on the user's behalf.
-- [ ] A `mailto:` URI opens compose with the address, subject and body
+- [x] A `mailto:` URI opens compose with the address, subject and body
       from the URI; the user sends it, so the normal send path, limits and
       Sent copy apply. `http:` and every other scheme are ignored.
-- [ ] No button on messages in Junk or below it, or on messages the
+- [x] No button on messages in Junk or below it, or on messages the
       antispam stage tagged as spam: unsubscribing from spam confirms the
       address. The view says to report the message as spam instead.
-- [ ] The Mailing lists view offers the same action per list, using the
+- [x] The Mailing lists view offers the same action per list, using the
       newest message of that list.
-- [ ] The POST route is CSRF-protected, needs the session user to own the
+- [x] The POST route is CSRF-protected, needs the session user to own the
       message, and is rate limited per user (one budget, 429 with
       Retry-After). Logs carry the user id, message guid and URI host only:
       the full URI usually holds a token that identifies the subscriber.
-- [ ] Every new string is translated in all shipped locales.
+- [x] Every new string is translated in all shipped locales.
 
 ### US-020: Shared folders are subscribed by default
 **Source:** operator's v0.16 client check, 2026-11-26. **Size:** M.
@@ -621,24 +621,24 @@ accepted and never pass through `/shares`, so subscribing on accept alone
 would not cover them.
 
 **Acceptance Criteria:**
-- [ ] A shared folder on which the user holds an accepted grant with `l`
+- [x] A shared folder on which the user holds an accepted grant with `l`
       (direct, through a group, or as a shared-inbox member) is subscribed
       unless the user has unsubscribed from it: LSUB and `LIST (SUBSCRIBED)`
       return it, so Thunderbird shows it with default settings.
-- [ ] IMAP UNSUBSCRIBE records an opt-out marker keyed like today's key
+- [x] IMAP UNSUBSCRIBE records an opt-out marker keyed like today's key
       (owner and folder id, so a rename keeps it); SUBSCRIBE removes the
       marker. A plain Put or Delete, no new command. The marker authorises
       nothing; rights are re-checked on every listing as now.
-- [ ] The old `sharedsub` keys are no longer read. A leader pass deletes
+- [x] The old `sharedsub` keys are no longer read. A leader pass deletes
       them once (they only ever meant "subscribed", which is now the
       default). The key table in CLAUDE.md is updated.
-- [ ] A test with each grant path (direct accepted, group, shared inbox)
+- [x] A test with each grant path (direct accepted, group, shared inbox)
       shows the folder in LSUB without any SUBSCRIBE; a test shows an
       UNSUBSCRIBE surviving a folder rename and a grant change from Read to
       Write.
-- [ ] `docs/shared-folders.md` drops the "subscribe first" step and explains
+- [x] `docs/shared-folders.md` drops the "subscribe first" step and explains
       unsubscribing.
-- [ ] Mixed versions: an older node still reads `sharedsub` and lists an
+- [x] Mixed versions: an older node still reads `sharedsub` and lists an
       unmarked shared folder as unsubscribed, so a client balanced across
       nodes sees it appear and vanish. Upgrade every node together
       (single-node production is unaffected).
@@ -685,26 +685,26 @@ under `imap.other_users_prefix` and `imap.shared_prefix` and refuses to
 delete INBOX (`internal/imap/backend.go:466-560`).
 
 **Acceptance Criteria:**
-- [ ] Settings → Folders gains New folder, Rename and Delete for the user's
+- [x] Settings → Folders gains New folder, Rename and Delete for the user's
       own folders; the mail sidebar's folder menu links to the same actions.
-- [ ] The same name rules as IMAP CREATE and RENAME: no name under either
+- [x] The same name rules as IMAP CREATE and RENAME: no name under either
       sharing prefix, none of the virtual view names, no empty or
       over-long name, `/` as the hierarchy delimiter; one shared validation
       function used by both paths so they cannot drift.
-- [ ] The default folders (`store.DefaultMailboxes`: INBOX, Sent, Drafts,
+- [x] The default folders (`store.DefaultMailboxes`: INBOX, Sent, Drafts,
       Trash, Junk) and Archive cannot be renamed or deleted from the web.
-- [ ] Delete asks for confirmation naming the folder and its message count,
+- [x] Delete asks for confirmation naming the folder and its message count,
       and, when the folder is shared, warns that the people it is shared
       with lose access. Messages are removed with the folder (as IMAP
       DELETE); a grant-revoke failure is logged and the page still reports
       success, as IMAP does.
-- [ ] Rename states that subfolders keep their own names (the store does not
+- [x] Rename states that subfolders keep their own names (the store does not
       rename inferiors), or renames them in the same request if the design
       review prefers; either way the behaviour is documented and tested.
-- [ ] All three are POST routes behind CSRF and same-origin checks, scoped
+- [x] All three are POST routes behind CSRF and same-origin checks, scoped
       to the session user's own folders; a name that does not exist is a
       404. The folder list and the sidebar refresh after each action.
-- [ ] Every new string is translated in all shipped locales.
+- [x] Every new string is translated in all shipped locales.
 
 ### US-023: Search and collapsible subfolders in Settings → Folders
 **Source:** operator request, 2026-11-26. **Size:** S. **Needs:** US-022.

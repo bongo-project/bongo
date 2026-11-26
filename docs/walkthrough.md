@@ -116,7 +116,8 @@ is not idempotent: running it twice creates duplicate contacts and events.
   account menu.
 - **Sidebar:** three groups. **Mail** holds INBOX (with its subfolders), Sent,
   Drafts, Trash, Junk and Archive, plus the Unread, Starred and All Mail
-  views. **Folders** holds your own folders. **Workspace** links to Calendar,
+  views. **Folders** holds your own folders, with links to make a new one and to
+  manage them (Settings, Folders). **Workspace** links to Calendar,
   Contacts, Filter Rules, Settings and, for administrators, Admin.
 - On a narrow screen the sidebar collapses into a menu.
 

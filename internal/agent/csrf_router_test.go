@@ -78,6 +78,7 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		form func(n string) url.Values
 	}
 	calls := []call{
+		{"unsubscribe", "/mail/INBOX/1/unsubscribe", func(string) url.Values { return url.Values{} }},
 		{"archive", "/mail/INBOX/1/archive", func(string) url.Values { return url.Values{} }},
 		{"unarchive", "/mail/INBOX/1/unarchive", func(string) url.Values { return url.Values{} }},
 		{"bulk archive", "/mail/INBOX/bulk", func(string) url.Values {
@@ -128,6 +129,15 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"fetch resume", "/settings/fetch/" + strings.Repeat("a", 32) + "/resume", func(string) url.Values { return url.Values{} }},
 		{"folder share", "/settings/folders/share", func(string) url.Values {
 			return url.Values{"folder": {"missing"}, "share_with": {"friend@example.com"}, "preset": {"read"}}
+		}},
+		{"folder create", "/settings/folders/create", func(string) url.Values {
+			return url.Values{"name": {"Projects"}}
+		}},
+		{"folder rename", "/settings/folders/rename", func(string) url.Values {
+			return url.Values{"folder": {"missing"}, "new_name": {"other"}}
+		}},
+		{"folder delete", "/settings/folders/delete", func(string) url.Values {
+			return url.Values{"folder": {"missing"}}
 		}},
 		{"folder unshare", "/settings/folders/unshare", func(string) url.Values {
 			return url.Values{"folder": {"missing"}, "share_with": {"nobody"}}

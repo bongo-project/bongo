@@ -230,3 +230,13 @@ func (a *Agent) spamThresholdHolder() *pipeline.SpamThresholdHolder {
 	}
 	return a.spamThresholds
 }
+
+// spamTagThreshold is the current antispam tag threshold, read on every call
+// so a reload shows. It is 0 (the web handlers then use their default) when no
+// holder exists. The unsubscribe gate uses it to refuse spam-tagged mail.
+func (a *Agent) spamTagThreshold() float64 {
+	if a.spamThresholds == nil {
+		return 0
+	}
+	return float64(a.spamThresholds.Thresholds().Tag)
+}
