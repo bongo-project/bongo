@@ -96,4 +96,7 @@ sweep transcript, not repeated here.
   the out-of-scope body (no existence oracle).
 - FR-mixedversion: "Mixed-version clusters" section in `docs/multi-node-cluster-checklist.md`.
 - Success metric: `TestGroupFiftyMembersOneCopyEachOneBlob` (50 envelopes, one blob).
-- Still open: the manual Thunderbird and Apple Mail check (operator).
+- Still open: the manual Thunderbird and Apple Mail check (operator). A first attempt on
+  2026-11-26 against a local dev server failed before any connection: neither client opened
+  a TCP connection to 127.0.0.1 (self-signed certificate, loopback host). The operator
+  released v0.16.0 and will run the check against production after the deploy.
