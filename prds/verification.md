@@ -20,7 +20,7 @@ completeness critic. Raw verdicts: 12 agents, every key test run narrowly and pa
 | FR-i18n | PARTIAL: about 48 untranslated http.Error bodies |
 | FR-mixedversion | PARTIAL: cluster checklist not updated |
 | Success metric: 50-member group | PARTIAL: no test at that scale |
-| Success metric: manual client check | Not recorded |
+| Success metric: manual client check | PASS (production, 2026-11-26) |
 
 Stories: 14 PASS, 2 PARTIAL, 0 FAIL. Cross-cutting: 7 PASS, 3 PARTIAL.
 
@@ -96,7 +96,7 @@ sweep transcript, not repeated here.
   the out-of-scope body (no existence oracle).
 - FR-mixedversion: "Mixed-version clusters" section in `docs/multi-node-cluster-checklist.md`.
 - Success metric: `TestGroupFiftyMembersOneCopyEachOneBlob` (50 envelopes, one blob).
-- Still open: the manual Thunderbird and Apple Mail check (operator). A first attempt on
+- The manual Thunderbird and Apple Mail check (operator) passed in production; see below. A first attempt on
   2026-11-26 against a local dev server failed before any connection: neither client opened
   a TCP connection to 127.0.0.1 (self-signed certificate, loopback host). The operator
   released v0.16.0 and will run the check against production after the deploy.
@@ -105,7 +105,8 @@ sweep transcript, not repeated here.
   showed neither: with default settings it lists only subscribed folders, and a
   shared folder stays unsubscribed until the user subscribes. Fixed in v0.17 by
   US-020 (subscribed by default). Thunderbird's Subscribe dialog lists both under
-  Other Users. Thunderbird's Sharing and Quota tabs are not yet confirmed.
+  Other Users; once subscribed, its folder properties show the Sharing (ACL) and
+  Quota tabs with the expected values (operator confirmed). Success metric met.
 - Removing a member from a shared inbox and deleting the shared inbox worked by
   every route the operator tried. Apple Mail kept showing the deleted shared inbox
   until it was restarted (it caches the folder list; IMAP has no folder-list push
