@@ -1646,5 +1646,9 @@
   "mail.errUpdateFlag": "Échec de la mise à jour de l'indicateur.",
   "mail.errMarkDeleted": "Échec du marquage du message comme supprimé.",
   "mail.errDeleteMessage": "Échec de la suppression du message.",
-  "search.errParticipant": "Le participant doit être constitué de une à 20 adresses e-mail."
+  "search.errParticipant": "Le participant doit être constitué de une à 20 adresses e-mail.",
+
+  "share.suggestions": "Suggestions",
+  "share.suggestionCountOne": "%d suggestion disponible",
+  "share.suggestionCountMany": "%d suggestions disponibles"
 }

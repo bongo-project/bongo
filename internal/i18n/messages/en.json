@@ -1646,5 +1646,9 @@
   "mail.errUpdateFlag": "Failed to update flag",
   "mail.errMarkDeleted": "failed to mark message deleted",
   "mail.errDeleteMessage": "failed to delete message",
-  "search.errParticipant": "participant must be one to 20 email addresses"
+  "search.errParticipant": "participant must be one to 20 email addresses",
+
+  "share.suggestions": "Suggestions",
+  "share.suggestionCountOne": "%d suggestion available",
+  "share.suggestionCountMany": "%d suggestions available"
 }

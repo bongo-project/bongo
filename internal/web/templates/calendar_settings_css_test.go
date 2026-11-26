@@ -111,7 +111,7 @@ func TestCalendarSettingsUsesSharedStyles(t *testing.T) {
 		t.Fatal("no buttons rendered")
 	}
 	for _, b := range buttons {
-		if !regexp.MustCompile(`class="[^"]*(btn-primary|btn-secondary|btn-danger|tool-btn)`).MatchString(b) {
+		if !regexp.MustCompile(`class="[^"]*(btn-primary|btn-secondary|btn-danger|tool-btn|recipient-suggestion)`).MatchString(b) {
 			t.Errorf("button with no shared style: %s", b)
 		}
 	}

@@ -927,7 +927,7 @@ templ CalendarSettingsPage(cards []CalendarSettings, calendars []*bongov1.Calend
 										<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 										<div class="form-group">
 											<label class="form-label" for={ "share-addr-" + card.Calendar }>{ t(ctx, "calendar.shareAddress") }</label>
-											<input class="form-input" id={ "share-addr-" + card.Calendar } type="email" name="share_with" required autocomplete="off"/>
+											@shareAddressInput("share-addr-"+card.Calendar, "", "", "")
 										</div>
 										<div class="form-group">
 											<label class="form-label" for={ "share-level-" + card.Calendar }>{ t(ctx, "calendar.shareLevel") }</label>

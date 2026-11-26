@@ -1646,5 +1646,9 @@
   "mail.errUpdateFlag": "No se pudo actualizar la marca.",
   "mail.errMarkDeleted": "No se pudo marcar el mensaje como eliminado.",
   "mail.errDeleteMessage": "No se pudo eliminar el mensaje.",
-  "search.errParticipant": "El participante debe ser de una a 20 direcciones de correo electrónico."
+  "search.errParticipant": "El participante debe ser de una a 20 direcciones de correo electrónico.",
+
+  "share.suggestions": "Sugerencias",
+  "share.suggestionCountOne": "%d sugerencia disponible",
+  "share.suggestionCountMany": "%d sugerencias disponibles"
 }

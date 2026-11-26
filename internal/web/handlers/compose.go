@@ -1495,6 +1495,12 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.URL.Query().Get("share") == "1" {
+		userID, _ := middleware.UserFromContext(r.Context())
+		h.galShareResults(w, r, userID, callerEmail, q)
+		return
+	}
+
 	entries, err := h.search.SearchGAL(q, 10, callerEmail)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")

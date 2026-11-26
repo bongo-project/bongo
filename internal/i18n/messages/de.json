@@ -1646,5 +1646,9 @@
   "mail.errUpdateFlag": "Die Markierung konnte nicht aktualisiert werden.",
   "mail.errMarkDeleted": "Die Nachricht konnte nicht als gelöscht markiert werden.",
   "mail.errDeleteMessage": "Die Nachricht konnte nicht gelöscht werden.",
-  "search.errParticipant": "Der Teilnehmer muss aus einer bis 20 E-Mail-Adressen bestehen."
+  "search.errParticipant": "Der Teilnehmer muss aus einer bis 20 E-Mail-Adressen bestehen.",
+
+  "share.suggestions": "Vorschläge",
+  "share.suggestionCountOne": "%d Vorschlag verfügbar",
+  "share.suggestionCountMany": "%d Vorschläge verfügbar"
 }

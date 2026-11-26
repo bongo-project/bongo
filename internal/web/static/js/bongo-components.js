@@ -267,6 +267,10 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // galSeq numbers galAutocomplete instances so each gets unique listbox and
+  // option ids (the folders and calendar pages render one share form per item).
+  let galSeq = 0;
+
   // GAL autocomplete for compose form
   Alpine.data('galAutocomplete', () => ({
     query: '',
@@ -285,8 +289,15 @@ document.addEventListener('alpine:init', () => {
     // concerns only the entry being typed, the last one. Every other field is
     // a single value and keeps the whole-field behaviour.
     multi: false,
+    // share is set by data-gal-share: the share forms ask for people and
+    // distribution groups they can share with (share=1) and use the full
+    // combobox ARIA pattern. uid prefixes the listbox and option ids.
+    share: false,
+    uid: '',
 
     init() {
+      this.uid = 'gal-' + (++galSeq);
+      this.share = this.$el.hasAttribute('data-gal-share');
       this.multi = this.$el.hasAttribute('data-gal-multi');
       this.groups = this.$el.hasAttribute('data-gal-groups');
       // Read the server-rendered value attribute to seed the query.
@@ -311,6 +322,32 @@ document.addEventListener('alpine:init', () => {
 
     hide() {
       this.show = false;
+    },
+
+    // Combobox helpers for the share forms. Each is a single call so the
+    // Alpine CSP build can evaluate it in a binding.
+    listboxId() {
+      return this.uid + '-list';
+    },
+    optionId(i) {
+      return this.uid + '-opt-' + i;
+    },
+    activeId() {
+      return this.show && this.selected >= 0 ? this.optionId(this.selected) : '';
+    },
+    isSelected(i) {
+      return i === this.selected ? 'true' : 'false';
+    },
+    expanded() {
+      return this.show ? 'true' : 'false';
+    },
+    // countText is the polite live-region message: the number of suggestions,
+    // in the words the server rendered into data-gal-count-one and -many.
+    countText() {
+      if (!this.show || this.results.length === 0) return '';
+      const attr = this.results.length === 1 ? 'data-gal-count-one' : 'data-gal-count-many';
+      const tpl = this.$el.getAttribute(attr) || '';
+      return tpl.replace('%d', String(this.results.length));
     },
 
     // rowClass marks the suggestion the keyboard has reached.
@@ -352,7 +389,7 @@ document.addEventListener('alpine:init', () => {
       }
       this.loading = true;
       try {
-        const resp = await fetch('/api/gal?q=' + encodeURIComponent(term) + (this.groups ? '&contact_groups=1' : ''));
+        const resp = await fetch('/api/gal?q=' + encodeURIComponent(term) + (this.share ? '&share=1' : (this.groups ? '&contact_groups=1' : '')));
         if (resp.ok) {
           this.results = await resp.json();
           this.selected = -1;
@@ -479,6 +516,7 @@ document.addEventListener('alpine:init', () => {
         this.select(this.results[this.selected]);
       } else if (event.key === 'Escape') {
         this.show = false;
+        this.selected = -1;
       }
     }
   }));

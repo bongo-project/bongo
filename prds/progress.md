@@ -2007,3 +2007,10 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [workflow] Parallel workers each add to the log-component list without knowing the others' prefixes; the merged tree must run the config tests (TestLogComponentsMatchSource, TestLoggingDocListsComponents).
 - PATTERN: [workflow] When `git apply --3way` conflicts on a long single-line markdown bullet, rebuild the file from HEAD and apply each task's hunks for that file separately; fixing conflict markers by line offsets is error-prone.
 - PATTERN: [testing] A cross-user isolation test must give the other user the same mailbox and uid, or the 404 comes from a missing mailbox rather than from the isolation it means to prove.
+
+## 2026-11-26 Phase 43: 43.3 (US-021) share-form suggestions
+- Workflow batch of one (frontend-developer worker). Review MINOR. The worktree was based on main, not the phase branch: integrated with `git apply --3way` excluding `*_templ.go`, then `templ generate`; no conflicts.
+- Orchestrator fixes: the share-rule group check skipped itself when the group store lacked `GetGroup` (fail open); now no groups are offered then. New `TestGALShareModeGroupRuleFailsClosed`, checked by overlay mutation. Test addresses split so each exclusion is asserted on its own.
+- PRD 8.2: `/api/gal` has no rate limiter.
+- PATTERN: [workflow] Workflow worktrees start from the default branch, not the current branch: integrate with --3way and regenerate generated files instead of patching them.
+- PATTERN: [security] A second check behind a type assertion (`x, _ := h.dep.(iface)`) fails open when the assertion fails; break or refuse instead, and test with a double that lacks the interface.

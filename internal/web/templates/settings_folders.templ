@@ -189,7 +189,7 @@ templ FolderSharePage(d FolderSharePageData) {
 									<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 									<input type="hidden" name="folder" value={ f.Name }/>
 									<div class="u-flex-gap-4">
-										<input type="email" name="share_with" placeholder={ t(ctx, "folders.shareWithPlaceholder") } aria-label={ t(ctx, "folders.shareWith") } required class="form-input u-m0 u-flex-1"/>
+										@shareAddressInput("", t(ctx, "folders.shareWithPlaceholder"), t(ctx, "folders.shareWith"), "u-flex-1")
 										<select name="preset" class="form-input u-m0" aria-label={ t(ctx, "folders.access") }>
 											<option value="read">{ t(ctx, "folders.presetRead") }</option>
 											<option value="write">{ t(ctx, "folders.presetWrite") }</option>

@@ -653,23 +653,23 @@ forms take a typed address only. Compose autocomplete (`GET /api/gal`,
 and adds the caller's contacts and same-domain distribution groups.
 
 **Acceptance Criteria:**
-- [ ] Each share form suggests matches as the user types, from people and
+- [x] Each share form suggests matches as the user types, from people and
       distribution groups on the user's own primary domain, at most 10.
       The same domain scoping as compose, so no form can enumerate another
       domain's users.
-- [ ] Only shareable principals are offered: enabled people (no resources,
+- [x] Only shareable principals are offered: enabled people (no resources,
       no shared inboxes, not the user) and groups `shareableGroupOf` would
       accept. Personal contacts and contact groups are not offered, since a
       share needs a local account.
-- [ ] Typing a full address still works for a user on another hosted
+- [x] Typing a full address still works for a user on another hosted
       domain; the refusal rules and the uniform refusal message are
       unchanged.
-- [ ] Either a `share=1` mode on `/api/gal` or a small endpoint sharing its
+- [x] Either a `share=1` mode on `/api/gal` or a small endpoint sharing its
       search code; it is GET only, behind the session, rate limited like
       compose autocomplete.
-- [ ] The suggestion list is keyboard and screen-reader usable (combobox
+- [x] The suggestion list is keyboard and screen-reader usable (combobox
       pattern), as the compose recipient field is.
-- [ ] Every new string is translated in all shipped locales.
+- [x] Every new string is translated in all shipped locales.
 
 ### US-022: Create, rename and delete folders in the web UI
 **Source:** operator's v0.16 client check, 2026-11-26. **Size:** M.
@@ -939,6 +939,14 @@ Found in CI on 2026-11-26 (PR #252, a docs-only change):
   still fsync in the background after its last `Set`, so the test blames the
   plain store for it. Wait for the first store to go quiet (or close it)
   before taking the baseline.
+
+Found while building US-021 (2026-11-26):
+
+- `GET /api/gal` (compose autocomplete) has no rate limiter (a plain
+  `r.Get` in `agent.go`), so US-021's "rate limited like compose
+  autocomplete" adds none; share mode returns a subset of what compose
+  already returns to the same caller. A per-user limiter on `/api/gal`,
+  for compose and share mode alike, is a candidate.
 
 Release size: 23 stories (4 S, 16 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:
