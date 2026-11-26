@@ -36,13 +36,13 @@ change under review introduced it.
 | E | Directory | US-014 to US-015 |
 | F | Certificates for users and S/MIME | US-016 to US-017 |
 | G | Translation | US-018 |
-| H | Mail and sharing for users | US-019 to US-022 |
+| H | Mail and sharing for users | US-019 to US-023 |
 
 Imported on 2026-11-26: v0.17.0 is TASKS Phases 43 (H), 44 (A), 45 (B), 46 (C)
 and 47 (G); Phases D, E and F are imported for v0.18.0. Dependencies: US-002 before
 US-001 can be tested end to end (US-001 can be built against a fake
 endpoint); US-004 needs US-003; US-010 needs US-005 for the greylisting page;
-US-015 needs US-014; US-013 needs US-012.
+US-015 needs US-014; US-013 needs US-012; US-023 needs US-022.
 
 ### Size key
 
@@ -706,9 +706,41 @@ delete INBOX (`internal/imap/backend.go:466-560`).
       404. The folder list and the sidebar refresh after each action.
 - [ ] Every new string is translated in all shipped locales.
 
+### US-023: Search and collapsible subfolders in Settings → Folders
+**Source:** operator request, 2026-11-26. **Size:** S. **Needs:** US-022.
+
+**What exists** (checked on `main` at `dbf122b`): Settings → Folders
+(`settings_folders.templ`) renders one card per own folder, flat, in list
+order, with no filter. A user with many folders gets a very long page. The
+mail sidebar already collapses subfolders (`data-folder-toggle` in
+`components.templ`, handled in `bongo-pages.js`); the settings page has
+nothing like it.
+
+**Acceptance Criteria:**
+- [ ] A search box at the top filters the folder list as the user types:
+      a case-insensitive substring match on the full folder path, done in
+      the browser over the rendered list (no new route, no server search).
+      A folder matches when its path matches; its parent folders stay
+      visible so the match keeps its place in the tree.
+- [ ] Folders are shown as a tree on `/`: a folder with subfolders has a
+      toggle that shows or hides them, using the sidebar's pattern
+      (button with `aria-expanded` and `aria-controls`). Top-level folders
+      start expanded and deeper levels collapsed; while a search is active,
+      every branch with a match is expanded.
+- [ ] A subfolder whose parent does not exist (IMAP allows `A/x` without
+      `A`) is still shown, under a parent row that has no actions.
+- [ ] "No folders match" shows when the search finds nothing; clearing the
+      search restores the previous expanded state.
+- [ ] Works without JavaScript errors after an htmx swap of the list (a
+      create, rename or delete from US-022 re-renders it), with Alpine or
+      the existing delegated handler, not a new framework.
+- [ ] Keyboard and screen-reader usable: the search box has a label, the
+      result count is announced in a polite live region.
+- [ ] Every new string is translated in all shipped locales.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-22 are the acceptance criteria of US-001 to US-022. In every
+FR-1 to FR-23 are the acceptance criteria of US-001 to US-023. In every
 story:
 
 - Every cookie-authenticated mutation is behind CSRF and same-origin checks;
@@ -868,6 +900,9 @@ by govulncheck.
    (US-021). Both in v0.17.0, Phase H.
 13. (operator, 2026-11-26) The web UI gains folder create, rename and delete
    (US-022, v0.17.0, Phase H); until now only mail clients could.
+14. (operator, 2026-11-26) Settings → Folders gains a search box and
+   collapsible subfolders (US-023, v0.17.0, Phase H), so the page stays
+   usable for people with many folders.
 
 ### 8.2 Candidates for the next release
 
@@ -905,12 +940,12 @@ Found in CI on 2026-11-26 (PR #252, a docs-only change):
   plain store for it. Wait for the first store to go quiet (or close it)
   before taking the baseline.
 
-Release size: 22 stories (3 S, 16 M, 3 L). That is above the ~15-story guide
+Release size: 23 stories (4 S, 16 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:
 
 | Release | Stories | Why |
 |---------|---------|-----|
-| v0.17.0 | Phases A, B, C, G, H (US-001 to US-011, US-018 to US-022) | Operations, mail policy, web settings, the translation, one-click unsubscribe, two sharing fixes and web folder management: independent of each other's data model. |
+| v0.17.0 | Phases A, B, C, G, H (US-001 to US-011, US-018 to US-023) | Operations, mail policy, web settings, the translation, one-click unsubscribe, two sharing fixes and web folder management with search: independent of each other's data model. |
 | v0.18.0 | Phases D, E, F (US-012 to US-017) | Backup, LDAP and certificates for users: each is a new trust or data path and benefits from its own review. |
 
 US-001 cannot ship enabled until open question 1 is answered; if the domain
