@@ -896,6 +896,15 @@ Found in CI on 2026-11-26 (PR #250, a docs-only change):
   start-up a deadline that fails the test with a goroutine dump, then find
   the cause.
 
+Found in CI on 2026-11-26 (PR #252, a docs-only change):
+
+- `TestPebbleMetricsAreOptIn` (`internal/store/pebble_metrics_test.go:156`)
+  failed once: the WAL fsync count moved from 9 to 10 between scrapes. The
+  count belongs to the metrics-enabled store the test opened first, which can
+  still fsync in the background after its last `Set`, so the test blames the
+  plain store for it. Wait for the first store to go quiet (or close it)
+  before taking the baseline.
+
 Release size: 22 stories (3 S, 16 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:
 
