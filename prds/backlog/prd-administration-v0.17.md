@@ -38,7 +38,8 @@ change under review introduced it.
 | G | Translation | US-018 |
 | H | Mail and sharing for users | US-019 to US-022 |
 
-TASKS rows are assigned by `norman import`. Dependencies: US-002 before
+Imported on 2026-11-26: v0.17.0 is TASKS Phases 43 (H), 44 (A), 45 (B), 46 (C)
+and 47 (G); Phases D, E and F are imported for v0.18.0. Dependencies: US-002 before
 US-001 can be tested end to end (US-001 can be built against a fake
 endpoint); US-004 needs US-003; US-010 needs US-005 for the greylisting page;
 US-015 needs US-014; US-013 needs US-012.
@@ -894,6 +895,15 @@ Found in CI on 2026-11-26 (PR #250, a docs-only change):
   starting the wiring agent (`runWiringAgent`), not in the request. Give the
   start-up a deadline that fails the test with a goroutine dump, then find
   the cause.
+
+Found in CI on 2026-11-26 (PR #252, a docs-only change):
+
+- `TestPebbleMetricsAreOptIn` (`internal/store/pebble_metrics_test.go:156`)
+  failed once: the WAL fsync count moved from 9 to 10 between scrapes. The
+  count belongs to the metrics-enabled store the test opened first, which can
+  still fsync in the background after its last `Set`, so the test blames the
+  plain store for it. Wait for the first store to go quiet (or close it)
+  before taking the baseline.
 
 Release size: 22 stories (3 S, 16 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:
