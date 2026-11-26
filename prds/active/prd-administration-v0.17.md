@@ -717,26 +717,26 @@ mail sidebar already collapses subfolders (`data-folder-toggle` in
 nothing like it.
 
 **Acceptance Criteria:**
-- [ ] A search box at the top filters the folder list as the user types:
+- [x] A search box at the top filters the folder list as the user types:
       a case-insensitive substring match on the full folder path, done in
       the browser over the rendered list (no new route, no server search).
       A folder matches when its path matches; its parent folders stay
       visible so the match keeps its place in the tree.
-- [ ] Folders are shown as a tree on `/`: a folder with subfolders has a
+- [x] Folders are shown as a tree on `/`: a folder with subfolders has a
       toggle that shows or hides them, using the sidebar's pattern
       (button with `aria-expanded` and `aria-controls`). Top-level folders
       start expanded and deeper levels collapsed; while a search is active,
       every branch with a match is expanded.
-- [ ] A subfolder whose parent does not exist (IMAP allows `A/x` without
+- [x] A subfolder whose parent does not exist (IMAP allows `A/x` without
       `A`) is still shown, under a parent row that has no actions.
-- [ ] "No folders match" shows when the search finds nothing; clearing the
+- [x] "No folders match" shows when the search finds nothing; clearing the
       search restores the previous expanded state.
-- [ ] Works without JavaScript errors after an htmx swap of the list (a
+- [x] Works without JavaScript errors after an htmx swap of the list (a
       create, rename or delete from US-022 re-renders it), with Alpine or
       the existing delegated handler, not a new framework.
-- [ ] Keyboard and screen-reader usable: the search box has a label, the
+- [x] Keyboard and screen-reader usable: the search box has a label, the
       result count is announced in a polite live region.
-- [ ] Every new string is translated in all shipped locales.
+- [x] Every new string is translated in all shipped locales.
 
 ## 4. Functional Requirements
 

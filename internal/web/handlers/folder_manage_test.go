@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -387,4 +388,114 @@ func TestFoldersPageHidesActionsOnProtected(t *testing.T) {
 			t.Errorf("page misses %s", attr)
 		}
 	}
+}
+
+func TestFoldersPageRendersTree(t *testing.T) {
+	e := newFolderShareEnv(t)
+	for _, n := range []string{"A/x/y", "B", "C/z"} {
+		e.mkFolder(t, n)
+	}
+	body := e.page("alice")
+
+	ids := regexp.MustCompile(`\sid="([^"]+)"`).FindAllStringSubmatch(body, -1)
+	seen := map[string]bool{}
+	for _, m := range ids {
+		if seen[m[1]] {
+			t.Errorf("duplicate id %q", m[1])
+		}
+		seen[m[1]] = true
+	}
+	for _, want := range []string{
+		`<label for="folder-search"`, `id="folder-search"`, `type="search"`,
+		`aria-live="polite"`, `role="status"`, `data-folder-empty`,
+		`data-count-one="`, `data-count-many="`, `x-data="folderTree"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page misses %s", want)
+		}
+	}
+
+	// A is expanded and controls an existing list; A/x is collapsed.
+	toggle := func(path string) (expanded, controls string) {
+		li := strings.Index(body, `data-folder-path="`+path+`" data-folder-match=`)
+		if li < 0 {
+			t.Fatalf("no node for %s", path)
+		}
+		rest := body[li:]
+		m := regexp.MustCompile(`data-folder-tree-toggle aria-expanded="(true|false)" aria-controls="([^"]+)"`).FindStringSubmatch(rest)
+		if m == nil {
+			t.Fatalf("%s has no toggle", path)
+		}
+		return m[1], m[2]
+	}
+	exp, ctl := toggle("A")
+	if exp != "true" {
+		t.Errorf("A aria-expanded = %s", exp)
+	}
+	if !seen[ctl] {
+		t.Errorf("A aria-controls %q matches no id", ctl)
+	}
+	if strings.Contains(body, `<ul id="`+ctl+`" class="folder-tree" hidden`) {
+		t.Error("A children list is hidden")
+	}
+	exp, ctl = toggle("A/x")
+	if exp != "false" || !strings.Contains(body, `<ul id="`+ctl+`" class="folder-tree" hidden`) {
+		t.Errorf("A/x expanded=%s, children hidden=%v", exp, strings.Contains(body, `id="`+ctl+`" class="folder-tree" hidden`))
+	}
+	aLI := folderNodeHTML(t, body, "A")
+	aUL := `<ul id="` + ctl0(t, toggle) + `"`
+	if i := strings.Index(aLI, aUL); i < 0 || !strings.Contains(aLI[i:], `data-folder-path="A/x"`) {
+		t.Error("A/x is not inside A's children list")
+	}
+	cLI := folderNodeHTML(t, body, "C")
+	if !strings.Contains(cLI[:strings.Index(cLI, "<ul")], "data-folder-placeholder") {
+		t.Error("C row is not a placeholder")
+	}
+
+	// Placeholders carry no actions; real orphans keep them.
+	for _, p := range []string{"C", "A/x"} {
+		for _, bad := range []string{`data-rename-for="` + p + `"`, `data-delete-for="` + p + `"`, `name="folder" value="` + p + `"`} {
+			if strings.Contains(body, bad) {
+				t.Errorf("placeholder %s has %s", p, bad)
+			}
+		}
+	}
+	for _, good := range []string{`data-rename-for="C/z"`, `data-delete-for="C/z"`, `action="/settings/folders/share"`, `name="folder" value="C/z"`} {
+		if !strings.Contains(body, good) {
+			t.Errorf("C/z misses %s", good)
+		}
+	}
+}
+
+func ctl0(t *testing.T, toggle func(string) (string, string)) string {
+	t.Helper()
+	_, c := toggle("A")
+	return c
+}
+
+// folderNodeHTML returns the whole <li data-folder-node> element for path.
+func folderNodeHTML(t *testing.T, body, path string) string {
+	t.Helper()
+	i := strings.Index(body, `<li data-folder-node data-folder-path="`+path+`"`)
+	if i < 0 {
+		t.Fatalf("no li for %s", path)
+	}
+	depth := 0
+	for j := i; j < len(body); {
+		switch {
+		case strings.HasPrefix(body[j:], "<li"):
+			depth++
+			j += 3
+		case strings.HasPrefix(body[j:], "</li>"):
+			depth--
+			j += 5
+			if depth == 0 {
+				return body[i:j]
+			}
+		default:
+			j++
+		}
+	}
+	t.Fatalf("unterminated li for %s", path)
+	return ""
 }

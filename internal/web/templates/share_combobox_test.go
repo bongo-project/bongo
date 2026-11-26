@@ -32,6 +32,10 @@ func TestShareFormsRenderCombobox(t *testing.T) {
 			out: renderShare(t, FolderSharePage(FolderSharePageData{
 				Email:   "me@example.com",
 				Folders: []FolderShareFolder{{Name: "Projects"}, {Name: "Archive"}},
+				Tree: []FolderTreeNode{
+					{Path: "Archive", Label: "Archive", Folder: &FolderShareFolder{Name: "Archive"}, Expanded: true},
+					{Path: "Projects", Label: "Projects", Folder: &FolderShareFolder{Name: "Projects"}, Expanded: true},
+				},
 			})),
 			want: []string{`action="/settings/folders/share"`, `name="folder"`, `aria-label=`},
 		},

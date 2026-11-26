@@ -267,6 +267,92 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // folderTree drives Settings > Folders: the search box and the collapsible
+  // subfolder tree. The server renders the tree and the starting state;
+  // this only toggles hidden and aria-expanded. snapshot keeps the expanded
+  // state from before a search so clearing it restores that state.
+  Alpine.data('folderTree', () => ({
+    status: '',
+    snapshot: null,
+
+    toggle(e) {
+      const btn = e.currentTarget;
+      this.setOpen(btn, btn.getAttribute('aria-expanded') !== 'true');
+    },
+
+    setOpen(btn, open) {
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      const ul = document.getElementById(btn.getAttribute('aria-controls'));
+      if (ul) ul.hidden = !open;
+    },
+
+    toggles() {
+      return Array.from(this.$root.querySelectorAll('[data-folder-tree-toggle]'));
+    },
+
+    // visit shows a node when it matches or has a visible descendant, expands
+    // a branch with a visible child, and returns the number of real matches
+    // in the subtree through the counter object.
+    visit(li, q, counter) {
+      const path = (li.getAttribute('data-folder-path') || '').toLowerCase();
+      const own = li.getAttribute('data-folder-match') === '1' && path.includes(q);
+      if (own) counter.n++;
+      let childVisible = false;
+      const ul = li.querySelector(':scope > ul');
+      if (ul) {
+        for (const c of ul.querySelectorAll(':scope > li[data-folder-node]')) {
+          if (this.visit(c, q, counter)) childVisible = true;
+        }
+      }
+      const show = own || childVisible;
+      li.hidden = !show;
+      const btn = li.querySelector(':scope > [data-folder-tree-toggle]');
+      if (btn) this.setOpen(btn, show && childVisible);
+      return show;
+    },
+
+    filter() {
+      const q = this.$refs.q.value.trim().toLowerCase();
+      const empty = this.$root.querySelector('[data-folder-empty]');
+      if (q === '') {
+        this.restore();
+        return;
+      }
+      if (this.snapshot === null) {
+        this.snapshot = {};
+        for (const b of this.toggles()) {
+          this.snapshot[b.getAttribute('aria-controls')] = b.getAttribute('aria-expanded') === 'true';
+        }
+      }
+      const counter = { n: 0 };
+      const root = this.$root.querySelector('#folder-list');
+      for (const li of root.querySelectorAll(':scope > li[data-folder-node]')) {
+        this.visit(li, q, counter);
+      }
+      if (empty) empty.hidden = counter.n !== 0;
+      const attr = counter.n === 1 ? 'data-count-one' : 'data-count-many';
+      this.status = counter.n === 0 ? (empty ? empty.textContent : '') : (this.$root.getAttribute(attr) || '').replace('%d', String(counter.n));
+    },
+
+    restore() {
+      for (const li of this.$root.querySelectorAll('li[data-folder-node]')) li.hidden = false;
+      if (this.snapshot !== null) {
+        for (const b of this.toggles()) {
+          this.setOpen(b, !!this.snapshot[b.getAttribute('aria-controls')]);
+        }
+      }
+      this.snapshot = null;
+      this.status = '';
+      const empty = this.$root.querySelector('[data-folder-empty]');
+      if (empty) empty.hidden = true;
+    },
+
+    clear() {
+      this.$refs.q.value = '';
+      this.restore();
+    }
+  }));
+
   // galSeq numbers galAutocomplete instances so each gets unique listbox and
   // option ids (the folders and calendar pages render one share form per item).
   let galSeq = 0;
@@ -294,12 +380,18 @@ document.addEventListener('alpine:init', () => {
     // combobox ARIA pattern. uid prefixes the listbox and option ids.
     share: false,
     uid: '',
+    countOne: '',
+    countMany: '',
 
     init() {
       this.uid = 'gal-' + (++galSeq);
       this.share = this.$el.hasAttribute('data-gal-share');
       this.multi = this.$el.hasAttribute('data-gal-multi');
       this.groups = this.$el.hasAttribute('data-gal-groups');
+      // Read the live-region wording here: in the CSP build $el inside a
+      // method called from a child's x-text is that child, not this root.
+      this.countOne = this.$el.getAttribute('data-gal-count-one') || '';
+      this.countMany = this.$el.getAttribute('data-gal-count-many') || '';
       // Read the server-rendered value attribute to seed the query.
       // We use getAttribute('value') because it reads the HTML attribute
       // directly, not the DOM property which Alpine may have already cleared.
@@ -345,8 +437,7 @@ document.addEventListener('alpine:init', () => {
     // in the words the server rendered into data-gal-count-one and -many.
     countText() {
       if (!this.show || this.results.length === 0) return '';
-      const attr = this.results.length === 1 ? 'data-gal-count-one' : 'data-gal-count-many';
-      const tpl = this.$el.getAttribute(attr) || '';
+      const tpl = this.results.length === 1 ? this.countOne : this.countMany;
       return tpl.replace('%d', String(this.results.length));
     },
 

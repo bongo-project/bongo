@@ -2014,3 +2014,11 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PRD 8.2: `/api/gal` has no rate limiter.
 - PATTERN: [workflow] Workflow worktrees start from the default branch, not the current branch: integrate with --3way and regenerate generated files instead of patching them.
 - PATTERN: [security] A second check behind a type assertion (`x, _ := h.dep.(iface)`) fails open when the assertion fails; break or refuse instead, and test with a double that lacks the interface.
+
+## 2026-11-27 Phase 43: 43.5 (US-023) folder search and tree — Phase 43 complete
+- Workflow batch of one run in the working tree (worktrees start from main, which lacks 43.2). Review MINOR.
+- The worker found the Alpine CSP-build `$el` trap: inside a method called from a child directive, `this.$el` is that child. It broke the folder search; the same bug left the 43.3 combobox live-region count empty. Both fixed and pinned by string tests.
+- Browser check on a dev server (agent-browser): web folder create, tree with placeholder parent, search with expand and restore, live counts, toggles, share combobox keyboard selection. All worked.
+- Gate: test-all, lint, sec pass.
+- PATTERN: [frontend] In the Alpine CSP build, read root data attributes in `init()` (or use `this.$root`); never call `this.$el` in a method that a child's x-text or x-on runs.
+- PATTERN: [review] String tests on shipped JS cannot catch runtime binding bugs; a browser pass found what three reviews missed.

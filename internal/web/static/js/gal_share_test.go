@@ -29,3 +29,23 @@ func TestGalAutocompleteShareMode(t *testing.T) {
 		}
 	}
 }
+
+// countText runs from the live region's x-text, where the CSP build binds $el
+// to that child element; the wording must come from init, not from $el.
+func TestGalAutocompleteCountTextAvoidsEl(t *testing.T) {
+	js := readJS(t, "bongo-components.js")
+	start := strings.Index(js, "    countText() {")
+	if start < 0 {
+		t.Fatal("countText is missing")
+	}
+	end := strings.Index(js[start:], "\n    },")
+	if end < 0 {
+		t.Fatal("countText end not found")
+	}
+	if body := js[start : start+end]; strings.Contains(body, "$el") {
+		t.Errorf("countText reads $el, which is the live region in the CSP build:\n%s", body)
+	}
+	if !strings.Contains(js, "this.countOne = this.$el.getAttribute('data-gal-count-one')") {
+		t.Error("galAutocomplete init does not read the count wording")
+	}
+}
