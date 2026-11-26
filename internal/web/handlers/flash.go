@@ -168,6 +168,9 @@ var (
 	flashGroupDeleted                = flashKey{"group-deleted"}
 	flashFolderShared                = flashKey{"folder-shared"}
 	flashFolderUnshared              = flashKey{"folder-unshared"}
+	flashFolderCreated               = flashKey{"folder-created"}
+	flashFolderRenamed               = flashKey{"folder-renamed"}
+	flashFolderDeleted               = flashKey{"folder-deleted"}
 	flashBookShared                  = flashKey{"book-shared"}
 	flashBookUnshared                = flashKey{"book-unshared"}
 	flashQueueFlushed                = flashKey{"queue-flushed"}
@@ -305,6 +308,9 @@ var flashMessages = map[string]string{
 	flashGroupDeleted.id:                "flash.groupDeleted",
 	flashFolderShared.id:                "flash.folderShared",
 	flashFolderUnshared.id:              "flash.folderUnshared",
+	flashFolderCreated.id:               "flash.folderCreated",
+	flashFolderRenamed.id:               "flash.folderRenamed",
+	flashFolderDeleted.id:               "flash.folderDeleted",
 	flashBookShared.id:                  "flash.bookShared",
 	flashBookUnshared.id:                "flash.bookUnshared",
 	flashQueueFlushed.id:                "flash.queueFlushed",

@@ -60,6 +60,9 @@ type ComposeHandler struct {
 	applier     store.RaftApplier
 	queueStore  *queue.QueueStore
 	rateLimiter *mail.RateLimiter
+	// spamTag returns the antispam tag threshold for the unsubscribe gate
+	// (compose_unsubscribe.go); nil means the default.
+	spamTag func() float64
 	// recipientRL is the per-user external-recipient budget shared with SMTP
 	// submission, keyed by user ID. nil = unlimited.
 	recipientRL *mail.RateLimiter
@@ -1489,6 +1492,12 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 		if _, err := w.Write([]byte("[]")); err != nil {
 			return
 		}
+		return
+	}
+
+	if r.URL.Query().Get("share") == "1" {
+		userID, _ := middleware.UserFromContext(r.Context())
+		h.galShareResults(w, r, userID, callerEmail, q)
 		return
 	}
 

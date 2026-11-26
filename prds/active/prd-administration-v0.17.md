@@ -573,12 +573,12 @@ that refuses non-public addresses on every connection (used by calendar
 subscriptions).
 
 **Acceptance Criteria:**
-- [ ] The message view parses `List-Unsubscribe` (RFC 2369) and
+- [x] The message view parses `List-Unsubscribe` (RFC 2369) and
       `List-Unsubscribe-Post` (RFC 8058) from the stored message and shows
       an Unsubscribe button when the message offers a usable method. No new
       key or `MailMeta` field: the headers are read from the blob when the
       message is shown.
-- [ ] One-click (RFC 8058): offered when there is an `https` URI,
+- [x] One-click (RFC 8058): offered when there is an `https` URI,
       `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, and a valid DKIM
       signature on the stored message that covers both headers (RFC 8058
       section 4), verified when the user clicks. The server sends the POST
@@ -587,24 +587,24 @@ subscriptions).
       redirect, no cookies, a fixed User-Agent that names no user or
       domain, a short timeout and a small response cap. The response body
       is never rendered; the user sees success or a fixed failure message.
-- [ ] Without a valid signature or the `List-Unsubscribe-Post` header, an
+- [x] Without a valid signature or the `List-Unsubscribe-Post` header, an
       `https` URI is shown as a link the user opens in their own browser
       (`rel="noopener noreferrer"`), after a confirmation that names the
       host. The server never fetches it, because a GET can confirm the
       address to a tracker or act on the user's behalf.
-- [ ] A `mailto:` URI opens compose with the address, subject and body
+- [x] A `mailto:` URI opens compose with the address, subject and body
       from the URI; the user sends it, so the normal send path, limits and
       Sent copy apply. `http:` and every other scheme are ignored.
-- [ ] No button on messages in Junk or below it, or on messages the
+- [x] No button on messages in Junk or below it, or on messages the
       antispam stage tagged as spam: unsubscribing from spam confirms the
       address. The view says to report the message as spam instead.
-- [ ] The Mailing lists view offers the same action per list, using the
+- [x] The Mailing lists view offers the same action per list, using the
       newest message of that list.
-- [ ] The POST route is CSRF-protected, needs the session user to own the
+- [x] The POST route is CSRF-protected, needs the session user to own the
       message, and is rate limited per user (one budget, 429 with
       Retry-After). Logs carry the user id, message guid and URI host only:
       the full URI usually holds a token that identifies the subscriber.
-- [ ] Every new string is translated in all shipped locales.
+- [x] Every new string is translated in all shipped locales.
 
 ### US-020: Shared folders are subscribed by default
 **Source:** operator's v0.16 client check, 2026-11-26. **Size:** M.
@@ -621,24 +621,24 @@ accepted and never pass through `/shares`, so subscribing on accept alone
 would not cover them.
 
 **Acceptance Criteria:**
-- [ ] A shared folder on which the user holds an accepted grant with `l`
+- [x] A shared folder on which the user holds an accepted grant with `l`
       (direct, through a group, or as a shared-inbox member) is subscribed
       unless the user has unsubscribed from it: LSUB and `LIST (SUBSCRIBED)`
       return it, so Thunderbird shows it with default settings.
-- [ ] IMAP UNSUBSCRIBE records an opt-out marker keyed like today's key
+- [x] IMAP UNSUBSCRIBE records an opt-out marker keyed like today's key
       (owner and folder id, so a rename keeps it); SUBSCRIBE removes the
       marker. A plain Put or Delete, no new command. The marker authorises
       nothing; rights are re-checked on every listing as now.
-- [ ] The old `sharedsub` keys are no longer read. A leader pass deletes
+- [x] The old `sharedsub` keys are no longer read. A leader pass deletes
       them once (they only ever meant "subscribed", which is now the
       default). The key table in CLAUDE.md is updated.
-- [ ] A test with each grant path (direct accepted, group, shared inbox)
+- [x] A test with each grant path (direct accepted, group, shared inbox)
       shows the folder in LSUB without any SUBSCRIBE; a test shows an
       UNSUBSCRIBE surviving a folder rename and a grant change from Read to
       Write.
-- [ ] `docs/shared-folders.md` drops the "subscribe first" step and explains
+- [x] `docs/shared-folders.md` drops the "subscribe first" step and explains
       unsubscribing.
-- [ ] Mixed versions: an older node still reads `sharedsub` and lists an
+- [x] Mixed versions: an older node still reads `sharedsub` and lists an
       unmarked shared folder as unsubscribed, so a client balanced across
       nodes sees it appear and vanish. Upgrade every node together
       (single-node production is unaffected).
@@ -653,23 +653,23 @@ forms take a typed address only. Compose autocomplete (`GET /api/gal`,
 and adds the caller's contacts and same-domain distribution groups.
 
 **Acceptance Criteria:**
-- [ ] Each share form suggests matches as the user types, from people and
+- [x] Each share form suggests matches as the user types, from people and
       distribution groups on the user's own primary domain, at most 10.
       The same domain scoping as compose, so no form can enumerate another
       domain's users.
-- [ ] Only shareable principals are offered: enabled people (no resources,
+- [x] Only shareable principals are offered: enabled people (no resources,
       no shared inboxes, not the user) and groups `shareableGroupOf` would
       accept. Personal contacts and contact groups are not offered, since a
       share needs a local account.
-- [ ] Typing a full address still works for a user on another hosted
+- [x] Typing a full address still works for a user on another hosted
       domain; the refusal rules and the uniform refusal message are
       unchanged.
-- [ ] Either a `share=1` mode on `/api/gal` or a small endpoint sharing its
+- [x] Either a `share=1` mode on `/api/gal` or a small endpoint sharing its
       search code; it is GET only, behind the session, rate limited like
       compose autocomplete.
-- [ ] The suggestion list is keyboard and screen-reader usable (combobox
+- [x] The suggestion list is keyboard and screen-reader usable (combobox
       pattern), as the compose recipient field is.
-- [ ] Every new string is translated in all shipped locales.
+- [x] Every new string is translated in all shipped locales.
 
 ### US-022: Create, rename and delete folders in the web UI
 **Source:** operator's v0.16 client check, 2026-11-26. **Size:** M.
@@ -685,26 +685,26 @@ under `imap.other_users_prefix` and `imap.shared_prefix` and refuses to
 delete INBOX (`internal/imap/backend.go:466-560`).
 
 **Acceptance Criteria:**
-- [ ] Settings → Folders gains New folder, Rename and Delete for the user's
+- [x] Settings → Folders gains New folder, Rename and Delete for the user's
       own folders; the mail sidebar's folder menu links to the same actions.
-- [ ] The same name rules as IMAP CREATE and RENAME: no name under either
+- [x] The same name rules as IMAP CREATE and RENAME: no name under either
       sharing prefix, none of the virtual view names, no empty or
       over-long name, `/` as the hierarchy delimiter; one shared validation
       function used by both paths so they cannot drift.
-- [ ] The default folders (`store.DefaultMailboxes`: INBOX, Sent, Drafts,
+- [x] The default folders (`store.DefaultMailboxes`: INBOX, Sent, Drafts,
       Trash, Junk) and Archive cannot be renamed or deleted from the web.
-- [ ] Delete asks for confirmation naming the folder and its message count,
+- [x] Delete asks for confirmation naming the folder and its message count,
       and, when the folder is shared, warns that the people it is shared
       with lose access. Messages are removed with the folder (as IMAP
       DELETE); a grant-revoke failure is logged and the page still reports
       success, as IMAP does.
-- [ ] Rename states that subfolders keep their own names (the store does not
+- [x] Rename states that subfolders keep their own names (the store does not
       rename inferiors), or renames them in the same request if the design
       review prefers; either way the behaviour is documented and tested.
-- [ ] All three are POST routes behind CSRF and same-origin checks, scoped
+- [x] All three are POST routes behind CSRF and same-origin checks, scoped
       to the session user's own folders; a name that does not exist is a
       404. The folder list and the sidebar refresh after each action.
-- [ ] Every new string is translated in all shipped locales.
+- [x] Every new string is translated in all shipped locales.
 
 ### US-023: Search and collapsible subfolders in Settings → Folders
 **Source:** operator request, 2026-11-26. **Size:** S. **Needs:** US-022.
@@ -717,26 +717,26 @@ mail sidebar already collapses subfolders (`data-folder-toggle` in
 nothing like it.
 
 **Acceptance Criteria:**
-- [ ] A search box at the top filters the folder list as the user types:
+- [x] A search box at the top filters the folder list as the user types:
       a case-insensitive substring match on the full folder path, done in
       the browser over the rendered list (no new route, no server search).
       A folder matches when its path matches; its parent folders stay
       visible so the match keeps its place in the tree.
-- [ ] Folders are shown as a tree on `/`: a folder with subfolders has a
+- [x] Folders are shown as a tree on `/`: a folder with subfolders has a
       toggle that shows or hides them, using the sidebar's pattern
       (button with `aria-expanded` and `aria-controls`). Top-level folders
       start expanded and deeper levels collapsed; while a search is active,
       every branch with a match is expanded.
-- [ ] A subfolder whose parent does not exist (IMAP allows `A/x` without
+- [x] A subfolder whose parent does not exist (IMAP allows `A/x` without
       `A`) is still shown, under a parent row that has no actions.
-- [ ] "No folders match" shows when the search finds nothing; clearing the
+- [x] "No folders match" shows when the search finds nothing; clearing the
       search restores the previous expanded state.
-- [ ] Works without JavaScript errors after an htmx swap of the list (a
+- [x] Works without JavaScript errors after an htmx swap of the list (a
       create, rename or delete from US-022 re-renders it), with Alpine or
       the existing delegated handler, not a new framework.
-- [ ] Keyboard and screen-reader usable: the search box has a label, the
+- [x] Keyboard and screen-reader usable: the search box has a label, the
       result count is announced in a polite live region.
-- [ ] Every new string is translated in all shipped locales.
+- [x] Every new string is translated in all shipped locales.
 
 ## 4. Functional Requirements
 
@@ -939,6 +939,14 @@ Found in CI on 2026-11-26 (PR #252, a docs-only change):
   still fsync in the background after its last `Set`, so the test blames the
   plain store for it. Wait for the first store to go quiet (or close it)
   before taking the baseline.
+
+Found while building US-021 (2026-11-26):
+
+- `GET /api/gal` (compose autocomplete) has no rate limiter (a plain
+  `r.Get` in `agent.go`), so US-021's "rate limited like compose
+  autocomplete" adds none; share mode returns a subset of what compose
+  already returns to the same caller. A per-user limiter on `/api/gal`,
+  for compose and share mode alike, is a candidate.
 
 Release size: 23 stories (4 S, 16 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:

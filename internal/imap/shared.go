@@ -499,6 +499,9 @@ func (s *session) createShared(name string) error {
 		return err
 	}
 	child := parent.name + "/" + leaf
+	if err := mapMailboxNameError(store.ValidateOwnerMailboxName(child)); err != nil {
+		return err
+	}
 	switch _, err := s.mailboxes.GetMailbox(parent.owner, child); {
 	case err == nil:
 		return errAlreadyExists
@@ -568,6 +571,9 @@ func (s *session) renameShared(mailbox, newName string) error {
 		return err
 	}
 	dst := parent.name + "/" + leaf
+	if err := mapMailboxNameError(store.ValidateOwnerMailboxName(dst)); err != nil {
+		return err
+	}
 	switch _, err := s.mailboxes.GetMailbox(src.owner, dst); {
 	case err == nil:
 		return errAlreadyExists

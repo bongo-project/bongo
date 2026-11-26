@@ -139,29 +139,33 @@ func (s *ACLStore) ListResourceGrants(kind, owner, resource string) ([]ResourceG
 	return out, nil
 }
 
-// sharedSubKey is the per-user marker for a subscription to a shared folder.
-// It is keyed by the owner and the folder id, so a renamed folder stays
-// subscribed and the key goes with the rest of /user/{id}/ on user deletion.
-// The value is empty; presence means subscribed. It is a plain key written by
-// single Puts and Deletes, with no read-modify-write, so no synthetic command
-// is involved and a mixed-version cluster is unaffected.
-func sharedSubKey(userID, owner, mailboxID string) []byte {
-	return []byte("/user/" + userID + "/sharedsub/" + owner + "/" + mailboxID)
+// sharedUnsubKey is the per-user opt-out marker for a shared folder. A folder
+// the user holds an accepted grant with the lookup right on is subscribed by
+// default; the marker, written by IMAP UNSUBSCRIBE, hides it from LSUB and
+// LIST (SUBSCRIBED). It is keyed by the owner and the folder id, so a rename or
+// a rights change keeps it, and it goes with the rest of /user/{id}/ on user
+// deletion. The value is empty; presence means unsubscribed. It authorises
+// nothing, because listing takes visibility from the live grants. It is a plain
+// key written by single Puts and Deletes, so no synthetic command is involved.
+// The older /user/{id}/sharedsub/ keys are no longer read; a leader pass
+// deletes them.
+func sharedUnsubKey(userID, owner, mailboxID string) []byte {
+	return []byte("/user/" + userID + "/sharedunsub/" + owner + "/" + mailboxID)
 }
 
-// SetSharedSubscription subscribes or unsubscribes userID to a shared folder.
-// The caller has resolved the folder and checked the lookup right; a
-// subscription never authorises anything, because listing re-checks rights.
+// SetSharedSubscription subscribes or unsubscribes userID to a shared folder:
+// subscribing deletes the opt-out marker, unsubscribing writes it. The caller
+// has resolved the folder and checked the lookup right.
 func (s *ACLStore) SetSharedSubscription(userID, owner, mailboxID string, subscribed bool) error {
 	if userID == "" || owner == "" || !ValidMailboxID(mailboxID) {
 		return ErrNotFound
 	}
-	cmd := &bongov1.RaftCommand{Key: sharedSubKey(userID, owner, mailboxID)}
+	cmd := &bongov1.RaftCommand{Key: sharedUnsubKey(userID, owner, mailboxID)}
 	if subscribed {
+		cmd.Op = bongov1.Op_OP_DELETE
+	} else {
 		cmd.Op = bongov1.Op_OP_PUT
 		cmd.Value = []byte{}
-	} else {
-		cmd.Op = bongov1.Op_OP_DELETE
 	}
 	if err := s.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
 		return fmt.Errorf("applying shared subscription: %w", err)
@@ -169,14 +173,15 @@ func (s *ACLStore) SetSharedSubscription(userID, owner, mailboxID string, subscr
 	return nil
 }
 
-// SharedSubscribed reports whether userID subscribed to the shared folder.
+// SharedSubscribed reports whether userID is subscribed to the shared folder:
+// true unless an opt-out marker exists. It says nothing about visibility.
 func (s *ACLStore) SharedSubscribed(userID, owner, mailboxID string) (bool, error) {
-	_, err := s.pebble.Get(sharedSubKey(userID, owner, mailboxID))
+	_, err := s.pebble.Get(sharedUnsubKey(userID, owner, mailboxID))
 	switch {
 	case err == nil:
-		return true, nil
-	case errors.Is(err, ErrNotFound):
 		return false, nil
+	case errors.Is(err, ErrNotFound):
+		return true, nil
 	default:
 		return false, fmt.Errorf("reading shared subscription: %w", err)
 	}

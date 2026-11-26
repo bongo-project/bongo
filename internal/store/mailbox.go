@@ -1199,6 +1199,12 @@ func VirtualExcludes(mailbox string) bool {
 	return inOrBelow(mailbox, virtualExcluded)
 }
 
+// InOrBelowJunk reports whether mailbox is Junk or a folder below it. Trash is
+// not included: unsubscribing is refused for spam, not for deleted mail.
+func InOrBelowJunk(mailbox string) bool {
+	return inOrBelow(mailbox, []string{"Junk"})
+}
+
 // inOrBelow reports whether mailbox is one of names or a folder below one.
 // "Trash/Old" is below Trash; "Trashcan" is not.
 func inOrBelow(mailbox string, names []string) bool {

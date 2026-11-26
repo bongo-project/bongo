@@ -2,6 +2,7 @@ package netx
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -134,6 +135,9 @@ type Client struct {
 	// extraPorts admits further ports. Tests set it, because an httptest
 	// server listens on a random port; nothing outside this package can.
 	extraPorts map[string]bool
+	// tlsConfig replaces the default TLS settings of PostOneClick. Tests set
+	// it to trust a test CA; nothing outside this package can.
+	tlsConfig *tls.Config
 }
 
 // NewClient returns a Client enforcing the address, port and size rules.

@@ -1058,45 +1058,123 @@ func TestSharedSubscribeLSUB(t *testing.T) {
 	e.grant("Work/Sub", "lr")
 	c := dialRawIMAP(t, e.startServer())
 
-	if got := names(c.listing("LSUB", "", "*")); slices.Contains(got, shWork) {
-		t.Fatalf("LSUB lists an unsubscribed shared folder: %v", got)
-	}
-	c.exec(`SUBSCRIBE "%s"`, shWork)
+	// Subscribed by default: no SUBSCRIBE needed, in LSUB and LIST (SUBSCRIBED).
 	got := c.listing("LSUB", "", "*")
-	if _, ok := got[shWork]; !ok || len(got) != 3 {
-		t.Fatalf("LSUB = %v, want INBOX, Archive and %s", names(got), shWork)
+	for _, n := range []string{shWork, shSub} {
+		if _, ok := got[n]; !ok {
+			t.Fatalf("LSUB = %v, want %s without SUBSCRIBE", names(got), n)
+		}
 	}
-	if _, ok := got[shSub]; ok {
-		t.Fatal("LSUB lists a folder that was not subscribed")
+	sub := c.listing("LIST (SUBSCRIBED)", "", "Other Users/*")
+	if attrs, ok := sub[shWork]; !ok || !strings.Contains(attrs, "Subscribed") {
+		t.Fatalf("LIST (SUBSCRIBED) = %v, want %s with \\Subscribed", sub, shWork)
 	}
 
-	// The owner renames the folder: the subscription follows the id.
+	// UNSUBSCRIBE hides it from LSUB only; plain LIST still shows it.
+	c.exec(`UNSUBSCRIBE "%s"`, shWork)
+	if _, ok := c.listing("LSUB", "", "*")[shWork]; ok {
+		t.Fatal("still in LSUB after UNSUBSCRIBE")
+	}
+	if _, ok := c.listing("LIST", "", "Other Users/*")[shWork]; !ok {
+		t.Fatal("plain LIST lost the unsubscribed folder")
+	}
+	if _, ok := c.listing("LSUB", "", "*")[shSub]; !ok {
+		t.Fatal("UNSUBSCRIBE of one folder hid another")
+	}
+
+	// The owner renames the folder: the opt-out follows the id.
 	if err := e.ms.RenameMailbox(shOwner, "Work", "Projects"); err != nil {
 		t.Fatal(err)
 	}
 	renamed := "Other Users/own1@example.test/Projects"
 	got = c.listing("LSUB", "", "*")
-	if _, ok := got[renamed]; !ok || slices.Contains(names(got), shWork) {
-		t.Fatalf("LSUB after rename = %v, want %s", names(got), renamed)
+	if _, ok := got[renamed]; ok {
+		t.Fatalf("LSUB after rename = %v, want %s still unsubscribed", names(got), renamed)
 	}
 
-	// Unsubscribe removes it; subscribe again, then a revoke hides it.
-	c.exec(`UNSUBSCRIBE "%s"`, renamed)
+	// A rights change from Read to Write keeps it unsubscribed.
+	e.grant("Work", "lrswite")
 	if _, ok := c.listing("LSUB", "", "*")[renamed]; ok {
-		t.Fatal("still subscribed after UNSUBSCRIBE")
+		t.Fatal("rights change re-subscribed the folder")
 	}
+
+	// SUBSCRIBE brings it back; a revoke hides it.
 	c.exec(`SUBSCRIBE "%s"`, renamed)
+	if _, ok := c.listing("LSUB", "", "*")[renamed]; !ok {
+		t.Fatal("not in LSUB after SUBSCRIBE")
+	}
 	e.revoke("Work")
-	for _, name := range names(c.listing("LSUB", "", "*")) {
-		if strings.Contains(name, "Other Users") {
-			t.Fatalf("LSUB shows %q after the grant was revoked", name)
-		}
+	if _, ok := c.listing("LSUB", "", "*")[renamed]; ok {
+		t.Fatalf("LSUB shows %q after the grant was revoked", renamed)
 	}
 	if st := c.execStatus(`SUBSCRIBE "%s"`, renamed); !strings.HasPrefix(st, "NO") {
 		t.Fatalf("SUBSCRIBE without a grant = %q", st)
 	}
 	if st := c.execStatus(`UNSUBSCRIBE "%s"`, renamed); !strings.HasPrefix(st, "OK") {
 		t.Fatalf("UNSUBSCRIBE without a grant = %q", st)
+	}
+	// No marker for a folder the user cannot see.
+	if _, err := e.ps.Get([]byte("/user/" + pollTestUser + "/sharedunsub/" + shOwner + "/" + e.ids["Work"])); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("marker written without a grant: %v", err)
+	}
+}
+
+// Every way of holding an accepted lookup right lists in LSUB with no
+// SUBSCRIBE; a pending grant and a grant without l do not.
+func TestSharedLSUBByDefaultPerGrantPath(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, e *sharedEnv)
+		want  bool
+	}{
+		{"direct accepted", func(t *testing.T, e *sharedEnv) { e.grant("Work", "lr") }, true},
+		{"group", func(t *testing.T, e *sharedEnv) {
+			if err := e.ps.Set([]byte("/system/domain/example.com"), []byte("enabled")); err != nil {
+				t.Fatal(err)
+			}
+			g, err := store.NewGroupStore(e.ps, e.applier).CreateGroup(&bongov1.Group{Address: "team@example.com", DisplayName: "Team", MemberIds: []string{pollTestUser}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := e.acl.SetGrantKeepState(store.ACLKindMailbox, shOwner, e.ids["Work"], store.GranteeGroup(g.Id), "", "lr",
+				store.GrantStateAccepted, shOwner, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}, true},
+		{"shared inbox member", func(t *testing.T, e *sharedEnv) {
+			p, err := proto.Marshal(&bongov1.UserProfile{Email: shOwnerAddr, Kind: store.SharedInboxKind, SharedMembers: []string{store.GranteeUser(pollTestUser)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := e.ps.Set([]byte("/user/"+shOwner+"/profile"), p); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.SyncSharedInboxGrants(e.acl, e.ms, shOwner, []string{store.GranteeUser(pollTestUser)}, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}, true},
+		{"pending", func(t *testing.T, e *sharedEnv) {
+			e.grantTo(pollTestUser, "Work", "lr", store.GrantStatePending, time.Now())
+		}, false},
+		{"no lookup right", func(t *testing.T, e *sharedEnv) { e.grant("Work", "r") }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newSharedEnv(t)
+			tt.setup(t, e)
+			rights, err := e.acl.MailboxRights(shOwner, e.ids["Work"], pollTestUser, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.want && !strings.Contains(rights, "l") {
+				t.Fatalf("setup left no l right (%q): positive case would be vacuous", rights)
+			}
+			c := dialRawIMAP(t, e.startServer())
+			_, ok := c.listing("LSUB", "", "*")[shWork]
+			if ok != tt.want {
+				t.Fatalf("LSUB lists %s = %v, want %v", shWork, ok, tt.want)
+			}
+		})
 	}
 }
 

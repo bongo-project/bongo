@@ -85,7 +85,7 @@ templ BookSharePage(d BookSharePageData) {
 							<form method="post" action={ templ.SafeURL("/contacts/books/" + d.BookID + "/share") } hx-post={ "/contacts/books/" + d.BookID + "/share" } hx-target="find [data-form-status]" hx-swap="innerHTML" class="u-mt-8px">
 								<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
 								<div class="u-flex-gap-4">
-									<input type="email" name="share_with" placeholder={ t(ctx, "contacts.shareWithPlaceholder") } aria-label={ t(ctx, "contacts.shareWith") } required class="form-input u-m0 u-flex-1"/>
+									@shareAddressInput("", t(ctx, "contacts.shareWithPlaceholder"), t(ctx, "contacts.shareWith"), "u-flex-1")
 									<select name="level" class="form-input u-m0" aria-label={ t(ctx, "contacts.shareLevel") }>
 										<option value="read">{ t(ctx, "calendar.levelRead") }</option>
 										<option value="write">{ t(ctx, "calendar.levelWrite") }</option>

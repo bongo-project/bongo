@@ -1,0 +1,101 @@
+package templates
+
+import "fmt"
+
+// UnsubscribePanel is the unsubscribe control of one message. The panel is
+// replaced by UnsubscribeResult after a one-click POST, so the id is fixed.
+// Host and link come from header text the sender controls: templ escapes
+// both, and the href is a URL the server has already validated.
+templ UnsubscribePanel(mailbox string, uid uint32, v *UnsubscribeView) {
+	<div class="blocked-banner" id="unsubscribe-panel" data-unsubscribe="true">
+		if v.SpamBlocked {
+			@Icon("alert", "")
+			<span>{ t(ctx, "mail.unsubscribeSpamHint") }</span>
+		} else if v.OneClick {
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/unsubscribe", encMailbox(mailbox), uid)) } hx-post={ fmt.Sprintf("/mail/%s/%d/unsubscribe", encMailbox(mailbox), uid) } hx-target="#unsubscribe-panel" hx-swap="outerHTML">
+				<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+				<span>{ fmt.Sprintf(t(ctx, "mail.unsubscribeOneClick"), v.Host) }</span>
+				<button type="submit" data-action="unsubscribe">{ t(ctx, "mail.unsubscribe") }</button>
+			</form>
+		} else if v.LinkURL != "" {
+			@unsubscribeLinkDisclosure(v.Host, v.LinkURL)
+		} else if v.Mailto {
+			@unsubscribeMailtoLink(UnsubscribeMailtoURL(mailbox, uid))
+		}
+	</div>
+}
+
+templ unsubscribeMailtoLink(href string) {
+	<a href={ templ.SafeURL(href) } data-action="unsubscribe-mailto">{ t(ctx, "mail.unsubscribeMailto") }</a>
+}
+
+// unsubscribeLinkDisclosure names the host before the user leaves for it. The
+// server never fetches this URL: a GET could confirm the address to a tracker.
+templ unsubscribeLinkDisclosure(host, link string) {
+	<details class="unsubscribe-link">
+		<summary>{ t(ctx, "mail.unsubscribe") }</summary>
+		<p>{ fmt.Sprintf(t(ctx, "mail.unsubscribeLinkConfirm"), host) }</p>
+		<a href={ templ.SafeURL(link) } target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{ t(ctx, "mail.unsubscribeContinue") }</a>
+	</details>
+}
+
+// UnsubscribeResult is the fragment the one-click POST answers with. The
+// text is fixed: nothing the remote side said is shown. link and mailtoHref
+// are the other methods the message offers (either may be empty); the link and
+// failure fragments show them so a user is never left without a way out.
+templ UnsubscribeResult(kind, host, link, mailtoHref string) {
+	switch kind {
+		case UnsubscribeSuccess:
+			<div class="flash flash-success" id="unsubscribe-panel" role="status">{ t(ctx, "mail.unsubscribeSuccess") }</div>
+		case UnsubscribeLink:
+			<div class="blocked-banner" id="unsubscribe-panel" role="status">
+				<p>{ t(ctx, "mail.unsubscribeNoProof") }</p>
+				if link != "" {
+					@unsubscribeLinkDisclosure(host, link)
+				}
+				if mailtoHref != "" {
+					@unsubscribeMailtoLink(mailtoHref)
+				}
+			</div>
+		default:
+			<div class="flash flash-error" id="unsubscribe-panel" role="alert">
+				<p>{ t(ctx, "mail.unsubscribeFailure") }</p>
+				if link != "" {
+					@unsubscribeLinkDisclosure(host, link)
+				}
+				if mailtoHref != "" {
+					@unsubscribeMailtoLink(mailtoHref)
+				}
+			</div>
+	}
+}
+
+// ListUnsubscribePage renders the per-list unsubscribe page with the sidebar.
+templ ListUnsubscribePage(mailboxes []MailboxInfo, tags []SidebarTagInfo, list MailingList, mailbox string, uid uint32, v *UnsubscribeView, email string) {
+	@LayoutWithContent(listsNavKey, email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@Sidebar(mailboxes, tags, listsNavKey)
+		</aside>
+		<main class="content" id="main-content" data-selected-mailbox={ listsNavKey }>
+			@ListUnsubscribeContent(list, mailbox, uid, v)
+		</main>
+	}
+}
+
+// ListUnsubscribeContent is the page body: the list name (mail header text,
+// escaped), and the panel of the list's newest message, or a plain notice when
+// that message offers nothing.
+templ ListUnsubscribeContent(list MailingList, mailbox string, uid uint32, v *UnsubscribeView) {
+	<div class="mail-view" data-mailbox={ listsNavKey }>
+		<div class="mail-head">
+			<h1 class="mail-head-title">{ fmt.Sprintf(t(ctx, "mail.unsubscribeListTitle"), listLabel(list)) }</h1>
+		</div>
+		<p>{ t(ctx, "mail.unsubscribeListNote") }</p>
+		if v == nil {
+			<p>{ t(ctx, "mail.unsubscribeNotAvailable") }</p>
+		} else {
+			@UnsubscribePanel(mailbox, uid, v)
+		}
+		<p><a href={ templ.SafeURL(listsNavKey) }>{ t(ctx, "nav.mailingLists") }</a></p>
+	</div>
+}

@@ -113,10 +113,23 @@ func TestOwnerByPrimaryAddress(t *testing.T) {
 }
 
 func TestSharedSubscription(t *testing.T) {
-	_, acl := newKindsACL(t)
+	ps, acl := newKindsACL(t)
+	unsubKey := []byte("/user/u/sharedunsub/o/" + kindsMailboxID)
 	on, err := acl.SharedSubscribed("u", "o", kindsMailboxID)
-	if err != nil || on {
-		t.Fatalf("default = %v, %v; want unsubscribed", on, err)
+	if err != nil || !on {
+		t.Fatalf("default = %v, %v; want subscribed", on, err)
+	}
+	if err := acl.SetSharedSubscription("u", "o", kindsMailboxID, false); err != nil {
+		t.Fatal(err)
+	}
+	if on, _ := acl.SharedSubscribed("u", "o", kindsMailboxID); on {
+		t.Fatal("still subscribed after unsubscribe")
+	}
+	if _, err := ps.Get(unsubKey); err != nil {
+		t.Fatalf("opt-out marker missing: %v", err)
+	}
+	if on, _ := acl.SharedSubscribed("other", "o", kindsMailboxID); !on {
+		t.Fatal("unsubscribe leaked to another user")
 	}
 	if err := acl.SetSharedSubscription("u", "o", kindsMailboxID, true); err != nil {
 		t.Fatal(err)
@@ -124,14 +137,11 @@ func TestSharedSubscription(t *testing.T) {
 	if on, _ := acl.SharedSubscribed("u", "o", kindsMailboxID); !on {
 		t.Fatal("not subscribed after subscribe")
 	}
-	if on, _ := acl.SharedSubscribed("other", "o", kindsMailboxID); on {
-		t.Fatal("subscription leaked to another user")
+	if _, err := ps.Get(unsubKey); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("opt-out marker survived subscribe: %v", err)
 	}
-	if err := acl.SetSharedSubscription("u", "o", kindsMailboxID, false); err != nil {
-		t.Fatal(err)
-	}
-	if on, _ := acl.SharedSubscribed("u", "o", kindsMailboxID); on {
-		t.Fatal("still subscribed after unsubscribe")
+	if _, err := ps.Get([]byte("/user/u/sharedsub/o/" + kindsMailboxID)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("legacy sharedsub key written: %v", err)
 	}
 	if err := acl.SetSharedSubscription("u", "o", "bad", true); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("bad id = %v, want ErrNotFound", err)

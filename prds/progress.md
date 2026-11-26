@@ -1996,3 +1996,29 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - 64 guarantees broken with go test -overlay across 13 batches: all guarded, nothing to refute. Harness checked by hand first; two results re-run by hand afterwards.
 - PATTERN: [sweep] When a sweep comes back fully guarded, re-run a sample of breaks by hand before trusting it; an all-green report is exactly what a broken harness also produces.
 - PATTERN: [git] After `git apply --3way` the patch is staged; a later edit to the same file stays unstaged and is left out of a commit made with `git add` of other paths. Check `git diff` before committing.
+
+## 2026-11-26 Phase 43 batch 1: 43.1 (US-020), 43.2 (US-022), 43.4 (US-019)
+- One workflow batch, three isolated worktrees (haiku classify, opus plan review, sonnet worker tests-first, opus review; 43.4 also a security-auditor review). All three DONE, reviews MINOR, security MINOR.
+- 43.1: `sharedunsub` opt-out marker replaces `sharedsub`; store API kept so IMAP call sites did not change; leader pass `sharedsub-cleanup-v1`.
+- 43.2: one validator (`store.ValidateMailboxName`) for IMAP and web; protected folders; rename and delete leave subfolders alone.
+- 43.4: one-click POST only through the netx safe client after DKIM covering both headers; exactly one of each header; link fallback never fetched by the server.
+- Merge: CLAUDE.md conflicted between the three; rebuilt from HEAD plus each task's CLAUDE.md hunks. The gate caught two log prefixes (`folders`, `sharedsub-cleanup`) missing from `config.LogComponents` and `deploy/LOGGING.md`; fixed.
+- MINOR left for later: an unused `folders.manage` locale key; IMAP name-refusal tests check `NO` only, not the response code; no test on the import-target validator branch; createShared does not trim a trailing `/` as the personal path does; one-click failure fragment offers no fallback link; list action uses the newest message even when it is spam-tagged.
+- PATTERN: [workflow] Parallel workers each add to the log-component list without knowing the others' prefixes; the merged tree must run the config tests (TestLogComponentsMatchSource, TestLoggingDocListsComponents).
+- PATTERN: [workflow] When `git apply --3way` conflicts on a long single-line markdown bullet, rebuild the file from HEAD and apply each task's hunks for that file separately; fixing conflict markers by line offsets is error-prone.
+- PATTERN: [testing] A cross-user isolation test must give the other user the same mailbox and uid, or the 404 comes from a missing mailbox rather than from the isolation it means to prove.
+
+## 2026-11-26 Phase 43: 43.3 (US-021) share-form suggestions
+- Workflow batch of one (frontend-developer worker). Review MINOR. The worktree was based on main, not the phase branch: integrated with `git apply --3way` excluding `*_templ.go`, then `templ generate`; no conflicts.
+- Orchestrator fixes: the share-rule group check skipped itself when the group store lacked `GetGroup` (fail open); now no groups are offered then. New `TestGALShareModeGroupRuleFailsClosed`, checked by overlay mutation. Test addresses split so each exclusion is asserted on its own.
+- PRD 8.2: `/api/gal` has no rate limiter.
+- PATTERN: [workflow] Workflow worktrees start from the default branch, not the current branch: integrate with --3way and regenerate generated files instead of patching them.
+- PATTERN: [security] A second check behind a type assertion (`x, _ := h.dep.(iface)`) fails open when the assertion fails; break or refuse instead, and test with a double that lacks the interface.
+
+## 2026-11-27 Phase 43: 43.5 (US-023) folder search and tree — Phase 43 complete
+- Workflow batch of one run in the working tree (worktrees start from main, which lacks 43.2). Review MINOR.
+- The worker found the Alpine CSP-build `$el` trap: inside a method called from a child directive, `this.$el` is that child. It broke the folder search; the same bug left the 43.3 combobox live-region count empty. Both fixed and pinned by string tests.
+- Browser check on a dev server (agent-browser): web folder create, tree with placeholder parent, search with expand and restore, live counts, toggles, share combobox keyboard selection. All worked.
+- Gate: test-all, lint, sec pass.
+- PATTERN: [frontend] In the Alpine CSP build, read root data attributes in `init()` (or use `this.$root`); never call `this.$el` in a method that a child's x-text or x-on runs.
+- PATTERN: [review] String tests on shipped JS cannot catch runtime binding bugs; a browser pass found what three reviews missed.

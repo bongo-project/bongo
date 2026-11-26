@@ -43,11 +43,20 @@ templ ListsContent(lists []MailingList) {
 								</span>
 								<span class="msg-date" title={ t(ctx, "lists.messages") } aria-label={ t(ctx, "lists.messages") + ": " + fmt.Sprint(l.Count) }>{ fmt.Sprint(l.Count) }</span>
 							</div>
-							if listLabel(l) != l.ID {
-								<div class="msg-line">
+							<div class="msg-line">
+								if listLabel(l) != l.ID {
 									<span class="msg-preview">{ l.ID }</span>
-								</div>
-							}
+								}
+								<a
+									href={ templ.SafeURL(listViewURL(l.ID) + "/unsubscribe") }
+									hx-get={ listViewURL(l.ID) + "/unsubscribe" }
+									hx-target="#main-content"
+									hx-push-url="true"
+									data-action="list-unsubscribe"
+								>
+									{ t(ctx, "mail.unsubscribeListsAction") }
+								</a>
+							</div>
 						</div>
 					</li>
 				}

@@ -207,6 +207,32 @@ var errReservedMailboxName = &imap.Error{
 	Text: "Mailbox name is reserved",
 }
 
+// errInvalidMailboxName answers CREATE or RENAME naming a folder that is empty,
+// too long, malformed or has a control character (RFC 5530 CANNOT). Fixed text,
+// so the name is never echoed.
+var errInvalidMailboxName = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Code: imap.ResponseCodeCannot,
+	Text: "Mailbox name is not valid",
+}
+
+// validateNewMailboxName applies the shared folder-name rules to a name about
+// to be created. It is configuration only, so it is no oracle.
+func validateNewMailboxName(ns store.IMAPNamespaces, name string) error {
+	return mapMailboxNameError(store.ValidateMailboxName(ns, name))
+}
+
+func mapMailboxNameError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, store.ErrMailboxNameReserved):
+		return errReservedMailboxName
+	default:
+		return errInvalidMailboxName
+	}
+}
+
 // errAlreadyExists answers CREATE or RENAME naming a mailbox that already
 // exists (RFC 3501 sections 6.3.3 and 6.3.5, RFC 5530 ALREADYEXISTS). The text
 // is fixed so the client-supplied name is never echoed.
@@ -468,6 +494,11 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
+	// RFC 3501 section 6.3.3: a trailing hierarchy delimiter means the client
+	// only announces that the name may have inferiors; the folder is "foo".
+	// go-imap passes the delimiter through, so one is trimmed here, before the
+	// personal and the shared path part ways.
+	mailbox = strings.TrimSuffix(mailbox, "/")
 	// Names under the other-users prefix are folders of other accounts; they
 	// are created only beneath a folder the user holds k on.
 	if s.ns().IsOtherUsersName(mailbox) {
@@ -475,8 +506,8 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 	}
 	// Before any store read: the check consults configuration only, so it
 	// reveals nothing about existing mailboxes.
-	if s.namespaces.Reserves(mailbox) {
-		return errReservedMailboxName
+	if err := validateNewMailboxName(s.namespaces, mailbox); err != nil {
+		return err
 	}
 	if err := s.requireNoMailbox(mailbox); err != nil {
 		return err
@@ -548,8 +579,8 @@ func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) e
 	// Only the new name is checked. A legacy personal folder that already sits
 	// under the other-users prefix routes to the shared resolver above, so it
 	// cannot be renamed away over IMAP.
-	if s.namespaces.Reserves(newName) {
-		return errReservedMailboxName
+	if err := validateNewMailboxName(s.namespaces, newName); err != nil {
+		return err
 	}
 	if err := s.requireMailbox(mailbox, errNoSuchMailbox); err != nil {
 		return err

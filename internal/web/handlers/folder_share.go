@@ -146,7 +146,7 @@ func (h *FolderShareHandler) ShowFolders(w http.ResponseWriter, r *http.Request)
 		folders = append(folders, f)
 	}
 	slices.SortFunc(folders, func(a, b templates.FolderShareFolder) int { return strings.Compare(a.Name, b.Name) })
-	data := templates.FolderSharePageData{Folders: folders, Email: email, Flash: flashText(r)}
+	data := templates.FolderSharePageData{Folders: folders, Tree: buildFolderTree(folders), Email: email, Flash: flashText(r)}
 	templ.Handler(templates.FolderSharePage(data)).ServeHTTP(w, r)
 }
 

@@ -195,8 +195,19 @@ func TestSidebarWithoutCustomFolders(t *testing.T) {
 	if err := Sidebar(mbs, nil, "INBOX").Render(ctx, &buf); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(buf.String(), `data-group="folders"`) {
-		t.Error("Folders group rendered with no custom folders")
+	// The group is always rendered so a user with no custom folder can reach
+	// the way to make one.
+	out := buf.String()
+	if !strings.Contains(out, `data-group="folders"`) {
+		t.Fatal("Folders group missing with no custom folders")
+	}
+	for _, want := range []string{`href="/settings/folders#new-folder"`, `href="/settings/folders"`, "New folder", "Manage folders"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("sidebar misses %s", want)
+		}
+	}
+	if strings.Contains(out, "data-folder-toggle") {
+		t.Error("a folder row rendered with no custom folders")
 	}
 }
 

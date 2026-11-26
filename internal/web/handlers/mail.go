@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -52,7 +53,7 @@ var importMboxReader = func(r io.Reader) io.Reader { return r }
 const trashMailbox = "Trash"
 
 // archiveMailbox is the folder archived messages are moved to.
-const archiveMailbox = "Archive"
+const archiveMailbox = store.ArchiveMailbox
 
 // ensureMailbox makes sure a mailbox exists before a message is moved into it
 // (the move FSM does not auto-create the destination). It is cheap on the
@@ -112,6 +113,14 @@ type MailHandler struct {
 	// acl authorises the shared-folder routes (mail_shared.go). nil leaves them
 	// answering 404.
 	acl *store.ACLStore
+
+	// One-click unsubscribe (mail_unsubscribe.go). Without a poster no
+	// one-click offer is shown; without a limiter the POST is unmetered.
+	unsubPoster  unsubscribePoster
+	unsubVerify  oneClickVerifier
+	unsubLimiter shareRateLimiter
+	// spamTag returns the antispam tag threshold; nil means the default.
+	spamTag func() float64
 
 	// ensureMailboxMu serialises lazy mailbox creation (see ensureMailbox).
 	ensureMailboxMu sync.Mutex
@@ -584,6 +593,11 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		if detail.Invitation != nil {
 			h.hideCardPart(&detail, env)
 		}
+	}
+
+	// Unsubscribe options come from the same parse; only this view sets them.
+	if env != nil {
+		detail.Unsubscribe = h.unsubscribeView(env, meta, realMailbox)
 	}
 
 	detail.Thread = h.loadThreadMessageDetails(userID, msg.MailGuid, realMailbox)
@@ -1202,8 +1216,8 @@ func (h *MailHandler) SetQuotaChecker(qc QuotaChecker) { h.quota = qc }
 
 // SetNamespacePrefixes sets the IMAP namespace prefixes that folder names
 // created from the web must not collide with. Empty values mean the defaults.
-// The web has no folder rename form; a future one must use the same check
-// (store.IMAPNamespaces.Reserves) on the new name.
+// Every new name goes through store.ValidateMailboxName: web create and rename
+// (FolderShareHandler), the mbox import target and IMAP CREATE and RENAME.
 func (h *MailHandler) SetNamespacePrefixes(otherUsers, shared string) {
 	h.namespaces = store.IMAPNamespaces{OtherUsers: otherUsers, Shared: shared}
 }
@@ -1244,9 +1258,15 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 	// A target that does not exist is created below, so a reserved name is
 	// refused here, before the quota check and any write. The message is fixed
 	// text: the posted name is never echoed.
-	if _, err := h.mailboxes.GetMailbox(userID, targetMailbox); err != nil && h.namespaces.OrDefaults().Reserves(targetMailbox) {
-		http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "import.errReservedMailbox"), http.StatusBadRequest)
-		return
+	if _, err := h.mailboxes.GetMailbox(userID, targetMailbox); err != nil {
+		if nameErr := store.ValidateMailboxName(h.namespaces, targetMailbox); nameErr != nil {
+			msgID := "import.errInvalidMailbox"
+			if errors.Is(nameErr, store.ErrMailboxNameReserved) {
+				msgID = "import.errReservedMailbox"
+			}
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), msgID), http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Quota: all or nothing. Refuse up front when the whole upload would not

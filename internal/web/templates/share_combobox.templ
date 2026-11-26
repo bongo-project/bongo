@@ -1,0 +1,58 @@
+package templates
+
+// shareAddressInput is the "share with" field of the folder, calendar and
+// address-book share forms: an email input that suggests people and
+// distribution groups of the user's own domain as they type (GET
+// /api/gal?share=1). Typing a full address still works; Enter with nothing
+// highlighted submits the form. The suggestion list follows the ARIA combobox
+// pattern and a polite live region announces how many suggestions there are.
+// id may be empty; placeholder and label may be empty when the page has a
+// <label for=id>.
+templ shareAddressInput(id, placeholder, label, wrapClass string) {
+	<div
+		x-data="galAutocomplete"
+		data-gal-share
+		data-gal-count-one={ t(ctx, "share.suggestionCountOne") }
+		data-gal-count-many={ t(ctx, "share.suggestionCountMany") }
+		class={ "share-autocomplete", wrapClass }
+	>
+		<input
+			type="email"
+			name="share_with"
+			required
+			autocomplete="off"
+			class="form-input u-m0"
+			role="combobox"
+			aria-autocomplete="list"
+			:aria-expanded="expanded()"
+			:aria-controls="listboxId()"
+			:aria-activedescendant="activeId()"
+			:value="query"
+			@input.debounce.300ms="onInput($el)"
+			@keydown="onKeydown($event)"
+			@blur="hide()"
+			if id != "" {
+				id={ id }
+			}
+			if placeholder != "" {
+				placeholder={ placeholder }
+			}
+			if label != "" {
+				aria-label={ label }
+			}
+		/>
+		<ul :id="listboxId()" class="recipient-suggestions" role="listbox" x-show="show" x-cloak aria-label={ t(ctx, "share.suggestions") }>
+			<template x-for="(r, i) in results" :key="r.key">
+				<li role="option" :id="optionId(i)" :aria-selected="isSelected(i)">
+					<button type="button" tabindex="-1" class="recipient-suggestion" :class="rowClass(i)" @mousedown.prevent="select(r)">
+						<span x-text="r.display_name"></span>
+						<span class="recipient-suggestion-detail" x-text="r.email"></span>
+						<span class="recipient-suggestion-detail" x-text="r.label"></span>
+					</button>
+				</li>
+			</template>
+		</ul>
+		<p class="sr-only" role="status" aria-live="polite" x-text="countText()"></p>
+	</div>
+}
+
