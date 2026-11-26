@@ -779,6 +779,15 @@ Audit corrections found while writing this PRD (2026-10-26):
 - The infra repository's `bongo.prod.hcl` still has a "behind Traefik"
   comment (for the infra session, not this repository).
 
+Found in CI on 2026-11-26 (PR #250, a docs-only change):
+
+- `TestFetchPageWiredWithTester` (`internal/agent/fetchworker_batch_test.go`)
+  hung for 15 minutes until the 20-minute package timeout; the same code
+  passed on main. The test's HTTP client has a 20 s timeout, so the hang is in
+  starting the wiring agent (`runWiringAgent`), not in the request. Give the
+  start-up a deadline that fails the test with a goroutine dump, then find
+  the cause.
+
 Release size: 19 stories (2 S, 14 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:
 
