@@ -38,7 +38,8 @@ change under review introduced it.
 | G | Translation | US-018 |
 | H | Mail and sharing for users | US-019 to US-022 |
 
-TASKS rows are assigned by `norman import`. Dependencies: US-002 before
+Imported on 2026-11-26: v0.17.0 is TASKS Phases 43 (H), 44 (A), 45 (B), 46 (C)
+and 47 (G); Phases D, E and F are imported for v0.18.0. Dependencies: US-002 before
 US-001 can be tested end to end (US-001 can be built against a fake
 endpoint); US-004 needs US-003; US-010 needs US-005 for the greylisting page;
 US-015 needs US-014; US-013 needs US-012.
