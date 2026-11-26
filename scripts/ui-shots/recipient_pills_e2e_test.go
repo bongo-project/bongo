@@ -65,7 +65,7 @@ func composeHandler() http.Handler {
 		q := r.URL.Query()
 		ctx := middleware.WithLocale(r.Context(), "en")
 		var buf bytes.Buffer
-		err := templates.ComposePage(q.Get("mode"), q.Get("to"), q.Get("cc"), "Subject", "", "INBOX", 7, nil, "", "", templates.SelfCardOption{}).Render(ctx, &buf)
+		err := templates.ComposePage(q.Get("mode"), q.Get("to"), q.Get("cc"), "", "Subject", "", "INBOX", 7, nil, "", "", templates.SelfCardOption{}).Render(ctx, &buf)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -361,7 +361,7 @@ func TestRecipientPillsHeadless(t *testing.T) {
 		// Clicking the pills, pressing Enter on them and pressing Backspace on
 		// them each go back to editing AND leave the input focused: without
 		// the focus the blur that brings the pills back never fires.
-		pills, err := p.Element("#to ~ .recipient-pills")
+		pills, err := p.Element(".recipient-field:has(#to) .recipient-pills")
 		if err != nil {
 			t.Fatal(err)
 		}
