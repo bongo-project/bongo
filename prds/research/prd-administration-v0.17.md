@@ -36,7 +36,7 @@ change under review introduced it.
 | E | Directory | US-014 to US-015 |
 | F | Certificates for users and S/MIME | US-016 to US-017 |
 | G | Translation | US-018 |
-| H | Mail for users | US-019 |
+| H | Mail and sharing for users | US-019 to US-021 |
 
 TASKS rows are assigned by `norman import`. Dependencies: US-002 before
 US-001 can be tested end to end (US-001 can be built against a fake
@@ -554,7 +554,7 @@ means editing four hard-coded lists (`internal/i18n/i18n.go:25-30`,
 - [ ] Each string has been reviewed by a native speaker before release
       (open question 5); the PR records who.
 
-### Phase H: Mail for users
+### Phase H: Mail and sharing for users
 
 Release note: messages from mailing lists and newsletters have an
 Unsubscribe button. Where the sender supports one-click unsubscribe, Bongo
@@ -605,9 +605,74 @@ subscriptions).
       the full URI usually holds a token that identifies the subscriber.
 - [ ] Every new string is translated in all shipped locales.
 
+### US-020: Shared folders are subscribed by default
+**Source:** operator's v0.16 client check, 2026-11-26. **Size:** M.
+
+**What exists** (checked on `main` at `ed1909f`): a shared folder is
+unsubscribed until the user subscribes; presence of
+`/user/{id}/sharedsub/{owner}/{mailbox_id}` means subscribed
+(`internal/store/mailboxshare.go:142-149`). Thunderbird shows only
+subscribed folders by default, so a share the user accepted, a folder of a
+shared inbox they belong to, or a folder shared with their group does not
+appear there until they use its Subscribe dialog. Apple Mail ignores
+subscriptions and shows them. Group and shared-inbox grants are created
+accepted and never pass through `/shares`, so subscribing on accept alone
+would not cover them.
+
+**Acceptance Criteria:**
+- [ ] A shared folder on which the user holds an accepted grant with `l`
+      (direct, through a group, or as a shared-inbox member) is subscribed
+      unless the user has unsubscribed from it: LSUB and `LIST (SUBSCRIBED)`
+      return it, so Thunderbird shows it with default settings.
+- [ ] IMAP UNSUBSCRIBE records an opt-out marker keyed like today's key
+      (owner and folder id, so a rename keeps it); SUBSCRIBE removes the
+      marker. A plain Put or Delete, no new command. The marker authorises
+      nothing; rights are re-checked on every listing as now.
+- [ ] The old `sharedsub` keys are no longer read. A leader pass deletes
+      them once (they only ever meant "subscribed", which is now the
+      default). The key table in CLAUDE.md is updated.
+- [ ] A test with each grant path (direct accepted, group, shared inbox)
+      shows the folder in LSUB without any SUBSCRIBE; a test shows an
+      UNSUBSCRIBE surviving a folder rename and a grant change from Read to
+      Write.
+- [ ] `docs/shared-folders.md` drops the "subscribe first" step and explains
+      unsubscribing.
+- [ ] Mixed versions: an older node still reads `sharedsub` and lists an
+      unmarked shared folder as unsubscribed, so a client balanced across
+      nodes sees it appear and vanish. Upgrade every node together
+      (single-node production is unaffected).
+
+### US-021: Share forms suggest users and groups as you type
+**Source:** operator's v0.16 client check, 2026-11-26. **Size:** S.
+
+**What exists:** the folder (`settings_folders.templ`), calendar
+(`calendar.templ`) and address book (`contacts_books_share.templ`) share
+forms take a typed address only. Compose autocomplete (`GET /api/gal`,
+`ComposeHandler.GALSearch`) already searches the caller's own domain only,
+and adds the caller's contacts and same-domain distribution groups.
+
+**Acceptance Criteria:**
+- [ ] Each share form suggests matches as the user types, from people and
+      distribution groups on the user's own primary domain, at most 10.
+      The same domain scoping as compose, so no form can enumerate another
+      domain's users.
+- [ ] Only shareable principals are offered: enabled people (no resources,
+      no shared inboxes, not the user) and groups `shareableGroupOf` would
+      accept. Personal contacts and contact groups are not offered, since a
+      share needs a local account.
+- [ ] Typing a full address still works for a user on another hosted
+      domain; the refusal rules and the uniform refusal message are
+      unchanged.
+- [ ] Either a `share=1` mode on `/api/gal` or a small endpoint sharing its
+      search code; it is GET only, behind the session, rate limited like
+      compose autocomplete.
+- [ ] The suggestion list is keyboard and screen-reader usable (combobox
+      pattern), as the compose recipient field is.
+- [ ] Every new string is translated in all shipped locales.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-19 are the acceptance criteria of US-001 to US-019. In every
+FR-1 to FR-21 are the acceptance criteria of US-001 to US-021. In every
 story:
 
 - Every cookie-authenticated mutation is behind CSRF and same-origin checks;
@@ -760,6 +825,11 @@ by govulncheck.
    unsubscribe, external subscribers, archives, moderation, DMARC-safe
    sending) is not in this PRD; it has its own research PRD,
    `prds/research/prd-mailing-lists.md`, with no release yet.
+12. (operator, 2026-11-26) After the v0.16 client check: shared folders
+   become subscribed by default (US-020; Thunderbird did not show a shared
+   folder or a shared inbox that Apple Mail did), and the share forms
+   suggest users and groups from the user's own domain as they type
+   (US-021). Both in v0.17.0, Phase H.
 
 ### 8.2 Candidates for the next release
 
@@ -788,12 +858,12 @@ Found in CI on 2026-11-26 (PR #250, a docs-only change):
   start-up a deadline that fails the test with a goroutine dump, then find
   the cause.
 
-Release size: 19 stories (2 S, 14 M, 3 L). That is above the ~15-story guide
+Release size: 21 stories (3 S, 15 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:
 
 | Release | Stories | Why |
 |---------|---------|-----|
-| v0.17.0 | Phases A, B, C, G, H (US-001 to US-011, US-018, US-019) | Operations, mail policy, web settings, the translation and one-click unsubscribe: independent of each other's data model. |
+| v0.17.0 | Phases A, B, C, G, H (US-001 to US-011, US-018 to US-021) | Operations, mail policy, web settings, the translation, one-click unsubscribe and two sharing fixes: independent of each other's data model. |
 | v0.18.0 | Phases D, E, F (US-012 to US-017) | Backup, LDAP and certificates for users: each is a new trust or data path and benefits from its own review. |
 
 US-001 cannot ship enabled until open question 1 is answered; if the domain

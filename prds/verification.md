@@ -100,3 +100,9 @@ sweep transcript, not repeated here.
   2026-11-26 against a local dev server failed before any connection: neither client opened
   a TCP connection to 127.0.0.1 (self-signed certificate, loopback host). The operator
   released v0.16.0 and will run the check against production after the deploy.
+- Production check, 2026-11-26 (operator): Apple Mail shows a shared folder and a
+  shared inbox under Other Users; the web UI shows the shared folder. Thunderbird
+  showed neither: with default settings it lists only subscribed folders, and a
+  shared folder stays unsubscribed until the user subscribes. Fixed in v0.17 by
+  US-020 (subscribed by default). Thunderbird's Sharing and Quota tabs are not
+  yet confirmed.
