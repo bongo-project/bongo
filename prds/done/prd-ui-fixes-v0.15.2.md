@@ -5,7 +5,7 @@
 v0.15.1 shipped on 2026-11-04. Building the bongo-project.org screenshots and
 the operator's own use turned up a set of web UI defects and one CalDAV
 interoperability problem. They were recorded in section 8.2 of
-`prds/active/prd-sharing-contacts-v0.16.md`. The operator scoped them into
+`prds/done/prd-sharing-contacts-v0.16.md`. The operator scoped them into
 v0.15.2 on 2026-11-04 ("v0.15.2 now").
 
 Each item was traced to its cause on 2026-11-04 by a read-only review of

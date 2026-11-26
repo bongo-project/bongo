@@ -1,6 +1,6 @@
 # Verification: Sharing, groups, contacts and fetch v0.16
 
-PRD: `prds/active/prd-sharing-contacts-v0.16.md`. Verified 2026-11-25 on `main` at
+PRD: `prds/done/prd-sharing-contacts-v0.16.md`. Verified 2026-11-25 on `main` at
 `04c3964`, rigour `adversarial`: two opus verifiers per PRD phase (implementation and
 tests; edge cases and constraints), one for the cross-cutting requirements, and a
 completeness critic. Raw verdicts: 12 agents, every key test run narrowly and passing.
