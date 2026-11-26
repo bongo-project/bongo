@@ -70,7 +70,18 @@ Stories: 14 PASS, 2 PARTIAL, 0 FAIL. Cross-cutting: 7 PASS, 3 PARTIAL.
   in folder properties) is not recorded.
 
 ## Sweep
-Not yet run (invariants mode, scoped to the PASS requirements). Awaiting the operator.
+Invariants mode, 2026-11-26, after Phase 42, on `main` at `a2cb5ee`. Five agents listed 78
+guarantees across grants, IMAP sharing and quota, groups and shared inboxes, contacts, and
+fetch; 64 were kept (duplicates and low-cost ones dropped) and broken one at a time with
+`go test -overlay`, the working tree unchanged throughout.
+
+swept 64: 64 guarded, 0 confirmed unguarded, 0 refuted, 0 could-not-break/stale.
+
+The harness was checked first by hand (dropping the accepted-state check in
+`EffectiveGrant` fails 8 store tests), and two results were re-run by hand afterwards
+(`SyncSharedInboxGrants` keeping non-members; `FetchHandler` sealing before the new fields
+apply): both fail their named tests. Per-invariant breaks and failing tests are in the
+sweep transcript, not repeated here.
 
 ## Gaps closed (Phase 42, 2026-11-26)
 - US-003: QUOTA-only branch `upstream/quota` (72dbdd3) on bongo-project/go-imap, one commit on

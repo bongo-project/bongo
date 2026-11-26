@@ -1991,3 +1991,8 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [testing] Extend an existing scenario test with the missing assertion rather than cloning it; wire the real index (newEnvWithGAL) so the assertion is not vacuous.
 - PATTERN: [i18n] Two refusal bodies that must be indistinguishable (absent vs out of scope) must stay byte-identical; translate both or neither.
 - PATTERN: [testing] A mutation can fail a test for the wrong reason (a fan-out cap answering 452 before the envelope check); read why the mutant failed.
+
+## 2026-11-26 v0.16 invariants sweep
+- 64 guarantees broken with go test -overlay across 13 batches: all guarded, nothing to refute. Harness checked by hand first; two results re-run by hand afterwards.
+- PATTERN: [sweep] When a sweep comes back fully guarded, re-run a sample of breaks by hand before trusting it; an all-green report is exactly what a broken harness also produces.
+- PATTERN: [git] After `git apply --3way` the patch is staged; a later edit to the same file stays unstaged and is left out of a commit made with `git add` of other paths. Check `git diff` before committing.
