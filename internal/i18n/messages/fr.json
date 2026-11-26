@@ -1465,7 +1465,6 @@
   "folders.errUpdateFailed": "Le dossier n’a pas pu être mis à jour. Réessayez.",
   "folders.errShareWithRequired": "Saisissez une adresse avec laquelle partager.",
   "folders.errInvalidPreset": "Choisissez Lecture, Écriture ou Complet. Peut partager nécessite Complet.",
-  "folders.manage": "Gérer les dossiers",
   "folders.newTitle": "Nouveau dossier",
   "folders.newName": "Nom du dossier",
   "folders.newHint": "Utilisez une barre oblique pour créer un sous-dossier, par exemple Projets/2027. Le dossier parent n'a pas besoin d'exister.",

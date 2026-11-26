@@ -1465,7 +1465,6 @@
   "folders.errUpdateFailed": "No se pudo actualizar la carpeta. Inténtelo de nuevo.",
   "folders.errShareWithRequired": "Introduzca una dirección con la que compartir.",
   "folders.errInvalidPreset": "Elija Lectura, Escritura o Completo. Puede compartir requiere Completo.",
-  "folders.manage": "Gestionar carpetas",
   "folders.newTitle": "Nueva carpeta",
   "folders.newName": "Nombre de la carpeta",
   "folders.newHint": "Use una barra para crear una subcarpeta, por ejemplo Proyectos/2027. La carpeta superior no tiene que existir.",

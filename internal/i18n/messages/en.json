@@ -1465,7 +1465,6 @@
   "folders.errUpdateFailed": "The folder could not be updated. Try again.",
   "folders.errShareWithRequired": "Enter an address to share with.",
   "folders.errInvalidPreset": "Choose Read, Write or Full. Can share needs Full.",
-  "folders.manage": "Manage your folders",
   "folders.newTitle": "New folder",
   "folders.newName": "Folder name",
   "folders.newHint": "Use a slash to make a subfolder, for example Projects/2027. The parent folder does not have to exist.",

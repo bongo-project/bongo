@@ -173,20 +173,26 @@ func (h *MailHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	u := opts.HTTPS
 	host := u.Hostname()
 
+	// Other methods the message offers, shown when this one cannot be used.
+	mailtoHref := ""
+	if opts.Mailto != "" {
+		mailtoHref = templates.UnsubscribeMailtoURL(mailbox, uint32(uid))
+	}
+
 	if !h.unsubVerify(r.Context(), raw) {
 		h.logger.Info("web: unsubscribe offer not signed, link shown instead", "user", userID, "guid", meta.Guid, "host", host)
-		templ.Handler(templates.UnsubscribeResult(templates.UnsubscribeLink, host, u.String())).ServeHTTP(w, r)
+		templ.Handler(templates.UnsubscribeResult(templates.UnsubscribeLink, host, u.String(), mailtoHref)).ServeHTTP(w, r)
 		return
 	}
 
 	if err := h.unsubPoster.PostOneClick(r.Context(), u); err != nil {
 		// The error names the host only; the URI and the remote reply stay out.
 		h.logger.Warn("web: one-click unsubscribe failed", "user", userID, "guid", meta.Guid, "host", host, "error", err)
-		templ.Handler(templates.UnsubscribeResult(templates.UnsubscribeFailure, host, "")).ServeHTTP(w, r)
+		templ.Handler(templates.UnsubscribeResult(templates.UnsubscribeFailure, host, u.String(), mailtoHref)).ServeHTTP(w, r)
 		return
 	}
 	h.logger.Info("web: one-click unsubscribe sent", "user", userID, "guid", meta.Guid, "host", host)
-	templ.Handler(templates.UnsubscribeResult(templates.UnsubscribeSuccess, host, "")).ServeHTTP(w, r)
+	templ.Handler(templates.UnsubscribeResult(templates.UnsubscribeSuccess, host, "", "")).ServeHTTP(w, r)
 }
 
 // ListUnsubscribe shows the unsubscribe control of a mailing list, taken from

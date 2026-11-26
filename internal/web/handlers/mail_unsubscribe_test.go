@@ -252,19 +252,42 @@ func TestUnsubscribePostSuccess(t *testing.T) {
 }
 
 func TestUnsubscribePostFailureShowsFixedText(t *testing.T) {
-	f := newUnsubFixture(t)
-	f.poster.err = fmt.Errorf("unsubscribing at news.example.org: status 500 <script>REMOTEBODY</script>")
-	uid := f.deliver(unsubMsg{mailbox: "INBOX", guid: "g1", headers: oneClickHdr})
-	w := f.do(http.MethodPost, fmt.Sprintf("/mail/INBOX/%d/unsubscribe", uid), "", url.Values{})
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d", w.Code)
+	tests := []struct {
+		name       string
+		headers    string
+		wantMailto bool
+	}{
+		{"https and mailto offered", oneClickHdr, true},
+		{"https only", "List-Unsubscribe: <" + unsubOneURL + ">\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n", false},
 	}
-	body := w.Body.String()
-	if !strings.Contains(body, "did not go through") || strings.Contains(body, "REMOTEBODY") {
-		t.Errorf("body = %s", body)
-	}
-	if strings.Contains(f.logs.String(), unsubToken) || strings.Contains(f.logs.String(), "SECRETQUERY") {
-		t.Errorf("logs leak the URI: %s", f.logs.String())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newUnsubFixture(t)
+			f.poster.err = fmt.Errorf("unsubscribing at news.example.org: status 500 <script>REMOTEBODY</script>")
+			uid := f.deliver(unsubMsg{mailbox: "INBOX", guid: "g1", headers: tt.headers})
+			w := f.do(http.MethodPost, fmt.Sprintf("/mail/INBOX/%d/unsubscribe", uid), "", url.Values{})
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d", w.Code)
+			}
+			body := w.Body.String()
+			if !strings.Contains(body, "did not go through") || strings.Contains(body, "REMOTEBODY") {
+				t.Errorf("body = %s", body)
+			}
+			// The user keeps another way out: the link, opened in their own
+			// browser, and the mailto request when the message offers one.
+			if !strings.Contains(body, `class="unsubscribe-link"`) || !strings.Contains(body, `rel="noopener noreferrer"`) || !strings.Contains(body, "news.example.org") {
+				t.Errorf("failure fragment lacks the link disclosure: %s", body)
+			}
+			if got := strings.Contains(body, `data-action="unsubscribe-mailto"`); got != tt.wantMailto {
+				t.Errorf("mailto link = %v, want %v: %s", got, tt.wantMailto, body)
+			}
+			if tt.wantMailto && !strings.Contains(body, fmt.Sprintf(`href="/compose/unsubscribe/INBOX/%d"`, uid)) {
+				t.Errorf("mailto link has the wrong target: %s", body)
+			}
+			if strings.Contains(f.logs.String(), unsubToken) || strings.Contains(f.logs.String(), "SECRETQUERY") {
+				t.Errorf("logs leak the URI: %s", f.logs.String())
+			}
+		})
 	}
 }
 
@@ -290,10 +313,17 @@ func TestUnsubscribePostRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newUnsubFixture(t)
 			f.verified = tt.verify
+			// A filler pushes the offer to uid 2 in the owner's folder. user2
+			// has the same folder with only a uid-1 message, so uid 2 does not
+			// exist in their keyspace: a handler that read the owner's
+			// keyspace instead of the session user's would find the valid
+			// offer, post, and answer 200.
+			f.deliver(unsubMsg{mailbox: tt.mailbox, guid: "filler"})
 			uid := f.deliver(unsubMsg{mailbox: tt.mailbox, guid: "g1", headers: tt.headers, spam: tt.spam})
-			// user2 exists but holds no such message: the lookup reads the
-			// session user's keyspace only, so user1's uid is a 404 for them.
-			f.deliver(unsubMsg{user: "user2", mailbox: "Other", guid: "g2", headers: tt.headers})
+			f.deliver(unsubMsg{user: "user2", mailbox: tt.mailbox, guid: "g2", headers: tt.headers})
+			if uid != 2 {
+				t.Fatalf("fixture: offer uid = %d, want 2", uid)
+			}
 			path := fmt.Sprintf("/mail/%s/%d/unsubscribe", strings.ReplaceAll(tt.mailbox, "/", "%2F"), uid)
 			w := f.do(http.MethodPost, path, tt.user, url.Values{})
 			if w.Code != tt.want {
@@ -321,6 +351,9 @@ func TestUnsubscribeUnsignedFallsBackToLink(t *testing.T) {
 		t.Errorf("verifier ran %d times, want 1", f.verifies)
 	}
 	body := w.Body.String()
+	if !strings.Contains(body, `data-action="unsubscribe-mailto"`) {
+		t.Errorf("link fragment lacks the mailto offer: %s", body)
+	}
 	if !strings.Contains(body, "could not check the sender") || !strings.Contains(body, `rel="noopener noreferrer"`) || !strings.Contains(body, "news.example.org") {
 		t.Errorf("body = %s", body)
 	}

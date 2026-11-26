@@ -20,9 +20,13 @@ templ UnsubscribePanel(mailbox string, uid uint32, v *UnsubscribeView) {
 		} else if v.LinkURL != "" {
 			@unsubscribeLinkDisclosure(v.Host, v.LinkURL)
 		} else if v.Mailto {
-			<a href={ templ.SafeURL(fmt.Sprintf("/compose/unsubscribe/%s/%d", encMailbox(mailbox), uid)) } data-action="unsubscribe-mailto">{ t(ctx, "mail.unsubscribeMailto") }</a>
+			@unsubscribeMailtoLink(UnsubscribeMailtoURL(mailbox, uid))
 		}
 	</div>
+}
+
+templ unsubscribeMailtoLink(href string) {
+	<a href={ templ.SafeURL(href) } data-action="unsubscribe-mailto">{ t(ctx, "mail.unsubscribeMailto") }</a>
 }
 
 // unsubscribeLinkDisclosure names the host before the user leaves for it. The
@@ -36,18 +40,33 @@ templ unsubscribeLinkDisclosure(host, link string) {
 }
 
 // UnsubscribeResult is the fragment the one-click POST answers with. The
-// text is fixed: nothing the remote side said is shown.
-templ UnsubscribeResult(kind, host, link string) {
+// text is fixed: nothing the remote side said is shown. link and mailtoHref
+// are the other methods the message offers (either may be empty); the link and
+// failure fragments show them so a user is never left without a way out.
+templ UnsubscribeResult(kind, host, link, mailtoHref string) {
 	switch kind {
 		case UnsubscribeSuccess:
 			<div class="flash flash-success" id="unsubscribe-panel" role="status">{ t(ctx, "mail.unsubscribeSuccess") }</div>
 		case UnsubscribeLink:
 			<div class="blocked-banner" id="unsubscribe-panel" role="status">
 				<p>{ t(ctx, "mail.unsubscribeNoProof") }</p>
-				@unsubscribeLinkDisclosure(host, link)
+				if link != "" {
+					@unsubscribeLinkDisclosure(host, link)
+				}
+				if mailtoHref != "" {
+					@unsubscribeMailtoLink(mailtoHref)
+				}
 			</div>
 		default:
-			<div class="flash flash-error" id="unsubscribe-panel" role="alert">{ t(ctx, "mail.unsubscribeFailure") }</div>
+			<div class="flash flash-error" id="unsubscribe-panel" role="alert">
+				<p>{ t(ctx, "mail.unsubscribeFailure") }</p>
+				if link != "" {
+					@unsubscribeLinkDisclosure(host, link)
+				}
+				if mailtoHref != "" {
+					@unsubscribeMailtoLink(mailtoHref)
+				}
+			</div>
 	}
 }
 

@@ -1,11 +1,13 @@
 package unsubscribe
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"net/mail"
 	"strings"
 	"testing"
 	"time"
@@ -178,16 +180,22 @@ func TestVerifyOneClick(t *testing.T) {
 	})
 	t.Run("extra unsigned header above the signed one", func(t *testing.T) {
 		// DKIM takes the bottom instance of a header, so the signature of the
-		// original still verifies with a forged header prepended. Parse is what
-		// refuses one-click when there are two List-Unsubscribe headers.
+		// original may still verify with a forged header prepended. Either the
+		// signature check fails, or Parse sees two List-Unsubscribe headers and
+		// refuses one-click: in no case is a one-click offer made overall.
 		raw, lk := signed(t, baseHeaders, both)
 		forged := []byte("List-Unsubscribe: <https://evil.test/u>\r\n" + string(raw))
-		if !VerifyOneClick(context.Background(), forged, lk) {
-			t.Skip("library no longer verifies a prepended duplicate; the Parse rule still applies")
+		msg, err := mail.ReadMessage(bytes.NewReader(forged))
+		if err != nil {
+			t.Fatalf("ReadMessage: %v", err)
 		}
-		opts := Parse([]string{"<https://evil.test/u>", "<https://list.test/u/abc>"}, []string{OneClickValue})
+		opts := Parse(msg.Header["List-Unsubscribe"], msg.Header["List-Unsubscribe-Post"])
+		if n := len(msg.Header["List-Unsubscribe"]); n != 2 {
+			t.Fatalf("forged message has %d List-Unsubscribe headers, want 2", n)
+		}
 		if opts.OneClick {
-			t.Fatal("two List-Unsubscribe headers must not offer one-click")
+			t.Fatal("two List-Unsubscribe headers must not offer one-click, whether or not the signature verifies")
 		}
+		t.Logf("signature verifies with the prepended duplicate: %v", VerifyOneClick(context.Background(), forged, lk))
 	})
 }

@@ -494,15 +494,16 @@ func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
 	if err := s.checkAccount(); err != nil {
 		return err
 	}
+	// RFC 3501 section 6.3.3: a trailing hierarchy delimiter means the client
+	// only announces that the name may have inferiors; the folder is "foo".
+	// go-imap passes the delimiter through, so one is trimmed here, before the
+	// personal and the shared path part ways.
+	mailbox = strings.TrimSuffix(mailbox, "/")
 	// Names under the other-users prefix are folders of other accounts; they
 	// are created only beneath a folder the user holds k on.
 	if s.ns().IsOtherUsersName(mailbox) {
 		return s.createShared(mailbox)
 	}
-	// RFC 3501 section 6.3.3: a trailing hierarchy delimiter means the client
-	// only announces that the name may have inferiors; the folder is "foo".
-	// go-imap passes the delimiter through, so one is trimmed here.
-	mailbox = strings.TrimSuffix(mailbox, "/")
 	// Before any store read: the check consults configuration only, so it
 	// reveals nothing about existing mailboxes.
 	if err := validateNewMailboxName(s.namespaces, mailbox); err != nil {

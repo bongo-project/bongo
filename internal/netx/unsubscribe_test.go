@@ -168,10 +168,20 @@ func TestPostOneClickRefusals(t *testing.T) {
 
 func TestPostOneClickCapsBodyAndTimes(t *testing.T) {
 	t.Run("large body is capped", func(t *testing.T) {
+		// The server offers far more than the cap and counts what it managed to
+		// write. A client that drains it all would take every byte; one that
+		// stops at the cap leaves the server blocked on full socket buffers
+		// until the connection is closed.
+		const offered = 64 << 20
+		var written atomic.Int64
+		done := make(chan struct{})
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer close(done)
 			chunk := []byte(strings.Repeat("x", 4096))
-			for range 100 {
-				if _, err := w.Write(chunk); err != nil {
+			for written.Load() < offered {
+				n, err := w.Write(chunk)
+				written.Add(int64(n))
+				if err != nil {
 					return
 				}
 			}
@@ -180,6 +190,15 @@ func TestPostOneClickCapsBodyAndTimes(t *testing.T) {
 		c, u := tlsOneClickClient(t, srv)
 		if err := c.PostOneClick(context.Background(), u); err != nil {
 			t.Fatalf("PostOneClick: %v", err)
+		}
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("server never saw the connection close")
+		}
+		// The cap plus whatever socket and TLS buffers absorbed in flight.
+		if got := written.Load(); got >= offered/4 {
+			t.Errorf("server wrote %d bytes, want the client to stop near %d", got, oneClickMaxBody)
 		}
 	})
 	t.Run("context cancel stops a slow server", func(t *testing.T) {

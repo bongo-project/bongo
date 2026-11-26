@@ -1,5 +1,7 @@
 package templates
 
+import "fmt"
+
 // UnsubscribeView is what the message view and the Mailing lists view show for
 // the unsubscribe methods a message offers. It carries no URI except LinkURL,
 // which the server has parsed and re-serialised as a plain https URL.
@@ -33,4 +35,10 @@ func unsubscribeMailbox(msg MessageDetail) string {
 		return msg.RealMailbox
 	}
 	return msg.Mailbox
+}
+
+// UnsubscribeMailtoURL is the compose route that prepares the message's
+// List-Unsubscribe mailto: request.
+func UnsubscribeMailtoURL(mailbox string, uid uint32) string {
+	return fmt.Sprintf("/compose/unsubscribe/%s/%d", encMailbox(mailbox), uid)
 }

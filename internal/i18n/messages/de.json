@@ -1465,7 +1465,6 @@
   "folders.errUpdateFailed": "Der Ordner konnte nicht aktualisiert werden. Versuchen Sie es erneut.",
   "folders.errShareWithRequired": "Geben Sie eine Adresse zum Teilen ein.",
   "folders.errInvalidPreset": "Wählen Sie Lesen, Schreiben oder Vollzugriff. Darf teilen setzt Vollzugriff voraus.",
-  "folders.manage": "Ordner verwalten",
   "folders.newTitle": "Neuer Ordner",
   "folders.newName": "Ordnername",
   "folders.newHint": "Mit einem Schrägstrich legen Sie einen Unterordner an, zum Beispiel Projekte/2027. Der übergeordnete Ordner muss nicht existieren.",

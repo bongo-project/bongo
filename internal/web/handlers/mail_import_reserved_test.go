@@ -114,3 +114,78 @@ func TestImportMboxExistingLegacyReservedFolderStillWorks(t *testing.T) {
 		t.Fatalf("status = %d, want 200 (body %q)", w.Code, w.Body.String())
 	}
 }
+
+// A target name that is malformed (not merely reserved) is refused with the
+// invalid-name text, before the quota check and any write: no folder, no
+// message.
+func TestImportMboxRefusesInvalidFolderNames(t *testing.T) {
+	const user, email = "u-invalid", "invalid@example.test"
+	const mbox = "From a@example.test Mon Jan  1 00:00:00 2024\nSubject: hi\n\nbody\n"
+
+	tests := []struct {
+		name    string
+		field   string
+		value   string
+		locale  string
+		wantMsg string
+	}{
+		{"double delimiter", "new_mailbox", "a//b", "en", "import.errInvalidMailbox"},
+		{"leading delimiter", "new_mailbox", "/a", "de", "import.errInvalidMailbox"},
+		{"over-long", "new_mailbox", strings.Repeat("a", 256), "es", "import.errInvalidMailbox"},
+		{"control character", "mailbox", "a\x01b", "fr", "import.errInvalidMailbox"},
+		{"virtual view", "new_mailbox", "starred", "en", "import.errReservedMailbox"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			ps, err := store.NewPebbleStore(dir + "/pebble")
+			if err != nil {
+				t.Fatalf("NewPebbleStore: %v", err)
+			}
+			t.Cleanup(func() { ps.Close() })
+			bs, err := store.NewBlobStore(dir + "/blobs")
+			if err != nil {
+				t.Fatalf("NewBlobStore: %v", err)
+			}
+			mailboxes := store.NewMailboxStore(ps, &directApplierTags{ps: ps})
+			if err := mailboxes.CreateMailbox(user, "INBOX"); err != nil {
+				t.Fatalf("CreateMailbox: %v", err)
+			}
+			h := NewMailHandler(ps, bs, mailboxes, discardLogger())
+
+			req := uploadReq(t, "/import", "mbox", []byte(mbox), map[string]string{tt.field: tt.value})
+			req = withUserContext(req, user, email)
+			req = req.WithContext(middleware.WithLocale(req.Context(), tt.locale))
+			w := httptest.NewRecorder()
+			h.ImportMbox(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %q)", w.Code, w.Body.String())
+			}
+			want := i18n.T(tt.locale, tt.wantMsg)
+			if want == tt.wantMsg || want == "" {
+				t.Fatalf("no %s translation for %q", tt.wantMsg, tt.locale)
+			}
+			if got := strings.TrimSpace(w.Body.String()); got != want {
+				t.Errorf("body = %q, want %q", got, want)
+			}
+			if strings.Contains(w.Body.String(), tt.value) {
+				t.Error("the posted name is echoed")
+			}
+			boxes, err := mailboxes.ListMailboxes(user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(boxes) != 1 || boxes[0].Name != "INBOX" {
+				t.Errorf("mailboxes after refusal = %v, want only INBOX", boxes)
+			}
+			msgs, err := mailboxes.ListMessages(user, "INBOX")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(msgs) != 0 {
+				t.Errorf("INBOX holds %d messages after a refused import", len(msgs))
+			}
+		})
+	}
+}
