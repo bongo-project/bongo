@@ -216,8 +216,6 @@ As an operator, system-generated mail uses proper domains.
 
 ## 7. Non-Goals (for this epic; revisit later)
 
-- Self-service public signup / billing / a customer portal (operator or domain-admin creates
-  accounts).
 - Automated DNS publishing (we display records; the operator publishes them).
 - Per-domain separate TLS certificates beyond Traefik/Let's Encrypt SAN handling.
 - Cross-server tenant sharding / dedicated per-tenant storage backends.

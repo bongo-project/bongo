@@ -1,4 +1,4 @@
-# PRD: Admin and enterprise v0.17.0
+# PRD: Administration and organisational deployments v0.17.0
 
 ## 1. Introduction / Overview
 
@@ -8,8 +8,7 @@ features an organisation, rather than an individual, asks of a mail server:
 directory authentication, S/MIME, per-user controls, per-user backup and
 restore, journaling, disclaimers, attachment policy, anti-spam settings in
 the web admin, greylisting, certificate handling, a further translation and
-a check for new releases. This PRD fixes the scope of v0.17.0 "Admin and
-enterprise".
+a check for new releases. This PRD defines the scope of v0.17.0.
 
 Every story was checked against `main` at `6725448` on 2026-10-26. Where the
 code disagrees with the audit, the story says so; section 8.2 lists the
