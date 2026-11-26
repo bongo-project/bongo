@@ -173,7 +173,7 @@ var seedEmails = []seedEmail{
 	{
 		From: "charlie@localhost", To: "admin@localhost",
 		Subject: "SSL certificate renewal reminder",
-		Body:    "Hi,\n\nJust a heads up: the wildcard cert for *.bongo.dev expires in 14 days. I've submitted the renewal request through our CA portal.\n\nShould be auto-deployed via cert-manager but wanted to flag it just in case.\n\nCharlie",
+		Body:    "Hi,\n\nJust a heads up: the wildcard cert for *.example.net expires in 14 days. I've submitted the renewal request through our CA portal.\n\nShould be auto-deployed via cert-manager but wanted to flag it just in case.\n\nCharlie",
 		Date:    now.Add(-4 * time.Hour),
 	},
 	{
@@ -197,7 +197,7 @@ var seedEmails = []seedEmail{
 	{
 		From: "charlie@localhost", To: "admin@localhost",
 		Subject: "New hire onboarding - Sarah Chen starts Monday",
-		Body:    "Hi,\n\nSarah Chen joins us as a Senior SRE on Monday. Here's what I need from you:\n\n- [ ] Create her Bongo email account (sarah.chen@bongo.dev)\n- [ ] Add to the engineering Slack channels\n- [ ] Grant access to the staging cluster\n- [ ] Schedule a 1:1 intro meeting\n\nHer GitHub handle is @sarahchen-sre.\n\nThanks,\nCharlie",
+		Body:    "Hi,\n\nSarah Chen joins us as a Senior SRE on Monday. Here's what I need from you:\n\n- [ ] Create her work email account (sarah.chen@example.net)\n- [ ] Add to the engineering Slack channels\n- [ ] Grant access to the staging cluster\n- [ ] Schedule a 1:1 intro meeting\n\nHer GitHub handle is @sarahchen-sre.\n\nThanks,\nCharlie",
 		Date:    now.Add(-7 * time.Hour),
 	},
 	{
@@ -247,37 +247,37 @@ var seedUsers = []seedUser{
 var userContacts = func() map[string][]seedContact {
 	return map[string][]seedContact{
 		"admin@localhost": {
-			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Bongo Labs"},
-			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Bongo Labs"},
-			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Bongo Labs"},
-			{Name: "Sarah Chen", Email: "sarah.chen@bongo.dev", Phone: "+1-555-0104", Company: "Bongo Labs"},
+			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Example Labs"},
+			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Example Labs"},
+			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Example Labs"},
+			{Name: "Sarah Chen", Email: "sarah.chen@example.net", Phone: "+1-555-0104", Company: "Example Labs"},
 			{Name: "David Kim", Email: "david.kim@example.com", Phone: "+44-20-7946-0958", Company: "DevOps Weekly"},
 			{Name: "Maria Garcia", Email: "maria@vendor.example.com", Phone: "+1-555-0201", Company: "Vendor Inc"},
 			{Name: "James O'Brien", Email: "james@consulting.example.com", Phone: "+353-1-234-5678", Company: "Tech Consulting Ltd"},
 			{Name: "Yuki Tanaka", Email: "yuki@partner.example.jp", Phone: "+81-3-1234-5678", Company: "Partner Corp"},
 		},
 		"alice@localhost": {
-			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Bongo Labs"},
-			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Bongo Labs"},
-			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Bongo Labs"},
-			{Name: "Sarah Chen", Email: "sarah.chen@bongo.dev", Phone: "+1-555-0104", Company: "Bongo Labs"},
+			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Example Labs"},
+			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Example Labs"},
+			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Example Labs"},
+			{Name: "Sarah Chen", Email: "sarah.chen@example.net", Phone: "+1-555-0104", Company: "Example Labs"},
 			{Name: "Liam Foster", Email: "liam@design.example.com", Phone: "+1-555-0301", Company: "DesignCo"},
 			{Name: "Priya Sharma", Email: "priya@analytics.example.com", Phone: "+91-22-5555-1234", Company: "DataPulse"},
 		},
 		"bob@localhost": {
-			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Bongo Labs"},
-			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Bongo Labs"},
-			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Bongo Labs"},
+			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Example Labs"},
+			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Example Labs"},
+			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Example Labs"},
 			{Name: "Nina Rossi", Email: "nina@finance.example.com", Phone: "+39-06-5555-7890", Company: "FinanceHub"},
 			{Name: "Tom Baker", Email: "tom@devtools.example.com", Phone: "+44-20-5555-4321", Company: "DevToolsCo"},
 		},
 		"charlie@localhost": {
-			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Bongo Labs"},
-			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Bongo Labs"},
-			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Bongo Labs"},
+			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Example Labs"},
+			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Example Labs"},
+			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Example Labs"},
 			{Name: "Kenji Nakamura", Email: "kenji@infra.example.jp", Phone: "+81-3-5555-6789", Company: "InfraOps"},
 			{Name: "Sophie Muller", Email: "sophie@security.example.de", Phone: "+49-30-5555-2468", Company: "SecureNet"},
-			{Name: "Rachel Green", Email: "rachel@hr.example.com", Phone: "+1-555-0401", Company: "Bongo Labs"},
+			{Name: "Rachel Green", Email: "rachel@hr.example.com", Phone: "+1-555-0401", Company: "Example Labs"},
 		},
 	}
 }()
@@ -313,7 +313,7 @@ var userEvents = func() map[string][]seedEvent {
 			},
 			{
 				Title:       "SSL Certificate Renewal Deadline",
-				Description: "Wildcard cert for *.bongo.dev expires",
+				Description: "Wildcard cert for *.example.net expires",
 				StartTime:   today.Add(14 * 24 * time.Hour),
 				EndTime:     today.Add(14 * 24 * time.Hour),
 				AllDay:      true,

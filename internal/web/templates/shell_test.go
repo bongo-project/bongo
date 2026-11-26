@@ -13,7 +13,7 @@ import (
 func TestAvatarInitials(t *testing.T) {
 	tests := []struct{ in, want string }{
 		{"a.b@x.com", "AB"},
-		{"jane.roe@bongo.dev", "JR"},
+		{"jane.roe@example.net", "JR"},
 		{"alice@localhost", "A"},
 		{"x", "X"},
 		{"", "?"},

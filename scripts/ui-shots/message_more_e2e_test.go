@@ -33,14 +33,14 @@ const longTextLine = "landmark-no-duplicate-banner (1 instance) landmark-no-dupl
 func messageFixture() templates.MessageDetail {
 	return templates.MessageDetail{
 		UID: 7, Mailbox: "INBOX", Subject: "Roadmap review",
-		From: "Marcus Webb <marcus@example.com>", To: []string{"jane@bongo.dev"},
+		From: "Marcus Webb <marcus@example.com>", To: []string{"jane@example.net"},
 		Date:     time.Date(2026, 4, 19, 9, 30, 0, 0, time.UTC),
 		TextBody: "Body of the opened message.",
 		Attachments: []templates.Attachment{
 			{Filename: "report.txt", ContentType: "text/plain", Size: 120, Hash: "abc123", URL: "/mail/blob/abc123"},
 		},
 		Thread: []templates.MessageDetail{{
-			UID: 3, Mailbox: "INBOX", Subject: "Re: Roadmap review", From: "jane@bongo.dev",
+			UID: 3, Mailbox: "INBOX", Subject: "Re: Roadmap review", From: "jane@example.net",
 			To: []string{"marcus@example.com"}, Date: time.Date(2026, 4, 18, 9, 0, 0, 0, time.UTC),
 			TextBody: "earlier reply",
 		}},

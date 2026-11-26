@@ -29,7 +29,7 @@ func viewFixture() MessageDetail {
 		Mailbox:          "INBOX",
 		Subject:          "Roadmap review",
 		From:             "Marcus Webb <marcus@example.com>",
-		To:               []string{"jane@bongo.dev"},
+		To:               []string{"jane@example.net"},
 		Date:             time.Date(2026, 4, 19, 9, 30, 0, 0, time.UTC),
 		HTMLBody:         `<p>MARKER-HTML-BODY</p><div class="blocked-image" data-src="https://t.example/x.png"></div>`,
 		HasBlockedImages: true,
@@ -39,7 +39,7 @@ func viewFixture() MessageDetail {
 			{Filename: "Q2-roadmap-v3.pdf", ContentType: "application/pdf", Size: 2936013, Hash: "abc", URL: "/mail/INBOX/7/attachment/0"},
 		},
 		Thread: []MessageDetail{{
-			UID: 3, Mailbox: "INBOX", Subject: "Re: Roadmap review", From: "jane@bongo.dev",
+			UID: 3, Mailbox: "INBOX", Subject: "Re: Roadmap review", From: "jane@example.net",
 			To: []string{"marcus@example.com"}, Date: time.Date(2026, 4, 18, 9, 0, 0, 0, time.UTC),
 			TextBody: "earlier reply", HasBlockedImages: true,
 			Tags: []TagInfo{{Name: "Later", ColourIndex: 2}},
@@ -165,7 +165,7 @@ func TestSenderParts(t *testing.T) {
 		name, in, wantName, wantAddr string
 	}{
 		{"name and address", "Marcus Webb <marcus@example.com>", "Marcus Webb", "marcus@example.com"},
-		{"bare address", "jane@bongo.dev", "jane@bongo.dev", "jane@bongo.dev"},
+		{"bare address", "jane@example.net", "jane@example.net", "jane@example.net"},
 		{"quoted name", `"Webb, Marcus" <marcus@example.com>`, "Webb, Marcus", "marcus@example.com"},
 		{"garbage falls back to raw", "not an address <<", "not an address <<", ""},
 		{"empty", "", "", ""},

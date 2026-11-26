@@ -1881,7 +1881,7 @@ var seedEmails = []seedEmail{
 	{
 		from: "charlie@localhost", fromPass: "charlie123", to: "admin@localhost",
 		subject: "SSL certificate renewal reminder",
-		body:    "Hi,\n\nJust a heads up: the wildcard cert for *.bongo.dev expires in 14 days. I've submitted the renewal request through our CA portal.\n\nShould be auto-deployed via cert-manager but wanted to flag it just in case.\n\nCharlie",
+		body:    "Hi,\n\nJust a heads up: the wildcard cert for *.example.net expires in 14 days. I've submitted the renewal request through our CA portal.\n\nShould be auto-deployed via cert-manager but wanted to flag it just in case.\n\nCharlie",
 		date:    seedNow.Add(-4 * time.Hour),
 	},
 	{
@@ -2003,10 +2003,10 @@ func seedContactsAndEvents(baseURL string) {
 		{
 			email: "admin@localhost", password: "admin",
 			contacts: []seedContact{
-				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Bongo Labs"},
-				{"Bob Martinez", "bob@localhost", "+1-555-0102", "Bongo Labs"},
-				{"Charlie Wong", "charlie@localhost", "+1-555-0103", "Bongo Labs"},
-				{"Sarah Chen", "sarah.chen@bongo.dev", "+1-555-0104", "Bongo Labs"},
+				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Example Labs"},
+				{"Bob Martinez", "bob@localhost", "+1-555-0102", "Example Labs"},
+				{"Charlie Wong", "charlie@localhost", "+1-555-0103", "Example Labs"},
+				{"Sarah Chen", "sarah.chen@example.net", "+1-555-0104", "Example Labs"},
 				{"David Kim", "david.kim@example.com", "+44-20-7946-0958", "DevOps Weekly"},
 			},
 			events: []seedEvent{
@@ -2019,9 +2019,9 @@ func seedContactsAndEvents(baseURL string) {
 		{
 			email: "alice@localhost", password: "alice123",
 			contacts: []seedContact{
-				{"Admin", "admin@localhost", "+1-555-0100", "Bongo Labs"},
-				{"Bob Martinez", "bob@localhost", "+1-555-0102", "Bongo Labs"},
-				{"Charlie Wong", "charlie@localhost", "+1-555-0103", "Bongo Labs"},
+				{"Admin", "admin@localhost", "+1-555-0100", "Example Labs"},
+				{"Bob Martinez", "bob@localhost", "+1-555-0102", "Example Labs"},
+				{"Charlie Wong", "charlie@localhost", "+1-555-0103", "Example Labs"},
 			},
 			events: []seedEvent{
 				{"Infrastructure Migration Review", "Review progress on Q1 migration", today.Add(9 * time.Hour), today.Add(10 * time.Hour), false},
@@ -2031,8 +2031,8 @@ func seedContactsAndEvents(baseURL string) {
 		{
 			email: "bob@localhost", password: "bob123",
 			contacts: []seedContact{
-				{"Admin", "admin@localhost", "+1-555-0100", "Bongo Labs"},
-				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Bongo Labs"},
+				{"Admin", "admin@localhost", "+1-555-0100", "Example Labs"},
+				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Example Labs"},
 			},
 			events: []seedEvent{
 				{"Budget Presentation Prep", "Finalise Q1 actuals vs forecast slides", today.Add(8 * time.Hour), today.Add(9*time.Hour + 30*time.Minute), false},
@@ -2042,8 +2042,8 @@ func seedContactsAndEvents(baseURL string) {
 		{
 			email: "charlie@localhost", password: "charlie123",
 			contacts: []seedContact{
-				{"Admin", "admin@localhost", "+1-555-0100", "Bongo Labs"},
-				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Bongo Labs"},
+				{"Admin", "admin@localhost", "+1-555-0100", "Example Labs"},
+				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Example Labs"},
 			},
 			events: []seedEvent{
 				{"Deploy Pipeline Fix", "Optimise gosec caching", today.Add(10 * time.Hour), today.Add(12 * time.Hour), false},
