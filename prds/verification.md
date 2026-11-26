@@ -104,5 +104,10 @@ sweep transcript, not repeated here.
   shared inbox under Other Users; the web UI shows the shared folder. Thunderbird
   showed neither: with default settings it lists only subscribed folders, and a
   shared folder stays unsubscribed until the user subscribes. Fixed in v0.17 by
-  US-020 (subscribed by default). Thunderbird's Sharing and Quota tabs are not
-  yet confirmed.
+  US-020 (subscribed by default). Thunderbird's Subscribe dialog lists both under
+  Other Users. Thunderbird's Sharing and Quota tabs are not yet confirmed.
+- Removing a member from a shared inbox and deleting the shared inbox worked by
+  every route the operator tried. Apple Mail kept showing the deleted shared inbox
+  until it was restarted (it caches the folder list; IMAP has no folder-list push
+  without NOTIFY, RFC 5465, which Bongo does not offer). Not a server fault.
+- The web UI cannot create, rename or delete a user's own folders: v0.17 US-022.

@@ -36,7 +36,7 @@ change under review introduced it.
 | E | Directory | US-014 to US-015 |
 | F | Certificates for users and S/MIME | US-016 to US-017 |
 | G | Translation | US-018 |
-| H | Mail and sharing for users | US-019 to US-021 |
+| H | Mail and sharing for users | US-019 to US-022 |
 
 TASKS rows are assigned by `norman import`. Dependencies: US-002 before
 US-001 can be tested end to end (US-001 can be built against a fake
@@ -670,9 +670,44 @@ and adds the caller's contacts and same-domain distribution groups.
       pattern), as the compose recipient field is.
 - [ ] Every new string is translated in all shipped locales.
 
+### US-022: Create, rename and delete folders in the web UI
+**Source:** operator's v0.16 client check, 2026-11-26. **Size:** M.
+
+**What exists** (checked on `main` at `ed1909f`): the web has no route that
+creates, renames or deletes a folder; it creates one only as a side effect
+(the import target in `MailHandler`). Folders come from mail clients. The
+store already does all three for IMAP: `MailboxStore.CreateMailbox`,
+`RenameMailbox` (keeps the folder id, so shares follow; does not rename
+inferior folders) and `DeleteMailbox` (revokes the folder's grants
+best-effort, `ErrMailboxGrantsNotRevoked`). The IMAP session refuses names
+under `imap.other_users_prefix` and `imap.shared_prefix` and refuses to
+delete INBOX (`internal/imap/backend.go:466-560`).
+
+**Acceptance Criteria:**
+- [ ] Settings → Folders gains New folder, Rename and Delete for the user's
+      own folders; the mail sidebar's folder menu links to the same actions.
+- [ ] The same name rules as IMAP CREATE and RENAME: no name under either
+      sharing prefix, none of the virtual view names, no empty or
+      over-long name, `/` as the hierarchy delimiter; one shared validation
+      function used by both paths so they cannot drift.
+- [ ] The default folders (`store.DefaultMailboxes`: INBOX, Sent, Drafts,
+      Trash, Junk) and Archive cannot be renamed or deleted from the web.
+- [ ] Delete asks for confirmation naming the folder and its message count,
+      and, when the folder is shared, warns that the people it is shared
+      with lose access. Messages are removed with the folder (as IMAP
+      DELETE); a grant-revoke failure is logged and the page still reports
+      success, as IMAP does.
+- [ ] Rename states that subfolders keep their own names (the store does not
+      rename inferiors), or renames them in the same request if the design
+      review prefers; either way the behaviour is documented and tested.
+- [ ] All three are POST routes behind CSRF and same-origin checks, scoped
+      to the session user's own folders; a name that does not exist is a
+      404. The folder list and the sidebar refresh after each action.
+- [ ] Every new string is translated in all shipped locales.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-21 are the acceptance criteria of US-001 to US-021. In every
+FR-1 to FR-22 are the acceptance criteria of US-001 to US-022. In every
 story:
 
 - Every cookie-authenticated mutation is behind CSRF and same-origin checks;
@@ -830,6 +865,8 @@ by govulncheck.
    folder or a shared inbox that Apple Mail did), and the share forms
    suggest users and groups from the user's own domain as they type
    (US-021). Both in v0.17.0, Phase H.
+13. (operator, 2026-11-26) The web UI gains folder create, rename and delete
+   (US-022, v0.17.0, Phase H); until now only mail clients could.
 
 ### 8.2 Candidates for the next release
 
@@ -858,12 +895,12 @@ Found in CI on 2026-11-26 (PR #250, a docs-only change):
   start-up a deadline that fails the test with a goroutine dump, then find
   the cause.
 
-Release size: 21 stories (3 S, 15 M, 3 L). That is above the ~15-story guide
+Release size: 22 stories (3 S, 16 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:
 
 | Release | Stories | Why |
 |---------|---------|-----|
-| v0.17.0 | Phases A, B, C, G, H (US-001 to US-011, US-018 to US-021) | Operations, mail policy, web settings, the translation, one-click unsubscribe and two sharing fixes: independent of each other's data model. |
+| v0.17.0 | Phases A, B, C, G, H (US-001 to US-011, US-018 to US-022) | Operations, mail policy, web settings, the translation, one-click unsubscribe, two sharing fixes and web folder management: independent of each other's data model. |
 | v0.18.0 | Phases D, E, F (US-012 to US-017) | Backup, LDAP and certificates for users: each is a new trust or data path and benefits from its own review. |
 
 US-001 cannot ship enabled until open question 1 is answered; if the domain
