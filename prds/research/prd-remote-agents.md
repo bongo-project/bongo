@@ -1,8 +1,8 @@
 # PRD: Remote agents and the edge role
 
 Status: research. Added to the roadmap by the operator on 2026-10-30. Release
-not yet assigned; the default is after the admin and enterprise releases
-(v0.17.0 and v0.18.0) unless the operator moves it earlier.
+not yet assigned. The default is after v0.17.0 and v0.18.0 unless the
+operator moves it earlier.
 
 ## 1. Introduction / Overview
 
@@ -69,7 +69,7 @@ remote agents a supported deployment.
    listener. See `prd-zero-gap-inbound-smtp-front-end.md` for the analysis of
    using this as a front-end during restarts.
 4. **Admin visibility.** Connected agents, roles, last heartbeat and errors on
-   the Cluster page (overlaps prd-admin-enterprise-v0.17.md, line 381).
+   the Cluster page (overlaps [the v0.17.0 administration PRD](prd-administration-v0.17.md)).
 5. **Edge role: build or remove.** Either implement forwarding for edge nodes,
    or remove the role from config validation and docs. Decision needed before
    sizing.
