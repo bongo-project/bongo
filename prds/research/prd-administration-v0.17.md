@@ -36,6 +36,7 @@ change under review introduced it.
 | E | Directory | US-014 to US-015 |
 | F | Certificates for users and S/MIME | US-016 to US-017 |
 | G | Translation | US-018 |
+| H | Mail for users | US-019 |
 
 TASKS rows are assigned by `norman import`. Dependencies: US-002 before
 US-001 can be tested end to end (US-001 can be built against a fake
@@ -553,9 +554,60 @@ means editing four hard-coded lists (`internal/i18n/i18n.go:25-30`,
 - [ ] Each string has been reviewed by a native speaker before release
       (open question 5); the PR records who.
 
+### Phase H: Mail for users
+
+Release note: messages from mailing lists and newsletters have an
+Unsubscribe button. Where the sender supports one-click unsubscribe, Bongo
+sends the request itself.
+
+### US-019: One-click unsubscribe
+**Source:** operator request, 2026-11-26. **Size:** M.
+
+**What exists** (checked on `main` at `a0d2636`): `List-Id` is stored on
+`MailMeta` (field 22) and drives the Mailing lists view (`lists.templ`).
+`List-Unsubscribe` is read only to suppress vacation replies
+(`internal/pipeline/deliver/vacation.go:195`); it is not stored and nothing
+in the web UI offers it. `internal/netx/safeclient.go` is the HTTP client
+that refuses non-public addresses on every connection (used by calendar
+subscriptions).
+
+**Acceptance Criteria:**
+- [ ] The message view parses `List-Unsubscribe` (RFC 2369) and
+      `List-Unsubscribe-Post` (RFC 8058) from the stored message and shows
+      an Unsubscribe button when the message offers a usable method. No new
+      key or `MailMeta` field: the headers are read from the blob when the
+      message is shown.
+- [ ] One-click (RFC 8058): offered when there is an `https` URI,
+      `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, and a valid DKIM
+      signature on the stored message that covers both headers (RFC 8058
+      section 4), verified when the user clicks. The server sends the POST
+      (`List-Unsubscribe=One-Click`, form encoded) through the safe client:
+      https only, no private or internal address on any connection or
+      redirect, no cookies, a fixed User-Agent that names no user or
+      domain, a short timeout and a small response cap. The response body
+      is never rendered; the user sees success or a fixed failure message.
+- [ ] Without a valid signature or the `List-Unsubscribe-Post` header, an
+      `https` URI is shown as a link the user opens in their own browser
+      (`rel="noopener noreferrer"`), after a confirmation that names the
+      host. The server never fetches it, because a GET can confirm the
+      address to a tracker or act on the user's behalf.
+- [ ] A `mailto:` URI opens compose with the address, subject and body
+      from the URI; the user sends it, so the normal send path, limits and
+      Sent copy apply. `http:` and every other scheme are ignored.
+- [ ] No button on messages in Junk or below it, or on messages the
+      antispam stage tagged as spam: unsubscribing from spam confirms the
+      address. The view says to report the message as spam instead.
+- [ ] The Mailing lists view offers the same action per list, using the
+      newest message of that list.
+- [ ] The POST route is CSRF-protected, needs the session user to own the
+      message, and is rate limited per user (one budget, 429 with
+      Retry-After). Logs carry the user id, message guid and URI host only:
+      the full URI usually holds a token that identifies the subscriber.
+- [ ] Every new string is translated in all shipped locales.
+
 ## 4. Functional Requirements
 
-FR-1 to FR-18 are the acceptance criteria of US-001 to US-018. In every
+FR-1 to FR-19 are the acceptance criteria of US-001 to US-019. In every
 story:
 
 - Every cookie-authenticated mutation is behind CSRF and same-origin checks;
@@ -602,6 +654,10 @@ The server is internet-facing.
   can change them, every change is logged, and credentials are write-only.
 - US-014 adds an outbound directory dependency to authentication; filter
   escaping, timing equalisation and a local-admin fallback are required.
+- US-019 makes the server send an HTTP request to a URL chosen by the
+  sender of a message. It goes only through the safe client (public
+  addresses only, https only, bounded), only after a DKIM check and a click
+  by the user, and never for mail classed as spam.
 - US-013's backup CLI uses the control listener (loopback only, signed
   requests), not a public route. No new `/internal/*` route goes on the
   public router; any new `http.Server` has explicit timeouts.
@@ -699,6 +755,11 @@ by govulncheck.
    senders would then drive cluster writes (section 6); the proposal is a
    bounded table exchanged over gossip (memberlist), capped in size and
    rate, losing at worst a retry window when a node restarts.
+11. (operator, 2026-11-26) One-click unsubscribe is added to v0.17.0 as
+   US-019 (Phase H). A full mailing-list server (self-service subscribe and
+   unsubscribe, external subscribers, archives, moderation, DMARC-safe
+   sending) is not in this PRD; it has its own research PRD,
+   `prds/research/prd-mailing-lists.md`, with no release yet.
 
 ### 8.2 Candidates for the next release
 
@@ -718,12 +779,21 @@ Audit corrections found while writing this PRD (2026-10-26):
 - The infra repository's `bongo.prod.hcl` still has a "behind Traefik"
   comment (for the infra session, not this repository).
 
-Release size: 18 stories (2 S, 13 M, 3 L). That is above the ~15-story guide
+Found in CI on 2026-11-26 (PR #250, a docs-only change):
+
+- `TestFetchPageWiredWithTester` (`internal/agent/fetchworker_batch_test.go`)
+  hung for 15 minutes until the 20-minute package timeout; the same code
+  passed on main. The test's HTTP client has a 20 s timeout, so the hang is in
+  starting the wiring agent (`runWiringAgent`), not in the request. Give the
+  start-up a deadline that fails the test with a goroutine dump, then find
+  the cause.
+
+Release size: 19 stories (2 S, 14 M, 3 L). That is above the ~15-story guide
 with three L stories. Proposed split:
 
 | Release | Stories | Why |
 |---------|---------|-----|
-| v0.17.0 | Phases A, B, C, G (US-001 to US-011, US-018) | Operations, mail policy, web settings and the translation: independent of each other's data model. |
+| v0.17.0 | Phases A, B, C, G, H (US-001 to US-011, US-018, US-019) | Operations, mail policy, web settings, the translation and one-click unsubscribe: independent of each other's data model. |
 | v0.18.0 | Phases D, E, F (US-012 to US-017) | Backup, LDAP and certificates for users: each is a new trust or data path and benefits from its own review. |
 
 US-001 cannot ship enabled until open question 1 is answered; if the domain
