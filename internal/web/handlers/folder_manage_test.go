@@ -499,3 +499,74 @@ func folderNodeHTML(t *testing.T, body, path string) string {
 	t.Fatalf("unterminated li for %s", path)
 	return ""
 }
+
+func TestRenameFolderIsScopedToTheSession(t *testing.T) {
+	e := newFolderShareEnv(t)
+	for _, u := range []string{"alice", "bob"} {
+		if err := e.mailboxes.CreateMailbox(u, "Shared1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.deliver(t, "bob", "Shared1", "bobmsg")
+	rr := e.post("alice", "/settings/folders/rename", e.fh.RenameFolder,
+		url.Values{"folder": {"Shared1"}, "new_name": {"X"}, "user": {"bob"}, "owner": {"bob"}})
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d %q", rr.Code, rr.Body.String())
+	}
+	if !e.exists("alice", "X") || e.exists("alice", "Shared1") {
+		t.Error("alice's folder was not renamed")
+	}
+	if !e.exists("bob", "Shared1") || e.exists("bob", "X") {
+		t.Error("bob's folder was renamed by alice's request")
+	}
+	if msgs, err := e.mailboxes.ListMessages("bob", "Shared1"); err != nil || len(msgs) != 1 {
+		t.Errorf("bob's messages = %d, %v, want 1", len(msgs), err)
+	}
+}
+
+func TestDeleteFolderIsScopedToTheSession(t *testing.T) {
+	e := newFolderShareEnv(t)
+	for _, u := range []string{"alice", "bob"} {
+		if err := e.mailboxes.CreateMailbox(u, "Shared1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.deliver(t, "bob", "Shared1", "bobmsg")
+	rr := e.post("alice", "/settings/folders/delete", e.fh.DeleteFolder,
+		url.Values{"folder": {"Shared1"}, "user": {"bob"}, "owner": {"bob"}})
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d %q", rr.Code, rr.Body.String())
+	}
+	if e.exists("alice", "Shared1") {
+		t.Error("alice's folder was not deleted")
+	}
+	if !e.exists("bob", "Shared1") {
+		t.Fatal("bob's folder was deleted by alice's request")
+	}
+	if msgs, err := e.mailboxes.ListMessages("bob", "Shared1"); err != nil || len(msgs) != 1 {
+		t.Errorf("bob's messages = %d, %v, want 1", len(msgs), err)
+	}
+}
+
+// failingDeleteApplier refuses the mailbox-delete command and applies the rest.
+type failingDeleteApplier struct{ inner *directApplierTags }
+
+func (a *failingDeleteApplier) ApplyCommand(cmd *bongov1.RaftCommand, d time.Duration) error {
+	if strings.HasPrefix(string(cmd.Key), "/__mailbox_delete__/") {
+		return errors.New("apply refused")
+	}
+	return a.inner.ApplyCommand(cmd, d)
+}
+
+func TestDeleteFolderApplyFailureReports500(t *testing.T) {
+	e := newFolderShareEnv(t)
+	e.mkFolder(t, "Plain")
+	e.fh.mailboxes = store.NewMailboxStore(e.ps, &failingDeleteApplier{inner: &directApplierTags{ps: e.ps, mailboxes: e.mailboxes}})
+	rr := e.del("alice", "Plain")
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d %q, want 500", rr.Code, rr.Body.String())
+	}
+	if !e.exists("alice", "Plain") {
+		t.Error("folder is gone although the delete failed")
+	}
+}

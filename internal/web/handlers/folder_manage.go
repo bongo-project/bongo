@@ -18,18 +18,14 @@ import (
 // own keyspace, never from an owner parameter, and every refusal is fixed
 // translated text that does not echo the posted name.
 //
-// Decided behaviour:
-//   - A name is one full path with "/" as the delimiter. The parent need not
-//     exist, as with IMAP CREATE.
-//   - Renaming moves only that folder. A subfolder "A/x" keeps its name when "A"
-//     becomes "B" (as IMAP RENAME here): moving subfolders would be one command
-//     each, not atomic, and a composite command would diverge older nodes.
-//   - Deleting removes only that folder and its messages. Subfolders stay.
-//   - The standard folders and Archive can be neither renamed nor deleted.
-//
-// The "already exists" answers come from a pre-check, which is check-then-act
-// like IMAP: a racing create or rename surfaces as a 500, and the store still
-// refuses to overwrite.
+// A name is one full path with "/" as the delimiter; the parent need not exist,
+// as with IMAP CREATE. Rename and delete touch only that folder: a subfolder
+// "A/x" keeps its name when "A" becomes "B" (as IMAP RENAME here), because
+// moving subfolders would be one command each, not atomic, and a composite
+// command would diverge older nodes. The standard folders and Archive can be
+// neither renamed nor deleted. The "already exists" answers come from a
+// pre-check, which is check-then-act like IMAP: a racing create or rename
+// surfaces as a 500, and the store still refuses to overwrite.
 
 // folderNameError answers a name the shared validator refused.
 func folderNameError(w http.ResponseWriter, r *http.Request, err error) {

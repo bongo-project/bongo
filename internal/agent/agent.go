@@ -266,6 +266,8 @@ type Agent struct {
 	subscriptionsCancel   context.CancelFunc
 	// subscriptionClient is the SSRF-safe feed fetcher; tests read its options.
 	subscriptionClient *netx.Client
+	// oneClickClient is the one-click unsubscribe poster; tests read its options.
+	oneClickClient *netx.Client
 	// fetchCancel stops the remote-account fetch worker; fetchClient is its
 	// SSRF-safe protocol client (tests read its dialer).
 	fetchCancel context.CancelFunc
@@ -1564,7 +1566,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			// One-click unsubscribe: the safe client keeps its default options
 			// (no private networks) because the URL comes from any sender.
 			// The limiter is in memory, so the budget is per node.
-			mailH.SetUnsubscribe(netx.NewClient(netx.Options{}), func(ctx context.Context, raw []byte) bool {
+			a.oneClickClient = netx.NewClient(netx.Options{})
+			mailH.SetUnsubscribe(a.oneClickClient, func(ctx context.Context, raw []byte) bool {
 				return unsubscribe.VerifyOneClick(ctx, raw, nil)
 			}, mail.NewRateLimiter(handlers.UnsubscribesPerHour))
 			mailH.SetSpamThreshold(a.spamTagThreshold)

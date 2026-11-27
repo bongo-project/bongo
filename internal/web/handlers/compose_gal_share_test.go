@@ -107,6 +107,18 @@ func TestGALShareMode(t *testing.T) {
 		if _, ok := e["guid"]; ok {
 			t.Errorf("share mode leaks a guid: %v", e)
 		}
+		for k := range e {
+			switch k {
+			case "key", "email", "display_name", "source", "kind", "label":
+			default:
+				t.Errorf("share mode entry carries unexpected field %q: %v", k, e)
+			}
+		}
+		for _, k := range []string{"user_id", "id", "guid"} {
+			if _, ok := e[k]; ok {
+				t.Errorf("share mode leaks %q: %v", k, e)
+			}
+		}
 	}
 	if e := by["zorteam@example.com"]; e != nil && e["kind"] != "group" {
 		t.Errorf("group kind = %v", e["kind"])
