@@ -221,10 +221,10 @@ greylist anyway.
       as known for `pass_lifetime`.
 - [ ] Authenticated sessions, `smtp.trusted_networks`, submission ports and
       the null sender to a postmaster address are never greylisted.
-- [ ] State is per node, in a local store outside Raft (one Raft write per
-      unknown triplet would let a spam run amplify writes across the
-      cluster). The documentation states that in a multi-node MX setup a
-      retry reaching another node is greylisted again.
+- [ ] State is kept outside Raft (one Raft write per unknown triplet would
+      let a spam run amplify writes across the cluster) and shared between
+      MX nodes over gossip, bounded in size and rate (decision 15), so a
+      retry reaching another node passes.
 - [ ] Entries are bounded (1 million, oldest evicted) and expired entries
       are swept hourly.
 - [ ] The rspamd comment is corrected; rspamd's `greylist` action stays
@@ -903,6 +903,11 @@ by govulncheck.
 14. (operator, 2026-11-26) Settings → Folders gains a search box and
    collapsible subfolders (US-023, v0.17.0, Phase H), so the page stays
    usable for people with many folders.
+15. (operator, 2026-11-27) US-005 ships with greylisting state shared across
+   MX nodes over gossip (decision 10) in v0.17.0, not per node: a bounded,
+   rate-capped table exchanged over memberlist, never through Raft. The
+   story's per-node criterion and its documentation note are superseded; a
+   restart loses at worst one retry window. Size L, with a security review.
 
 ### 8.2 Candidates for the next release
 
