@@ -42,7 +42,7 @@ const (
 	MaxResponseBytes = 16 << 10
 )
 
-// semverPattern is the one the update Worker uses (deploy/update-worker/src/index.js).
+// semverPattern is the one the update service uses (cmd/bongo-update).
 var semverPattern = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
 
 // describeSuffix matches what git describe appends to a build that is not on

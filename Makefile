@@ -18,6 +18,7 @@ build: generate
 	@mkdir -p $(BUILD_DIR)
 	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/bongo
 	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(IMPORT_BIN) ./cmd/bongo-import
+	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/bongo-update ./cmd/bongo-update
 
 ## dist builds shareable standalone binary release zips (linux amd64 + arm64)
 ## under dist/. Override targets with: make dist PLATFORMS="linux/amd64".
@@ -45,12 +46,6 @@ generate:
 
 test:
 	go test ./...
-
-## The update Worker's JavaScript tests need Node >= 22.13 (node:sqlite); kept out
-## of test and test-all so the Go build has no Node dependency.
-.PHONY: test-update-worker
-test-update-worker:
-	node --test deploy/update-worker/test/*.test.js
 
 ## An explicit -timeout rather than Go's 10 minute default: internal/web/handlers
 ## alone takes minutes under -race, and a loaded machine or a slower CI runner

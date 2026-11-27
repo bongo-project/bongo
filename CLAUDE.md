@@ -42,8 +42,8 @@ See `.claude/skills/README.md` for provenance. Other assistants: see `AGENTS.md`
 ## Build & Test Commands
 
 ```bash
-make all              # generate templ + build both binaries
-make build            # generate + go build bin/bongo + bin/bongo-import
+make all              # generate templ + build all binaries
+make build            # generate + go build bin/bongo + bin/bongo-import + bin/bongo-update
 make generate         # templ generate (required before build)
 make test             # go test ./... (unit only; integration needs make test-integration)
 make test-all         # fmt-check + test-race + test-integration
@@ -66,7 +66,7 @@ go test -race -run TestFunctionName ./internal/store/...
 go test -race ./internal/cluster/...
 ```
 
-Two binaries: `bongo` (the server) and `bongo-import` (mail import from mbox/maildir/eml/IMAP/Thunderbird).
+Three binaries: `bongo` (the server), `bongo-import` (mail import from mbox/maildir/eml/IMAP/Thunderbird) and `bongo-update` (the small service behind the version check, `cmd/bongo-update`, PostgreSQL; it shares only `internal/updatecheck` and `internal/version`, never the web or config packages).
 
 ## Release Checklist
 
@@ -79,11 +79,16 @@ Two binaries: `bongo` (the server) and `bongo-import` (mail import from mbox/mai
 4. Take the image digest from the "exporting manifest list sha256" line of the
    publish log, and hand the digest, notes and checklist to the InfraWork session.
    Production deploys need the operator's go there.
-5. Update the update endpoint. The release PR sets `LATEST_VERSION` (no leading `v`),
-   `RELEASE_NOTES_URL` and `SECURITY` in `deploy/update-worker/wrangler.toml`. Once the
-   release binaries and image are published, the operator runs `wrangler deploy` (the
-   operator's go, like prod). Deploying earlier would advertise a release that does not
-   exist yet.
+5. Update the update endpoint. The release step is deploying the `bongo-update` image
+   ("Publish image" pushes `ghcr.io/bongo-project/bongo-update` for the tag, built from
+   `deploy/update.Dockerfile`). Its latest version defaults to the version it was built
+   with, so the tag is the setting. Set `BONGO_UPDATE_SECURITY=true` in its environment when
+   the release fixes a security issue and back to `false` (or unset) for the next release that
+   does not, since it outlives the image; `BONGO_UPDATE_RELEASE_NOTES_URL` (or the flag) to
+   override the default notes URL. A pre-release tag needs an explicit
+   `BONGO_UPDATE_LATEST`, so an rc image never advertises itself. Needs the operator's go,
+   like prod, and only once the release binaries and image are published: deploying
+   earlier would advertise a release that does not exist yet. Settings: `cmd/bongo-update/README.md`.
 6. Sync the website (`scripts/sync_docs.py`, `scripts/sync_releases.py`,
    `latest_release` in `_config.yml`). Publishing it needs the operator's go.
 
