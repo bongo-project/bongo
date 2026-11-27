@@ -2022,3 +2022,16 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Gate: test-all, lint, sec pass.
 - PATTERN: [frontend] In the Alpine CSP build, read root data attributes in `init()` (or use `this.$root`); never call `this.$el` in a method that a child's x-text or x-on runs.
 - PATTERN: [review] String tests on shipped JS cannot catch runtime binding bugs; a browser pass found what three reviews missed.
+
+## 2026-11-27 Phase 43 sweep (invariants and comments)
+- Invariants: 48 enumerated by four domain agents (subscription, folders, unsubscribe, share suggestions), 44 kept, broken one at a time with `go test -overlay` in 8 batches; harness checked by hand first (TestSharedSubscription). Working tree unchanged throughout.
+- swept 44: 38 guarded, 5 confirmed unguarded, 1 refuted, 0 could-not-break/stale. Refuted: the share-mode domain comes from the session (a request parameter cannot set it).
+- Confirmed gaps, all given tests (operator chose all five), each shown to fail under its break:
+  - high: web rename and delete scoped to the session user (TestRenameFolderIsScopedToTheSession, TestDeleteFolderIsScopedToTheSession);
+  - medium: production one-click client refuses private networks (TestOneClickClientRefusesPrivateNetworks; `Agent.oneClickClient` field added, pure refactor);
+  - medium: a failed folder delete answers 500 (TestDeleteFolderApplyFailureReports500);
+  - low: LIST RETURN (SUBSCRIBED) omits \Subscribed after UNSUBSCRIBE (TestSharedSubscribeLSUB extended);
+  - low: share suggestions carry only the public fields (TestGALShareMode extended).
+- Comments: the phase's comments were already free of task and story ids; one FR-1 citation removed and one 17-line block compressed to 13.
+- PATTERN: [testing] A scoping test for create does not cover rename and delete: each mutating route needs its own cross-user test.
+- PATTERN: [wiring] A safe-client option set at the wiring site needs a wiring test that reads the constructed client, as the fetch and subscription clients have.

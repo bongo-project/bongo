@@ -127,7 +127,7 @@ func TestCalendarPublishingDestructiveActionsConfirm(t *testing.T) {
 	}
 }
 
-// FR-1: the calendar pages outside settings keep no unstyled submit either.
+// The calendar pages outside settings keep no unstyled submit either.
 func TestCalendarFormsHaveStyledSubmits(t *testing.T) {
 	out := renderToString(t, SharesPage([]PendingShare{{Kind: "calendar", Owner: "o", OwnerLabel: "o@b.c", Resource: "c", ResourceName: "Work", Level: "read"}}, nil, nil, "a@b.c"))
 	if !strings.Contains(out, `class="page-head"`) {

@@ -595,3 +595,19 @@ func TestFailureMessageHidesNetworkDetail(t *testing.T) {
 		t.Errorf("status error lost: %q", got)
 	}
 }
+
+// The one-click unsubscribe URL comes from any sender, so the production
+// client must refuse private and loopback addresses.
+func TestOneClickClientRefusesPrivateNetworks(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.SMTP.Enabled = false
+	isolatePorts(t, cfg)
+	a := runWiringAgent(t, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	if a.oneClickClient == nil {
+		t.Fatal("one-click unsubscribe client was not wired")
+	}
+	if a.oneClickClient.AllowsPrivateNetworks() {
+		t.Fatal("one-click unsubscribe client must refuse private networks")
+	}
+}

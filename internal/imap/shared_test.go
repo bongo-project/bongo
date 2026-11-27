@@ -1082,6 +1082,20 @@ func TestSharedSubscribeLSUB(t *testing.T) {
 		t.Fatal("UNSUBSCRIBE of one folder hid another")
 	}
 
+	// RETURN (SUBSCRIBED) lists both but marks only the one still subscribed.
+	ret := map[string]string{}
+	for _, line := range c.exec(`LIST "" "Other Users/*" RETURN (SUBSCRIBED)`) {
+		if m := listLine.FindStringSubmatch(line); m != nil {
+			ret[strings.Trim(m[3], `"`)] = m[2]
+		}
+	}
+	if attrs, ok := ret[shWork]; !ok || strings.Contains(attrs, "Subscribed") {
+		t.Fatalf("RETURN (SUBSCRIBED) = %v, want %s listed without \\Subscribed after UNSUBSCRIBE", ret, shWork)
+	}
+	if attrs, ok := ret[shSub]; !ok || !strings.Contains(attrs, "Subscribed") {
+		t.Fatalf("RETURN (SUBSCRIBED) = %v, want %s with \\Subscribed", ret, shSub)
+	}
+
 	// The owner renames the folder: the opt-out follows the id.
 	if err := e.ms.RenameMailbox(shOwner, "Work", "Projects"); err != nil {
 		t.Fatal(err)
