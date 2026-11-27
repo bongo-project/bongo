@@ -50,7 +50,7 @@ test:
 ## of test and test-all so the Go build has no Node dependency.
 .PHONY: test-update-worker
 test-update-worker:
-	node --test deploy/update-worker/test/
+	node --test deploy/update-worker/test/*.test.js
 
 ## An explicit -timeout rather than Go's 10 minute default: internal/web/handlers
 ## alone takes minutes under -race, and a loaded machine or a slower CI runner
