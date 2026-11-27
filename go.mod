@@ -22,6 +22,7 @@ require (
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/hashicorp/memberlist v0.7.0
 	github.com/hashicorp/raft v1.8.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/jhillyerd/enmime v1.3.0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/miekg/dns v1.1.73
@@ -97,6 +98,9 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/jaytaylor/html2text v0.0.0-20230321000545-74c2419ad056 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect

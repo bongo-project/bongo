@@ -37,24 +37,25 @@ hours plus a random 0 to 2 hours. Dev mode never makes the request.
 ## Where
 
 To `https://update.bongo-project.org/v1/check` by default (`server.update_check_url`),
-a Cloudflare Worker whose source is in `deploy/update-worker/` of the Bongo
-repository.
+a small Go service whose source is in `cmd/bongo-update/` of the Bongo
+repository, run by the project.
 
 ## What the endpoint keeps
 
 - For each UTC day, the set of instance IDs seen with their version, only so
   that distinct instances can be counted. This set is deleted once the day's
   count is written, normally within a day and never kept beyond 48 hours while
-  the Worker's hourly cron trigger runs.
+  the service's hourly in-process rollup runs.
 - Per day and per version, the number of distinct instances. These counts are
   kept for 13 months.
 
-The Worker stores no IP address, no request header, no timestamp finer than the
-UTC day and keeps no request log.
+The service stores no IP address, no request header, no timestamp finer than the
+UTC day and keeps no request log. Its code never reads the connecting address or
+any request header, and a test in the repository checks that.
 
-Cloudflare, which runs the endpoint, sees the connecting IP address at its edge,
-as any HTTPS service would. Bongo cannot prevent that and the Worker does not
-record it.
+Whoever operates the endpoint's reverse proxy sees the connecting IP address, as
+for any HTTPS service. Bongo cannot prevent that and the service does not record
+it.
 
 ## What Bongo does with the answer
 

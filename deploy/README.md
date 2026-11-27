@@ -25,7 +25,7 @@ for **example.com** on a single Docker host, behind an existing Traefik.
 | `bongo.service` | systemd unit for the binary release (no Docker); see `docs/install.md` |
 | `bongo.example.hcl` | Fully annotated example configuration for the binary release |
 | `loadtest.example.hcl` | Configuration for a load test on the reserved domain `bongo.test`; see `docs/load-testing.md`. Not a production template and not in the release zip |
-| `update-worker/` | Cloudflare Worker for the version check (`POST /v1/check`) at `update.bongo-project.org`; README names what it stores. Not part of the Docker or binary deployment |
+| `update.Dockerfile` | Image of `cmd/bongo-update`, the service behind the version check (`POST /v1/check`); its README names what it stores. Not part of the Bongo server deployment |
 | `release-README.md` | README shipped inside the binary release zip |
 
 ### How mail reaches bongo (important)

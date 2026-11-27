@@ -20,6 +20,12 @@ upstream pull request #730 by Dejan Strbac, and server QUOTA support
 (RFC 9208) adapted from commit c90f7a7 of `github.com/0kaba0hub/go-imap` by
 0kaba0hub.
 
+The update service (`cmd/bongo-update`) uses `github.com/jackc/pgx/v5` (MIT,
+Copyright (c) 2013-2021 Jack Christensen) with its dependencies
+`github.com/jackc/puddle/v2` (MIT), `github.com/jackc/pgpassfile` (MIT) and
+`github.com/jackc/pgservicefile` (MIT). None of them ships an Apache-2.0 NOTICE
+file, so nothing is reproduced in part 2; each module's licence is in its source.
+
 ## 1. Vendored static assets (`internal/web/static/`)
 
 | Asset | File | Version | Licence | Copyright |

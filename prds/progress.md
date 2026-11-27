@@ -2057,3 +2057,9 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [security] Do not trust a library's claim to bound responses: check each read path (x/crypto/acme bounds only the certificate download); wrap the transport.
 - PATTERN: [workers] A once-a-day call home records the attempt through Raft before sending, so a new leader's floor sees it.
 - PATTERN: [ci] Run new CI jobs' commands under the CI runtime version, not only the local one.
+
+## 2026-11-27 — 44.6 cmd/bongo-update replaces the Cloudflare Worker (decision 16)
+- Go service with the Worker's exact contract; Worker, its CI job and Makefile target removed; image `ghcr.io/bongo-project/bongo-update` on tag; Postgres integration tests in CI job `update-service`.
+- Security review REJECT: an unauthenticated flood of made-up versions and ids filled `seen` and `daily_counts` (13 months). Fixed with per-UTC-day in-process caps (256 versions, 1M counted requests); requests over a cap still get 200.
+- PATTERN: [security] A public endpoint that writes per request needs a bound on what it can write, not just on request size; a platform (Cloudflare/D1) had hidden that.
+- PATTERN: [privacy] Use a plain http.Handler with ErrorLog = io.Discard and a source-scanning test when a service must never see client addresses.
