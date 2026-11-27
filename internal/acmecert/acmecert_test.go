@@ -439,7 +439,10 @@ func TestLosingLeadershipCancelsIssuance(t *testing.T) {
 	defer cancel()
 	go m.Run(ctx, leader.Load, 0, time.Hour)
 
-	waitFor(t, func() bool { return len(store.keys("/system/acme/challenge/")) > 0 })
+	// Wait for every challenge: before the last one is published the issuer
+	// may still be fetching an authorisation, which is not a deposed request.
+	// After it, the issuer only sleeps through the settle pause.
+	waitFor(t, func() bool { return len(store.keys("/system/acme/challenge/")) == len(testDomains) })
 	hits := ca.Hits()
 	leader.Store(false)
 	// The deferred cleanup removes the challenges once Issue returns.
