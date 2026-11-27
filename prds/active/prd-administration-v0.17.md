@@ -150,6 +150,30 @@ inject markup or link elsewhere. **Cluster:** `/system/instance_id` and
       what it stores.
 - [x] The release checklist gains a step to update the Worker's variables.
 
+**Superseded by decision 16 (2026-11-27):** the Worker was never deployed. The
+endpoint is a Go service in this repository, run on the project's own hosting:
+- [ ] `cmd/bongo-update`, a third binary with its own image, serves the same
+      `POST /v1/check` contract and `GET /releases/{version}` redirect, so
+      v0.17 servers need no change. Plain HTTP behind the operator's reverse
+      proxy, which terminates TLS; explicit server timeouts.
+- [ ] The latest version defaults to the binary's own release version, so
+      deploying the new image is the release step; the security flag and the
+      release notes URL are flags or environment variables.
+- [ ] Counts are kept in PostgreSQL: the same two tables as the Worker (the
+      day's set of instance IDs, deleted once the day's count is written, at
+      most 48 hours; daily counts kept 13 months), rolled up and pruned by an
+      in-process hourly job. The DSN comes from the environment and is never
+      logged.
+- [ ] It never reads, stores or logs the client address or any request
+      header (`RemoteAddr`, `X-Forwarded-For` included), has no access log,
+      and a test pins this as `config_test.go` did for the Worker.
+- [ ] `deploy/update-worker/`, its CI job and Makefile target are removed;
+      the release checklist step and `docs/privacy.md` name the new service
+      and no longer mention Cloudflare.
+- [ ] The Nomad job and the proxy route are the operator's (infra repo),
+      with the proxy's access log off for this route. Nothing in this
+      repository names where it is hosted.
+
 ### US-003: Certificates reload without a restart
 **Source:** audit #102 (corrected). **Size:** M.
 
@@ -908,6 +932,14 @@ by govulncheck.
    rate-capped table exchanged over memberlist, never through Raft. The
    story's per-node criterion and its documentation note are superseded; a
    restart loses at worst one retry window. Size L, with a security review.
+16. (operator, 2026-11-27) The update endpoint does not use Cloudflare
+   (the estate is moving off it, decided 2026-10-11): the Worker is
+   replaced by `cmd/bongo-update`, a Go service in this repository with
+   PostgreSQL for the counts, deployed by the operator on their own hosting
+   (US-002, row 44.6). The client contract is unchanged. If the endpoint is
+   not live at the v0.17.0 release, servers record a failed check once a
+   day (10 s timeout, a debug log line, no banner) and nothing else is
+   affected.
 
 ### 8.2 Candidates for the next release
 

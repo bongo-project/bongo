@@ -244,6 +244,10 @@ Imported 2026-11-26 from [prd-administration-v0.17.md](active/prd-administration
 
 ## Phase 44: Operations v0.17.0 (PRD Phase A) — 5 tasks completed 2026-11-27 (see [TASKS-archive.md](TASKS-archive.md)). PRD [active/prd-administration-v0.17.md](active/prd-administration-v0.17.md).
 
+| ID | Task | Source | Status | Notes |
+|----|------|--------|--------|-------|
+| 44.6 | US-002 rework: `cmd/bongo-update` replaces the Cloudflare Worker (decision 16) | [prd-administration-v0.17.md](active/prd-administration-v0.17.md) | TODO | Size M. Needs: 44.4, 44.5. Same `/v1/check` and `/releases/{v}` contract; latest version defaults to the binary's version; PostgreSQL (`seen`, `daily_counts`, hourly in-process rollup and 13-month retention); never reads the client address or headers, no access log; image published on tag; remove `deploy/update-worker`, its CI job and Makefile target; update release checklist and `docs/privacy.md`. Security review. Nomad job and proxy route are infra's |
+
 ## Phase 45: Mail policy v0.17.0 (PRD Phase B)
 
 | ID | Task | Source | Status | Notes |
