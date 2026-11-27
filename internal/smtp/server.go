@@ -1425,8 +1425,24 @@ func listenAddr(bind string, port int) string {
 	return net.JoinHostPort(bind, p)
 }
 
+// ServerOption customises NewServer.
+type ServerOption func(*serverOptions)
+
+type serverOptions struct{ holder *security.CertHolder }
+
+// WithCertHolder makes the MX, submission and implicit-TLS submission
+// listeners serve h (the ACME certificate) instead of smtp.tls files. The
+// holder is not file-backed, so nothing reloads it; whoever owns it calls Set.
+func WithCertHolder(h *security.CertHolder) ServerOption {
+	return func(o *serverOptions) { o.holder = h }
+}
+
 // NewServer creates an SMTP server from config. bindAddr is server.bind_addr.
-func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev bool, logger *slog.Logger) *Server {
+func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev bool, logger *slog.Logger, opts ...ServerOption) *Server {
+	var so serverOptions
+	for _, o := range opts {
+		o(&so)
+	}
 	// Dev mode supplies non-privileged DEFAULTS, but an explicitly configured
 	// port wins (SMTPConfig.ListenPorts, shared with config validation).
 	mxPort, subPort := cfg.ListenPorts(isDev)
@@ -1470,7 +1486,11 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 	// Configure TLS if cert files are provided. Pin TLS 1.2 as the floor so it
 	// does not depend on the toolchain default.
 	var certHolder *security.CertHolder
-	if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
+	if so.holder != nil {
+		certHolder = so.holder
+		mx.TLSConfig = so.holder.TLSConfig()
+		submission.TLSConfig = so.holder.TLSConfig()
+	} else if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
 		holder, err := security.LoadCertHolder("smtp", cfg.TLS.CertFile, cfg.TLS.KeyFile)
 		if _, statErr := os.Stat(cfg.TLS.CertFile); err != nil && errors.Is(statErr, fs.ErrNotExist) {
 			// First boot: the certificate has not been issued yet. Serve a
@@ -1507,11 +1527,13 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 	switch {
 	case submissionsPort == 0:
 		// Disabled by configuration.
-	case !cfg.SubmissionsEnabled(isDev):
+	case !cfg.SubmissionsEnabled(isDev) && so.holder == nil:
 		logger.Warn("smtp: submissions_port is set but smtp.tls has no certificate; implicit-TLS submission is not started",
 			"port", submissionsPort)
 	default:
-		if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
+		if so.holder != nil {
+			submissionsTLS = so.holder.TLSConfig()
+		} else if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
 			if certHolder != nil {
 				submissionsTLS = certHolder.TLSConfig()
 			} else if h, err := security.LoadCertHolder("smtp", cfg.TLS.CertFile, cfg.TLS.KeyFile); err != nil {

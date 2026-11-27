@@ -2047,3 +2047,13 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - PATTERN: [security] Never fold network keys into a smaller id for counters; key maps on the full value.
 - PATTERN: [gossip] Give each message kind its own rate bucket and queue, so a flood of the cheap kind cannot starve the important one.
 - PATTERN: [workers] Tell fix workers to prove fail-before with go test -overlay, never git stash.
+
+## 2026-11-27 Phase 44 batch 2: 44.2 (US-004), 44.5 (US-001) — Phase 44 complete
+- Workflow batch of two in worktrees, run after PR #256 put batch 1 on main (worktrees start from main). Security review focus now set per task.
+- Integration: eight conflicts where both tasks added fields, checks, banners and locale keys; kept both sides (two `if` checks in Validate split by hand, one duplicated struct field dropped), LOGGING.md rebuilt from config.LogComponents, generated acme.pb.go copied from the worktree.
+- 44.2 fixes: CA JSON responses were unbounded (x/crypto/acme caps only the certificate download), a flaky backoff test, short-lived certificates reissued every tick, backoff lost on restart, a deposed leader kept issuing, stale challenges never swept, the dashboard showed an unloadable record as issued, acme-tls/1 first in NextProtos would win over h2.
+- 44.5 fixes: untagged (git describe, -dirty) builds would call home; a leadership flap mid-request allowed two requests a day; no timeout, start-gate or file-load tests; banner role.
+- PR #256 first failed CI: `node --test <dir>` works on Node 26 but not 24 (CI); fixed with a file glob.
+- PATTERN: [security] Do not trust a library's claim to bound responses: check each read path (x/crypto/acme bounds only the certificate download); wrap the transport.
+- PATTERN: [workers] A once-a-day call home records the attempt through Raft before sending, so a new leader's floor sees it.
+- PATTERN: [ci] Run new CI jobs' commands under the CI runtime version, not only the local one.

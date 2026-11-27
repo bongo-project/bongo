@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
+
+// AcmeAccount is the ACME account the leader registered with one CA directory,
+// stored at /system/acme/account/{hex(sha256(directory_url))[:32]}. The key is
+// replicated and included in backups, like DKIM keys. It is never logged.
+message AcmeAccount {
+  // key_der is the PKCS#8 DER of an ECDSA P-256 private key.
+  bytes key_der = 1;
+  // uri is the account URL the CA assigned; empty until registration succeeds.
+  string uri = 2;
+  string directory_url = 3;
+}
+
+// AcmeCertificate is the issued certificate and its key, stored at
+// /system/acme/cert. Both travel in one value, so one Put can never leave a
+// node with a key but no certificate.
+message AcmeCertificate {
+  // chain_der is the leaf first, then the intermediates, each as DER.
+  repeated bytes chain_der = 1;
+  // key_der is the PKCS#8 DER of a fresh ECDSA P-256 key made for this issuance.
+  bytes key_der = 2;
+  // domains is the sorted set of names the certificate was requested for.
+  repeated string domains = 3;
+  // not_after and issued_at are unix seconds.
+  int64 not_after = 4;
+  int64 issued_at = 5;
+  string directory_url = 6;
+}
+
+// AcmeChallenge is the TLS-ALPN-01 validation certificate for one domain,
+// stored at /system/acme/challenge/{domain} while a validation is in flight.
+// Only the leader's issuer writes and deletes it.
+message AcmeChallenge {
+  // cert_der is the self-signed challenge certificate.
+  bytes cert_der = 1;
+  // key_der is the PKCS#8 DER of its throwaway key.
+  bytes key_der = 2;
+}

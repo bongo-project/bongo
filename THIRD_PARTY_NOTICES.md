@@ -9,6 +9,10 @@ its source. Only the modules that ship an Apache-2.0 NOTICE file are reproduced
 in part 2, because Apache-2.0 section 4(d) asks for those to travel with
 copies.
 
+ACME certificate issuance uses `golang.org/x/crypto/acme` (BSD-3-Clause), part
+of `golang.org/x/crypto`, which `go.mod` already required; no new module was
+added for it.
+
 `github.com/emersion/go-imap/v2` is replaced in `go.mod` by the fork
 `github.com/bongo-project/go-imap` (MIT, like upstream), branch `bongo`. It is
 upstream's `v2` branch plus two changes: server ACL support (RFC 4314) from

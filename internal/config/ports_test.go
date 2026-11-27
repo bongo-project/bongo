@@ -46,7 +46,7 @@ func TestValidateWildcardBindNeedsAdvertise(t *testing.T) {
 func TestValidateListenerPorts(t *testing.T) {
 	redirectOn := func(c *Config) {
 		c.Web.HTTPSRedirect = true
-		c.Web.TLS = TLSConfig{CertFile: "/certs/web.crt", KeyFile: "/certs/web.key"}
+		c.Web.TLS = WebTLSConfig{CertFile: "/certs/web.crt", KeyFile: "/certs/web.key"}
 	}
 	agentSMTP := func(c *Config) {
 		c.Server.Role = "agent"
@@ -249,7 +249,7 @@ func TestValidateDefaultsAndProductionShape(t *testing.T) {
 		c.Web.Port = 8080
 		c.Web.PlainHTTP = plain
 		if !plain {
-			c.Web.TLS = TLSConfig{CertFile: "/certs/web.crt", KeyFile: "/certs/web.key"}
+			c.Web.TLS = WebTLSConfig{CertFile: "/certs/web.crt", KeyFile: "/certs/web.key"}
 			c.Web.HTTPSRedirect = true
 		}
 		c.SMTP.Port, c.SMTP.SubmissionPort = 25, 587

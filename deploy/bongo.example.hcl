@@ -84,6 +84,17 @@ server {
   # agents — ONLY for role = "agent". The list of protocol processors this agent
   # runs. Valid: smtp, imap, pop3, antispam, antivirus, caldav.
   # agents = ["smtp", "imap"]
+
+  # update_check — once a day the cluster leader asks the project whether a
+  # newer release exists and shows a banner to global admins. It sends the
+  # version and a random instance ID, nothing else (docs/privacy.md). Only the
+  # "server" role checks; dev never does. Set false to turn it off. Needs a
+  # restart.
+  # update_check = true
+
+  # update_check_url — the endpoint the check posts to. https on port 443 or
+  # 8443 only. The release notes link in the answer must be on the same host.
+  # update_check_url = "https://update.bongo-project.org/v1/check"
 }
 
 
@@ -439,6 +450,19 @@ web {
   tls {
     # cert_file = "/etc/bongo/certs/mail.example.com/fullchain.pem"
     # key_file  = "/etc/bongo/certs/mail.example.com/privkey.pem"
+
+    # Obtain the certificate over ACME instead (server role only; cannot be
+    # combined with cert_file/key_file here or in smtp.tls). Uses TLS-ALPN-01
+    # on port 443, so every name must reach this node on 443. One certificate
+    # serves web, SMTP, IMAP and POP3. The account key and certificate key are
+    # replicated through Raft and included in backups, like DKIM keys.
+    # Upgrade every node before adding this block. See docs/acme.md.
+    # acme {
+    #   enabled = true
+    #   domains = ["mail.example.com"]
+    #   # email         = "admin@example.com"
+    #   # directory_url = "https://acme-v02.api.letsencrypt.org/directory"
+    # }
   }
 
   # https_redirect     = true   # also listen on http_redirect_port and 301 to HTTPS

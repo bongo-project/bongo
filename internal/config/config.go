@@ -70,6 +70,56 @@ type ServerConfig struct {
 	// co-tenant container cannot forge client IPs. Enabling proxy_protocol
 	// with an empty list fails validation. See ParseTrustedProxies.
 	TrustedProxies []string `hcl:"trusted_proxies,optional" mapstructure:"trusted_proxies"`
+	// UpdateCheck turns the daily version check on (the default). Only the
+	// leader of a "server" role cluster ever checks; dev, edge and agent never
+	// do, whatever this says. See UpdateCheckEnabled. Needs a restart.
+	UpdateCheck bool `hcl:"update_check,optional" mapstructure:"update_check"`
+	// UpdateCheckURL is the endpoint the check posts to. Empty means
+	// DefaultUpdateCheckURL. It must be an https URL on port 443 or 8443.
+	UpdateCheckURL string `hcl:"update_check_url,optional" mapstructure:"update_check_url"`
+}
+
+// DefaultUpdateCheckURL is the project's version check endpoint.
+const DefaultUpdateCheckURL = "https://update.bongo-project.org/v1/check"
+
+// UpdateCheckEnabled reports whether this node may run the version check:
+// server.update_check is true and the role is "server" (dev makes no outbound
+// call, edge and agent run no Raft and so have no leader to check).
+func (c *Config) UpdateCheckEnabled() bool {
+	return c != nil && c.Server.UpdateCheck && c.Server.Role == "server"
+}
+
+// UpdateCheckURLOrDefault returns server.update_check_url, or the project
+// endpoint when it is unset.
+func (c *Config) UpdateCheckURLOrDefault() string {
+	if c == nil || c.Server.UpdateCheckURL == "" {
+		return DefaultUpdateCheckURL
+	}
+	return c.Server.UpdateCheckURL
+}
+
+// validateUpdateCheck refuses a check URL that is not a plain https URL on
+// port 443 or 8443. Errors name the key, never the value.
+func (c *Config) validateUpdateCheck() error {
+	if c.Server.UpdateCheckURL == "" {
+		return nil
+	}
+	u, err := url.Parse(c.Server.UpdateCheckURL)
+	switch {
+	case err != nil:
+		return fmt.Errorf("server.update_check_url: not a valid URL")
+	case u.Scheme != "https":
+		return fmt.Errorf("server.update_check_url: must be an https URL")
+	case u.User != nil:
+		return fmt.Errorf("server.update_check_url: must not contain user information")
+	case u.Hostname() == "":
+		return fmt.Errorf("server.update_check_url: must include a host")
+	case u.RawQuery != "" || u.Fragment != "" || strings.ContainsAny(c.Server.UpdateCheckURL, "?#"):
+		return fmt.Errorf("server.update_check_url: must not contain a query or fragment")
+	case u.Port() != "" && u.Port() != "443" && u.Port() != "8443":
+		return fmt.Errorf("server.update_check_url: port must be 443 or 8443")
+	}
+	return nil
 }
 
 // validateControlAddr requires server.control_addr to be a loopback IP literal
@@ -526,12 +576,12 @@ type POP3Config struct {
 }
 
 type WebConfig struct {
-	Enabled          bool      `hcl:"enabled,optional" mapstructure:"enabled"`
-	Port             int       `hcl:"port,optional" mapstructure:"port"`
-	SessionSecret    string    `hcl:"session_secret,optional" mapstructure:"session_secret"`
-	TLS              TLSConfig `hcl:"tls,block" mapstructure:"tls"`
-	HTTPSRedirect    bool      `hcl:"https_redirect,optional" mapstructure:"https_redirect"`
-	HTTPRedirectPort int       `hcl:"http_redirect_port,optional" mapstructure:"http_redirect_port"`
+	Enabled          bool         `hcl:"enabled,optional" mapstructure:"enabled"`
+	Port             int          `hcl:"port,optional" mapstructure:"port"`
+	SessionSecret    string       `hcl:"session_secret,optional" mapstructure:"session_secret"`
+	TLS              WebTLSConfig `hcl:"tls,block" mapstructure:"tls"`
+	HTTPSRedirect    bool         `hcl:"https_redirect,optional" mapstructure:"https_redirect"`
+	HTTPRedirectPort int          `hcl:"http_redirect_port,optional" mapstructure:"http_redirect_port"`
 	// PlainHTTP disables TLS for the web server. Use when running behind a
 	// TLS-terminating reverse proxy on a trusted network.
 	PlainHTTP bool `hcl:"plain_http,optional" mapstructure:"plain_http"`
@@ -1033,6 +1083,13 @@ func (c *Config) Validate() error {
 	}
 
 	if err := c.validateFetch(); err != nil {
+		return err
+	}
+
+	if err := c.validateACME(); err != nil {
+		return err
+	}
+	if err := c.validateUpdateCheck(); err != nil {
 		return err
 	}
 
@@ -1560,6 +1617,7 @@ func Defaults() *Config {
 			Datacenter:  "dc1",
 			BindAddr:    "0.0.0.0",
 			ControlAddr: "127.0.0.1:8081",
+			UpdateCheck: true,
 		},
 		Cluster: ClusterConfig{
 			PeerPort: 8302,

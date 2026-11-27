@@ -303,6 +303,9 @@ func TestShutdownStopsRealWorkersWithoutCtxCancel(t *testing.T) {
 	if a.orphanGCCancel == nil || a.usageCancel == nil || a.subscriptionsCancel == nil {
 		t.Fatal("orphan GC / usage recompute / calendar subscriptions lack their own cancel")
 	}
+	if a.updateCheckCancel != nil {
+		t.Fatal("a dev agent started the version check")
+	}
 	// Queue worker, reminder checker, blob sync, orphan GC, usage recompute.
 	if n := a.bgStarted.Load(); n < 5 {
 		t.Fatalf("only %d workers tracked through goWorker, want at least 5", n)

@@ -81,7 +81,7 @@ func TestLoadTestExampleConfig(t *testing.T) {
 		t.Error("storage.data_dir is empty")
 	}
 	for name, tls := range map[string]config.TLSConfig{
-		"cluster.tls": cfg.Cluster.TLS, "smtp.tls": cfg.SMTP.TLS, "web.tls": cfg.Web.TLS,
+		"cluster.tls": cfg.Cluster.TLS, "smtp.tls": cfg.SMTP.TLS, "web.tls": {CertFile: cfg.Web.TLS.CertFile, KeyFile: cfg.Web.TLS.KeyFile, CAFile: cfg.Web.TLS.CAFile},
 	} {
 		if tls.CertFile == "" || tls.KeyFile == "" {
 			t.Errorf("%s needs both cert_file and key_file: %+v", name, tls)
