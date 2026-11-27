@@ -311,6 +311,21 @@ smtp {
   # internal/netx/proxyproto.go). Headers from any other peer are ignored.
   # trusted_networks = ["127.0.0.1/32", "10.0.5.0/24"]
 
+  # Greylisting (off by default; see docs/greylisting.md). At RCPT on the MX
+  # port the first attempt of an unknown (client network, sender, recipient)
+  # gets "451 4.7.1 Greylisted, try again later"; a retry after `delay` and
+  # within `retry_window` passes and marks the client network (/24 IPv4, /64
+  # IPv6) as known for `pass_lifetime`. Authenticated sessions, trusted_networks
+  # and submission ports are never greylisted. Durations are Go durations
+  # ("864h" = 36 days; there is no "d" unit). State is in memory and shared
+  # between MX nodes over gossip when cluster.gossip.encryption_key is set.
+  # greylisting {
+  #   enabled       = true
+  #   delay         = "5m"    # above 0, at most 1h
+  #   retry_window  = "4h"    # above delay, at most 168h
+  #   pass_lifetime = "864h"  # at least retry_window, at most 8760h
+  # }
+
   # TLS certificate for SMTP STARTTLS/implicit TLS. Should match `hostname`.
   # If empty (or the files cannot be loaded), STARTTLS is not offered at all:
   # there is no self-signed fallback for SMTP, and as AUTH is offered only over

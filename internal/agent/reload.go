@@ -95,6 +95,10 @@ type prepared struct {
 // they keep warning on later reloads because the baseline keeps the running
 // value. It is safe to call concurrently and while traffic flows.
 func (a *Agent) Reload(ctx context.Context) error {
+	// Certificate contents reload on every SIGHUP, config file or not. Failures
+	// are logged by the reloader and never fail the config reload.
+	a.certs.reloadAll(a.logger)
+
 	r := a.reloader
 	if r == nil {
 		a.logger.Info("config reload: no config file in use, nothing to reload")

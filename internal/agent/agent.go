@@ -44,6 +44,7 @@ import (
 	"github.com/bongo-project/bongo/internal/diskspace"
 	"github.com/bongo-project/bongo/internal/fetch"
 	"github.com/bongo-project/bongo/internal/fetch/credcrypt"
+	"github.com/bongo-project/bongo/internal/greylist"
 	"github.com/bongo-project/bongo/internal/i18n"
 	bongoimap "github.com/bongo-project/bongo/internal/imap"
 	"github.com/bongo-project/bongo/internal/logfilter"
@@ -94,6 +95,11 @@ type Agent struct {
 	// production.
 	blobSweepBeforeDelete func()
 
+	// certs reloads the file-backed listener certificates (see certreload.go).
+	certs certReloader
+	// mailCert is the one holder IMAP and POP3 share (cluster.tls files).
+	mailCert *security.CertHolder
+
 	// proxyTrust is the shared PROXY/X-Forwarded-* trust set (see installProxyTrust).
 	proxyTrust *netx.TrustedProxies
 
@@ -121,6 +127,9 @@ type Agent struct {
 	DeviceLinks  *store.DeviceLinkStore // one-time links behind the Add a device QR code
 	Raft         *cluster.RaftNode
 	Gossip       *cluster.GossipNode
+	// Greylist is the in-memory greylisting table; nil when
+	// smtp.greylisting.enabled is false or the role takes no MX mail.
+	Greylist     *greylist.Table
 	SMTP         *bongosmtp.Server
 	IMAP         *bongoimap.Server
 	POP3         *bongopop3.Server
@@ -263,6 +272,7 @@ type Agent struct {
 	quarantinePurgeCancel context.CancelFunc
 	orphanGCCancel        context.CancelFunc
 	usageCancel           context.CancelFunc
+	certsCancel           context.CancelFunc
 	subscriptionsCancel   context.CancelFunc
 	// subscriptionClient is the SSRF-safe feed fetcher; tests read its options.
 	subscriptionClient *netx.Client
@@ -285,6 +295,7 @@ type Agent struct {
 	sharedSubCleanupCancel context.CancelFunc
 	previewCancel          context.CancelFunc
 	headerBackfillCancel   context.CancelFunc
+	greylistCancel         context.CancelFunc
 	addrVerifyCancel       context.CancelFunc
 	shareInviteCancel      context.CancelFunc
 
@@ -955,6 +966,9 @@ func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *st
 		backend.SetQuotaChecker(a.DomainQuota)
 	}
 	backend.SetStorageGate(a.storageGate())
+	if a.Greylist != nil {
+		backend.SetGreylister(a.Greylist)
+	}
 	return backend, nil
 }
 
@@ -1031,6 +1045,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err := a.Config.Antispam.DNSBL.Validate(); err != nil {
 		return fmt.Errorf("antispam dnsbl config: %w", err)
 	}
+
+	// Reload listener certificates on SIGHUP and when their files change.
+	// Holders register as the listeners are built, so the loop starts first.
+	certsCtx, certsCancel := context.WithCancel(ctx)
+	a.certsCancel = certsCancel
+	a.goWorker("cert-reload", func() { a.certs.run(certsCtx, a.logger, certPollInterval) })
 
 	// Agent role has a fundamentally different startup path.
 	if a.Config.Server.Role == "agent" {
@@ -2026,24 +2046,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.httpServer = newHTTPServer(addr, r, a.logger)
 
 	// Configure TLS for the web server (skip when plain_http is enabled).
-	var webTLSCfg *tls.Config
-	if a.Config.Web.PlainHTTP {
-		a.logger.Warn("web: running in plain HTTP mode (no TLS) -- use only behind a TLS-terminating reverse proxy")
-	} else if a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(a.Config.Web.TLS.CertFile, a.Config.Web.TLS.KeyFile)
-		if err != nil {
-			return fmt.Errorf("loading web TLS key pair: %w", err)
-		}
-		webTLSCfg = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS12,
-		}
-	} else if a.Config.Server.Role == "dev" {
-		generatedTLS, err := security.LoadOrGenerate("", "", []string{"localhost", "127.0.0.1"})
-		if err != nil {
-			return fmt.Errorf("generating web self-signed cert: %w", err)
-		}
-		webTLSCfg = generatedTLS
+	webTLSCfg, err := a.webTLSConfig()
+	if err != nil {
+		return err
 	}
 
 	if webTLSCfg != nil {
@@ -2081,7 +2086,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Raft != nil && a.Raft.Transport != nil {
 			raftAddr = string(a.Raft.Transport.LocalAddr())
 		}
-		gossip, err := cluster.NewGossipNode(a.Config, addr, raftAddr, a.logger)
+		var gossipOpts []cluster.GossipOption
+		if table := a.initGreylist(ctx); table != nil {
+			gossipOpts = append(gossipOpts, cluster.WithGreylist(table))
+		}
+		gossip, err := cluster.NewGossipNode(a.Config, addr, raftAddr, a.logger, gossipOpts...)
 		if err != nil {
 			return fmt.Errorf("starting gossip: %w", err)
 		}
@@ -2421,7 +2430,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Resolve TLS config. Non-dev roles fail hard when a configured cert exists
 		// but cannot be loaded; absent certs (first-boot) produce a loud WARN + fallback.
 		tlsCfg, err := a.mailListenerTLS(
-			"imap",
+			"imap/pop3",
 			a.Config.Cluster.TLS.CertFile,
 			a.Config.Cluster.TLS.KeyFile,
 			[]string{"localhost", "127.0.0.1"},
@@ -2470,7 +2479,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Resolve TLS config. Non-dev roles fail hard when a configured cert exists
 		// but cannot be loaded; absent certs (first-boot) produce a loud WARN + fallback.
 		pop3TLSCfg, err := a.mailListenerTLS(
-			"pop3",
+			"imap/pop3",
 			a.Config.Cluster.TLS.CertFile,
 			a.Config.Cluster.TLS.KeyFile,
 			[]string{"localhost", "127.0.0.1"},
@@ -4947,6 +4956,14 @@ func (a *Agent) shutdownAgent() error {
 		}
 	}
 
+	// The certificate reload worker is the only bgWG worker in this role.
+	if a.certsCancel != nil {
+		a.certsCancel()
+	}
+	if err := a.waitForWorkers(); err != nil {
+		errs = append(errs, err)
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("agent shutdown errors: %v", errs)
 	}
@@ -4954,50 +4971,100 @@ func (a *Agent) shutdownAgent() error {
 	return nil
 }
 
+// webTLSConfig resolves the web listener's TLS config: nil with plain_http,
+// a reloadable holder (registered for SIGHUP and the poll) when files are
+// configured, a throwaway self-signed certificate in dev, else nil.
+func (a *Agent) webTLSConfig() (*tls.Config, error) {
+	if a.Config.Web.PlainHTTP {
+		a.logger.Warn("web: running in plain HTTP mode (no TLS) -- use only behind a TLS-terminating reverse proxy")
+		return nil, nil
+	}
+	if a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != "" {
+		holder, err := security.LoadCertHolder("web", a.Config.Web.TLS.CertFile, a.Config.Web.TLS.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading web TLS key pair: %w", err)
+		}
+		a.certs.register(holder)
+		return holder.TLSConfig(), nil
+	}
+	if a.Config.Server.Role == "dev" {
+		generatedTLS, err := security.LoadOrGenerate("", "", []string{"localhost", "127.0.0.1"})
+		if err != nil {
+			return nil, fmt.Errorf("generating web self-signed cert: %w", err)
+		}
+		return generatedTLS, nil
+	}
+	return nil, nil
+}
+
 // mailListenerTLS resolves the TLS config for a mail protocol listener (IMAP, POP3).
 // It implements role-aware behaviour across four cases:
 //
 //  1. dev role: quiet ephemeral self-signed (expected for local development).
 //  2. server/edge, no cert path configured: loud WARN + self-signed fallback.
-//  3. server/edge, cert path configured but file absent (first-boot): loud WARN + self-signed fallback.
+//  3. server/edge, cert path configured but file absent (first-boot): loud WARN +
+//     self-signed fallback; the holder keeps the paths, so the file is loaded
+//     when it appears (SIGHUP or the 60-second poll).
 //  4. server/edge, cert file exists but fails to load (corrupt/mismatch): hard error returned to caller.
+//
+// IMAP and POP3 share one holder per agent (same cluster.tls files): the first
+// call builds it, later calls return a config from the same holder. The
+// returned config serves through GetCertificate, so a reload reaches new
+// handshakes on implicit TLS and on STARTTLS/STLS alike.
 //
 // Callers must fail startup on a non-nil error.
 func (a *Agent) mailListenerTLS(proto, certFile, keyFile string, hosts []string) (*tls.Config, error) {
-	if a.Config.Server.Role == "dev" {
+	if a.mailCert != nil {
+		return a.mailCert.TLSConfig(), nil
+	}
+	selfSigned := func() (*tls.Certificate, error) {
 		cfg, err := security.SelfSignedTLSConfig(hosts)
 		if err != nil {
 			return nil, fmt.Errorf("%s: generating self-signed TLS cert: %w", proto, err)
 		}
-		return cfg, nil
+		return &cfg.Certificates[0], nil
+	}
+
+	if a.Config.Server.Role == "dev" {
+		cert, err := selfSigned()
+		if err != nil {
+			return nil, err
+		}
+		a.mailCert = security.NewStaticCertHolder(proto, cert)
+		return a.mailCert.TLSConfig(), nil
 	}
 
 	if certFile == "" || keyFile == "" {
 		a.logger.Warn(proto + ": no TLS certificate configured, serving a self-signed certificate that clients will NOT trust; configure a real certificate and restart")
-		cfg, err := security.SelfSignedTLSConfig(hosts)
+		cert, err := selfSigned()
 		if err != nil {
-			return nil, fmt.Errorf("%s: generating self-signed TLS cert: %w", proto, err)
+			return nil, err
 		}
-		return cfg, nil
+		a.mailCert = security.NewStaticCertHolder(proto, cert)
+		return a.mailCert.TLSConfig(), nil
 	}
 
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
-		a.logger.Warn(proto+": TLS certificate not found, serving a self-signed certificate that clients will NOT trust; provide the cert and restart",
+		a.logger.Warn(proto+": TLS certificate not found, serving a self-signed certificate that clients will NOT trust until the file appears (it is loaded on SIGHUP or within a minute)",
 			"cert_file", certFile)
-		cfg, err := security.SelfSignedTLSConfig(hosts)
+		cert, err := selfSigned()
 		if err != nil {
-			return nil, fmt.Errorf("%s: generating self-signed TLS cert: %w", proto, err)
+			return nil, err
 		}
-		return cfg, nil
+		a.mailCert = security.NewFallbackCertHolder(proto, certFile, keyFile, cert)
+		a.certs.register(a.mailCert)
+		return a.mailCert.TLSConfig(), nil
 	}
 
 	// File exists (or stat failed for another reason such as permission denied) —
 	// attempt a strict load. Any error here is a real misconfiguration.
-	cfg, err := security.LoadCert(certFile, keyFile)
+	holder, err := security.LoadCertHolder(proto, certFile, keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("%s: TLS certificate exists but failed to load (corrupt or key mismatch): %w", proto, err)
 	}
-	return cfg, nil
+	a.mailCert = holder
+	a.certs.register(holder)
+	return holder.TLSConfig(), nil
 }
 
 // defaultShutdownGrace bounds how long Shutdown waits for in-flight pipeline
@@ -5170,6 +5237,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	if a.subscriptionsCancel != nil {
 		a.subscriptionsCancel()
 	}
+	if a.certsCancel != nil {
+		a.certsCancel()
+	}
 	if a.usageCancel != nil {
 		a.usageCancel()
 	}
@@ -5190,6 +5260,9 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	}
 	if a.headerBackfillCancel != nil {
 		a.headerBackfillCancel()
+	}
+	if a.greylistCancel != nil {
+		a.greylistCancel()
 	}
 	if a.addrVerifyCancel != nil {
 		a.addrVerifyCancel()
@@ -5694,6 +5767,7 @@ func (a *Agent) trustedProxies() *netx.TrustedProxies {
 func (a *Agent) newSMTPServer(backend *bongosmtp.Backend, isDev bool) *bongosmtp.Server {
 	srv := bongosmtp.NewServer(&a.Config.SMTP, a.Config.Server.BindAddr, backend, isDev, a.logger)
 	srv.SetTrustedProxies(a.proxyTrust)
+	a.certs.register(srv.CertHolder())
 	return srv
 }
 

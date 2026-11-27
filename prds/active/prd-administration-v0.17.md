@@ -136,19 +136,19 @@ inject markup or link elsewhere. **Cluster:** `/system/instance_id` and
 **Source:** US-001 design. **Size:** S.
 
 **Acceptance Criteria:**
-- [ ] A Cloudflare Worker answers `POST /v1/check` with the response JSON for
+- [x] A Cloudflare Worker answers `POST /v1/check` with the response JSON for
       the current release (configured as Worker variables at release time).
-- [ ] It stores only aggregate counts per day: the number of distinct
+- [x] It stores only aggregate counts per day: the number of distinct
       instance IDs per version. To count distinct IDs it keeps the day's set
       of IDs and deletes it once the day's count is written, at most 48
       hours later. It never stores or logs IP addresses, and request logging
       in the Worker is off.
-- [ ] Requests with a body over 1 KiB, an invalid version or an ID that is
+- [x] Requests with a body over 1 KiB, an invalid version or an ID that is
       not 32 hex characters get 400 and are not counted.
-- [ ] The Worker's source lives in this repository under `tools/` or in the
+- [x] The Worker's source lives in this repository under `tools/` or in the
       project's website repository (open question 2), with a README naming
       what it stores.
-- [ ] The release checklist gains a step to update the Worker's variables.
+- [x] The release checklist gains a step to update the Worker's variables.
 
 ### US-003: Certificates reload without a restart
 **Source:** audit #102 (corrected). **Size:** M.
@@ -160,18 +160,18 @@ agent gRPC server), and every TLS key is a restart key
 container (infra repository, `lego/bongo-cert-install.sh`).
 
 **Acceptance Criteria:**
-- [ ] The web, SMTP, IMAP and POP3 listeners serve certificates through
+- [x] The web, SMTP, IMAP and POP3 listeners serve certificates through
       `GetCertificate` from a holder that swaps atomically.
-- [ ] SIGHUP reloads the certificate and key files; a pair that fails to
+- [x] SIGHUP reloads the certificate and key files; a pair that fails to
       parse, does not match, or has expired keeps the old certificate and
       logs an error naming the file.
-- [ ] A file watcher (polling the modification time every 60 seconds) does
+- [x] A file watcher (polling the modification time every 60 seconds) does
       the same without a signal, so lego's renewal needs no hook.
-- [ ] Existing connections keep their session; new handshakes get the new
+- [x] Existing connections keep their session; new handshakes get the new
       certificate (a test swaps the files and checks the served serial).
-- [ ] The certificate paths stay restart keys; only the file contents
+- [x] The certificate paths stay restart keys; only the file contents
       reload.
-- [ ] Raft and agent mTLS certificates are out of scope (they need peer
+- [x] Raft and agent mTLS certificates are out of scope (they need peer
       coordination).
 
 **Deployment:** the infra repository's post-renewal restart can be removed
@@ -211,23 +211,23 @@ with a false comment. rspamd runs after the SMTP `250`, so it could not
 greylist anyway.
 
 **Acceptance Criteria:**
-- [ ] `smtp.greylisting` block: `enabled` (default false), `delay` (default
+- [x] `smtp.greylisting` block: `enabled` (default false), `delay` (default
       5 minutes), `retry_window` (default 4 hours), `pass_lifetime` (default
       36 days).
-- [ ] At RCPT on the MX port, a new triplet (client network: the /24 for
+- [x] At RCPT on the MX port, a new triplet (client network: the /24 for
       IPv4, the /64 for IPv6; envelope sender; recipient) gets
       `451 4.7.1 Greylisted, try again later`; a retry after `delay` and
       within `retry_window` passes, and passing records the client network
       as known for `pass_lifetime`.
-- [ ] Authenticated sessions, `smtp.trusted_networks`, submission ports and
+- [x] Authenticated sessions, `smtp.trusted_networks`, submission ports and
       the null sender to a postmaster address are never greylisted.
-- [ ] State is per node, in a local store outside Raft (one Raft write per
-      unknown triplet would let a spam run amplify writes across the
-      cluster). The documentation states that in a multi-node MX setup a
-      retry reaching another node is greylisted again.
-- [ ] Entries are bounded (1 million, oldest evicted) and expired entries
+- [x] State is kept outside Raft (one Raft write per unknown triplet would
+      let a spam run amplify writes across the cluster) and shared between
+      MX nodes over gossip, bounded in size and rate (decision 15), so a
+      retry reaching another node passes.
+- [x] Entries are bounded (1 million, oldest evicted) and expired entries
       are swept hourly.
-- [ ] The rspamd comment is corrected; rspamd's `greylist` action stays
+- [x] The rspamd comment is corrected; rspamd's `greylist` action stays
       mapped to pass.
 
 ### Phase B: Mail policy
@@ -903,6 +903,11 @@ by govulncheck.
 14. (operator, 2026-11-26) Settings → Folders gains a search box and
    collapsible subfolders (US-023, v0.17.0, Phase H), so the page stays
    usable for people with many folders.
+15. (operator, 2026-11-27) US-005 ships with greylisting state shared across
+   MX nodes over gossip (decision 10) in v0.17.0, not per node: a bounded,
+   rate-capped table exchanged over memberlist, never through Raft. The
+   story's per-node criterion and its documentation note are superseded; a
+   restart loses at worst one retry window. Size L, with a security review.
 
 ### 8.2 Candidates for the next release
 

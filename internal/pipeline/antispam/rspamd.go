@@ -189,9 +189,10 @@ func (p *RspamdProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 }
 
 // mapRspamdAction converts a Rspamd action string to a pipeline action, where
-// "tag" routes the message to Junk. "greylist" maps to "pass" because
-// greylisting is handled at the SMTP level, and any unknown action defaults to
-// "pass" to avoid unintended blocking.
+// "tag" routes the message to Junk. "greylist" maps to "pass" because rspamd
+// runs after the SMTP 250, when the message is already accepted and can no
+// longer be deferred; Bongo's own greylisting acts at RCPT (smtp.greylisting).
+// Any unknown action defaults to "pass" to avoid unintended blocking.
 func mapRspamdAction(rspamdAction string) string {
 	switch rspamdAction {
 	case "no action", "greylist":
