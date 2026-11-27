@@ -151,6 +151,8 @@ The minimum you must change for a real single-domain server:
    ```
    A renewed certificate needs no restart: Bongo reloads the files on SIGHUP
    and within a minute of a change (see `docs/config-reload.md`).
+   (To have Bongo obtain the certificate itself over ACME instead, see
+   `docs/acme.md`.)
    (Behind a TLS-terminating reverse proxy instead? Set `web.plain_http = true`
    and `web.behind_tls_proxy = true`, change `web.port` to `8080`, and list the
    proxy's address in `server.trusted_proxies`; without it `X-Forwarded-For`
@@ -363,3 +365,41 @@ sudo install -m 0755 bongo bongo-import /usr/local/bin/
 sudo systemctl start bongo
 bongo version   # confirm the new version
 ```
+
+---
+
+## 11. Version check
+
+Once a day Bongo asks the project whether a newer release exists. If one does,
+global administrators see a banner on `/admin` with a link to the release notes;
+a security release is shown in the error style and says so. Domain admins do
+not see it.
+
+- **Who asks.** Only the leader of a `server` role cluster, so a three-node
+  cluster makes one request a day, not three. The first check runs 5 to 60
+  minutes after a node becomes leader, but never sooner than 24 hours after the
+  last recorded check; later checks run 24 hours plus 0 to 2 hours after the
+  previous one. A failed check is not retried sooner than that.
+- **What it sends.** The running version and a random instance ID, nothing
+  else. See [privacy.md](privacy.md).
+- **What it shows.** The answer is validated before it is stored and again
+  before it is shown: the version must be a semantic version and the release
+  notes link must be an `https` URL on the same host as the check URL.
+  Anything else is discarded and logged at debug level (component
+  `update-check`). `/admin/version` also reports when the last check ran and
+  its result, to global admins.
+- **Dev mode and edge/agent roles never check.**
+- **Mixed versions.** A node running an earlier release ignores the check. If it
+  becomes leader, checks pause until an upgraded node leads again.
+
+Configuration (both keys need a restart):
+
+```hcl
+server {
+  update_check     = true  # set to false to turn the check off
+  update_check_url = "https://update.bongo-project.org/v1/check"
+}
+```
+
+With `update_check = false` no request is ever made. `update_check_url` must be
+an `https` URL on port 443 or 8443 without user information, query or fragment.

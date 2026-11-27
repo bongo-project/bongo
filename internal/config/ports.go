@@ -105,7 +105,7 @@ func (w *WebConfig) RedirectPort() int {
 // (runAgent serves health only and never binds it).
 func (c *Config) redirectListenerEnabled() bool {
 	return c.Web.HTTPSRedirect && !c.Web.PlainHTTP &&
-		c.Web.TLS.CertFile != "" && c.Web.TLS.KeyFile != "" &&
+		(c.Web.TLS.CertFile != "" && c.Web.TLS.KeyFile != "" || c.Web.TLS.ACMEEnabled()) &&
 		c.Server.Role != "dev" && c.Server.Role != "agent"
 }
 
@@ -168,7 +168,7 @@ func (c *Config) enabledListenerPorts() ([]listenerPort, error) {
 			mx, sub := c.SMTP.ListenPorts(dev)
 			add("smtp.port", mx)
 			add("smtp.submission_port", sub)
-			if c.SMTP.SubmissionsEnabled(dev) {
+			if c.SubmissionsServed(dev) {
 				add("smtp.submissions_port", c.SMTP.SubmissionsListenPort(dev))
 			}
 		}

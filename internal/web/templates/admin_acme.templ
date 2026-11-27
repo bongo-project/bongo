@@ -1,0 +1,31 @@
+package templates
+
+import "fmt"
+
+// ACMENotice is what the dashboard shows about the ACME certificate. The zero
+// value (ACME off) renders nothing. Failure details stay in the logs; nothing
+// about a failed attempt is stored.
+type ACMENotice struct {
+	// Enabled is true when web.tls.acme.enabled is set.
+	Enabled bool
+	// Issued is true once a certificate is stored.
+	Issued bool
+	// NotAfter is the expiry date (YYYY-MM-DD, UTC) when Issued.
+	NotAfter string
+	// Warn is true when there is no certificate yet or it expires within 14 days.
+	Warn bool
+}
+
+templ AdminACMENotice(n ACMENotice) {
+	if n.Enabled {
+		<div class="acme-notice">
+			if n.Warn && !n.Issued {
+				@FlashMessage(t(ctx, "admin.acmeNoCertBanner"), "error")
+			} else if n.Warn {
+				@FlashMessage(fmt.Sprintf(t(ctx, "admin.acmeExpiringBanner"), n.NotAfter), "error")
+			} else {
+				<p class="u-text-muted">{ fmt.Sprintf(t(ctx, "admin.acmeExpiryInfo"), n.NotAfter) }</p>
+			}
+		</div>
+	}
+}

@@ -12,7 +12,7 @@ import (
 // attribute values. TestLogComponentsMatchSource keeps the list in step with
 // the source.
 var LogComponents = []string{
-	"address-verify", "admin", "agent", "antispam", "antivirus", "auth",
+	"acme", "address-verify", "admin", "agent", "antispam", "antivirus", "auth",
 	"blob-gc", "blobsync", "bounce", "caldav", "calendar", "calendar-grants",
 	"calendar-share", "calendar-subscriptions", "calendars", "carddav", "cluster",
 	"compose", "control", "dav", "dedup", "deliver", "dispatch", "dkim", "dmarc",
@@ -21,7 +21,7 @@ var LogComponents = []string{
 	"pebble", "peer", "pipeline", "pop3", "pop3s", "preview-backfill", "quarantine",
 	"queue", "raft", "relay", "reminders", "rules", "rules-migration", "scan",
 	"session", "sharedsub-cleanup", "shutdown", "smtp", "spamassassin", "spool", "startup", "tasks",
-	"tasks-migration", "tls", "usage-recompute", "vacation", "web",
+	"tasks-migration", "tls", "update-check", "usage-recompute", "vacation", "web",
 }
 
 // componentLevels maps the accepted level names. There is no "off": a

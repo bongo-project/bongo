@@ -273,7 +273,14 @@ type Agent struct {
 	orphanGCCancel        context.CancelFunc
 	usageCancel           context.CancelFunc
 	certsCancel           context.CancelFunc
-	subscriptionsCancel   context.CancelFunc
+	// acme state: see acme.go. acmeTest is nil outside tests.
+	acmeCancel          context.CancelFunc
+	acmeOnce            sync.Once
+	acmeSt              *acmeState
+	acmeErr             error
+	acmeTest            *acmeTestHooks
+	subscriptionsCancel context.CancelFunc
+	updateCheckCancel   context.CancelFunc
 	// subscriptionClient is the SSRF-safe feed fetcher; tests read its options.
 	subscriptionClient *netx.Client
 	// oneClickClient is the one-click unsubscribe poster; tests read its options.
@@ -1046,6 +1053,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		return fmt.Errorf("antispam dnsbl config: %w", err)
 	}
 
+	// ACME: build the certificate holders now, so a failure stops startup
+	// instead of leaving listeners with no certificate.
+	if a.acmeEnabled() {
+		if a.acme() == nil && a.acmeErr != nil {
+			return a.acmeErr
+		}
+	}
+
 	// Reload listener certificates on SIGHUP and when their files change.
 	// Holders register as the listeners are built, so the loop starts first.
 	certsCtx, certsCancel := context.WithCancel(ctx)
@@ -1189,7 +1204,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	loginRL := middleware.NewLoginRateLimiter(middleware.DefaultMaxAttempts, middleware.DefaultWindow)
 
 	// Determine whether HTTPS will be used so we can set the Secure cookie flag.
-	tlsEnabled := a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != ""
+	tlsEnabled := a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != "" || a.Config.Web.TLS.ACMEEnabled()
 	if a.Config.Server.Role == "dev" && !a.Config.Web.PlainHTTP {
 		tlsEnabled = true
 	}
@@ -1396,6 +1411,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			adminH.SetMailboxStore(a.Mailboxes)
 		}
 		adminH.SetStorageGate(a.storageGate())
+		updateStatus := a.updateCheckStatus()
+		adminH.SetUpdateCheck(updateStatus)
 		// The calendar handler is built after this group; resolve it per request.
 		adminH.SetResourceBookings(func() handlers.ResourceBookings {
 			if a.calendarHandler == nil {
@@ -1450,6 +1467,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		adminH.SetMailHostname(mailHost)
 		_, _, _, submissionsAdvertised := autoconfigPorts(a.Config)
 		adminH.SetSubmissionsEnabled(submissionsAdvertised != 0)
+		adminH.SetACMEStatus(a.acmeStatusReader())
 
 		r.Get("/admin", adminH.Dashboard)
 		r.Get("/admin/users", adminH.ListUsers)
@@ -1503,7 +1521,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/cluster", adminH.ClusterOverview)
 		r.Get("/admin/logs", adminH.LogViewer)
 		r.Get("/admin/logs/stream", adminH.LogStream)
-		r.Get("/admin/version", handlers.Version)
+		r.Get("/admin/version", handlers.NewVersionHandler(updateStatus).ServeHTTP)
 		r.Post("/admin/settings/require-2fa", adminH.ToggleRequire2FA)
 	})
 
@@ -2629,6 +2647,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		})
 	}
 
+	// Daily version check. Leader-only, periodic; see updatecheck.go. Never
+	// started in dev, edge or agent roles, or with server.update_check off.
+	a.startUpdateCheck(ctx)
+
 	// Collect mail from users' remote POP3 and IMAP accounts. Leader-only,
 	// periodic; see fetchworker.go. Off without a credentials key.
 	if a.Raft != nil && a.FetchKeyring != nil && a.Fetch != nil && a.fetchClient != nil &&
@@ -2734,6 +2756,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			close(httpErrCh)
 		}()
 	}
+
+	// ACME issuance needs the web listener serving (TLS-ALPN-01 on it), so it
+	// starts last. Leader-only issuer plus a sync loop on every node.
+	a.startACME(ctx)
 
 	// Wait for context cancellation or HTTP error.
 	select {
@@ -4960,6 +4986,9 @@ func (a *Agent) shutdownAgent() error {
 	if a.certsCancel != nil {
 		a.certsCancel()
 	}
+	if a.acmeCancel != nil {
+		a.acmeCancel()
+	}
 	if err := a.waitForWorkers(); err != nil {
 		errs = append(errs, err)
 	}
@@ -4978,6 +5007,9 @@ func (a *Agent) webTLSConfig() (*tls.Config, error) {
 	if a.Config.Web.PlainHTTP {
 		a.logger.Warn("web: running in plain HTTP mode (no TLS) -- use only behind a TLS-terminating reverse proxy")
 		return nil, nil
+	}
+	if cfg := a.acmeWebTLS(); cfg != nil {
+		return cfg, nil
 	}
 	if a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != "" {
 		holder, err := security.LoadCertHolder("web", a.Config.Web.TLS.CertFile, a.Config.Web.TLS.KeyFile)
@@ -5014,6 +5046,10 @@ func (a *Agent) webTLSConfig() (*tls.Config, error) {
 //
 // Callers must fail startup on a non-nil error.
 func (a *Agent) mailListenerTLS(proto, certFile, keyFile string, hosts []string) (*tls.Config, error) {
+	if st := a.acme(); st != nil {
+		a.mailCert = st.mail
+		return st.mail.TLSConfig(), nil
+	}
 	if a.mailCert != nil {
 		return a.mailCert.TLSConfig(), nil
 	}
@@ -5237,8 +5273,14 @@ func (a *Agent) closeListenersAndStopWorkers() []error {
 	if a.subscriptionsCancel != nil {
 		a.subscriptionsCancel()
 	}
+	if a.updateCheckCancel != nil {
+		a.updateCheckCancel()
+	}
 	if a.certsCancel != nil {
 		a.certsCancel()
+	}
+	if a.acmeCancel != nil {
+		a.acmeCancel()
 	}
 	if a.usageCancel != nil {
 		a.usageCancel()
@@ -5605,7 +5647,7 @@ func autoconfigPorts(cfg *config.Config) (imap, imaps, submission, submissions i
 	dev := cfg.Server.Role == "dev"
 	imap, imaps = cfg.IMAP.ListenPorts(dev)
 	_, submission = cfg.SMTP.ListenPorts(dev)
-	if cfg.SMTP.Enabled && cfg.SMTP.SubmissionsEnabled(dev) {
+	if cfg.SMTP.Enabled && cfg.SubmissionsServed(dev) {
 		submissions = cfg.SMTP.SubmissionsListenPort(dev)
 	}
 	return imap, imaps, submission, submissions
@@ -5765,7 +5807,11 @@ func (a *Agent) trustedProxies() *netx.TrustedProxies {
 // proxy trust set. Run and startSMTPAgent both use it so neither can build a
 // PROXY-protocol listener without the operator's trusted_proxies.
 func (a *Agent) newSMTPServer(backend *bongosmtp.Backend, isDev bool) *bongosmtp.Server {
-	srv := bongosmtp.NewServer(&a.Config.SMTP, a.Config.Server.BindAddr, backend, isDev, a.logger)
+	var opts []bongosmtp.ServerOption
+	if st := a.acme(); st != nil {
+		opts = append(opts, bongosmtp.WithCertHolder(st.smtp))
+	}
+	srv := bongosmtp.NewServer(&a.Config.SMTP, a.Config.Server.BindAddr, backend, isDev, a.logger, opts...)
 	srv.SetTrustedProxies(a.proxyTrust)
 	a.certs.register(srv.CertHolder())
 	return srv

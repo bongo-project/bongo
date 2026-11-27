@@ -24,7 +24,7 @@ func TestVersion(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/admin/version", nil)
 	rec := httptest.NewRecorder()
 
-	Version(rec, req)
+	NewVersionHandler(nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)

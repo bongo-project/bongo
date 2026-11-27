@@ -104,25 +104,25 @@ a hostname and must not be sent).
   checked at) so every node's dashboard shows the same banner.
 
 **Acceptance Criteria:**
-- [ ] `server.update_check` (default true) and `server.update_check_url`
+- [x] `server.update_check` (default true) and `server.update_check_url`
       (default the project endpoint, open question 1). With
       `update_check = false`, no request is ever made (a test with a
       counting fake server over a simulated week).
-- [ ] In dev mode no request is ever made, whatever the setting.
-- [ ] A test captures the request body and asserts it has exactly the two
+- [x] In dev mode no request is ever made, whatever the setting.
+- [x] A test captures the request body and asserts it has exactly the two
       fields, and that no header carries a hostname, domain or address.
-- [ ] Only the leader checks: in a three-node test cluster, one request per
+- [x] Only the leader checks: in a three-node test cluster, one request per
       simulated day.
-- [ ] Global admins (not domain admins) see a banner on `/admin` when
+- [x] Global admins (not domain admins) see a banner on `/admin` when
       `latest` is newer than the running version, linking the release
       notes; when `security` is true the banner uses the error style and
       says it is a security release. All text is translated.
-- [ ] A malformed, oversized, redirected or non-https response, or a release
+- [x] A malformed, oversized, redirected or non-https response, or a release
       notes URL on another host, shows no banner and logs one line at debug
       level; errors do not retry more often than the daily schedule.
-- [ ] `/admin/version` additionally reports when the last check ran and its
+- [x] `/admin/version` additionally reports when the last check ran and its
       result.
-- [ ] `docs/` gains an admin guide section on the check and a privacy notes
+- [x] `docs/` gains an admin guide section on the check and a privacy notes
       page stating what is sent, when, to where, what the endpoint stores,
       that Cloudflare sees the connecting IP address at its edge as any
       HTTPS service would, and how to turn the check off.
@@ -181,20 +181,20 @@ after this ships; the operator decides when.
 **Source:** audit #102. **Size:** M. **Needs:** US-003.
 
 **Acceptance Criteria:**
-- [ ] `web.tls.acme` block: `enabled` (default false), `email`, `domains`
+- [x] `web.tls.acme` block: `enabled` (default false), `email`, `domains`
       (the mail host names), `directory_url` (default Let's Encrypt
       production).
-- [ ] Challenges use TLS-ALPN-01 on the web listener's port 443; HTTP-01 is
+- [x] Challenges use TLS-ALPN-01 on the web listener's port 443; HTTP-01 is
       not offered (no port 80 listener).
-- [ ] Certificates and the account key are stored in Pebble under
+- [x] Certificates and the account key are stored in Pebble under
       `/system/acme/…` through Raft, so every node serves the same
       certificate; they are never logged.
-- [ ] The issued certificate is served by the US-003 holder for web, SMTP,
+- [x] The issued certificate is served by the US-003 holder for web, SMTP,
       IMAP and POP3.
-- [ ] Renewal starts 30 days before expiry, on the leader only; a failure is
+- [x] Renewal starts 30 days before expiry, on the leader only; a failure is
       logged and retried with backoff, and the dashboard warns when the
       certificate expires within 14 days.
-- [ ] `Config.Validate` refuses ACME together with explicit certificate
+- [x] `Config.Validate` refuses ACME together with explicit certificate
       files for the same listener, and refuses `domains` that are not host
       names.
 

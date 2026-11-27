@@ -84,6 +84,7 @@ var noopKeys = []string{
 // even though docs/design/config-reload.md sections 4.1 and 4.2 still say NO-OP.
 var restartKeys = []string{
 	"server.role", "server.name", "server.trusted_proxies", "server.bind_addr", "server.advertise_addr", "server.control_addr", "server.agents",
+	"server.update_check", "server.update_check_url",
 	"cluster.bind_addr", "cluster.join", "cluster.raft.port", "cluster.raft.snapshot_threshold",
 	"cluster.raft.snapshot_interval", "cluster.raft.trailing_logs",
 	"cluster.gossip.port", "cluster.gossip.encryption_key", "cluster.peer_port",
@@ -107,6 +108,7 @@ var restartKeys = []string{
 	"imap.enabled", "imap.port", "imap.port_tls", "imap.proxy_protocol",
 	"pop3.enabled", "pop3.port", "pop3.port_tls", "pop3.proxy_protocol",
 	"web.port", "web.session_secret", "web.tls.cert_file", "web.tls.key_file",
+	"web.tls.acme.enabled", "web.tls.acme.email", "web.tls.acme.domains", "web.tls.acme.directory_url",
 	"web.https_redirect", "web.http_redirect_port", "web.plain_http", "web.behind_tls_proxy", "web.source_url",
 	"antispam.rspamd.enabled", "antispam.rspamd.url",
 	"antispam.spamassassin.enabled", "antispam.spamassassin.host", "antispam.spamassassin.port",

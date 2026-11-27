@@ -52,6 +52,7 @@ type AdminHandler struct {
 	raftState    RaftStateGetter
 	logger       *slog.Logger
 	storage      storageGate
+	acmeStatus   ACMEStatusReader
 	logSink      *LogSink
 	mailboxes    *store.MailboxStore
 	dkimRegistry *internalmail.DKIMRegistry
@@ -75,7 +76,13 @@ type AdminHandler struct {
 	// acl and groups serve shared inbox members (admin_shared.go).
 	acl    *store.ACLStore
 	groups *store.GroupStore
+	// update feeds the dashboard's new-release banner (nil: none).
+	update *UpdateStatus
 }
+
+// SetUpdateCheck sets what the dashboard banner reads. Without it no banner
+// is shown.
+func (h *AdminHandler) SetUpdateCheck(u *UpdateStatus) { h.update = u }
 
 // GossipLister returns gossip member info.
 type GossipLister interface {
@@ -197,6 +204,7 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		Build:  version.Info(),
 	}
 	health.StorageLow = h.storage != nil && h.storage.Low()
+	health.ACME = h.acmeNotice(time.Now())
 
 	// Raft state.
 	if h.raftState != nil {
@@ -239,6 +247,10 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		if err == nil && string(data) == "1" {
 			require2FA = true
 		}
+	}
+
+	if b, ok := h.update.Banner(); ok {
+		health.Update = &templates.UpdateBanner{Latest: b.Latest, URL: templ.SafeURL(b.URL), Security: b.Security}
 	}
 
 	flash := flashText(r)
