@@ -1,7 +1,8 @@
 name: Deploy
 
-# Runs the certs hook test (deploy/test-certs-hook.sh) when deploy/ changes and
-# on every push to main. It is path-filtered, so do NOT make it a required
+# Runs the certs hook test (deploy/test-certs-hook.sh) and the update-worker
+# node tests (deploy/update-worker/test/) when deploy/ changes and on every
+# push to main. It is path-filtered, so do NOT make it a required
 # status check: a pull request that does not touch deploy/ would wait for it
 # forever. The image pin check lives in ci.yml for the same reason.
 on:
@@ -36,3 +37,13 @@ jobs:
           echo "$out"
           test "$rc" -eq 1 || { echo "old flow exited $rc, expected 1"; exit 1; }
           printf '%s' "$out" | grep -q "FAIL: other domain's key is not written to /certs"
+
+  update-worker:
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The default Node on ubuntu-latest lacks node:sqlite, which backs the D1 fake.
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+      - run: node --test deploy/update-worker/test/

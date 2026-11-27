@@ -1,0 +1,32 @@
+name = "bongo-update"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# Reachable only on the custom domain below.
+workers_dev = false
+preview_urls = false
+
+# No request logs, no log push.
+logpush = false
+
+[observability]
+enabled = false
+
+[[routes]]
+pattern = "update.bongo-project.org"
+custom_domain = true
+
+[triggers]
+crons = ["17 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bongo-update"
+# Placeholder: the operator replaces it with the id printed by `wrangler d1 create`.
+database_id = "REPLACE-WITH-D1-DATABASE-ID"
+
+# Set in the release PR (see CLAUDE.md, Release Checklist).
+[vars]
+LATEST_VERSION = "0.17.0"
+RELEASE_NOTES_URL = "https://update.bongo-project.org/releases/0.17.0"
+SECURITY = "false"

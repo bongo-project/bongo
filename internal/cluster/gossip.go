@@ -8,11 +8,13 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/memberlist"
 
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/greylist"
 )
 
 // NodeMeta is the metadata each node broadcasts via memberlist gossip.
@@ -32,8 +34,28 @@ type GossipNode struct {
 	logger *slog.Logger
 }
 
+// GossipOption customises NewGossipNode.
+type GossipOption func(*gossipOptions)
+
+type gossipOptions struct {
+	greylist *greylist.Table
+}
+
+// WithGreylist shares the greylisting table with the other MX nodes over
+// gossip. It takes effect only when cluster.gossip.encryption_key is set:
+// without a key the pool is unauthenticated and the table stays local.
+func WithGreylist(t *greylist.Table) GossipOption {
+	return func(o *gossipOptions) { o.greylist = t }
+}
+
 // NewGossipNode creates and starts a memberlist gossip node.
-func NewGossipNode(cfg *config.Config, httpAddr string, raftAddr string, logger *slog.Logger) (*GossipNode, error) {
+func NewGossipNode(cfg *config.Config, httpAddr string, raftAddr string, logger *slog.Logger, opts ...GossipOption) (*GossipNode, error) {
+	var o gossipOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	// The broadcast queue is built before memberlist.Create returns.
+	var listRef atomic.Pointer[memberlist.Memberlist]
 	mlCfg := memberlist.DefaultLANConfig()
 	mlCfg.Name = cfg.Server.Name
 	bindHost, err := cfg.ClusterBindHost()
@@ -75,6 +97,18 @@ func NewGossipNode(cfg *config.Config, httpAddr string, raftAddr string, logger 
 	}
 
 	delegate := &gossipDelegate{meta: meta}
+	if o.greylist != nil {
+		if len(mlCfg.SecretKey) == 0 {
+			logger.Info("greylist: table is not shared between nodes (cluster.gossip.encryption_key is not set)")
+		} else {
+			delegate.greylist = newGreylistGossip(o.greylist, func() int {
+				if l := listRef.Load(); l != nil {
+					return l.NumMembers()
+				}
+				return 1
+			}, logger)
+		}
+	}
 	events := &gossipEvents{logger: logger}
 
 	mlCfg.Delegate = delegate
@@ -84,6 +118,7 @@ func NewGossipNode(cfg *config.Config, httpAddr string, raftAddr string, logger 
 	if err != nil {
 		return nil, fmt.Errorf("creating memberlist: %w", err)
 	}
+	listRef.Store(list)
 
 	logger.Info("memberlist started",
 		"name", mlCfg.Name,
@@ -156,6 +191,9 @@ type MemberInfo struct {
 // gossipDelegate implements memberlist.Delegate.
 type gossipDelegate struct {
 	meta NodeMeta
+	// greylist is set before memberlist starts and never changed; nil when the
+	// table is not shared.
+	greylist *greylistGossip
 }
 
 func (d *gossipDelegate) NodeMeta(limit int) []byte {
@@ -166,10 +204,22 @@ func (d *gossipDelegate) NodeMeta(limit int) []byte {
 	return data
 }
 
-func (d *gossipDelegate) NotifyMsg([]byte)                           {}
-func (d *gossipDelegate) GetBroadcasts(overhead, limit int) [][]byte { return nil }
-func (d *gossipDelegate) LocalState(join bool) []byte                { return nil }
-func (d *gossipDelegate) MergeRemoteState(buf []byte, join bool)     {}
+// NotifyMsg handles a user message. The buffer is not retained.
+func (d *gossipDelegate) NotifyMsg(buf []byte) {
+	if d.greylist != nil {
+		d.greylist.handle(buf)
+	}
+}
+
+func (d *gossipDelegate) GetBroadcasts(overhead, limit int) [][]byte {
+	if d.greylist == nil {
+		return nil
+	}
+	return d.greylist.broadcasts(overhead, limit)
+}
+
+func (d *gossipDelegate) LocalState(join bool) []byte            { return nil }
+func (d *gossipDelegate) MergeRemoteState(buf []byte, join bool) {}
 
 // gossipEvents implements memberlist.EventDelegate.
 type gossipEvents struct {

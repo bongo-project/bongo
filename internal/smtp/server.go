@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	netmail "net/mail"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -100,6 +102,33 @@ type Backend struct {
 	// feature is disabled: no address is trusted implicitly. Swapped
 	// atomically by SetTrustedNetworks; the published slice is never mutated.
 	trustedNets atomic.Pointer[[]*net.IPNet]
+
+	// greylister defers the first attempt of an unknown triplet at RCPT on the
+	// MX port. nil (the default) means greylisting is off.
+	greylister atomic.Pointer[Greylister]
+}
+
+// Greylister decides whether a recipient on the MX port passes now. false
+// means answer 451 4.7.1. Its state lives in memory, never in Raft.
+type Greylister interface {
+	Check(ip net.IP, sender, rcpt string) (pass bool)
+}
+
+// Greylister returns the configured greylister, or nil when greylisting is off.
+func (b *Backend) Greylister() Greylister {
+	if p := b.greylister.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+// SetGreylister turns greylisting on (non-nil) or off (nil).
+func (b *Backend) SetGreylister(g Greylister) {
+	if g == nil {
+		b.greylister.Store(nil)
+		return
+	}
+	b.greylister.Store(&g)
 }
 
 // NewBackend creates a new SMTP backend.
@@ -727,6 +756,9 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 				return &gosmtp.SMTPError{Code: 552, EnhancedCode: gosmtp.EnhancedCode{5, 2, 2}, Message: "Mailbox quota exceeded"}
 			}
 		}
+		if err := s.greylist(to); err != nil {
+			return err
+		}
 		// A direct recipient always keeps its own envelope, as before groups:
 		// two addresses of one account (bob@ and bob+lists@, or two aliases)
 		// stay two envelopes, each with its subaddress folder and DSN
@@ -742,6 +774,9 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	// like an unavailable mailbox.
 	var gre *store.GroupRecipientError
 	if errors.As(resolveErr, &gre) && s.backend.groups != nil {
+		if err := s.greylist(to); err != nil {
+			return err
+		}
 		return s.rcptGroup(to, gre, dsn)
 	}
 
@@ -784,6 +819,36 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	s.addExternal(to, dsn)
 	s.logger.Debug("smtp: RCPT TO (relay)", "to", to)
 	return nil
+}
+
+// greylist answers 451 4.7.1 for a recipient that resolved locally and whose
+// triplet is not yet known. It never runs for authenticated sessions,
+// submission ports, trusted networks, an unknown client address, or the null
+// sender to a postmaster address (RFC 5321 s4.5.1). It runs only after the
+// recipient resolved, so an unknown mailbox still gets 550 and never fills the
+// table.
+func (s *Session) greylist(to string) error {
+	gp := s.backend.greylister.Load()
+	if gp == nil || s.submission || s.authed || s.remoteIP == nil ||
+		s.backend.IsTrustedSource(s.remoteIP.String()) || (s.from == "" && isPostmaster(to)) {
+		return nil
+	}
+	if (*gp).Check(s.remoteIP, s.from, to) {
+		return nil
+	}
+	s.logger.Debug("greylist: RCPT deferred", "ip", s.remoteIP)
+	return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 7, 1}, Message: "Greylisted, try again later"}
+}
+
+// isPostmaster reports whether the local part of to is "postmaster", on any
+// domain or bare (RFC 5321 s4.5.1). abuse@ is not exempt.
+func isPostmaster(to string) bool {
+	addr := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(to), "<"), ">")
+	local := addr
+	if at := strings.LastIndexByte(addr, '@'); at >= 0 {
+		local = addr[:at]
+	}
+	return strings.EqualFold(local, "postmaster")
 }
 
 // rcptSRS handles a recipient that is an SRS address on a hosted domain (any
@@ -1326,9 +1391,11 @@ type Server struct {
 	// Listen returns it: 465 must never fall back to plaintext, and an
 	// operator who configured a certificate wants to hear it is broken.
 	submissionsErr error
-	backend        *Backend
-	maxConn        int
-	proxyProtocol  bool
+	// certHolder serves smtp.tls to every listener; nil without a cert file.
+	certHolder    *security.CertHolder
+	backend       *Backend
+	maxConn       int
+	proxyProtocol bool
 	// trustedProxies lists the peers whose PROXY header is honoured.
 	trustedProxies *netx.TrustedProxies
 	logger         *slog.Logger
@@ -1402,17 +1469,33 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 
 	// Configure TLS if cert files are provided. Pin TLS 1.2 as the floor so it
 	// does not depend on the toolchain default.
+	var certHolder *security.CertHolder
 	if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
-		if err != nil {
-			logger.Warn("smtp: failed to load TLS cert, running without TLS", "error", err)
-		} else {
-			tlsCfg := &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				MinVersion:   tls.VersionTLS12,
+		holder, err := security.LoadCertHolder("smtp", cfg.TLS.CertFile, cfg.TLS.KeyFile)
+		if _, statErr := os.Stat(cfg.TLS.CertFile); err != nil && errors.Is(statErr, fs.ErrNotExist) {
+			// First boot: the certificate has not been issued yet. Serve a
+			// self-signed one (as IMAP and POP3 do) through a holder that
+			// keeps the paths, so the file is loaded when it appears (SIGHUP
+			// or the poll). A file that exists but is invalid is not this
+			// case: it still warns and runs without TLS, below.
+			if ss, ssErr := security.SelfSignedTLSConfig([]string{banner}); ssErr == nil {
+				logger.Warn("smtp: TLS certificate not found, serving a self-signed certificate that clients will NOT trust until the file appears (it is loaded on SIGHUP or within a minute)",
+					"cert_file", cfg.TLS.CertFile)
+				holder = security.NewFallbackCertHolder("smtp", cfg.TLS.CertFile, cfg.TLS.KeyFile, &ss.Certificates[0])
+				err = nil
 			}
-			mx.TLSConfig = tlsCfg
-			submission.TLSConfig = tlsCfg
+		}
+		if err != nil {
+			var re *security.CertReloadError
+			reason, files := "unknown", []string{cfg.TLS.CertFile}
+			if errors.As(err, &re) {
+				reason, files = re.Reason, re.Files
+			}
+			logger.Warn("smtp: failed to load TLS cert, running without TLS", "reason", reason, "files", files)
+		} else {
+			certHolder = holder
+			mx.TLSConfig = holder.TLSConfig()
+			submission.TLSConfig = holder.TLSConfig()
 		}
 	}
 
@@ -1429,7 +1512,14 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 			"port", submissionsPort)
 	default:
 		if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
-			submissionsTLS, submissionsErr = security.LoadCert(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+			if certHolder != nil {
+				submissionsTLS = certHolder.TLSConfig()
+			} else if h, err := security.LoadCertHolder("smtp", cfg.TLS.CertFile, cfg.TLS.KeyFile); err != nil {
+				submissionsErr = err
+			} else {
+				certHolder = h
+				submissionsTLS = h.TLSConfig()
+			}
 		} else {
 			submissionsTLS, submissionsErr = security.SelfSignedTLSConfig([]string{banner})
 		}
@@ -1473,8 +1563,13 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 
 		submissionsTLS: submissionsTLS,
 		submissionsErr: submissionsErr,
+		certHolder:     certHolder,
 	}
 }
+
+// CertHolder returns the holder behind smtp.tls, or nil when the server has
+// no file-backed certificate. The agent registers it for reload.
+func (s *Server) CertHolder() *security.CertHolder { return s.certHolder }
 
 // SetTrustedProxies sets the peers whose PROXY protocol header is honoured
 // (server.trusted_proxies). Call before Listen. nil trusts nobody.

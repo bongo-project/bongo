@@ -149,6 +149,8 @@ The minimum you must change for a real single-domain server:
    web     { tls { cert_file = "/etc/bongo/certs/fullchain.pem"
                    key_file  = "/etc/bongo/certs/privkey.pem" } }
    ```
+   A renewed certificate needs no restart: Bongo reloads the files on SIGHUP
+   and within a minute of a change (see `docs/config-reload.md`).
    (Behind a TLS-terminating reverse proxy instead? Set `web.plain_http = true`
    and `web.behind_tls_proxy = true`, change `web.port` to `8080`, and list the
    proxy's address in `server.trusted_proxies`; without it `X-Forwarded-For`

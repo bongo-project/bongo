@@ -46,6 +46,12 @@ generate:
 test:
 	go test ./...
 
+## The update Worker's JavaScript tests need Node >= 22.13 (node:sqlite); kept out
+## of test and test-all so the Go build has no Node dependency.
+.PHONY: test-update-worker
+test-update-worker:
+	node --test deploy/update-worker/test/
+
 ## An explicit -timeout rather than Go's 10 minute default: internal/web/handlers
 ## alone takes minutes under -race, and a loaded machine or a slower CI runner
 ## multiplies that. 20m leaves headroom without hiding a genuine hang.

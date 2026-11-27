@@ -32,8 +32,42 @@ reload`.
 | `smtp.trusted_networks` | Applies from the next message, including on connections already open. |
 | `antivirus.clamav.on_failure` | Applies from the next message scanned. |
 
+`smtp.greylisting.*` (`enabled`, `delay`, `retry_window`, `pass_lifetime`) is
+read at start and needs a restart.
+
 A widened `smtp.trusted_networks` is logged at WARN with the old and new
 lists. A narrowed one is logged at INFO.
+
+## Certificates
+
+The web, SMTP (587, 25 and 465), IMAP and POP3 listeners serve their TLS
+certificate through a holder that swaps atomically. SIGHUP reloads the
+certificate and key files of every listener, even when no config file is in use,
+and a check every 60 seconds reloads any pair whose modification time or size
+changed, so a renewal needs no restart and no signal. Connections already open
+keep the certificate they started with; new handshakes get the new one, on
+STARTTLS and STLS as well as implicit TLS.
+
+If a configured certificate file does not exist yet at boot (first install),
+SMTP, IMAP and POP3 serve a self-signed certificate that clients will not
+trust, and load the real one when it appears (SIGHUP or the next check). A file
+that exists but is invalid is different: IMAP and POP3 refuse to start, and
+SMTP logs a warning and runs without TLS, as before.
+
+A pair that does not parse, does not match or has expired is refused: the old
+certificate stays in use and `tls: certificate reload failed, keeping current
+certificate` is logged at ERROR with the listener, the file names and a fixed
+reason (never key material). A change is reported once, not every minute. If a
+renewal tool writes the certificate and the key as two separate steps, one
+poll can fall between them and log a mismatch; the next poll loads the pair,
+and SIGHUP forces a reload. An expired certificate still loads at startup, with
+a warning, so a lapsed renewal never stops a restart.
+
+The certificate paths are restart keys: only the contents reload. The IMAP and
+POP3 files in `cluster.tls` are also used by Raft and the peer listener, which
+read them once at startup and are not reloaded, so on a multi-node cluster
+still restart each node before its old certificate expires. Raft and agent
+mTLS certificates are not covered.
 
 ## Settings that need a restart
 

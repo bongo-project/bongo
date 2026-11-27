@@ -295,6 +295,75 @@ type SMTPConfig struct {
 	Limits          SMTPLimits     `hcl:"limits,block" mapstructure:"limits"`
 	Relay           SMTPRelay      `hcl:"relay,block" mapstructure:"relay"`
 	DKIM            SMTPDKIMConfig `hcl:"dkim,block" mapstructure:"dkim"`
+	// Greylisting defers the first delivery attempt of an unknown triplet on
+	// the MX port. Off by default. A pointer block so a config file without it
+	// still decodes (gohcl treats a non-pointer block as mandatory); read it
+	// through GreylistSettings, which fills the defaults.
+	Greylisting *SMTPGreylisting `hcl:"greylisting,block" mapstructure:"greylisting"`
+}
+
+// GreylistSettings returns the greylisting block with defaults for an absent
+// block or a blank value.
+func (c SMTPConfig) GreylistSettings() SMTPGreylisting {
+	g := SMTPGreylisting{}
+	if c.Greylisting != nil {
+		g = *c.Greylisting
+	}
+	if g.Delay == "" {
+		g.Delay = "5m"
+	}
+	if g.RetryWindow == "" {
+		g.RetryWindow = "4h"
+	}
+	if g.PassLifetime == "" {
+		g.PassLifetime = "864h"
+	}
+	return g
+}
+
+// SMTPGreylisting configures greylisting at RCPT on the MX port. The durations
+// are Go duration strings ("5m", "4h"); there is no "d" unit, so 36 days is
+// "864h".
+type SMTPGreylisting struct {
+	Enabled bool `hcl:"enabled,optional" mapstructure:"enabled"`
+	// Delay is how long a retry must wait after the first attempt.
+	Delay string `hcl:"delay,optional" mapstructure:"delay"`
+	// RetryWindow is how long after the first attempt a retry still passes.
+	RetryWindow string `hcl:"retry_window,optional" mapstructure:"retry_window"`
+	// PassLifetime is how long a client network stays known after a pass.
+	PassLifetime string `hcl:"pass_lifetime,optional" mapstructure:"pass_lifetime"`
+}
+
+// Durations parses the three timings. Call it on a validated config.
+func (g SMTPGreylisting) Durations() (delay, retryWindow, passLifetime time.Duration, err error) {
+	if delay, err = time.ParseDuration(g.Delay); err != nil {
+		return 0, 0, 0, fmt.Errorf("smtp.greylisting.delay: %w", err)
+	}
+	if retryWindow, err = time.ParseDuration(g.RetryWindow); err != nil {
+		return 0, 0, 0, fmt.Errorf("smtp.greylisting.retry_window: %w", err)
+	}
+	if passLifetime, err = time.ParseDuration(g.PassLifetime); err != nil {
+		return 0, 0, 0, fmt.Errorf("smtp.greylisting.pass_lifetime: %w", err)
+	}
+	return delay, retryWindow, passLifetime, nil
+}
+
+// validate checks the timings whether or not greylisting is enabled, so a
+// typo is found before the switch is turned on.
+func (g SMTPGreylisting) validate() error {
+	delay, window, life, err := g.Durations()
+	if err != nil {
+		return err
+	}
+	switch {
+	case delay <= 0 || delay > time.Hour:
+		return fmt.Errorf("smtp.greylisting.delay: %s is out of range (valid: above 0 up to 1h)", g.Delay)
+	case window <= delay || window > 7*24*time.Hour:
+		return fmt.Errorf("smtp.greylisting.retry_window: %s is out of range (valid: above delay up to 168h)", g.RetryWindow)
+	case life < window || life > 365*24*time.Hour:
+		return fmt.Errorf("smtp.greylisting.pass_lifetime: %s is out of range (valid: at least retry_window up to 8760h)", g.PassLifetime)
+	}
+	return nil
 }
 
 // ParseTrustedNetworks parses TrustedNetworks into net.IPNet values once, so
@@ -1057,6 +1126,9 @@ func (c *Config) Validate() error {
 
 	if c.SMTP.SRSMaxAgeDays < 0 || c.SMTP.SRSMaxAgeDays > 365 {
 		return fmt.Errorf("smtp.srs_max_age_days: %d is out of range (valid: 1-365; 0 means the default, 21)", c.SMTP.SRSMaxAgeDays)
+	}
+	if err := c.SMTP.GreylistSettings().validate(); err != nil {
+		return err
 	}
 	if err := validatePostmasterAccount(c.SMTP.PostmasterAccount); err != nil {
 		return err

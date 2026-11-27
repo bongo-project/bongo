@@ -2035,3 +2035,15 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Comments: the phase's comments were already free of task and story ids; one FR-1 citation removed and one 17-line block compressed to 13.
 - PATTERN: [testing] A scoping test for create does not cover rename and delete: each mutating route needs its own cross-user test.
 - PATTERN: [wiring] A safe-client option set at the wiring site needs a wiring test that reads the constructed client, as the fetch and subscription clients have.
+
+## 2026-11-27 Phase 44 batch 1: 44.1 (US-003), 44.3 (US-005), 44.4 (US-002)
+- Decision 15 (operator): greylisting state shared across MX nodes over gossip in 44.3 (size L).
+- Workflow batch of three in worktrees; reviews MINOR. Integration: one conflict on the single-line component list in deploy/LOGGING.md, rebuilt from config.LogComponents.
+- 44.1: certificate holder with SIGHUP and mtime poll. Fix round: web wiring test, SMTP fallback holder for an absent file, agent-role shutdown waits for the worker.
+- 44.3: three review rounds. First: ring buffer backing array grew without bound. Second (review and security): refresh broadcast keyed on the wrong time, FIFO eviction let a random-sender flood evict known networks, O(n) compaction under the RCPT lock (52 ms stall). Rewritten as O(1) linked-list pools. Third (security re-review): IPv6 /64 rotation inside one /48 evicted every pending triplet, folded network ids collided (2.3.4/24 with 3.3.4/24, IPv4 with IPv6), one gossip bucket let spam starve pass announcements. All fixed with fail-before tests. Worst Check at cap 1.04 ms.
+- 44.4: Worker plus GET /releases/{version} redirect so the US-001 same-host rule holds.
+- A fix worker used `git stash push <path>` for fail-before evidence and re-staged the file; checked afterwards that both tasks' added lines were present. Remind workers to use overlays instead.
+- PATTERN: [security] Per-network budgets on IPv6 must aggregate above the /64 (/48), or one operator rotates past them.
+- PATTERN: [security] Never fold network keys into a smaller id for counters; key maps on the full value.
+- PATTERN: [gossip] Give each message kind its own rate bucket and queue, so a flood of the cheap kind cannot starve the important one.
+- PATTERN: [workers] Tell fix workers to prove fail-before with go test -overlay, never git stash.
