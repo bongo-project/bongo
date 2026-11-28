@@ -2063,3 +2063,8 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Security review REJECT: an unauthenticated flood of made-up versions and ids filled `seen` and `daily_counts` (13 months). Fixed with per-UTC-day in-process caps (256 versions, 1M counted requests); requests over a cap still get 200.
 - PATTERN: [security] A public endpoint that writes per request needs a bound on what it can write, not just on request size; a platform (Cloudflare/D1) had hidden that.
 - PATTERN: [privacy] Use a plain http.Handler with ErrorLog = io.Discard and a source-scanning test when a service must never see client addresses.
+
+## 2026-11-28 — Phase 44 sweep
+- Invariants: 58 enumerated, 56 kept, 49 guarded, 7 confirmed gaps (0 refuted), all now tested: SMTP cert holder registered for reload; update service body read bounded without Content-Length; ACME probe served only for configured names; tampered issued chain never stored (fake CA `SetTamper`); CA text truncated in logs; greylist pending budget per /24 and /64; instance id kept on a read error.
+- Comments: no task, phase or story ids in the Phase 44 files; nothing to strip.
+- Also found earlier: TestLosingLeadershipCancelsIssuance was flaky (fixed in PR #259).

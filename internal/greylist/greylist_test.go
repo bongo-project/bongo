@@ -628,3 +628,87 @@ func TestFullPoolEvictsHeavyNetworksFirst(t *testing.T) {
 		}
 	}
 }
+
+// A budget group cannot hold more pending triplets than its share, however
+// many it sends, and a triplet past the budget is deferred but not recorded.
+// The table is large enough that no eviction happens, so only the budget can
+// hold the count down. IPv4 groups by /24; one IPv6 /64 gets a quarter of its
+// /48's budget, and the /48 as a whole the full budget.
+func TestPendingBudgetBoundsGroupCount(t *testing.T) {
+	tests := []struct {
+		name    string
+		ips     []string // senders take turns over these addresses
+		perNet  bool     // also bound each IPv6 /64 at a quarter
+		wantGrp func(perNet int) int
+	}{
+		{
+			name:    "one IPv4 /24",
+			ips:     []string{"203.0.113.9", "203.0.113.200"},
+			wantGrp: func(p int) int { return p },
+		},
+		{
+			name:    "one IPv6 /64",
+			ips:     []string{"2001:db8:1:1::9", "2001:db8:1:1::ffff"},
+			perNet:  true,
+			wantGrp: func(p int) int { return max(p/4, 16) },
+		},
+		{
+			name:    "several /64s in one IPv6 /48",
+			ips:     []string{"2001:db8:1:1::9", "2001:db8:1:2::9", "2001:db8:1:3::9", "2001:db8:1:4::9", "2001:db8:1:5::9"},
+			perNet:  true,
+			wantGrp: func(p int) int { return p },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tb, _ := newTestTable(2000)
+			const sends = 400
+			var refused []Key // triplet keys sent after the group was full
+			for i := range sends {
+				ip := net.ParseIP(tt.ips[i%len(tt.ips)])
+				nk, _ := NetworkKey(ip)
+				sender := fmt.Sprintf("r%d@flood.example", i)
+				tb.mu.Lock()
+				full := tb.pendingFull(nk)
+				tb.mu.Unlock()
+				if tb.Check(ip, sender, "b@y.example") {
+					t.Fatalf("send %d passed on first sight", i)
+				}
+				if full {
+					refused = append(refused, TripletKey(nk, sender, "b@y.example"))
+				}
+			}
+
+			tb.mu.Lock()
+			defer tb.mu.Unlock()
+			if len(tb.m) >= tb.max {
+				t.Fatalf("table filled up (%d entries); eviction would mask the budget", len(tb.m))
+			}
+			nk0, _ := NetworkKey(net.ParseIP(tt.ips[0]))
+			grp := groupOf(nk0)
+			want := tt.wantGrp(tb.perNet)
+			if got := tb.grpPending[grp]; got != want {
+				t.Errorf("group holds %d pending triplets, want exactly the budget %d", got, want)
+			}
+			if tt.perNet {
+				for _, s := range tt.ips {
+					nk, _ := NetworkKey(net.ParseIP(s))
+					if got, quarter := tb.netPending[nk], max(tb.perNet/4, 16); got > quarter {
+						t.Errorf("%s /64 holds %d pending triplets, over its quarter %d", s, got, quarter)
+					}
+				}
+			}
+			if len(refused) == 0 {
+				t.Fatal("the budget was never reached; the test proves nothing")
+			}
+			for _, k := range refused {
+				if _, ok := tb.m[mapKey{KindTriplet, k}]; ok {
+					t.Fatal("a triplet sent past the budget was recorded")
+				}
+			}
+			if got := tb.pending.n; got != want {
+				t.Errorf("pending list holds %d, want %d", got, want)
+			}
+		})
+	}
+}

@@ -52,6 +52,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	fail     bool
+	tamper   Tamper
 	nextID   int
 	accounts map[string]string // account URL -> JWK thumbprint
 	authzs   map[string]*authz
@@ -141,6 +142,30 @@ func (s *Server) Failures() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Clone(s.failures)
+}
+
+// Tamper is a defect the fake CA puts into the leaves it issues, so tests can
+// check that the client refuses a certificate a misbehaving CA hands back.
+type Tamper int
+
+const (
+	// TamperNone issues the names and key of the CSR, valid for Lifetime.
+	TamperNone Tamper = iota
+	// TamperDropName leaves the last requested name out of the leaf.
+	TamperDropName
+	// TamperExtraName adds a name nobody requested to the leaf.
+	TamperExtraName
+	// TamperOtherKey certifies a key the CA made instead of the CSR's.
+	TamperOtherKey
+	// TamperExpired issues a leaf whose validity has already ended.
+	TamperExpired
+)
+
+// SetTamper selects the defect put into every leaf issued from now on.
+func (s *Server) SetTamper(t Tamper) {
+	s.mu.Lock()
+	s.tamper = t
+	s.mu.Unlock()
 }
 
 // Issued returns the certificates signed so far.
@@ -465,7 +490,28 @@ func (s *Server) finalize(w http.ResponseWriter, id string, payload []byte) {
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
-	leafDER, err := x509.CreateCertificate(rand.Reader, leafTmpl, s.ca, csr.PublicKey, s.caK)
+	pub := csr.PublicKey
+	switch s.tamper {
+	case TamperDropName:
+		if len(leafTmpl.DNSNames) > 1 {
+			leafTmpl.DNSNames = slices.Clone(leafTmpl.DNSNames[:len(leafTmpl.DNSNames)-1])
+		} else {
+			leafTmpl.DNSNames = []string{"other.invalid"}
+		}
+	case TamperExtraName:
+		leafTmpl.DNSNames = append(slices.Clone(leafTmpl.DNSNames), "extra.invalid")
+	case TamperOtherKey:
+		other, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			problem(w, http.StatusInternalServerError, "serverInternal", "key generation failed")
+			return
+		}
+		pub = &other.PublicKey
+	case TamperExpired:
+		leafTmpl.NotBefore = time.Now().Add(-48 * time.Hour)
+		leafTmpl.NotAfter = time.Now().Add(-24 * time.Hour)
+	}
+	leafDER, err := x509.CreateCertificate(rand.Reader, leafTmpl, s.ca, pub, s.caK)
 	if err != nil {
 		problem(w, http.StatusInternalServerError, "serverInternal", "signing failed")
 		return
