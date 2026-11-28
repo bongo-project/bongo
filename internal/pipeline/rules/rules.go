@@ -37,7 +37,14 @@ type RulesProcessor struct {
 	resolver  RecipientResolver
 	engine    *rules.Engine
 	logger    *slog.Logger
+	features  store.FeatureLookup
 }
+
+// SetFeatures sets the lookup for per-user feature switches. A user with
+// rules switched off has none applied; so does one whose profile cannot be
+// read (fail closed, the mail lands in the normal folder). Without a lookup
+// every user's rules apply.
+func (p *RulesProcessor) SetFeatures(f store.FeatureLookup) { p.features = f }
 
 // SetResolver sets the recipient resolver used to map envelope recipient email
 // addresses to user IDs. When unset, recipients are treated as user IDs (used
@@ -132,6 +139,16 @@ func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope
 				continue
 			}
 			userID = resolved
+		}
+
+		if p.features != nil {
+			off, ferr := p.features.FeatureDisabled(userID, store.FeatureRules)
+			if ferr != nil {
+				p.logger.Warn("rules: feature lookup failed, skipping rules", "user_id", userID, "id", env.GetId(), "error", ferr)
+			}
+			if off {
+				continue
+			}
 		}
 
 		userRules, err := p.ruleStore.List(userID)

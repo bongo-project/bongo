@@ -520,12 +520,14 @@ func TestLeaderSweepsStaleChallenges(t *testing.T) {
 		Logger: newLogger(&lockedBuf{}),
 	})
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go m.Run(ctx, func() bool { return true }, 0, time.Hour)
+	leaderDone := make(chan struct{})
+	go func() { m.Run(ctx, func() bool { return true }, 0, time.Hour); close(leaderDone) }()
 	waitFor(t, func() bool { rec, _, _ := acmecert.LoadCertificate(store); return rec != nil })
-	if raw, _ := store.Get(stale); raw != nil {
-		t.Error("the stale challenge entry survived")
-	}
+	waitFor(t, func() bool { raw, _ := store.Get(stale); return raw == nil })
+	// Stop the leader before the follower half: its sweep after issuance
+	// could otherwise delete the entry put back below.
+	cancel()
+	<-leaderDone
 
 	// A follower sweeps nothing.
 	_ = store.Put(stale, []byte("x"))

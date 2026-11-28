@@ -49,7 +49,7 @@ func TestAuthenticateProtocolReturnsCredentialID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, got, err := e.la.AuthenticateProtocol("a@example.com", tt.password)
+			_, _, got, err := e.la.AuthenticateProtocol("imap", "a@example.com", tt.password)
 			if (err != nil) != tt.wantErr || got != tt.wantID {
 				t.Fatalf("got id %q err %v, want id %q err %v", got, err, tt.wantID, tt.wantErr)
 			}
@@ -60,11 +60,11 @@ func TestAuthenticateProtocolReturnsCredentialID(t *testing.T) {
 		const shaped = "abcdef-ghjkmn-pqrstu-vwxyza"
 		e2 := newAppEnv(t)
 		e2.user(t, "u2", "b@example.com", shaped)
-		_, profile, got, err := e2.la.AuthenticateProtocol("b@example.com", shaped)
+		_, profile, got, err := e2.la.AuthenticateProtocol("imap", "b@example.com", shaped)
 		if err != nil || got != "" {
 			t.Fatalf("got id %q err %v, want empty and success", got, err)
 		}
-		st, err := e2.la.AccountState("u2", got)
+		st, err := e2.la.AccountState("u2", got, "imap")
 		if err != nil || !st.Live(ProtocolEpoch(profile)) {
 			t.Fatalf("session bound to a nonexistent record: %+v %v", st, err)
 		}
@@ -101,7 +101,7 @@ func TestAccountStateAppPassword(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec.gets.Store(0)
 			rec.fail.Store(tt.fail)
-			st, err := e.la.AccountState(tt.userID, tt.id)
+			st, err := e.la.AccountState(tt.userID, tt.id, "imap")
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -116,7 +116,7 @@ func TestAccountStateAppPassword(t *testing.T) {
 
 	t.Run("no app password service fails closed", func(t *testing.T) {
 		bare := NewLocalAuth(e.kv, e.mm)
-		st, err := bare.AccountState("u1", info.ID)
+		st, err := bare.AccountState("u1", info.ID, "imap")
 		if err != nil || !st.AppPasswordRevoked {
 			t.Fatalf("state = %+v err %v, want revoked", st, err)
 		}
@@ -139,7 +139,7 @@ func TestRevokeAllEndsOpenSessions(t *testing.T) {
 	}
 	open := func(pw string) sess {
 		t.Helper()
-		_, p, id, err := e.la.AuthenticateProtocol("a@example.com", pw)
+		_, p, id, err := e.la.AuthenticateProtocol("imap", "a@example.com", pw)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,7 +150,7 @@ func TestRevokeAllEndsOpenSessions(t *testing.T) {
 
 	live := func(s sess) bool {
 		t.Helper()
-		st, err := e.la.AccountState("u1", s.id)
+		st, err := e.la.AccountState("u1", s.id, "imap")
 		if err != nil {
 			t.Fatal(err)
 		}

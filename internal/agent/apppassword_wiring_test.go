@@ -31,7 +31,7 @@ func TestAgentWiresAppPasswordsIntoAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if id, _, _, err := a.Auth.AuthenticateProtocol("phone@localhost", pw); err != nil || id != uid {
+	if id, _, _, err := a.Auth.AuthenticateProtocol("imap", "phone@localhost", pw); err != nil || id != uid {
 		t.Fatalf("protocol login with app password = %q, %v", id, err)
 	}
 	a.AppPasswords.Wait()

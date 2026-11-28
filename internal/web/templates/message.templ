@@ -8,6 +8,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 )
 
 // Attachment represents a downloadable attachment.
@@ -325,7 +328,9 @@ templ moreMenu(msg MessageDetail, mailboxes []MailboxInfo, opts viewOpts) {
 			<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", encMailbox(msg.Mailbox), msg.UID)) } class="msg-more-item">{ t(ctx, "mail.export") }</a>
 			<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/source", encMailbox(msg.Mailbox), msg.UID)) } class="msg-more-item">{ t(ctx, "mail.viewSource") }</a>
 			<button type="button" class="msg-more-item" data-print-page="true">{ t(ctx, "mail.print") }</button>
-			<a href={ createFilterURL(msg) } class="msg-more-item">{ t(ctx, "mail.createFilter") }</a>
+			if !middleware.FeatureDisabled(ctx, store.FeatureRules) {
+				<a href={ createFilterURL(msg) } class="msg-more-item">{ t(ctx, "mail.createFilter") }</a>
+			}
 			if opts.Top && !msg.IsContact {
 				<form method="post" action="/contacts/quick-add" class="msg-more-form">
 					<input type="hidden" name="from_email" value={ msg.From }/>

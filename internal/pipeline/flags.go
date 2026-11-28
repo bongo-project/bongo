@@ -20,6 +20,10 @@ const (
 	// MsgFlagDelivered indicates the message has been successfully delivered.
 	// Used to prevent duplicate delivery on crash recovery.
 	MsgFlagDelivered uint32 = 1 << 6
+	// MsgFlagAttachmentChecked indicates the attachment policy stage has run.
+	// Without it a release from quarantine, or a replay after a crash, would
+	// run the stage again.
+	MsgFlagAttachmentChecked uint32 = 1 << 7
 )
 
 // HasFlag reports whether flags contains the given flag bit.

@@ -145,6 +145,8 @@ var (
 	flashUserEnabled                 = flashKey{"user-enabled"}
 	flashUserDisabled                = flashKey{"user-disabled"}
 	flashCannotDeleteSelf            = flashKey{"cannot-delete-self"}
+	flashUserFeaturesSaved           = flashKey{"user-features-saved"}
+	flashCannotDisableLastAdminWeb   = flashKey{"cannot-disable-last-admin-web"}
 	flashCannotDeleteLastAdmin       = flashKey{"cannot-delete-last-admin"}
 	flashUserDeleted                 = flashKey{"user-deleted"}
 	flashUserDeletedWithErrors       = flashKey{"user-deleted-with-errors"}
@@ -285,6 +287,8 @@ var flashMessages = map[string]string{
 	flashUserEnabled.id:                 "flash.userEnabled",
 	flashUserDisabled.id:                "flash.userDisabled",
 	flashCannotDeleteSelf.id:            "flash.cannotDeleteSelf",
+	flashUserFeaturesSaved.id:           "flash.userFeaturesSaved",
+	flashCannotDisableLastAdminWeb.id:   "flash.cannotDisableLastAdminWeb",
 	flashCannotDeleteLastAdmin.id:       "flash.cannotDeleteLastAdmin",
 	flashUserDeleted.id:                 "flash.userDeleted",
 	flashUserDeletedWithErrors.id:       "flash.userDeletedWithErrors",

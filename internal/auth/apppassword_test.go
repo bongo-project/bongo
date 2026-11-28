@@ -146,7 +146,7 @@ func (e *appEnv) attempt(email, password string) (string, int, error) {
 	e.hashMu.Lock()
 	e.hashes = nil
 	e.hashMu.Unlock()
-	id, _, _, err := e.la.AuthenticateProtocol(email, password)
+	id, _, _, err := e.la.AuthenticateProtocol("imap", email, password)
 	return id, int(e.compare.Load()), err
 }
 
@@ -450,7 +450,7 @@ func TestAppPasswordRefusedOnRestrictiveMethods(t *testing.T) {
 		t.Errorf("account password refused: %v", err)
 	}
 	// And the protocol method accepts what they refuse.
-	if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
+	if _, _, _, err := e.la.AuthenticateProtocol("imap", "a@example.com", pw); err != nil {
 		t.Errorf("protocol method refused the app password: %v", err)
 	}
 	e.apps.Wait()
@@ -462,7 +462,7 @@ func TestRevokedAppPasswordFailsNextAttempt(t *testing.T) {
 	keep := e.create(t, "u1", "keep")
 	drop := e.create(t, "u1", "drop")
 	for _, p := range []string{keep, drop} {
-		if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", p); err != nil {
+		if _, _, _, err := e.la.AuthenticateProtocol("imap", "a@example.com", p); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -473,7 +473,7 @@ func TestRevokedAppPasswordFailsNextAttempt(t *testing.T) {
 	if _, n, err := e.attempt("a@example.com", drop); !errors.Is(err, ErrBadCredentials) || n != 1 {
 		t.Errorf("revoked credential: n=%d err=%v", n, err)
 	}
-	if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", keep); err != nil {
+	if _, _, _, err := e.la.AuthenticateProtocol("imap", "a@example.com", keep); err != nil {
 		t.Errorf("other credential disturbed: %v", err)
 	}
 	e.apps.Wait()
@@ -532,10 +532,10 @@ func mustMarshal(t *testing.T, m proto.Message) []byte {
 func TestWithoutAppPasswordsAccountPasswordOnly(t *testing.T) {
 	la, mm, kv := setupTestAuth(t)
 	createTestUser(t, kv, mm, "u1", "a@example.com", "pw")
-	if _, _, _, err := la.AuthenticateProtocol("a@example.com", "pw"); err != nil {
+	if _, _, _, err := la.AuthenticateProtocol("imap", "a@example.com", "pw"); err != nil {
 		t.Errorf("account password: %v", err)
 	}
-	if _, _, _, err := la.AuthenticateProtocol("a@example.com", "aaaaaa-aaaaaa-aaaaaa-aaaaaa"); !errors.Is(err, ErrBadCredentials) {
+	if _, _, _, err := la.AuthenticateProtocol("imap", "a@example.com", "aaaaaa-aaaaaa-aaaaaa-aaaaaa"); !errors.Is(err, ErrBadCredentials) {
 		t.Errorf("shaped password: %v", err)
 	}
 }
@@ -549,7 +549,7 @@ func TestLastUsedWrittenOncePerDay(t *testing.T) {
 	id := pw[:6]
 	login := func() {
 		t.Helper()
-		if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
+		if _, _, _, err := e.la.AuthenticateProtocol("imap", "a@example.com", pw); err != nil {
 			t.Fatal(err)
 		}
 		e.apps.Wait()
@@ -604,7 +604,7 @@ func TestConcurrentLoginsIssueOneTouch(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
+			if _, _, _, err := e.la.AuthenticateProtocol("imap", "a@example.com", pw); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -641,7 +641,7 @@ func TestFailedTouchDoesNotFailLoginAndIsLogged(t *testing.T) {
 			if tt.benign {
 				e.apps.SetBenignTouchError(func(err error) bool { return errors.Is(err, notLeader) })
 			}
-			if _, _, _, err := e.la.AuthenticateProtocol("a@example.com", pw); err != nil {
+			if _, _, _, err := e.la.AuthenticateProtocol("imap", "a@example.com", pw); err != nil {
 				t.Fatalf("login failed because of the touch: %v", err)
 			}
 			e.apps.Wait()
@@ -677,7 +677,7 @@ func TestRefusedAccountsDoNotTouch(t *testing.T) {
 	e.mutateProfile(t, "d", func(p *bongov1.UserProfile) { p.Disabled = true })
 	e.mutateProfile(t, "r", func(p *bongov1.UserProfile) { p.Kind = ResourceKind })
 	for email, pw := range map[string]string{"d@example.com": dPW, "r@example.com": rPW} {
-		if _, _, _, err := e.la.AuthenticateProtocol(email, pw); !errors.Is(err, ErrBadCredentials) {
+		if _, _, _, err := e.la.AuthenticateProtocol("imap", email, pw); !errors.Is(err, ErrBadCredentials) {
 			t.Errorf("%s: %v", email, err)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	gosmtp "github.com/emersion/go-smtp"
 
@@ -342,7 +343,7 @@ func TestAuthenticatedSubmissionArrivesTrusted(t *testing.T) {
 // compromised account could relay without bound.
 func TestOutboundRateLimitRejectsWith452(t *testing.T) {
 	b, _, _ := testBackend("alice@example.com")
-	b.outboundRL = newInboundRateLimiter(2)
+	b.outboundRL = mail.NewRateLimiterWindow(2, time.Minute)
 
 	send := func() error {
 		s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-alice@example.com"}
@@ -376,7 +377,7 @@ func TestOutboundRateLimitRejectsWith452(t *testing.T) {
 // condition to cover every submission would look like a passing test.
 func TestOutboundRateLimitDoesNotApplyToLocalOnly(t *testing.T) {
 	b, _, _ := testBackend("alice@example.com", "bob@example.com")
-	b.outboundRL = newInboundRateLimiter(1)
+	b.outboundRL = mail.NewRateLimiterWindow(1, time.Minute)
 
 	for i := 1; i <= 5; i++ {
 		s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-alice@example.com"}
@@ -603,7 +604,7 @@ func TestOutboundRecipientLimitNotSpentOnRejectedFrom(t *testing.T) {
 	}
 }
 
-func (f *fakeAuth) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error) {
+func (f *fakeAuth) AuthenticateProtocol(feature, username, password string) (string, *bongov1.UserProfile, string, error) {
 	id, err := f.Authenticate(username, password)
 	if err != nil {
 		return "", nil, "", err

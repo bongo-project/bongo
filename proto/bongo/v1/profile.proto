@@ -27,4 +27,17 @@ message UserProfile {
   // "g:{group id}" (store.GranteeUser, store.GranteeGroup), at most 50. Read on
   // every send-as check and never cached.
   repeated string shared_members = 16;
+  // Features an admin switched off for this account: any of imap, pop3,
+  // submission, dav, web, forwarding, rules, vacation. Unknown names are kept
+  // on edit and ignored when enforcing. An earlier binary keeps the field but
+  // does not enforce it.
+  repeated string disabled_features = 17;
+  // Per-user send limits; a zero member means the global value.
+  SendLimits send_limits = 18;
+}
+
+message SendLimits {
+  uint32 messages_per_minute = 1;
+  uint32 recipients_per_hour = 2;
+  uint32 max_recipients = 3;
 }

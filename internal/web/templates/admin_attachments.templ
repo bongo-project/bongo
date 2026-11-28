@@ -1,0 +1,93 @@
+package templates
+
+// LocaleOption is one language the notice can be written in.
+type LocaleOption struct {
+	Code string
+	Name string
+}
+
+// AttachmentPolicyForm is the data of the attachment policy page.
+type AttachmentPolicyForm struct {
+	Domain string
+	// Enabled, Extensions (one per line), MimeTypes (one per line), Action and
+	// Language are the form values as shown.
+	Enabled    bool
+	Extensions string
+	MimeTypes  string
+	Action     string
+	Language   string
+	Languages  []LocaleOption
+	// NoPolicy is true while the domain has none, so the lists shown are
+	// suggestions.
+	NoPolicy bool
+	Saved    bool
+	// ErrField names the field the error belongs to; Error is the translated
+	// message.
+	ErrField string
+	Error    string
+}
+
+templ AdminAttachmentPolicy(f AttachmentPolicyForm, email string) {
+	@AdminLayout(t(ctx, "admin.attachments.title")+": "+f.Domain, email, "domains") {
+		<div class="admin-scroll">
+			<div class="admin-toolbar">
+				<a href={ templ.SafeURL("/admin/domains/" + f.Domain) } class="btn-outline">&#8592; { t(ctx, "admin.attachments.back") }</a>
+			</div>
+			@adminPageHead(t(ctx, "admin.attachments.title")+": "+f.Domain, t(ctx, "admin.attachments.intro"))
+			if f.Saved {
+				@FlashMessage(t(ctx, "admin.attachments.saved"), "success")
+			}
+			if f.Error != "" {
+				@FlashMessage(f.Error, "error")
+			}
+			if f.NoPolicy && f.Error == "" {
+				<p class="meta">{ t(ctx, "admin.attachments.noPolicy") }</p>
+			}
+			<div class="form-card">
+				<form method="post" action={ templ.SafeURL("/admin/domains/" + f.Domain + "/attachments") }>
+					<input type="hidden" name="_csrf" value={ csrfToken(ctx) }/>
+					<div class="form-group">
+						<label class="admin-inline-label">
+							<input type="checkbox" name="enabled" value="1" checked?={ f.Enabled } class="u-width-auto"/>
+							{ t(ctx, "admin.attachments.enabled") }
+						</label>
+					</div>
+					<div class="form-group">
+						<label for="att_extensions" class="form-label">{ t(ctx, "admin.attachments.extensions") }</label>
+						<textarea name="extensions" id="att_extensions" rows="6" class="form-input" aria-invalid?={ f.ErrField == "extensions" }>{ f.Extensions }</textarea>
+						<span class="meta">{ t(ctx, "admin.attachments.extensionsHelp") }</span>
+					</div>
+					<div class="form-group">
+						<label for="att_mime" class="form-label">{ t(ctx, "admin.attachments.mimeTypes") }</label>
+						<textarea name="mime_types" id="att_mime" rows="5" class="form-input" aria-invalid?={ f.ErrField == "mime_types" }>{ f.MimeTypes }</textarea>
+						<span class="meta">{ t(ctx, "admin.attachments.mimeTypesHelp") }</span>
+					</div>
+					<fieldset class="form-group">
+						<legend class="form-label">{ t(ctx, "admin.attachments.action") }</legend>
+						<label class="admin-inline-label">
+							<input type="radio" name="action" value="strip" checked?={ f.Action != "quarantine" } class="u-width-auto"/>
+							{ t(ctx, "admin.attachments.actionStrip") }
+						</label>
+						<label class="admin-inline-label">
+							<input type="radio" name="action" value="quarantine" checked?={ f.Action == "quarantine" } class="u-width-auto"/>
+							{ t(ctx, "admin.attachments.actionQuarantine") }
+						</label>
+						<span class="meta">{ t(ctx, "admin.attachments.stripNote") }</span>
+					</fieldset>
+					<div class="form-group">
+						<label for="att_language" class="form-label">{ t(ctx, "admin.attachments.language") }</label>
+						<select name="language" id="att_language" class="form-select">
+							<option value="" selected?={ f.Language == "" }>{ t(ctx, "admin.attachments.languageDefault") }</option>
+							for _, l := range f.Languages {
+								<option value={ l.Code } selected?={ l.Code == f.Language }>{ l.Name }</option>
+							}
+						</select>
+					</div>
+					<p class="meta">{ t(ctx, "admin.attachments.archives") }</p>
+					<button type="submit" class="btn-primary">{ t(ctx, "admin.attachments.save") }</button>
+					<a href={ templ.SafeURL("/admin/domains/" + f.Domain + "/attachments?defaults=1") } class="btn-secondary">{ t(ctx, "admin.attachments.useDefaults") }</a>
+				</form>
+			</div>
+		</div>
+	}
+}

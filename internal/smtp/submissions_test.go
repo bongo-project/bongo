@@ -183,7 +183,7 @@ func TestSubmissionListeners(t *testing.T) {
 
 			t.Run("outbound rate limit applies", func(t *testing.T) {
 				srv, b := submissionsServer(t, nil)
-				b.outboundRL = newInboundRateLimiter(1)
+				b.outboundRL = mail.NewRateLimiterWindow(1, time.Minute)
 				send := func() error {
 					c, _ := lc.dial(t, srv)
 					if err := c.Auth(sasl.NewLoginClient("alice", "pw")); err != nil {

@@ -150,45 +150,51 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 	// Infinite scroll: checkbox sends "1" when checked, absent when unchecked.
 	prefs.InfiniteScroll = r.FormValue("infinite_scroll") == "1"
 
-	// Forwarding.
-	fwdAddr := strings.TrimSpace(r.FormValue("forward_address"))
-	if fwdAddr != "" {
-		// Basic email validation.
-		if !strings.Contains(fwdAddr, "@") || !strings.Contains(fwdAddr, ".") {
-			fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
-			return
-		}
-		// Prevent forwarding to self.
-		_, email := middleware.UserFromContext(r.Context())
-		if strings.EqualFold(fwdAddr, email) {
-			fwdError(w, r, "settings.fwdOwnAddress", http.StatusBadRequest)
-			return
-		}
-	}
-	// A new or changed target is only recorded as pending here and the
-	// challenge mailed; the deliver stage forwards nothing until it is verified.
 	flash := []flashKey{flashSettingsSaved}
-	if fwdAddr != "" && h.forwarder != nil {
-		_, email := middleware.UserFromContext(r.Context())
-		if err := h.forwarder.Ensure(userID, email, fwdAddr); err != nil {
-			if note, soft := forwardOutcomeFlash(err); soft {
-				flash = []flashKey{flashSettingsSavedNote, note}
-			} else if errors.Is(err, ErrForwardInvalidAddress) {
+	// With forwarding switched off the section is not shown, so the form carries
+	// no forward fields: keep the stored address and copy flag as they are. When
+	// the session state could not be read the switch is unknown, so fail closed
+	// the same way.
+	if !middleware.FeatureDisabled(r.Context(), store.FeatureForwarding) && !middleware.SessionStateUnavailable(r.Context()) {
+		// Forwarding.
+		fwdAddr := strings.TrimSpace(r.FormValue("forward_address"))
+		if fwdAddr != "" {
+			// Basic email validation.
+			if !strings.Contains(fwdAddr, "@") || !strings.Contains(fwdAddr, ".") {
 				fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
 				return
-			} else {
-				fwdError(w, r, "settings.fwdErrStart", http.StatusInternalServerError)
+			}
+			// Prevent forwarding to self.
+			_, email := middleware.UserFromContext(r.Context())
+			if strings.EqualFold(fwdAddr, email) {
+				fwdError(w, r, "settings.fwdOwnAddress", http.StatusBadRequest)
 				return
 			}
-		} else if h.forwarder.Pending(userID, fwdAddr) {
-			flash = []flashKey{flashFwdSavedPending}
 		}
-	}
-	prefs.ForwardAddress = fwdAddr
-	prefs.ForwardKeepCopy = r.FormValue("forward_keep_copy") == "1"
-	// Default to keeping a copy when no forwarding address is set.
-	if fwdAddr == "" {
-		prefs.ForwardKeepCopy = true
+		// A new or changed target is only recorded as pending here and the
+		// challenge mailed; the deliver stage forwards nothing until it is verified.
+		if fwdAddr != "" && h.forwarder != nil {
+			_, email := middleware.UserFromContext(r.Context())
+			if err := h.forwarder.Ensure(userID, email, fwdAddr); err != nil {
+				if note, soft := forwardOutcomeFlash(err); soft {
+					flash = []flashKey{flashSettingsSavedNote, note}
+				} else if errors.Is(err, ErrForwardInvalidAddress) {
+					fwdError(w, r, "settings.fwdInvalidAddress", http.StatusBadRequest)
+					return
+				} else {
+					fwdError(w, r, "settings.fwdErrStart", http.StatusInternalServerError)
+					return
+				}
+			} else if h.forwarder.Pending(userID, fwdAddr) {
+				flash = []flashKey{flashFwdSavedPending}
+			}
+		}
+		prefs.ForwardAddress = fwdAddr
+		prefs.ForwardKeepCopy = r.FormValue("forward_keep_copy") == "1"
+		// Default to keeping a copy when no forwarding address is set.
+		if fwdAddr == "" {
+			prefs.ForwardKeepCopy = true
+		}
 	}
 
 	if err := h.prefs.Set(userID, prefs); err != nil {

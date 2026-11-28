@@ -304,6 +304,8 @@ func flagsForStage(name string) (checkedFlag, outcomeFlag uint32) {
 		return MsgFlagVirusChecked, MsgFlagVirus
 	case "rules":
 		return MsgFlagRulesChecked, 0
+	case "attachment_policy":
+		return MsgFlagAttachmentChecked, 0
 	case "deliver":
 		return MsgFlagDelivered, 0
 	default:

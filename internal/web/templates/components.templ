@@ -3,6 +3,7 @@ package templates
 import (
 	"fmt"
 
+	"github.com/bongo-project/bongo/internal/store"
 	"github.com/bongo-project/bongo/internal/web/middleware"
 )
 
@@ -82,8 +83,12 @@ templ SettingsSidebar(active string) {
 			<div class="sidebar-label">{ t(ctx, "settings.navigation") }</div>
 			<ul class="nav-list">
 				<li class="nav-item"><a href="/settings" class={ templ.KV("active", active == "settings") } aria-current?={ active == "settings" }><span class="nav-icon" aria-hidden="true">@Icon("settings", "")</span><span>{ t(ctx, "nav.settings") }</span></a></li>
-				<li class="nav-item"><a href="/settings/rules" class={ templ.KV("active", active == "rules") } aria-current?={ active == "rules" }><span class="nav-icon" aria-hidden="true">@Icon("sliders", "")</span><span>{ t(ctx, "settings.filterRules") }</span></a></li>
-				<li class="nav-item"><a href="/settings/vacation" class={ templ.KV("active", active == "vacation") } aria-current?={ active == "vacation" }><span class="nav-icon" aria-hidden="true">@Icon("reply", "")</span><span>{ t(ctx, "settings.vacation") }</span></a></li>
+				if !middleware.FeatureDisabled(ctx, store.FeatureRules) {
+					<li class="nav-item"><a href="/settings/rules" class={ templ.KV("active", active == "rules") } aria-current?={ active == "rules" }><span class="nav-icon" aria-hidden="true">@Icon("sliders", "")</span><span>{ t(ctx, "settings.filterRules") }</span></a></li>
+				}
+				if !middleware.FeatureDisabled(ctx, store.FeatureVacation) {
+					<li class="nav-item"><a href="/settings/vacation" class={ templ.KV("active", active == "vacation") } aria-current?={ active == "vacation" }><span class="nav-icon" aria-hidden="true">@Icon("reply", "")</span><span>{ t(ctx, "settings.vacation") }</span></a></li>
+				}
 				<li class="nav-item"><a href="/settings/folders" class={ templ.KV("active", active == "folders") } aria-current?={ active == "folders" }><span class="nav-icon" aria-hidden="true">@Icon("folder", "")</span><span>{ t(ctx, "nav.folderSharing") }</span></a></li>
 				<li class="nav-item"><a href="/settings/tags" class={ templ.KV("active", active == "tags") } aria-current?={ active == "tags" }><span class="nav-icon" aria-hidden="true">@Icon("tag", "")</span><span>{ t(ctx, "nav.tags") }</span></a></li>
 				<li class="nav-item"><a href="/settings/addresses" class={ templ.KV("active", active == "addresses") } aria-current?={ active == "addresses" }><span class="nav-icon" aria-hidden="true">@Icon("send", "")</span><span>{ t(ctx, "settings.sendAsAddresses") }</span></a></li>

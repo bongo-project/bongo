@@ -360,6 +360,20 @@ func (s *AgentServer) DepositMessage(_ context.Context, req *DepositRequest) (*D
 	// listener must not be able to pick one.
 	env.AuthUserId = ""
 
+	// The attachment policy's state is server-local too: a preset checked flag
+	// would skip the policy, and a forged strip result would make deliver stamp
+	// a DKIM pass of the caller's choosing. Other caller-supplied flags and
+	// stage results are still accepted on this listener; that gap is older
+	// than the policy stage.
+	env.Flags = pipeline.ClearFlag(env.Flags, pipeline.MsgFlagAttachmentChecked)
+	stages := make([]*bongov1.StageResult, 0, len(env.Stages))
+	for _, sr := range env.Stages {
+		if sr.GetStage() != "attachment_policy" {
+			stages = append(stages, sr)
+		}
+	}
+	env.Stages = stages
+
 	// One envelope per recipient, sharing the one blob: the rules stage and
 	// quarantine decide per envelope, so one recipient's rule must not file or
 	// drop another's copy. Splitting here, not only in the agent, also covers

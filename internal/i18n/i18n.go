@@ -110,6 +110,23 @@ func (i *I18n) T(locale, messageID string, data ...map[string]interface{}) strin
 	return result
 }
 
+// Locales returns the supported locales, with no need for Init to have run.
+func Locales() []LocaleInfo {
+	out := make([]LocaleInfo, len(supportedLocales))
+	copy(out, supportedLocales)
+	return out
+}
+
+// SupportedLocale reports whether code is one of the supported locale codes.
+func SupportedLocale(code string) bool {
+	for _, l := range supportedLocales {
+		if l.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
 // AvailableLocales returns the list of locales that have message files.
 func (i *I18n) AvailableLocales() []LocaleInfo {
 	result := make([]LocaleInfo, len(supportedLocales))

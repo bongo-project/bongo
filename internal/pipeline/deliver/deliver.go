@@ -177,6 +177,8 @@ type DeliverProcessor struct {
 
 	// vacation sends vacation replies; nil means none are sent.
 	vacation *vacationState
+	// features gates forwarding and vacation per user; nil gates nothing.
+	features store.FeatureLookup
 
 	// reporter sends NOTIFY=SUCCESS delivery reports; nil means none are sent.
 	reporter DeliveryReporter
@@ -298,6 +300,26 @@ func (p *DeliverProcessor) UserDomainLookup() UserDomainLookup { return p.userDo
 
 // SetForwardLimiter sets the per-user forward rate limiter.
 func (p *DeliverProcessor) SetForwardLimiter(l ForwardLimiter) { p.fwdLimiter = l }
+
+// SetFeatures sets the lookup for per-user feature switches (forwarding and
+// vacation are gated here). A profile that cannot be read counts as switched
+// off: nothing is forwarded or answered, and the mail is delivered normally.
+// Without a lookup nothing is gated.
+func (p *DeliverProcessor) SetFeatures(f store.FeatureLookup) { p.features = f }
+
+// featureOff reports whether feature is switched off for userID, failing
+// closed on a lookup error.
+func (p *DeliverProcessor) featureOff(env *bongov1.QueueEnvelope, userID, feature string) bool {
+	if p.features == nil {
+		return false
+	}
+	off, err := p.features.FeatureDisabled(userID, feature)
+	if err != nil {
+		p.logger.Warn("deliver: feature lookup failed, treating as switched off",
+			"id", env.GetId(), "user_id", userID, "feature", feature, "error", err)
+	}
+	return off
+}
 
 // SetAttachmentDedup enables attachment splitting with the given blob store and
 // minimum encoded-attachment size in bytes. A non-positive size disables it.
@@ -506,7 +528,22 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// result reflects what the sender actually signed and is recorded on each
 	// delivered copy.
 	stepStart = time.Now()
-	dkimResult, dkimDomain, dkimErr := antispam.VerifyDKIM(raw)
+	//
+	// When the attachment policy stripped a part, raw is the stripped copy and
+	// can no longer match its body hash. The stage verified the message as
+	// received before rewriting it and recorded the verdict; use that.
+	var (
+		dkimResult, dkimDomain string
+		dkimErr                error
+	)
+	if sr := strippedStage(env.Stages); sr != nil {
+		dkimResult, dkimDomain = sr.DkimResult, sr.DkimDomain
+		if dkimResult == "" {
+			dkimResult = "none"
+		}
+	} else {
+		dkimResult, dkimDomain, dkimErr = antispam.VerifyDKIM(raw)
+	}
 	tDKIM = mark(stepStart)
 	if dkimErr != nil {
 		p.logger.Debug("deliver: DKIM verification error", "id", env.Id, "error", dkimErr)
@@ -674,7 +711,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		// before the skipLocal exit below: forwarding without a copy is not a
 		// deletion, so such a user still replies. The reply is sent after the
 		// loop and changes nothing about delivery.
-		if p.vacation != nil && userPrefs != nil && store.VacationActive(userPrefs, p.vacation.now()) {
+		if p.vacation != nil && userPrefs != nil && store.VacationActive(userPrefs, p.vacation.now()) && !p.featureOff(env, userID, store.FeatureVacation) {
 			if vacationBatch == nil {
 				vacationBatch = newVacationBatch(raw, forwardedAsSpam(env, spamScore, spamTag))
 			}
@@ -1004,6 +1041,20 @@ func (g *forwardGate) deny(userID, target string) string {
 	if target == "" {
 		return "empty target"
 	}
+	// A user with forwarding switched off forwards nothing, whether the
+	// request came from the account preference or from a rule. The caller
+	// treats this like any other refusal, so a user who asked for no local copy
+	// still receives the mail.
+	if p.features != nil {
+		off, err := p.features.FeatureDisabled(userID, store.FeatureForwarding)
+		if err != nil {
+			p.logger.Warn("deliver: feature lookup failed, denying forward",
+				"id", g.env.Id, "user_id", userID, "error", err)
+		}
+		if off {
+			return "feature_disabled"
+		}
+	}
 	if p.queuer == nil {
 		return "no outbound queue"
 	}
@@ -1101,7 +1152,9 @@ func (p *DeliverProcessor) enqueueForwards(env *bongov1.QueueEnvelope, raw []byt
 // author's budget refused. Targets are deduplicated first, so one forwarded by
 // two users is charged once; each distinct external target takes one slot
 // (Allow, not AllowN) so a partly spent budget splits the targets instead of
-// refusing all of them.
+// refusing all of them. The budget is the global recipients-per-hour value, not
+// the author's per-user one: a refused forward still goes out (unsigned), so
+// this decides signing and never whether mail is sent.
 func (p *DeliverProcessor) chargeAuthor(env *bongov1.QueueEnvelope, approved []approvedForward) (local, refused []approvedForward) {
 	all := make([]string, 0, len(approved))
 	for _, a := range approved {

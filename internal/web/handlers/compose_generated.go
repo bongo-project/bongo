@@ -161,12 +161,22 @@ func (h *ComposeHandler) DeliverGenerated(userID, sessionEmail, from string, rcp
 		groupIDs = append(groupIDs, groupIDsOf(expanded)...)
 	}
 	var queueable []string
+	var limits composeLimits
+	var limitsErr error
+	if len(external) > 0 {
+		limits, limitsErr = h.limitsFor(userID)
+		if limitsErr != nil {
+			h.logger.Error("compose: reading send limits failed, refusing send", "user", userID, "error", limitsErr)
+		}
+	}
 	switch {
 	case len(external) == 0:
 	case h.queueStore == nil:
 		fail(fmt.Errorf("outbound queue not configured"), external...)
+	case limitsErr != nil:
+		fail(fmt.Errorf("reading send limits: %w", limitsErr), external...)
 	case h.rateLimiter != nil && !h.rateLimiter.Allow(sessionEmail),
-		h.recipientRL != nil && !h.recipientRL.AllowN(userID, len(external)):
+		!h.chargeExternal(userID, limits, len(external)):
 		fail(fmt.Errorf("rate limit exceeded"), external...)
 	default:
 		queueable = external

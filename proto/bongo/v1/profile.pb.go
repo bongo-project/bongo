@@ -45,6 +45,13 @@ type UserProfile struct {
 	// "g:{group id}" (store.GranteeUser, store.GranteeGroup), at most 50. Read on
 	// every send-as check and never cached.
 	SharedMembers []string `protobuf:"bytes,16,rep,name=shared_members,json=sharedMembers,proto3" json:"shared_members,omitempty"`
+	// Features an admin switched off for this account: any of imap, pop3,
+	// submission, dav, web, forwarding, rules, vacation. Unknown names are kept
+	// on edit and ignored when enforcing. An earlier binary keeps the field but
+	// does not enforce it.
+	DisabledFeatures []string `protobuf:"bytes,17,rep,name=disabled_features,json=disabledFeatures,proto3" json:"disabled_features,omitempty"`
+	// Per-user send limits; a zero member means the global value.
+	SendLimits    *SendLimits `protobuf:"bytes,18,opt,name=send_limits,json=sendLimits,proto3" json:"send_limits,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -191,11 +198,85 @@ func (x *UserProfile) GetSharedMembers() []string {
 	return nil
 }
 
+func (x *UserProfile) GetDisabledFeatures() []string {
+	if x != nil {
+		return x.DisabledFeatures
+	}
+	return nil
+}
+
+func (x *UserProfile) GetSendLimits() *SendLimits {
+	if x != nil {
+		return x.SendLimits
+	}
+	return nil
+}
+
+type SendLimits struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	MessagesPerMinute uint32                 `protobuf:"varint,1,opt,name=messages_per_minute,json=messagesPerMinute,proto3" json:"messages_per_minute,omitempty"`
+	RecipientsPerHour uint32                 `protobuf:"varint,2,opt,name=recipients_per_hour,json=recipientsPerHour,proto3" json:"recipients_per_hour,omitempty"`
+	MaxRecipients     uint32                 `protobuf:"varint,3,opt,name=max_recipients,json=maxRecipients,proto3" json:"max_recipients,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *SendLimits) Reset() {
+	*x = SendLimits{}
+	mi := &file_bongo_v1_profile_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendLimits) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendLimits) ProtoMessage() {}
+
+func (x *SendLimits) ProtoReflect() protoreflect.Message {
+	mi := &file_bongo_v1_profile_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendLimits.ProtoReflect.Descriptor instead.
+func (*SendLimits) Descriptor() ([]byte, []int) {
+	return file_bongo_v1_profile_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *SendLimits) GetMessagesPerMinute() uint32 {
+	if x != nil {
+		return x.MessagesPerMinute
+	}
+	return 0
+}
+
+func (x *SendLimits) GetRecipientsPerHour() uint32 {
+	if x != nil {
+		return x.RecipientsPerHour
+	}
+	return 0
+}
+
+func (x *SendLimits) GetMaxRecipients() uint32 {
+	if x != nil {
+		return x.MaxRecipients
+	}
+	return 0
+}
+
 var File_bongo_v1_profile_proto protoreflect.FileDescriptor
 
 const file_bongo_v1_profile_proto_rawDesc = "" +
 	"\n" +
-	"\x16bongo/v1/profile.proto\x12\bbongo.v1\"\xb3\x04\n" +
+	"\x16bongo/v1/profile.proto\x12\bbongo.v1\"\x97\x05\n" +
 	"\vUserProfile\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12#\n" +
@@ -215,7 +296,15 @@ const file_bongo_v1_profile_proto_rawDesc = "" +
 	"\bcapacity\x18\r \x01(\x03R\bcapacity\x12#\n" +
 	"\rresource_type\x18\x0e \x01(\tR\fresourceType\x122\n" +
 	"\x15require_app_passwords\x18\x0f \x01(\bR\x13requireAppPasswords\x12%\n" +
-	"\x0eshared_members\x18\x10 \x03(\tR\rsharedMembersB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"\x0eshared_members\x18\x10 \x03(\tR\rsharedMembers\x12+\n" +
+	"\x11disabled_features\x18\x11 \x03(\tR\x10disabledFeatures\x125\n" +
+	"\vsend_limits\x18\x12 \x01(\v2\x14.bongo.v1.SendLimitsR\n" +
+	"sendLimits\"\x93\x01\n" +
+	"\n" +
+	"SendLimits\x12.\n" +
+	"\x13messages_per_minute\x18\x01 \x01(\rR\x11messagesPerMinute\x12.\n" +
+	"\x13recipients_per_hour\x18\x02 \x01(\rR\x11recipientsPerHour\x12%\n" +
+	"\x0emax_recipients\x18\x03 \x01(\rR\rmaxRecipientsB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_bongo_v1_profile_proto_rawDescOnce sync.Once
@@ -229,16 +318,18 @@ func file_bongo_v1_profile_proto_rawDescGZIP() []byte {
 	return file_bongo_v1_profile_proto_rawDescData
 }
 
-var file_bongo_v1_profile_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_bongo_v1_profile_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_bongo_v1_profile_proto_goTypes = []any{
 	(*UserProfile)(nil), // 0: bongo.v1.UserProfile
+	(*SendLimits)(nil),  // 1: bongo.v1.SendLimits
 }
 var file_bongo_v1_profile_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	1, // 0: bongo.v1.UserProfile.send_limits:type_name -> bongo.v1.SendLimits
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_bongo_v1_profile_proto_init() }
@@ -252,7 +343,7 @@ func file_bongo_v1_profile_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bongo_v1_profile_proto_rawDesc), len(file_bongo_v1_profile_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

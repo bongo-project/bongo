@@ -12,7 +12,7 @@ import (
 // attribute values. TestLogComponentsMatchSource keeps the list in step with
 // the source.
 var LogComponents = []string{
-	"acme", "address-verify", "admin", "agent", "antispam", "antivirus", "auth",
+	"acme", "address-verify", "admin", "agent", "antispam", "antivirus", "attachment-policy", "auth",
 	"blob-gc", "blobsync", "bounce", "caldav", "calendar", "calendar-grants",
 	"calendar-share", "calendar-subscriptions", "calendars", "carddav", "cluster",
 	"compose", "control", "dav", "dedup", "deliver", "dispatch", "dkim", "dmarc",

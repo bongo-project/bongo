@@ -107,7 +107,7 @@ func TestAddDeviceApple(t *testing.T) {
 	}
 
 	// The value works as a protocol login, and stops when revoked.
-	if id, _, _, err := la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err != nil || id != secUserA {
+	if id, _, _, err := la.AuthenticateProtocol("imap", secUserA+"@example.com", pws[0]); err != nil || id != secUserA {
 		t.Fatalf("the profile password does not authenticate: %v", err)
 	}
 	e.apps.Wait()
@@ -135,7 +135,7 @@ func TestAddDeviceApple(t *testing.T) {
 	if err := e.apps.Revoke(secUserA, infos[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err == nil {
+	if _, _, _, err := la.AuthenticateProtocol("imap", secUserA+"@example.com", pws[0]); err == nil {
 		t.Error("a revoked profile password still authenticates")
 	}
 }

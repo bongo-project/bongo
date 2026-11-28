@@ -20,6 +20,12 @@ import bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 // therefore genuinely re-quarantined by antispam, which is the intended
 // behaviour for a bulk backlog drain.
 //
+// The attachment policy stage is cleared too, so rescan means "check again
+// against the domain's current policy". Release keeps its verdict, so the
+// admin override delivers the message the policy held (the original blob: a
+// quarantine never replaces it). A result that records a strip is kept, so
+// deliver still stamps the DKIM verdict on the message as received.
+//
 // MsgFlagRulesChecked and MsgFlagDelivered are deliberately NOT cleared. Those
 // stages have external side effects that must not repeat: the rules stage
 // accumulates PendingTags and appends to ForwardAddresses (re-running it would
@@ -31,12 +37,18 @@ func PrepareForRescan(env *bongov1.QueueEnvelope) {
 	env.Flags = ClearFlag(env.Flags, MsgFlagVirus)
 	env.Flags = ClearFlag(env.Flags, MsgFlagSpamChecked)
 	env.Flags = ClearFlag(env.Flags, MsgFlagSpam)
+	env.Flags = ClearFlag(env.Flags, MsgFlagAttachmentChecked)
 
 	// Rebuild env.Stages into a new slice rather than filtering in place
 	// while ranging, which would corrupt the tail of the slice.
 	stages := make([]*bongov1.StageResult, 0, len(env.Stages))
 	for _, sr := range env.Stages {
 		if sr.Stage == "antivirus" || sr.Stage == "antispam" {
+			continue
+		}
+		// A strip result stays: env.BlobHash still names the stripped copy and
+		// the result holds the DKIM verdict on the message as received.
+		if sr.Stage == "attachment_policy" && sr.Action != "strip" {
 			continue
 		}
 		stages = append(stages, sr)

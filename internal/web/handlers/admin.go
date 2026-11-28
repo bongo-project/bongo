@@ -78,6 +78,8 @@ type AdminHandler struct {
 	groups *store.GroupStore
 	// update feeds the dashboard's new-release banner (nil: none).
 	update *UpdateStatus
+	// globalLimits bounds what a domain admin may set per user (nil: none set).
+	globalLimits *globalSendLimits
 }
 
 // SetUpdateCheck sets what the dashboard banner reads. Without it no banner
@@ -435,6 +437,12 @@ func (h *AdminHandler) renderUserForm(w http.ResponseWriter, r *http.Request, em
 		AppPasswordsAvailable: h.appPasswords != nil,
 		TwoFactorEnabled:      profile.TotpEnabled && !viewerIs(r, userID),
 	}
+	if profile.Kind == "" {
+		info.Features = featureOptions(profile)
+		info.SendMessagesPerMinute = profile.SendLimits.GetMessagesPerMinute()
+		info.SendRecipientsPerHour = profile.SendLimits.GetRecipientsPerHour()
+		info.SendMaxRecipients = profile.SendLimits.GetMaxRecipients()
+	}
 
 	// Populate the address list from the SQLite derived index (best-effort;
 	// stale on followers but acceptable for admin display). Enrich with
@@ -482,6 +490,10 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	displayName := r.FormValue("display_name")
 	quotaStr := r.FormValue("quota_bytes")
 
+	lastAdminMu.Lock()
+	defer lastAdminMu.Unlock()
+	wasLoginAdmin := countsAsLoginAdmin(profile)
+
 	profile.DisplayName = displayName
 	// Field-level guard: only global admins may change the is_admin flag. A
 	// resource is never an administrator, and its kind is fixed at creation.
@@ -501,6 +513,19 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	if quotaStr != "" {
 		if q, err := strconv.ParseInt(quotaStr, 10, 64); err == nil {
 			profile.QuotaBytes = q
+		}
+	}
+
+	if wasLoginAdmin && !countsAsLoginAdmin(profile) {
+		refused, err := h.wouldLeaveNoLoginAdmin(userID)
+		if err != nil {
+			h.logger.Error("admin: counting administrators failed", "user_id", userID, "error", err)
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errCountAdminsFailed"), http.StatusInternalServerError)
+			return
+		}
+		if refused {
+			http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotDisableLastAdminWeb), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+			return
 		}
 	}
 
@@ -528,7 +553,22 @@ func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lastAdminMu.Lock()
+	defer lastAdminMu.Unlock()
+	wasLoginAdmin := countsAsLoginAdmin(profile)
 	profile.Disabled = !profile.Disabled
+	if wasLoginAdmin && !countsAsLoginAdmin(profile) {
+		refused, err := h.wouldLeaveNoLoginAdmin(userID)
+		if err != nil {
+			h.logger.Error("admin: counting administrators failed", "user_id", userID, "error", err)
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errCountAdminsFailed"), http.StatusInternalServerError)
+			return
+		}
+		if refused {
+			http.Redirect(w, r, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotDisableLastAdminWeb), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+			return
+		}
+	}
 	if err := h.saveProfile(userID, profile); err != nil {
 		http.Error(w, "failed to update user", http.StatusInternalServerError)
 		return
@@ -661,17 +701,6 @@ func (h *AdminHandler) RevokeAllAppPasswords(w http.ResponseWriter, r *http.Requ
 	redirectAfterAction(w, r, withFlash("/admin/users/"+url.PathEscape(userID), flashAppPasswordsRevokedAll))
 }
 
-// countAdmins returns the number of users whose profile has the admin flag set.
-func (h *AdminHandler) countAdmins() int {
-	count := 0
-	for _, u := range h.loadUsers("") {
-		if u.IsAdmin {
-			count++
-		}
-	}
-	return count
-}
-
 // DeleteUser permanently removes a user and all of their data. It refuses to
 // delete the acting admin's own account or the last remaining administrator.
 //
@@ -698,9 +727,19 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if profile.IsAdmin && h.countAdmins() <= 1 {
-		h.hxRedirect(w, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotDeleteLastAdmin))
-		return
+	if profile.IsAdmin {
+		lastAdminMu.Lock()
+		defer lastAdminMu.Unlock()
+		refused, err := h.wouldLeaveNoLoginAdmin(userID)
+		if err != nil {
+			h.logger.Error("admin: counting administrators failed", "user_id", userID, "error", err)
+			http.Error(w, i18n.T(middleware.LocaleFromContext(r.Context()), "admin.errCountAdminsFailed"), http.StatusInternalServerError)
+			return
+		}
+		if refused {
+			h.hxRedirect(w, withFlash(fmt.Sprintf("/admin/users/%s", userID), flashCannotDeleteLastAdmin))
+			return
+		}
 	}
 
 	// Collect every key under the user's prefix, then delete each via Raft.

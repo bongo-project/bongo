@@ -272,20 +272,20 @@ non-goal of the app-passwords research PRD for app passwords, which does not
 cover accounts.
 
 **Acceptance Criteria:**
-- [ ] `UserProfile` gains `disabled_features` (13, repeated string from
+- [x] `UserProfile` gains `disabled_features` (17, repeated string from
       `imap`, `pop3`, `submission`, `dav`, `web`, `forwarding`, `rules`,
-      `vacation`) and `send_limits` (14: messages per minute, recipients per
+      `vacation`) and `send_limits` (18: messages per minute, recipients per
       hour, max recipients; 0 means the global value).
-- [ ] A disabled protocol refuses authentication with the same response as a
+- [x] A disabled protocol refuses authentication with the same response as a
       wrong password, and the per-command account check
       (`AccountState`) ends existing sessions on the next command.
-- [ ] Disabled `forwarding`, `rules` or `vacation` hide the settings page
+- [x] Disabled `forwarding`, `rules` or `vacation` hide the settings page
       and stop the pipeline from applying them.
-- [ ] Per-user limits override the global ones in SMTP submission and web
+- [x] Per-user limits override the global ones in SMTP submission and web
       compose; web compose also gets the messages-per-minute limit.
-- [ ] `/admin/users/{id}` edits both, with CSRF; domain admins can edit users
+- [x] `/admin/users/{id}` edits both, with CSRF; domain admins can edit users
       of their domains only.
-- [ ] Disabling `web` for a global admin who is the only global admin is
+- [x] Disabling `web` for a global admin who is the only global admin is
       refused.
 
 **Cluster:** additive fields; an old node does not enforce them during a
@@ -321,19 +321,19 @@ enqueue sites (web compose, SMTP submission) is signed.
 **Source:** audit #39. **Size:** M.
 
 **Acceptance Criteria:**
-- [ ] Per-domain policy for inbound mail: a list of blocked file extensions
+- [x] Per-domain policy for inbound mail: a list of blocked file extensions
       and MIME types (defaults offered: `exe`, `scr`, `js`, `vbs`, `bat`,
       `cmd`, `com`, `jar`, `ps1`, `msi`), and an action: strip, or
       quarantine the message.
-- [ ] A pipeline stage `attachment_policy`, configured like the existing
+- [x] A pipeline stage `attachment_policy`, configured like the existing
       stages, runs before deliver; a stripped part is replaced by a
       `text/plain` part naming the file and the policy (translated in the
       domain's default language, else English).
-- [ ] Archives are not opened; a blocked extension inside a ZIP is not
+- [x] Archives are not opened; a blocked extension inside a ZIP is not
       detected (documented).
-- [ ] The stripped message is stored as a new blob; DKIM and ARC results
+- [x] The stripped message is stored as a new blob; DKIM and ARC results
       recorded before stripping are kept in the trace headers.
-- [ ] Detection uses the declared type and the filename, including RFC 2231
+- [x] Detection uses the declared type and the filename, including RFC 2231
       encoded names and double extensions (`invoice.pdf.exe`).
 
 ### US-009: Journal copy
@@ -484,7 +484,7 @@ authenticator chain fits without protocol changes.
       required), `bind_dn`, `bind_password`, `user_base`, `user_filter`,
       attribute mapping for mail and display name, `admin_group` (optional),
       `auto_provision` (default false), timeouts.
-- [ ] An account carries `auth_source` (profile field 15: empty for local,
+- [ ] An account carries `auth_source` (profile field 19: empty for local,
       `ldap`); LDAP accounts authenticate by binding as the user's DN, local
       accounts as today. A local admin account keeps working when the
       directory is down.
@@ -824,7 +824,7 @@ The server is internet-facing.
 New keys: `/system/instance_id`, `/system/update_check`,
 `/system/acme/…`, `/system/settings/{area}`, per-domain policy keys under
 `/system/domain/{d}/…` (disclaimer, attachment policy, journal address).
-Additive profile fields 13 to 15. Each write is a single PUT; restore
+Additive profile fields 17 to 19 (13 to 16 are capacity, resource_type, require_app_passwords and shared_members). Each write is a single PUT; restore
 (US-013) is a documented multi-step operation. No new composite command
 type.
 
@@ -942,6 +942,23 @@ by govulncheck.
    affected.
 
 ### 8.2 Candidates for the next release
+
+Found while building Phase 45 (2026-11-28):
+
+- The pipeline has no temporary-failure path: any stage error moves the
+  envelope to `error/`, where it waits for the error-spool purge and is never
+  retried. Pre-existing for every stage; the attachment-policy stage now fails
+  closed on a store error, so a brief Pebble error holds mail instead of
+  delivering it unchecked. Candidate: a bounded retry with backoff in the
+  runner before `error/`.
+- Per-user send limits cover submission and web compose only; account and
+  rule forwards and vacation replies keep their own caps
+  (`pipeline.forward_max_per_hour`, the vacation hourly cap).
+- The gRPC `DepositMessage` path accepts caller-supplied checked flags and
+  stage results other than the attachment policy (for example a forged
+  antispam verdict). Pre-existing; the listener is not started in production.
+- Uuencoded bodies and `message/global` are not inspected by the attachment
+  policy (documented).
 
 Audit corrections found while writing this PRD (2026-10-26):
 
