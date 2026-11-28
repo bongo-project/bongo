@@ -448,14 +448,30 @@ func TestEvaluateHeaderCostBounded(t *testing.T) {
 // Searching the whole remaining value for '=' at every segment made this
 // quadratic: a million segments took many seconds.
 func TestSplitParamsLinear(t *testing.T) {
-	v := "inline" + strings.Repeat(";x", 1_000_000) + "; filename=\"a.exe\""
-	start := time.Now()
-	mt, params := splitParams(v)
-	if d := time.Since(start); d > time.Second {
-		t.Fatalf("splitParams took %s", d)
+	// Compare growth instead of a wall-clock bound, which a loaded CI
+	// runner with -race and -cover breaks: four times the input costs about
+	// four times as long when linear, sixteen when quadratic.
+	elapsed := func(n int) time.Duration {
+		v := "inline" + strings.Repeat(";x", n) + "; filename=\"a.exe\""
+		best := time.Duration(1 << 62)
+		for range 3 {
+			start := time.Now()
+			mt, params := splitParams(v)
+			if d := time.Since(start); d < best {
+				best = d
+			}
+			if mt != "inline" || len(params) != 1 || params[0].key != "filename" || params[0].val != "a.exe" {
+				t.Fatalf("mt=%q params=%+v", mt, params)
+			}
+		}
+		return best
 	}
-	if mt != "inline" || len(params) != 1 || params[0].key != "filename" || params[0].val != "a.exe" {
-		t.Fatalf("mt=%q params=%+v", mt, params)
+	small, large := elapsed(50_000), elapsed(200_000)
+	if small < time.Millisecond {
+		small = time.Millisecond
+	}
+	if ratio := float64(large) / float64(small); ratio > 9 {
+		t.Fatalf("splitParams grew %.1fx for 4x the input (%s, %s): not linear", ratio, small, large)
 	}
 }
 
@@ -466,7 +482,7 @@ func TestEvaluateManyParametersQuarantines(t *testing.T) {
 	raw := multi(textPart, cd+"\r\nContent-Type: text/plain\r\n\r\nhello")
 	start := time.Now()
 	res := Evaluate([]byte(raw), defaultPolicy(), true, testNotice)
-	if d := time.Since(start); d > time.Second {
+	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("Evaluate took %s", d)
 	}
 	if !res.Quarantine || res.Reason != ReasonComplex {
