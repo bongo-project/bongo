@@ -252,9 +252,9 @@ Imported 2026-11-26 from [prd-administration-v0.17.md](active/prd-administration
 
 | ID | Task | Source | Status | Notes |
 |----|------|--------|--------|-------|
-| 45.1 | US-006: Per-user feature switches and send limits | [prd-administration-v0.17.md](active/prd-administration-v0.17.md) | TODO | Size M. Needs: none. Profile fields 13 and 14; a disabled protocol refuses like a wrong password and `AccountState` ends sessions; per-user limits in submission and web compose (compose gains messages per minute); last global admin cannot lose `web` |
+| 45.1 | US-006: Per-user feature switches and send limits | [prd-administration-v0.17.md](active/prd-administration-v0.17.md) | IN PROGRESS | Size M. Needs: none. Profile fields 13 and 14; a disabled protocol refuses like a wrong password and `AccountState` ends sessions; per-user limits in submission and web compose (compose gains messages per minute); last global admin cannot lose `web` |
 | 45.2 | US-007: Server-side disclaimer | [prd-administration-v0.17.md](active/prd-administration-v0.17.md) | TODO | Size M. Needs: none. Per-domain text and HTML at the enqueue sites before DKIM; signed and encrypted messages untouched; applied once (`X-Bongo-Disclaimer`); HTML sanitised on save; DKIM integration test |
-| 45.3 | US-008: Attachment policy | [prd-administration-v0.17.md](active/prd-administration-v0.17.md) | TODO | Size M. Needs: none. Pipeline stage `attachment_policy` before deliver; strip or quarantine; RFC 2231 names and double extensions; archives not opened (documented); stripped message is a new blob |
+| 45.3 | US-008: Attachment policy | [prd-administration-v0.17.md](active/prd-administration-v0.17.md) | IN PROGRESS | Size M. Needs: none. Pipeline stage `attachment_policy` before deliver; strip or quarantine; RFC 2231 names and double extensions; archives not opened (documented); stripped message is a new blob |
 | 45.4 | US-009: Journal copy | [prd-administration-v0.17.md](active/prd-administration-v0.17.md) | TODO | Size M. Needs: none. Journal report with envelope (Bcc included) and `message/rfc822`; once per message; journal account excluded; write failure is a temporary error; decision 9: domain admins may set only a local account in their domain, external needs a global admin, every change audit-logged |
 
 ## Phase 46: Settings in the web admin v0.17.0 (PRD Phase C)
