@@ -272,9 +272,9 @@ non-goal of the app-passwords research PRD for app passwords, which does not
 cover accounts.
 
 **Acceptance Criteria:**
-- [ ] `UserProfile` gains `disabled_features` (13, repeated string from
+- [ ] `UserProfile` gains `disabled_features` (17, repeated string from
       `imap`, `pop3`, `submission`, `dav`, `web`, `forwarding`, `rules`,
-      `vacation`) and `send_limits` (14: messages per minute, recipients per
+      `vacation`) and `send_limits` (18: messages per minute, recipients per
       hour, max recipients; 0 means the global value).
 - [ ] A disabled protocol refuses authentication with the same response as a
       wrong password, and the per-command account check
@@ -484,7 +484,7 @@ authenticator chain fits without protocol changes.
       required), `bind_dn`, `bind_password`, `user_base`, `user_filter`,
       attribute mapping for mail and display name, `admin_group` (optional),
       `auto_provision` (default false), timeouts.
-- [ ] An account carries `auth_source` (profile field 15: empty for local,
+- [ ] An account carries `auth_source` (profile field 19: empty for local,
       `ldap`); LDAP accounts authenticate by binding as the user's DN, local
       accounts as today. A local admin account keeps working when the
       directory is down.
@@ -824,7 +824,7 @@ The server is internet-facing.
 New keys: `/system/instance_id`, `/system/update_check`,
 `/system/acme/…`, `/system/settings/{area}`, per-domain policy keys under
 `/system/domain/{d}/…` (disclaimer, attachment policy, journal address).
-Additive profile fields 13 to 15. Each write is a single PUT; restore
+Additive profile fields 17 to 19 (13 to 16 are capacity, resource_type, require_app_passwords and shared_members). Each write is a single PUT; restore
 (US-013) is a documented multi-step operation. No new composite command
 type.
 
