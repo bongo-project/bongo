@@ -37,8 +37,8 @@ type popMsg struct {
 // authenticator is what POP3 needs of the auth backend: credentials checked
 // with the profile they were checked against, and the live account state.
 type authenticator interface {
-	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error)
-	AccountState(userID, appPasswordID string) (auth.AccountState, error)
+	AuthenticateProtocol(feature, username, password string) (string, *bongov1.UserProfile, string, error)
+	AccountState(userID, appPasswordID, feature string) (auth.AccountState, error)
 }
 
 var _ authenticator = (*auth.LocalAuth)(nil)
@@ -257,7 +257,7 @@ func (s *session) flushWriter() {
 // command and closes without applying DELE marks. PASS also fails closed on
 // any error.
 func (s *session) accountLive() (bool, error) {
-	st, err := s.auth.AccountState(s.userID, s.appPassword)
+	st, err := s.auth.AccountState(s.userID, s.appPassword, store.FeaturePOP3)
 	if err != nil {
 		s.logger.Warn("pop3: account state check failed, refusing command", "user", s.userID, "error", err)
 		return false, err
@@ -266,7 +266,8 @@ func (s *session) accountLive() (bool, error) {
 		return true, nil
 	}
 	s.logger.Info("pop3: closing session, account no longer valid", "user", s.userID,
-		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked)
+		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked,
+		"feature_disabled", st.FeatureDisabled)
 	return false, nil
 }
 
@@ -334,7 +335,7 @@ func (s *session) handlePass(args string) {
 		return
 	}
 
-	userID, profile, appPassword, err := s.auth.AuthenticateProtocol(s.username, args)
+	userID, profile, appPassword, err := s.auth.AuthenticateProtocol(store.FeaturePOP3, s.username, args)
 	if err != nil {
 		s.logger.Warn("pop3: auth failed", "username", auth.LogUsername(s.username), "ip", ip)
 		if s.authLimiter != nil {

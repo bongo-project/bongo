@@ -33,7 +33,7 @@ func (a *groupApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) e
 // userAuth authenticates a username to its own user ID with any password.
 type userAuth struct{ ids map[string]string }
 
-func (u *userAuth) AuthenticateProtocol(username, _ string) (string, *bongov1.UserProfile, string, error) {
+func (u *userAuth) AuthenticateProtocol(_, username, _ string) (string, *bongov1.UserProfile, string, error) {
 	id, ok := u.ids[username]
 	if !ok {
 		return "", nil, "", auth.ErrBadCredentials

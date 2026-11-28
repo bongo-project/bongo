@@ -66,6 +66,11 @@ type ComposeHandler struct {
 	// recipientRL is the per-user external-recipient budget shared with SMTP
 	// submission, keyed by user ID. nil = unlimited.
 	recipientRL *mail.RateLimiter
+	// messageRL is the per-user messages-per-minute limiter shared with SMTP
+	// submission, keyed by user ID. nil = unlimited.
+	messageRL *mail.RateLimiter
+	// sendLimits reads a user's per-user send limits; nil = all global.
+	sendLimits func(userID string) (*bongov1.SendLimits, error)
 	// groups expands a group address; groupFanout caps the member copies one
 	// account may cause per hour (shared with SMTP submission).
 	groups        groupExpander
@@ -765,11 +770,13 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// A group address counts as one recipient here: the cap is on what the user
 	// typed, and the fan-out cap below bounds what it expands to.
-	maxRcpts := h.maxRecipients
-	if maxRcpts <= 0 {
-		maxRcpts = defaultMaxRecipients
+	limits, lerr := h.limitsFor(userID)
+	if lerr != nil {
+		h.logger.Error("compose: reading send limits failed, refusing send", "user", userID, "error", lerr)
+		composeError(w, r, "compose.errSendState", http.StatusServiceUnavailable)
+		return
 	}
-	if len(localRecipients)+len(externalRecipients)+len(groupRecipients) > maxRcpts {
+	if len(localRecipients)+len(externalRecipients)+len(groupRecipients) > limits.maxRecipients {
 		composeError(w, r, "compose.errTooManyRecipients", http.StatusBadRequest)
 		return
 	}
@@ -980,7 +987,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			composeError(w, r, "compose.errRateLimit", http.StatusTooManyRequests)
 			return
 		}
-		if h.recipientRL != nil && !h.recipientRL.AllowN(userID, len(externalRecipients)) {
+		if !h.chargeExternal(userID, limits, len(externalRecipients)) {
 			composeError(w, r, "compose.errRateLimit", http.StatusTooManyRequests)
 			return
 		}

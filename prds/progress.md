@@ -2068,3 +2068,10 @@ Asked about the tag, the operator reversed decision 21: both findings fixed firs
 - Invariants: 58 enumerated, 56 kept, 49 guarded, 7 confirmed gaps (0 refuted), all now tested: SMTP cert holder registered for reload; update service body read bounded without Content-Length; ACME probe served only for configured names; tampered issued chain never stored (fake CA `SetTamper`); CA text truncated in logs; greylist pending budget per /24 and /64; instance id kept on a read error.
 - Comments: no task, phase or story ids in the Phase 44 files; nothing to strip.
 - Also found earlier: TestLosingLeadershipCancelsIssuance was flaky (fixed in PR #259).
+
+## 2026-11-28 — Phase 45 batch 1: 45.1 per-user switches and limits, 45.3 attachment policy
+- 45.1: advisor caught that profile fields 13 and 14 were taken (capacity, resource_type); used 17 and 18, PRD corrected (US-014 auth_source moves to 19). Security REJECT: a domain admin could edit their own switches and limits; the last-admin rule was bypassable by ordering (switch one admin's web off, delete the other) and raced on one node. Fixed; a test hook forces the race.
+- 45.3: security REJECT twice for quadratic parsing (header unfolding, then parameter splitting) and a duplicate Content-Type bypass. Fixed; timing tests fail against the old code.
+- PATTERN: [proto] Check the real highest field number in the .proto before trusting a PRD's field numbers.
+- PATTERN: [security] Parsers of untrusted MIME need a linear-time test for every loop over remaining input, not just a size cap.
+- PATTERN: [testing] A concurrency guard needs a hook that forces the overlap; a loop that hopes for it passes without the lock.

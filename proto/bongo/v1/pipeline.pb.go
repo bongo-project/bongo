@@ -314,15 +314,20 @@ func (x *ForwardRequest) GetTarget() string {
 }
 
 type StageResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Stage         string                 `protobuf:"bytes,1,opt,name=stage,proto3" json:"stage,omitempty"`                                 // "antispam", "antivirus", "rules"
-	Backend       string                 `protobuf:"bytes,2,opt,name=backend,proto3" json:"backend,omitempty"`                             // "builtin", "rspamd", "clamav"
-	Action        string                 `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`                               // "pass", "tag", "reject", "quarantine"
-	Score         float32                `protobuf:"fixed32,4,opt,name=score,proto3" json:"score,omitempty"`                               // 0.0-1.0 for spam, 0/1 for virus
-	Reasons       []string               `protobuf:"bytes,5,rep,name=reasons,proto3" json:"reasons,omitempty"`                             // Human-readable reasons
-	ProcessedAt   int64                  `protobuf:"varint,6,opt,name=processed_at,json=processedAt,proto3" json:"processed_at,omitempty"` // Unix timestamp
-	DurationMs    int32                  `protobuf:"varint,7,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`    // Processing time
-	DmarcResult   string                 `protobuf:"bytes,8,opt,name=dmarc_result,json=dmarcResult,proto3" json:"dmarc_result,omitempty"`  // "pass", "fail", "none", or "" if DMARC did not run
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Stage       string                 `protobuf:"bytes,1,opt,name=stage,proto3" json:"stage,omitempty"`                                 // "antispam", "antivirus", "rules"
+	Backend     string                 `protobuf:"bytes,2,opt,name=backend,proto3" json:"backend,omitempty"`                             // "builtin", "rspamd", "clamav"
+	Action      string                 `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`                               // "pass", "tag", "reject", "quarantine"
+	Score       float32                `protobuf:"fixed32,4,opt,name=score,proto3" json:"score,omitempty"`                               // 0.0-1.0 for spam, 0/1 for virus
+	Reasons     []string               `protobuf:"bytes,5,rep,name=reasons,proto3" json:"reasons,omitempty"`                             // Human-readable reasons
+	ProcessedAt int64                  `protobuf:"varint,6,opt,name=processed_at,json=processedAt,proto3" json:"processed_at,omitempty"` // Unix timestamp
+	DurationMs  int32                  `protobuf:"varint,7,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`    // Processing time
+	DmarcResult string                 `protobuf:"bytes,8,opt,name=dmarc_result,json=dmarcResult,proto3" json:"dmarc_result,omitempty"`  // "pass", "fail", "none", or "" if DMARC did not run
+	// dkim_result and dkim_domain are set by the attachment_policy stage when it
+	// strips a part: the DKIM verdict on the message as received, which the
+	// stripped copy can no longer reproduce.
+	DkimResult    string `protobuf:"bytes,9,opt,name=dkim_result,json=dkimResult,proto3" json:"dkim_result,omitempty"`
+	DkimDomain    string `protobuf:"bytes,10,opt,name=dkim_domain,json=dkimDomain,proto3" json:"dkim_domain,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -413,6 +418,20 @@ func (x *StageResult) GetDmarcResult() string {
 	return ""
 }
 
+func (x *StageResult) GetDkimResult() string {
+	if x != nil {
+		return x.DkimResult
+	}
+	return ""
+}
+
+func (x *StageResult) GetDkimDomain() string {
+	if x != nil {
+		return x.DkimDomain
+	}
+	return ""
+}
+
 var File_proto_bongo_v1_pipeline_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
@@ -453,7 +472,7 @@ const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\rfetch_account\x18\x19 \x01(\tR\ffetchAccount\"A\n" +
 	"\x0eForwardRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x16\n" +
-	"\x06target\x18\x02 \x01(\tR\x06target\"\xec\x01\n" +
+	"\x06target\x18\x02 \x01(\tR\x06target\"\xae\x02\n" +
 	"\vStageResult\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x18\n" +
 	"\abackend\x18\x02 \x01(\tR\abackend\x12\x16\n" +
@@ -463,7 +482,12 @@ const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\fprocessed_at\x18\x06 \x01(\x03R\vprocessedAt\x12\x1f\n" +
 	"\vduration_ms\x18\a \x01(\x05R\n" +
 	"durationMs\x12!\n" +
-	"\fdmarc_result\x18\b \x01(\tR\vdmarcResultB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
+	"\fdmarc_result\x18\b \x01(\tR\vdmarcResult\x12\x1f\n" +
+	"\vdkim_result\x18\t \x01(\tR\n" +
+	"dkimResult\x12\x1f\n" +
+	"\vdkim_domain\x18\n" +
+	" \x01(\tR\n" +
+	"dkimDomainB7Z5github.com/bongo-project/bongo/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_pipeline_proto_rawDescOnce sync.Once

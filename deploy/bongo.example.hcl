@@ -348,7 +348,7 @@ smtp {
 
   limits {
     max_message_size = "25MB"
-    max_recipients   = 100
+    max_recipients   = 100  # per message; 0 = the default 100, not unlimited
     max_connections  = 1024
     flood_threshold  = 50
     # messages_per_minute        = 60   # inbound accepts per source IP/min (0 = off)
@@ -781,6 +781,14 @@ pipeline {
   #   enabled = true
   #   backend = "clamav"
   # }
+
+  # Per-domain attachment policy (set in the web admin under Domains). Takes no
+  # backend. It is in the default stage list; a configuration that lists its own
+  # stages must add it by hand, after antivirus and before rules, and only once
+  # every node runs a binary that knows the name. See docs/attachment-policy.md.
+  stage "attachment_policy" {
+    enabled = true
+  }
 
   stage "rules" {
     enabled = true        # user-defined mail filter rules

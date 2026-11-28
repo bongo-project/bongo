@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/bongo-project/bongo/internal/security"
@@ -19,6 +20,7 @@ const (
 	emailKey            contextKey = "email"
 	adminKey            contextKey = "isAdmin"
 	stateUnavailableKey contextKey = "sessionStateUnavailable"
+	disabledFeaturesKey contextKey = "disabledFeatures"
 
 	cookieName        = "bongo_session"
 	pendingCookieName = "bongo_2fa_pending"
@@ -78,6 +80,10 @@ type LiveSessionState struct {
 	Disabled bool
 	IsAdmin  bool
 	Epoch    string
+	// DisabledFeatures are the switches an admin turned off for the account
+	// (store.Feature*), carried into the request context so a gated route
+	// needs no second profile read.
+	DisabledFeatures []string
 }
 
 // CreateSessionCookie creates a signed session cookie.
@@ -183,6 +189,7 @@ func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) fu
 			// store error means no admin rights.
 			isAdmin := data.IsAdmin
 			stateUnavailable := false
+			var disabledFeatures []string
 			if stateFn != nil {
 				st := stateFn(data.UserID)
 				if st.Missing {
@@ -199,6 +206,7 @@ func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) fu
 						return
 					}
 					isAdmin = st.IsAdmin
+					disabledFeatures = st.DisabledFeatures
 				} else {
 					isAdmin = false
 					stateUnavailable = true
@@ -211,6 +219,7 @@ func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) fu
 			if stateUnavailable {
 				ctx = context.WithValue(ctx, stateUnavailableKey, true)
 			}
+			ctx = context.WithValue(ctx, disabledFeaturesKey, disabledFeatures)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -420,4 +429,36 @@ func sign(secret []byte, purpose string, payload []byte) []byte {
 	mac := hmac.New(sha256.New, security.DeriveKey(secret, purpose))
 	mac.Write(payload)
 	return mac.Sum(nil)
+}
+
+// FeatureDisabled reports whether an admin switched feature off for the
+// current user, as of this request's live account state.
+func FeatureDisabled(ctx context.Context, feature string) bool {
+	v, _ := ctx.Value(disabledFeaturesKey).([]string)
+	return slices.Contains(v, feature)
+}
+
+// RequireFeature gates a route on a per-user feature switch. It answers 404
+// when the feature is off for the user and 503 when the live account state
+// could not be read (fail closed). Must be used after RequireAuth.
+func RequireFeature(feature string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if SessionStateUnavailable(r.Context()) {
+				http.Error(w, "account state unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if FeatureDisabled(r.Context(), feature) {
+				http.NotFound(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// WithDisabledFeatures sets the per-user disabled feature list in a context
+// for use in tests. Production code gets it from RequireAuth.
+func WithDisabledFeatures(ctx context.Context, features ...string) context.Context {
+	return context.WithValue(ctx, disabledFeaturesKey, features)
 }

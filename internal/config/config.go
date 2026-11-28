@@ -440,9 +440,13 @@ func (s *SMTPConfig) ParseTrustedNetworks() ([]*net.IPNet, error) {
 
 type SMTPLimits struct {
 	MaxMessageSize string `hcl:"max_message_size,optional" mapstructure:"max_message_size"`
-	MaxRecipients  int    `hcl:"max_recipients,optional" mapstructure:"max_recipients"`
-	MaxConnections int    `hcl:"max_connections,optional" mapstructure:"max_connections"`
-	FloodThreshold int    `hcl:"flood_threshold,optional" mapstructure:"flood_threshold"`
+	// MaxRecipients caps recipients per message on every path. 0 or below
+	// means the default of 100, never unlimited. A per-user send limit can
+	// raise it to 1000, so the submission listeners advertise
+	// max(MaxRecipients, 1000) and enforce each user's cap themselves.
+	MaxRecipients  int `hcl:"max_recipients,optional" mapstructure:"max_recipients"`
+	MaxConnections int `hcl:"max_connections,optional" mapstructure:"max_connections"`
+	FloodThreshold int `hcl:"flood_threshold,optional" mapstructure:"flood_threshold"`
 	// MessagesPerMinute caps accepted inbound messages per source IP per minute.
 	// 0 disables the limit.
 	MessagesPerMinute int `hcl:"messages_per_minute,optional" mapstructure:"messages_per_minute"`
@@ -1275,6 +1279,10 @@ var knownStageNames = map[string]bool{
 	"antispam":  true,
 	"antivirus": true,
 	"rules":     true,
+
+	// attachment_policy enforces the per-domain attachment policy. It takes no
+	// backend.
+	"attachment_policy": true,
 }
 
 // knownBackends is the set of valid backend identifiers for pipeline stages.
@@ -1518,7 +1526,10 @@ func (c *PipelineConfig) Validate() error {
 	}
 	for _, stage := range c.Stages {
 		if !knownStageNames[stage.Name] {
-			return fmt.Errorf("pipeline: unknown stage %q (valid: antispam, antivirus, rules)", stage.Name)
+			return fmt.Errorf("pipeline: unknown stage %q (valid: antispam, antivirus, attachment_policy, rules)", stage.Name)
+		}
+		if stage.Name == "attachment_policy" && stage.Backend != "" {
+			return fmt.Errorf("pipeline: stage %q takes no backend, got %q", stage.Name, stage.Backend)
 		}
 		if stage.Backend != "" && !knownBackends[stage.Backend] {
 			return fmt.Errorf("pipeline: stage %q has unknown backend %q", stage.Name, stage.Backend)
@@ -1532,6 +1543,10 @@ func defaultPipelineStages() []StageConfig {
 	return []StageConfig{
 		{Name: "antispam", Enabled: true, Backend: "builtin"},
 		{Name: "antivirus", Enabled: false, Backend: ""},
+		// Harmless with no policy: a domain without one is not filtered.
+		// Antivirus runs first so a virus verdict wins; rules run after, so a
+		// quarantine here returns before any rule side effect.
+		{Name: "attachment_policy", Enabled: true, Backend: ""},
 		{Name: "rules", Enabled: true, Backend: ""},
 	}
 }

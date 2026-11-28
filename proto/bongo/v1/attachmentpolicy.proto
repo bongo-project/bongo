@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
+
+// AttachmentPolicy is one domain's inbound attachment policy, stored at
+// /system/domain/{domain}/attachment_policy. A missing key means no policy:
+// nothing is filtered.
+message AttachmentPolicy {
+  bool enabled = 1;
+  // blocked_extensions are lower-case, without a leading dot, sorted.
+  repeated string blocked_extensions = 2;
+  // blocked_mime_types are lower-case type/subtype tokens, sorted.
+  repeated string blocked_mime_types = 3;
+  // action is "strip" or "quarantine".
+  string action = 4;
+  // language is the locale of the notice that replaces a stripped part;
+  // empty means English.
+  string language = 5;
+  int64 updated_at = 6;
+  string updated_by = 7;
+}

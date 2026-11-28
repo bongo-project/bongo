@@ -23,6 +23,18 @@ func antispamStage(stages []*bongov1.StageResult) *bongov1.StageResult {
 	return nil
 }
 
+// strippedStage returns the attachment policy stage result when that stage
+// replaced the message with a stripped copy, nil otherwise. It carries the DKIM
+// verdict on the message as received.
+func strippedStage(stages []*bongov1.StageResult) *bongov1.StageResult {
+	for _, s := range stages {
+		if s.Stage == "attachment_policy" && s.Action == "strip" {
+			return s
+		}
+	}
+	return nil
+}
+
 // spamScoreFromStages extracts the spam score from the antispam stage result,
 // returning 0.0 if no antispam stage was found. Thin wrapper over
 // antispamStage kept for existing callers/tests.

@@ -76,8 +76,17 @@ type Backend struct {
 	subPort       int
 	logger        *slog.Logger
 
-	hostname   string              // public hostname, used in the Received header
-	outboundRL *inboundRateLimiter // nil = disabled; per-user submission rate limit
+	hostname string // public hostname, used in the Received header
+	// outboundRL is the per-user submission messages-per-minute limiter, shared
+	// with web compose (keyed by user ID). Its own limit is the global value; a
+	// per-user limit overrides it per call. nil = disabled. In memory and per
+	// node.
+	outboundRL *mail.RateLimiter
+
+	// maxRecipients is the global per-message recipient cap. The submission
+	// listeners accept up to max(maxRecipients, store.MaxRecipientsCeiling) and
+	// Session.Rcpt enforces the effective cap per user; 0 = no session cap.
+	maxRecipients int
 
 	// recipientRL is the per-user external-recipient budget shared with web
 	// compose (keyed by user ID). nil = disabled. In memory and per node.
@@ -141,6 +150,16 @@ func NewBackend(authenticator profileAuthenticator, deliverer Deliverer, logger 
 		authFail:  authlimit.New(maxAuthFailures, authFailWindow),
 	}
 }
+
+// SetMessageLimiter sets the per-user messages-per-minute limiter used on
+// authenticated submission. Share one limiter with web compose so both paths
+// draw on the same allowance.
+func (b *Backend) SetMessageLimiter(rl *mail.RateLimiter) {
+	b.outboundRL = rl
+}
+
+// MessageLimiter returns the per-user messages-per-minute limiter, or nil.
+func (b *Backend) MessageLimiter() *mail.RateLimiter { return b.outboundRL }
 
 // SetRecipientLimiter sets the per-user external-recipient budget. Share one
 // limiter with web compose so both paths draw on the same allowance.
@@ -369,6 +388,13 @@ type Session struct {
 	authFailures int   // failed AUTH attempts on this connection
 	declaredSize int64 // MAIL FROM SIZE parameter (RFC 1870); 0 when absent
 
+	// limits are the account's per-user send limits as of the last account
+	// check (AUTH, then every MAIL, RCPT and DATA), so a change by an admin
+	// applies to the next command. nil means all global.
+	limits *bongov1.SendLimits
+	// rcptAccepted counts the RCPT commands accepted in this transaction.
+	rcptAccepted int
+
 	// DSN parameters (RFC 3461) of the current transaction. localDSN and
 	// externalDSN line up index for index with localRcpts and externalRcpts;
 	// always append through addLocal and addExternal so they cannot drift.
@@ -453,7 +479,7 @@ func (s *Session) addExternal(to string, d RcptDSN) {
 // snapshot they were checked against, so the session epoch comes from that
 // profile and not from a later re-read.
 type profileAuthenticator interface {
-	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error)
+	AuthenticateProtocol(feature, username, password string) (string, *bongov1.UserProfile, string, error)
 }
 
 var _ profileAuthenticator = (*auth.LocalAuth)(nil)
@@ -461,7 +487,7 @@ var _ profileAuthenticator = (*auth.LocalAuth)(nil)
 // accountStateReader is implemented by authenticators that can report the live
 // standing of an account (auth.LocalAuth).
 type accountStateReader interface {
-	AccountState(userID, appPasswordID string) (auth.AccountState, error)
+	AccountState(userID, appPasswordID, feature string) (auth.AccountState, error)
 }
 
 func (s *Session) accountReader() accountStateReader {
@@ -482,16 +508,18 @@ func (s *Session) checkAccountLive(cmd string) error {
 	if reader == nil {
 		return nil
 	}
-	st, err := reader.AccountState(s.userID, s.appPassword)
+	st, err := reader.AccountState(s.userID, s.appPassword, store.FeatureSubmission)
 	if err != nil {
 		s.logger.Warn("smtp: account state check failed, refusing command", "command", cmd, "user", s.userID, "error", err)
 		return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Temporary local error, please try again later"}
 	}
 	if st.Live(s.epoch) {
+		s.limits = st.SendLimits
 		return nil
 	}
 	s.logger.Info("smtp: rejecting command, account no longer valid", "command", cmd, "user", s.userID,
-		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked)
+		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked,
+		"feature_disabled", st.FeatureDisabled)
 	return &gosmtp.SMTPError{Code: 535, EnhancedCode: gosmtp.EnhancedCode{5, 7, 8}, Message: "Account no longer available"}
 }
 
@@ -512,7 +540,7 @@ func (s *Session) AuthPlain(username, password string) error {
 		return &gosmtp.SMTPError{Code: 454, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many authentication failures; try again later"}
 	}
 
-	userID, profile, appPassword, err := s.backend.auth.AuthenticateProtocol(username, password)
+	userID, profile, appPassword, err := s.backend.auth.AuthenticateProtocol(store.FeatureSubmission, username, password)
 	if err != nil {
 		s.authFailures++
 		s.backend.authFail.Fail(ip, username)
@@ -537,6 +565,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	}
 	s.epoch = auth.ProtocolEpoch(profile)
 	s.appPassword = appPassword
+	s.limits = profile.SendLimits
 
 	s.authed = true
 	s.userID = userID
@@ -697,6 +726,40 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 // external recipients is only allowed for authenticated sessions (submission).
 // This is the explicit open-relay guard.
 func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
+	err := s.rcpt(to, opts)
+	if err == nil {
+		s.rcptAccepted++
+	}
+	return err
+}
+
+// effectiveMaxRecipients is the per-message recipient cap for this session:
+// the account's own value when set, otherwise the global one.
+func (s *Session) effectiveMaxRecipients() int {
+	return store.EffectiveLimit(s.limits.GetMaxRecipients(), s.backend.maxRecipients)
+}
+
+// effectiveRecipientsPerHour is the account's external-recipient budget per
+// hour: its own value when set, otherwise the limiter's global one.
+func (s *Session) effectiveRecipientsPerHour() int {
+	global := 0
+	if rl := s.backend.recipientRL; rl != nil {
+		global = rl.Limit()
+	}
+	return store.EffectiveLimit(s.limits.GetRecipientsPerHour(), global)
+}
+
+// effectiveMessagesPerMinute is the account's submission rate: its own value
+// when set, otherwise the limiter's global one.
+func (s *Session) effectiveMessagesPerMinute() int {
+	global := 0
+	if rl := s.backend.outboundRL; rl != nil {
+		global = rl.Limit()
+	}
+	return store.EffectiveLimit(s.limits.GetMessagesPerMinute(), global)
+}
+
+func (s *Session) rcpt(to string, opts *gosmtp.RcptOptions) error {
 	defer observability.SMTPRcpt.Since(time.Now())
 	dsn, dsnErr := rcptDSNFrom(opts)
 	if dsnErr != nil {
@@ -707,6 +770,13 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	if s.submission && s.authed {
 		if err := s.checkAccountLive("RCPT"); err != nil {
 			return err
+		}
+		// The per-user cap can be above the global one, so it is enforced
+		// here and not by go-smtp, which counts against the listener's
+		// ceiling.
+		if limit := s.effectiveMaxRecipients(); limit > 0 && s.rcptAccepted >= limit {
+			s.logger.Warn("smtp: recipient cap reached", "user", s.userID, "limit", limit)
+			return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 5, 3}, Message: "Too many recipients"}
 		}
 	}
 
@@ -812,7 +882,7 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	// atomically. Refusing here lets the client deliver what was accepted and
 	// retry the rest (RFC 5321 s4.5.3.1.10).
 	if s.submission && s.userID != "" && s.backend.recipientRL != nil &&
-		s.backend.recipientRL.Remaining(s.userID) < len(s.externalRcpts)+1 {
+		s.backend.recipientRL.RemainingLimit(s.userID, s.effectiveRecipientsPerHour()) < len(s.externalRcpts)+1 {
 		s.logger.Warn("smtp: outbound recipient limit reached", "user", s.userID)
 		return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 5, 3}, Message: "Too many recipients, try again later"}
 	}
@@ -972,7 +1042,7 @@ func (s *Session) Data(r io.Reader) error {
 	// limiter above exempts submission; this bounds spam volume from a single
 	// compromised account relaying to external recipients.
 	if s.submission && s.authed && s.userID != "" && len(s.externalRcpts) > 0 && s.backend.outboundRL != nil {
-		if !s.backend.outboundRL.Allow(s.userID) {
+		if !s.backend.outboundRL.AllowNLimit(s.userID, 1, s.effectiveMessagesPerMinute()) {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 			s.logger.Warn("smtp: outbound rate limit exceeded", "user", s.userID)
 			return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Outbound rate limit exceeded, slow down"}
@@ -1042,7 +1112,7 @@ func (s *Session) Data(r io.Reader) error {
 	// StoreBlob or Enqueue failure burns recipient budget that was never
 	// sent. Both err on the strict side.
 	if s.submission && s.authed && s.userID != "" && len(s.externalRcpts) > 0 && s.backend.recipientRL != nil {
-		if !s.backend.recipientRL.AllowN(s.userID, len(s.externalRcpts)) {
+		if !s.backend.recipientRL.AllowNLimit(s.userID, len(s.externalRcpts), s.effectiveRecipientsPerHour()) {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 			s.logger.Warn("smtp: outbound recipient limit exceeded", "user", s.userID, "recipients", len(s.externalRcpts))
 			return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Outbound recipient limit exceeded, try again later"}
@@ -1326,6 +1396,7 @@ func (s *Session) Reset() {
 	s.declaredSize = 0
 	s.localRcpts = nil
 	s.externalRcpts = nil
+	s.rcptAccepted = 0
 	s.localDSN = nil
 	s.externalDSN = nil
 	s.groupState.reset()
@@ -1478,7 +1549,10 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 	submission.ReadTimeout = 60 * time.Second
 	submission.WriteTimeout = 60 * time.Second
 	submission.MaxMessageBytes = mx.MaxMessageBytes
-	submission.MaxRecipients = mx.MaxRecipients
+	// The per-user cap can exceed the global one, so the listener accepts up to
+	// the ceiling and Session.Rcpt applies the effective cap. The MX cap stays
+	// global.
+	submission.MaxRecipients = max(mx.MaxRecipients, store.MaxRecipientsCeiling)
 	submission.AllowInsecureAuth = isDev
 	submission.EnableDSN = true
 	submission.ErrorLog = mx.ErrorLog
@@ -1557,7 +1631,7 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 		submissions.ReadTimeout = 60 * time.Second
 		submissions.WriteTimeout = 60 * time.Second
 		submissions.MaxMessageBytes = mx.MaxMessageBytes
-		submissions.MaxRecipients = mx.MaxRecipients
+		submissions.MaxRecipients = submission.MaxRecipients
 		submissions.ErrorLog = mx.ErrorLog
 		submissions.EnableDSN = true
 	}
@@ -1571,7 +1645,12 @@ func NewServer(cfg *config.SMTPConfig, bindAddr string, backend *Backend, isDev 
 	// can tune or disable them (0 = disabled).
 	backend.connLimit.SetMax(cfg.Limits.MaxConnectionsPerIP)
 	backend.inboundRL = newInboundRateLimiter(cfg.Limits.MessagesPerMinute)
-	backend.outboundRL = newInboundRateLimiter(cfg.Limits.OutboundMessagesPerMinute)
+	// The agent shares one limiter with web compose through SetMessageLimiter;
+	// this default serves a backend built without one.
+	if backend.outboundRL == nil {
+		backend.outboundRL = mail.NewRateLimiterWindow(cfg.Limits.OutboundMessagesPerMinute, time.Minute)
+	}
+	backend.maxRecipients = mx.MaxRecipients
 	backend.hostname = banner
 
 	return &Server{

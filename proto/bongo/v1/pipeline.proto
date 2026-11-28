@@ -50,4 +50,9 @@ message StageResult {
   int64 processed_at = 6;               // Unix timestamp
   int32 duration_ms = 7;                // Processing time
   string dmarc_result = 8;              // "pass", "fail", "none", or "" if DMARC did not run
+  // dkim_result and dkim_domain are set by the attachment_policy stage when it
+  // strips a part: the DKIM verdict on the message as received, which the
+  // stripped copy can no longer reproduce.
+  string dkim_result = 9;
+  string dkim_domain = 10;
 }

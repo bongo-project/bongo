@@ -22,7 +22,7 @@ import (
 // multiAuth logs in several accounts, all with the shared test password.
 type multiAuth map[string]string
 
-func (m multiAuth) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error) {
+func (m multiAuth) AuthenticateProtocol(feature, username, password string) (string, *bongov1.UserProfile, string, error) {
 	id, ok := m[username]
 	if !ok || password != pollTestPassword {
 		return "", nil, "", errors.New("invalid credentials")

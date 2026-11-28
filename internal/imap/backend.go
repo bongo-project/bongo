@@ -303,7 +303,7 @@ var idleRecheckInterval = 30 * time.Second
 // profile snapshot they were checked against, so the session epoch comes from
 // that profile and not from a later re-read.
 type profileAuthenticator interface {
-	AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error)
+	AuthenticateProtocol(feature, username, password string) (string, *bongov1.UserProfile, string, error)
 }
 
 var _ profileAuthenticator = (*auth.LocalAuth)(nil)
@@ -312,7 +312,7 @@ var _ profileAuthenticator = (*auth.LocalAuth)(nil)
 // standing of an account (auth.LocalAuth). Authenticators without it get no
 // per-command check.
 type accountStateReader interface {
-	AccountState(userID, appPasswordID string) (auth.AccountState, error)
+	AccountState(userID, appPasswordID, feature string) (auth.AccountState, error)
 }
 
 func (s *session) accountReader() accountStateReader {
@@ -355,7 +355,7 @@ func (s *session) checkAccount() error {
 	if reader == nil || s.userID == "" {
 		return nil
 	}
-	st, err := reader.AccountState(s.userID, s.appPassword)
+	st, err := reader.AccountState(s.userID, s.appPassword, store.FeatureIMAP)
 	if err != nil {
 		s.logger.Warn("imap: account state check failed, refusing command", "user", s.userID, "error", err)
 		return errAccountStateUnavailable
@@ -364,7 +364,8 @@ func (s *session) checkAccount() error {
 		return nil
 	}
 	s.logger.Info("imap: closing session, account no longer valid", "user", s.userID,
-		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked)
+		"missing", st.Missing, "disabled", st.Disabled, "app_password_revoked", st.AppPasswordRevoked,
+		"feature_disabled", st.FeatureDisabled)
 	if s.conn != nil {
 		_ = s.conn.Bye("Account no longer available")
 	}
@@ -384,7 +385,7 @@ func (s *session) Login(username, password string) error {
 		return errAuthRateLimited
 	}
 
-	userID, profile, appPassword, err := s.auth.AuthenticateProtocol(username, password)
+	userID, profile, appPassword, err := s.auth.AuthenticateProtocol(store.FeatureIMAP, username, password)
 	if err != nil {
 		s.logger.Warn("imap: login failed", "username", auth.LogUsername(username), "ip", s.remoteIP)
 		if s.authLimiter.Fail(ip, username) {

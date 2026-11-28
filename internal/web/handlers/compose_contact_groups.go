@@ -41,14 +41,6 @@ func (h *ComposeHandler) expandOwnContactGroup(userID, guid string) (exp *store.
 	return exp, err == nil, err
 }
 
-// recipientLimit is the per-message recipient cap.
-func (h *ComposeHandler) recipientLimit() int {
-	if h.maxRecipients > 0 {
-		return h.maxRecipients
-	}
-	return defaultMaxRecipients
-}
-
 // contactGroupNotices is what the user is told about an expansion: members
 // skipped for having no address, and, when the addresses exceed the recipient
 // limit, that the message cannot be sent as it stands. skipped and overLimit
@@ -76,7 +68,7 @@ func (h *ComposeHandler) contactGroupPrefill(userID, locale, guid string) (to, n
 	if !ok {
 		return "", ""
 	}
-	skipped, over := contactGroupNotices(locale, exp, h.recipientLimit())
+	skipped, over := contactGroupNotices(locale, exp, h.recipientLimitFor(userID))
 	return strings.Join(exp.Addresses, ", "), strings.TrimSpace(skipped + " " + over)
 }
 
@@ -105,7 +97,7 @@ func (h *ComposeHandler) ContactGroupAddresses(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	limit := h.recipientLimit()
+	limit := h.recipientLimitFor(userID)
 	resp := struct {
 		Addresses       []string `json:"addresses"`
 		Skipped         int      `json:"skipped"`

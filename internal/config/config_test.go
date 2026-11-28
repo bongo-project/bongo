@@ -377,8 +377,17 @@ func TestPipelineConfigDefaults(t *testing.T) {
 		t.Errorf("expected default quarantine_retention '30d', got %q", cfg.Pipeline.QuarantineRetention)
 	}
 
-	if len(cfg.Pipeline.Stages) != 3 {
-		t.Fatalf("expected 3 default stages, got %d", len(cfg.Pipeline.Stages))
+	var order []string
+	for _, s := range cfg.Pipeline.Stages {
+		order = append(order, s.Name)
+	}
+	if got := strings.Join(order, ","); got != "antispam,antivirus,attachment_policy,rules" {
+		t.Fatalf("default stage order = %s", got)
+	}
+	for _, s := range cfg.Pipeline.Stages {
+		if s.Name == "attachment_policy" && (!s.Enabled || s.Backend != "") {
+			t.Errorf("attachment_policy default = %+v", s)
+		}
 	}
 
 	stages := map[string]StageConfig{}
@@ -554,6 +563,21 @@ func TestPipelineConfigValidate(t *testing.T) {
 			cfg: PipelineConfig{
 				Workers: 5,
 				Stages:  []StageConfig{{Name: "bogus", Enabled: true}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "attachment policy accepted without backend",
+			cfg: PipelineConfig{
+				Workers: 5,
+				Stages:  []StageConfig{{Name: "attachment_policy", Enabled: true}},
+			},
+		},
+		{
+			name: "attachment policy refuses any backend",
+			cfg: PipelineConfig{
+				Workers: 5,
+				Stages:  []StageConfig{{Name: "attachment_policy", Enabled: true, Backend: "builtin"}},
 			},
 			wantErr: true,
 		},

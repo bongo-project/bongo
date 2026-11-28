@@ -355,6 +355,43 @@ func TestDepositMessageStripsTrusted(t *testing.T) {
 	}
 }
 
+// TestDepositMessageDropsAttachmentPolicyState: a caller must not be able to
+// skip the attachment policy by presetting its checked flag, nor forge the DKIM
+// verdict the stage records when it strips a message. (Other caller-supplied
+// flags and stage results are accepted today; that gap predates the stage.)
+func TestDepositMessageDropsAttachmentPolicyState(t *testing.T) {
+	srv, client, cleanup := startTestServer(t)
+	defer cleanup()
+
+	_, err := client.DepositMessage(context.Background(), &bongov1.DepositRequest{
+		Envelope: &bongov1.QueueEnvelope{
+			Sender:     "a@evil.com",
+			Recipients: []string{"victim@example.com"},
+			Flags:      pipeline.MsgFlagAttachmentChecked | pipeline.MsgFlagRulesChecked,
+			Stages: []*bongov1.StageResult{
+				{Stage: "attachment_policy", Action: "strip", DkimResult: "pass", DkimDomain: "bank.test"},
+				{Stage: "rules", Action: "pass"},
+			},
+		},
+		Message: []byte("From: a@evil.com\r\n\r\nx"),
+	})
+	if err != nil {
+		t.Fatalf("DepositMessage: %v", err)
+	}
+	envs, err := srv.spool.List("incoming")
+	if err != nil || len(envs) != 1 {
+		t.Fatalf("spool: %v %d", err, len(envs))
+	}
+	if pipeline.HasFlag(envs[0].Flags, pipeline.MsgFlagAttachmentChecked) {
+		t.Error("attachment checked flag survived the deposit")
+	}
+	for _, s := range envs[0].Stages {
+		if s.Stage == "attachment_policy" {
+			t.Errorf("forged attachment_policy result survived: %+v", s)
+		}
+	}
+}
+
 // TestDepositMessageStripsAuthUserID: the deposit listener is unauthenticated,
 // so a caller-supplied AuthUserId must not reach the spool.
 func TestDepositMessageStripsAuthUserID(t *testing.T) {

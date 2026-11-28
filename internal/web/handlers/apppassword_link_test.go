@@ -456,7 +456,7 @@ func TestRedeemCreatesTheCredentialOnce(t *testing.T) {
 	if len(pws) != 4 {
 		t.Fatalf("%d password keys", len(pws))
 	}
-	if id, _, _, err := e.la.AuthenticateProtocol(secUserA+"@example.com", pws[0]); err != nil || id != secUserA {
+	if id, _, _, err := e.la.AuthenticateProtocol("imap", secUserA+"@example.com", pws[0]); err != nil || id != secUserA {
 		t.Fatalf("the profile password does not authenticate: %v", err)
 	}
 	e.apps.Wait()

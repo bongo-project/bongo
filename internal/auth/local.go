@@ -113,11 +113,19 @@ func (a *LocalAuth) AuthenticateProfile(username, password string) (string, *bon
 		return "", nil, err
 	}
 
+	// Web access switched off for this account: the same refusal as a wrong
+	// password, after the same single bcrypt comparison.
+	if store.FeatureDisabled(&profile, store.FeatureWeb) {
+		return "", nil, ErrBadCredentials
+	}
+
 	return userID, &profile, nil
 }
 
 // AuthenticateProtocol is the credential check for IMAP, POP3, SMTP submission
-// and CalDAV/CardDAV Basic. It accepts the account password or a valid app
+// and CalDAV/CardDAV Basic. feature names the protocol (store.FeatureIMAP and
+// so on); an account with that feature switched off is refused like a wrong
+// password. It accepts the account password or a valid app
 // password; Authenticate and AuthenticateProfile, used by web login and
 // re-authentication, accept the account password only and stay the
 // restrictive default for any call site not moved here.
@@ -144,7 +152,7 @@ func (a *LocalAuth) AuthenticateProfile(username, password string) (string, *bon
 // id can in theory be reissued to the same user (1 in 23^6 per create); the
 // old session would then count as live. It stays the same user, so this is
 // accepted rather than compared by hash.
-func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bongov1.UserProfile, string, error) {
+func (a *LocalAuth) AuthenticateProtocol(feature, username, password string) (string, *bongov1.UserProfile, string, error) {
 	userID, err := a.lookupUserID(username)
 	if err != nil {
 		_ = compareHash(dummyBcryptHash, []byte(password))
@@ -190,6 +198,13 @@ func (a *LocalAuth) AuthenticateProtocol(username, password string) (string, *bo
 	// flag left behind by a node that cleared 2FA (an earlier binary does not
 	// know the field) cannot lock the account out of its mail clients.
 	if used == nil && profileEnforcesAppPasswords(&profile) {
+		return "", nil, "", ErrBadCredentials
+	}
+
+	// A feature an admin switched off for this account (feature is one of the
+	// store.Feature* names for the calling protocol). Same place, same cost
+	// and same error as the check above.
+	if store.FeatureDisabled(&profile, feature) {
 		return "", nil, "", ErrBadCredentials
 	}
 
@@ -247,12 +262,18 @@ type AccountState struct {
 	// password whose record no longer exists. Negative so the zero value of
 	// the struct stays live.
 	AppPasswordRevoked bool
+	// FeatureDisabled is true when the feature the session was opened for has
+	// been switched off since login. Negative so the zero value stays live.
+	FeatureDisabled bool
+	// SendLimits are the account's per-user send limits as of this read; nil
+	// means all global.
+	SendLimits *bongov1.SendLimits
 }
 
 // Live reports whether a session that recorded epoch at login may continue.
 // A missing profile is never live (fail closed).
 func (st AccountState) Live(epoch string) bool {
-	return !st.Missing && !st.Disabled && !st.AppPasswordRevoked && st.Epoch == epoch
+	return !st.Missing && !st.Disabled && !st.AppPasswordRevoked && !st.FeatureDisabled && st.Epoch == epoch
 }
 
 // AccountState reads the current state of userID: one Pebble Get and a
@@ -263,7 +284,7 @@ func (st AccountState) Live(epoch string) bool {
 // AppPasswordRevoked; a read error is returned like a profile read error.
 // A genuinely absent profile is reported as Missing; any other store failure is
 // returned as an error so the caller can choose its own failure policy.
-func (a *LocalAuth) AccountState(userID, appPasswordID string) (AccountState, error) {
+func (a *LocalAuth) AccountState(userID, appPasswordID, feature string) (AccountState, error) {
 	data, err := a.store.Get([]byte(fmt.Sprintf("/user/%s/profile", userID)))
 	if errors.Is(err, store.ErrNotFound) {
 		return AccountState{Missing: true}, nil
@@ -276,8 +297,10 @@ func (a *LocalAuth) AccountState(userID, appPasswordID string) (AccountState, er
 		return AccountState{}, fmt.Errorf("parsing profile: %w", err)
 	}
 	st := AccountState{
-		Disabled: profile.Disabled,
-		Epoch:    ProtocolEpoch(&profile),
+		Disabled:        profile.Disabled,
+		Epoch:           ProtocolEpoch(&profile),
+		FeatureDisabled: store.FeatureDisabled(&profile, feature),
+		SendLimits:      profile.SendLimits,
 	}
 	if appPasswordID != "" {
 		if a.apps == nil {

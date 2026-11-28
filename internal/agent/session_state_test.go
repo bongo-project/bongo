@@ -233,3 +233,25 @@ func TestUserSessionState_UnreadableProfileDropsAdmin(t *testing.T) {
 		t.Fatalf("plain route: code=%d, want 200", rr.Code)
 	}
 }
+
+// Web switched off revokes the session like a disabled account; the other
+// switches are carried into the state and do not.
+func TestSessionStateFeatures(t *testing.T) {
+	get := func(features ...string) func([]byte) ([]byte, error) {
+		return func([]byte) ([]byte, error) {
+			return proto.Marshal(&bongov1.UserProfile{PasswordHash: []byte("h"), DisabledFeatures: features})
+		}
+	}
+	st := sessionStateFromProfile(get("web"), nil, "u1")
+	if !st.Found || !st.Disabled {
+		t.Errorf("web off: %+v, want Found and Disabled", st)
+	}
+	st = sessionStateFromProfile(get("rules", "imap"), nil, "u1")
+	if st.Disabled || len(st.DisabledFeatures) != 2 {
+		t.Errorf("rules off: %+v, want live with two features", st)
+	}
+	st = sessionStateFromProfile(get(), nil, "u1")
+	if st.Disabled || len(st.DisabledFeatures) != 0 {
+		t.Errorf("none off: %+v", st)
+	}
+}

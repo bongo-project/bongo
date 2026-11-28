@@ -162,6 +162,9 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		{"task complete", "/tasks/missing/complete", func(string) url.Values { return url.Values{} }},
 		{"task reopen", "/tasks/missing/reopen", func(string) url.Values { return url.Values{} }},
 		{"task delete", "/tasks/missing/delete", func(string) url.Values { return url.Values{} }},
+		{"attachment policy", "/admin/domains/missing.example/attachments", func(string) url.Values {
+			return url.Values{"action": {"strip"}, "extensions": {"exe"}}
+		}},
 		{"domain alias", "/admin/domains", func(n string) url.Values {
 			return url.Values{"domain": {n + ".example"}, "alias_of": {"localhost"}}
 		}},
@@ -188,6 +191,9 @@ func TestProductionRouterCSRFGroup(t *testing.T) {
 		}},
 		{"admin revoke all app passwords", "/admin/users/missing/app-passwords/revoke", func(string) url.Values {
 			return url.Values{}
+		}},
+		{"admin user features", "/admin/users/missing/features", func(string) url.Values {
+			return url.Values{"messages_per_minute": {"5"}}
 		}},
 	}
 

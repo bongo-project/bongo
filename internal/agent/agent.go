@@ -150,6 +150,8 @@ type Agent struct {
 	BlobSync      *cluster.BlobSyncer
 	AddressStore  *store.AddressStore
 	DomainQuota   *store.DomainQuotaStore
+	// AttachmentPolicy holds the per-domain attachment policies.
+	AttachmentPolicy *store.AttachmentPolicyStore
 	// Storage samples free disk space on the data directory. Nil when
 	// storage.min_free_mb is 0 or the role has no local storage.
 	Storage *diskspace.Monitor
@@ -169,6 +171,9 @@ type Agent struct {
 	// RecipientLimiter is the per-user external-recipient budget shared by
 	// SMTP submission and web compose. Use recipientLimiter() to obtain it.
 	RecipientLimiter *mail.RateLimiter
+	// MessageLimiter is the per-user messages-per-minute limiter shared by
+	// SMTP submission and web compose.
+	MessageLimiter *mail.RateLimiter
 
 	// Groups reads distribution groups and expands them for SMTP RCPT and web
 	// compose. GroupFanoutLimiter is the per-sender cap on the member copies
@@ -390,10 +395,12 @@ func sessionStateFromProfile(get func([]byte) ([]byte, error), logger *slog.Logg
 		return middleware.LiveSessionState{}
 	}
 	return middleware.LiveSessionState{
-		Found:    true,
-		Disabled: profile.Disabled,
-		IsAdmin:  profile.IsAdmin,
-		Epoch:    security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration),
+		Found: true,
+		// Web switched off ends the session like a disabled account.
+		Disabled:         profile.Disabled || store.FeatureDisabled(&profile, store.FeatureWeb),
+		IsAdmin:          profile.IsAdmin,
+		Epoch:            security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled, profile.SessionGeneration),
+		DisabledFeatures: profile.DisabledFeatures,
 	}
 }
 
@@ -631,6 +638,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		// max_storage_bytes limits + recomputed usage. The Agent itself is the
 		// RaftApplier so all writes go through Raft consensus.
 		a.DomainQuota = store.NewDomainQuotaStore(pebbleStore, a)
+		a.AttachmentPolicy = store.NewAttachmentPolicyStore(pebbleStore, a)
 
 		// Remote-account fetch records (accounts, worker state, seen set).
 		a.Fetch = store.NewFetchStore(pebbleStore, a)
@@ -669,8 +677,13 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 			if a.Rules != nil {
 				rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
 				rulesProc.SetResolver(resolver)
+				if a.Store != nil {
+					rulesProc.SetFeatures(store.NewProfileFeatures(a.Store.Get))
+				}
 				stages = append(stages, rulesProc)
 			}
+		case "attachment_policy":
+			stages = append(stages, a.buildAttachmentPolicyStage(resolver))
 		case "antivirus":
 			// Ordering note: antispam (above) runs before antivirus, and
 			// the runner returns immediately once a stage quarantines a
@@ -695,6 +708,9 @@ func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeli
 		deliverProc.SetForwardTargets(ft)
 	}
 	deliverProc.SetForwardLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardMaxPerHour))
+	if a.Store != nil {
+		deliverProc.SetFeatures(store.NewProfileFeatures(a.Store.Get))
+	}
 	deliverProc.SetHostedDomains(a.domainHosted)
 	// A LOCAL forward leaves signed as its author, so it draws on the same
 	// outbound recipient budget as web compose and SMTP submission.
@@ -870,6 +886,17 @@ func (a *Agent) recipientLimiter() *mail.RateLimiter {
 	return a.RecipientLimiter
 }
 
+// messageLimiter returns the shared per-user messages-per-minute limiter,
+// creating it on first use. SMTP submission and web compose must draw on the
+// same instance. Its own limit is the global value; a per-user limit is passed
+// per call. It is in memory and per node.
+func (a *Agent) messageLimiter() *mail.RateLimiter {
+	if a.MessageLimiter == nil {
+		a.MessageLimiter = mail.NewRateLimiterWindow(a.Config.SMTP.Limits.OutboundMessagesPerMinute, time.Minute)
+	}
+	return a.MessageLimiter
+}
+
 // maxGroupMembers is the largest group (store.MaxGroupMembers).
 const maxGroupMembers = store.MaxGroupMembers
 
@@ -892,6 +919,12 @@ func (a *Agent) groupFanoutLimiter() *mail.FanoutLimiter {
 // per-message recipient cap and the group expansion with its fan-out cap.
 func (a *Agent) wireComposeLimits(h *handlers.ComposeHandler) {
 	h.SetRecipientLimiter(a.recipientLimiter())
+	h.SetMessageLimiter(a.messageLimiter())
+	if a.Store != nil {
+		h.SetSendLimitsReader(func(userID string) (*bongov1.SendLimits, error) {
+			return store.ReadSendLimits(a.Store.Get, userID)
+		})
+	}
 	h.SetMaxRecipients(a.Config.SMTP.Limits.MaxRecipients)
 	if a.Groups != nil {
 		h.SetGroups(a.Groups)
@@ -930,6 +963,7 @@ func (a *Agent) wireAddressVerifyLimiter(h *handlers.AddressVerifyHandler) {
 func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *store.RecipientResolver) (*bongosmtp.Backend, error) {
 	backend := bongosmtp.NewBackend(a.Auth, deliverer, a.logger)
 	backend.SetRecipientLimiter(a.recipientLimiter())
+	backend.SetMessageLimiter(a.messageLimiter())
 	if a.Groups != nil {
 		backend.SetGroups(a.Groups)
 	}
@@ -1467,6 +1501,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		adminH.SetMailHostname(mailHost)
 		_, _, _, submissionsAdvertised := autoconfigPorts(a.Config)
 		adminH.SetSubmissionsEnabled(submissionsAdvertised != 0)
+		adminH.SetGlobalSendLimits(a.Config.SMTP.Limits.OutboundMessagesPerMinute,
+			a.Config.SMTP.Limits.OutboundRecipientsPerHour, a.Config.SMTP.Limits.MaxRecipients)
 		adminH.SetACMEStatus(a.acmeStatusReader())
 
 		r.Get("/admin", adminH.Dashboard)
@@ -1479,6 +1515,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/users/{userID}/members/remove", adminH.RemoveSharedMember)
 		r.Get("/admin/users/{userID}", adminH.ShowUser)
 		r.Post("/admin/users/{userID}", adminH.UpdateUser)
+		r.Post("/admin/users/{userID}/features", adminH.UpdateUserFeatures)
 		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
 		r.Post("/admin/users/{userID}/reset-password", adminH.ResetPassword)
 		r.Post("/admin/users/{userID}/reset-2fa", adminH.ResetTwoFactor)
@@ -1502,6 +1539,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/domains/{domain}/admins", adminH.GrantDomainAdmin)
 		r.Post("/admin/domains/{domain}/admins/revoke", adminH.RevokeDomainAdmin)
 		r.Post("/admin/domains/{domain}/quota", adminH.SetDomainQuota)
+		if a.AttachmentPolicy != nil && a.Store != nil {
+			attH := handlers.NewAdminAttachmentsHandler(a.AttachmentPolicy, a.Store, a.logger)
+			r.Get("/admin/domains/{domain}/attachments", attH.Show)
+			r.Post("/admin/domains/{domain}/attachments", attH.Save)
+		}
 		r.Get("/admin/aliases", adminH.ListAliases)
 		r.Post("/admin/aliases", adminH.CreateAlias)
 		r.Post("/admin/aliases/{address}/delete", adminH.DeleteAlias)
@@ -1983,8 +2025,9 @@ func (a *Agent) Run(ctx context.Context) error {
 				fwdVerifier.SetMailer(a.Blobs, a.QueueStore)
 			}
 			fwdVerifier.SetLimiter(mail.NewRateLimiter(a.Config.Pipeline.ForwardVerifyMaxPerHour))
-			r.Post("/settings/forwarding/request", fwdVerifier.Request)
-			r.Post("/settings/forwarding/verify", fwdVerifier.Submit)
+			fwdGate := r.With(middleware.RequireFeature(store.FeatureForwarding))
+			fwdGate.Post("/settings/forwarding/request", fwdVerifier.Request)
+			fwdGate.Post("/settings/forwarding/verify", fwdVerifier.Submit)
 		}
 
 		if a.Preferences != nil {
@@ -1997,8 +2040,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			// Vacation reply settings. Disabling deletes the reply tracking
 			// records through Raft, which needs the store.
 			vacationH := handlers.NewVacationHandler(a.Preferences, a.Store, a, a.logger)
-			r.Get("/settings/vacation", vacationH.Show)
-			r.Post("/settings/vacation", vacationH.Save)
+			vacationGate := r.With(middleware.RequireFeature(store.FeatureVacation))
+			vacationGate.Get("/settings/vacation", vacationH.Show)
+			vacationGate.Post("/settings/vacation", vacationH.Save)
 		}
 
 		// Remote POP3 and IMAP accounts. Without the credentials key the page
@@ -2016,14 +2060,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Rules != nil && a.Mailboxes != nil {
 			rulesH := handlers.NewRulesHandler(a.Rules, a.Mailboxes, a.Store, a.Blobs)
 			rulesH.SetForwardVerifier(fwdVerifier)
-			r.Get("/settings/rules", rulesH.ListRules)
-			r.Get("/settings/rules/new", rulesH.NewRule)
-			r.Post("/settings/rules", rulesH.CreateRule)
-			r.Post("/settings/rules/reorder", rulesH.ReorderRules)
-			r.Get("/settings/rules/{id}", rulesH.EditRule)
-			r.Post("/settings/rules/{id}", rulesH.UpdateRule)
-			r.Delete("/settings/rules/{id}", rulesH.DeleteRule)
-			r.Post("/settings/rules/{id}/test", rulesH.TestRule)
+			rulesGate := r.With(middleware.RequireFeature(store.FeatureRules))
+			rulesGate.Get("/settings/rules", rulesH.ListRules)
+			rulesGate.Get("/settings/rules/new", rulesH.NewRule)
+			rulesGate.Post("/settings/rules", rulesH.CreateRule)
+			rulesGate.Post("/settings/rules/reorder", rulesH.ReorderRules)
+			rulesGate.Get("/settings/rules/{id}", rulesH.EditRule)
+			rulesGate.Post("/settings/rules/{id}", rulesH.UpdateRule)
+			rulesGate.Delete("/settings/rules/{id}", rulesH.DeleteRule)
+			rulesGate.Post("/settings/rules/{id}/test", rulesH.TestRule)
 		}
 
 		if a.Store != nil {
@@ -5516,7 +5561,7 @@ func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth,
 		return "", false
 	}
 
-	userID, _, appPassword, err := authn.AuthenticateProtocol(username, password)
+	userID, _, appPassword, err := authn.AuthenticateProtocol(store.FeatureDAV, username, password)
 	if err != nil {
 		if limiter.Fail(ip, username) {
 			logger.Warn("dav: basic auth locked out after repeated failures", "ip", ip)

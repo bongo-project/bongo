@@ -25,6 +25,20 @@ func NewRateLimiter(msgsPerHour int) *RateLimiter {
 	}
 }
 
+// NewRateLimiterWindow creates a limiter that allows limit units per window.
+// If limit <= 0 the limiter's own limit is disabled; a per-call limit passed to
+// AllowNLimit or RemainingLimit still applies.
+func NewRateLimiterWindow(limit int, window time.Duration) *RateLimiter {
+	return &RateLimiter{
+		limit:   limit,
+		window:  window,
+		senders: make(map[string][]time.Time),
+	}
+}
+
+// Limit returns the limiter's own (global) limit; <= 0 means disabled.
+func (rl *RateLimiter) Limit() int { return rl.limit }
+
 // SetClock replaces the time source, for tests that need to move the window.
 // A nil function restores time.Now.
 func (rl *RateLimiter) SetClock(now func() time.Time) {
@@ -50,7 +64,15 @@ func (rl *RateLimiter) Allow(sender string) bool {
 // than n units remain nothing is recorded and false is returned. n <= 0 is
 // always allowed and records nothing.
 func (rl *RateLimiter) AllowN(sender string, n int) bool {
-	if rl.limit <= 0 || n <= 0 {
+	return rl.AllowNLimit(sender, n, rl.limit)
+}
+
+// AllowNLimit is AllowN against limit instead of the limiter's own limit, so
+// one window of recorded units can serve a per-key limit that differs from the
+// global one. limit <= 0 allows everything and records nothing. A limit above
+// zero counts even when the limiter's own limit is disabled.
+func (rl *RateLimiter) AllowNLimit(sender string, n, limit int) bool {
+	if limit <= 0 || n <= 0 {
 		return true
 	}
 
@@ -59,7 +81,7 @@ func (rl *RateLimiter) AllowN(sender string, n int) bool {
 
 	now := rl.clock()
 	valid := rl.trimLocked(sender, now)
-	if len(valid)+n > rl.limit {
+	if len(valid)+n > limit {
 		return false
 	}
 	for range n {
@@ -72,12 +94,18 @@ func (rl *RateLimiter) AllowN(sender string, n int) bool {
 // Remaining reports how many units the sender may still record in the current
 // window. A disabled limiter reports math.MaxInt.
 func (rl *RateLimiter) Remaining(sender string) int {
-	if rl.limit <= 0 {
+	return rl.RemainingLimit(sender, rl.limit)
+}
+
+// RemainingLimit is Remaining against limit instead of the limiter's own
+// limit; limit <= 0 reports math.MaxInt.
+func (rl *RateLimiter) RemainingLimit(sender string, limit int) int {
+	if limit <= 0 {
 		return math.MaxInt
 	}
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	return max(rl.limit-len(rl.trimLocked(sender, rl.clock())), 0)
+	return max(limit-len(rl.trimLocked(sender, rl.clock())), 0)
 }
 
 // RetryAfter reports how long until the sender's oldest live entry leaves the

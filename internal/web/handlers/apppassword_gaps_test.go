@@ -194,7 +194,7 @@ func TestChangePasswordWrongCurrentRevokesNothing(t *testing.T) {
 		t.Errorf("pending links = %d, want 1", n)
 	}
 	for i, p := range plain {
-		if id, _, _, err := e.la.AuthenticateProtocol(secUserA+"@example.com", p); err != nil || id != secUserA {
+		if id, _, _, err := e.la.AuthenticateProtocol("imap", secUserA+"@example.com", p); err != nil || id != secUserA {
 			t.Errorf("credential %d no longer authenticates: %v", i, err)
 		}
 	}
