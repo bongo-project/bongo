@@ -376,6 +376,66 @@ func TestUpdateCheckInstanceIDIsWrittenOnce(t *testing.T) {
 	})
 }
 
+// flakyKV fails reads of one key with an error other than ErrNotFound while
+// failing is set, as a Pebble I/O error would.
+type flakyKV struct {
+	*memKV
+	key     string
+	failing atomic.Bool
+}
+
+func (k *flakyKV) Get(key []byte) ([]byte, error) {
+	if k.failing.Load() && string(key) == k.key {
+		return nil, errors.New("pebble: read failed")
+	}
+	return k.memKV.Get(key)
+}
+
+// A read of /system/instance_id that fails with anything but ErrNotFound must
+// never lead to a new id written over the stored one: the term is retried and
+// no request goes out until the read works, and then the stored id is used.
+func TestUpdateCheckInstanceIDReadErrorKeepsStoredID(t *testing.T) {
+	const id = "0123456789abcdef0123456789abcdef"
+	kv := newMemKV()
+	kv.m[updatecheck.KeyInstanceID] = []byte(id)
+	fk := &flakyKV{memKV: kv, key: updatecheck.KeyInstanceID}
+	fk.failing.Store(true)
+	var idWrites atomic.Int64
+	p := &fakePoster{}
+	u := newTestChecker(kv, p, io.Discard)
+	u.store = fk
+	u.apply = func(cmd *bongov1.RaftCommand, d time.Duration) error {
+		if string(cmd.Key) == updatecheck.KeyInstanceID {
+			idWrites.Add(1)
+		}
+		return kv.Apply(cmd, d)
+	}
+
+	simulate(u, simStart, 3*time.Hour, nil)
+	if n := idWrites.Load(); n != 0 {
+		t.Fatalf("%d writes to the instance id after a read error", n)
+	}
+	if got := string(kv.m[updatecheck.KeyInstanceID]); got != id {
+		t.Fatalf("stored instance id replaced: %q", got)
+	}
+	if p.count() != 0 {
+		t.Fatalf("%d requests while the instance id could not be read", p.count())
+	}
+
+	// Once the read works the stored id is used, still without a write.
+	fk.failing.Store(false)
+	simulate(u, simStart.Add(3*time.Hour), 3*time.Hour, nil)
+	if p.count() != 1 {
+		t.Fatalf("requests = %d after the read recovered, want 1", p.count())
+	}
+	if !strings.Contains(string(p.bodies[0]), id) {
+		t.Fatalf("body %s does not carry the stored id", p.bodies[0])
+	}
+	if n := idWrites.Load(); n != 0 {
+		t.Fatalf("%d writes to the instance id", n)
+	}
+}
+
 func TestUpdateCheckNonReleaseVersionMakesNoRequest(t *testing.T) {
 	for _, v := range []string{"dev", "v0.17.0-3-gabcdef-dirty-x_y", "", "v1.2", "v0.17.0-3-gabcdef", "v0.17.0-3-gabcdef-dirty", "v0.17.0-dirty"} {
 		kv := newMemKV()

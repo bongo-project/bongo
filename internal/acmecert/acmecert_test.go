@@ -3,10 +3,16 @@ package acmecert_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"errors"
 	"log/slog"
+	"math/big"
 	"net"
 	"net/http"
 	"slices"
@@ -25,10 +31,11 @@ import (
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
-// memStore is an in-memory Store that counts writes.
+// memStore is an in-memory Store that counts reads and writes.
 type memStore struct {
 	mu      sync.Mutex
 	m       map[string][]byte
+	gets    int
 	puts    int
 	deletes int
 	noWrite bool // a non-leader: Put and Delete fail
@@ -39,6 +46,7 @@ func newMemStore() *memStore { return &memStore{m: map[string][]byte{}} }
 func (s *memStore) Get(k string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.gets++
 	return s.m[k], nil
 }
 
@@ -302,6 +310,48 @@ func TestIssueEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(out, "serial=") || !strings.Contains(out, "not_after=") {
 		t.Errorf("success log lacks serial and not_after: %s", out)
+	}
+}
+
+// A CA that hands back a defective leaf never gets it stored or served: the
+// chain is verified before the Put of /system/acme/cert.
+func TestIssueRefusesTamperedCertificate(t *testing.T) {
+	tests := []struct {
+		name   string
+		tamper acmetest.Tamper
+	}{
+		{"a requested name missing", acmetest.TamperDropName},
+		{"a name not requested", acmetest.TamperExtraName},
+		{"another key", acmetest.TamperOtherKey},
+		{"already expired", acmetest.TamperExpired},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ca, store, _ := setup(t)
+			ca.SetTamper(tt.tamper)
+			called := false
+			m := acmecert.New(store, acmecert.Options{
+				Domains:      testDomains,
+				DirectoryURL: ca.DirectoryURL(),
+				HTTPClient:   ca.Client(),
+				Logger:       newLogger(&lockedBuf{}),
+				OnIssued:     func(*tls.Certificate) error { called = true; return nil },
+			})
+			issued, err := m.Check(context.Background())
+			if err == nil || issued {
+				t.Fatalf("Check = %v, %v; want a refusal", issued, err)
+			}
+			if len(ca.Issued()) != 1 {
+				t.Fatalf("the CA issued %d certificates, want 1 (the refusal must come after issuance)", len(ca.Issued()))
+			}
+			if raw, _ := store.Get(acmecert.CertKey); raw != nil {
+				t.Error("a defective certificate was stored")
+			}
+			if called {
+				t.Error("a defective certificate reached the holders")
+			}
+		})
 	}
 }
 
@@ -612,6 +662,83 @@ func TestGetCertificateRefusals(t *testing.T) {
 	}
 	if store.puts != 0 || store.deletes != 0 {
 		t.Error("a handshake wrote to the store")
+	}
+}
+
+// challengeRecord builds a stored TLS-ALPN-01 record that parses: a
+// self-signed certificate for name and its PKCS#8 key.
+func challengeRecord(t *testing.T, name string) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(7),
+		Subject:      pkix.Name{CommonName: name},
+		DNSNames:     []string{name},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := proto.Marshal(&bongov1.AcmeChallenge{CertDer: der, KeyDer: keyDER})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// A challenge stored under a name that is not configured (left behind by a
+// domain since removed, say) is never served to a probe, and the store is not
+// even read for that name. The configured case is the control: the same kind
+// of record is served there.
+func TestGetCertificateIgnoresUnconfiguredChallenge(t *testing.T) {
+	store := newMemStore()
+	for _, name := range []string{"evil.example.org", "mail.example.com"} {
+		store.m[acmecert.ChallengeKey(name)] = challengeRecord(t, name)
+	}
+	get := acmecert.GetCertificate(store, testDomains, func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+		t.Error("a probe reached the normal handler")
+		return nil, errors.New("unexpected")
+	})
+
+	tests := []struct {
+		name     string
+		sni      string
+		wantCert bool
+		wantGets int
+	}{
+		{"unconfigured name with a stored challenge", "evil.example.org", false, 0},
+		{"unconfigured name in upper case", "EVIL.example.org", false, 0},
+		{"configured name", "mail.example.com", true, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store.mu.Lock()
+			store.gets = 0
+			store.mu.Unlock()
+			c, err := get(&tls.ClientHelloInfo{ServerName: tt.sni, SupportedProtos: []string{acme.ALPNProto}})
+			if tt.wantCert {
+				if err != nil || c == nil {
+					t.Fatalf("configured probe refused: %v", err)
+				}
+			} else if err == nil || c != nil {
+				t.Fatalf("probe for %q was answered with a challenge certificate", tt.sni)
+			}
+			store.mu.Lock()
+			gets := store.gets
+			store.mu.Unlock()
+			if gets != tt.wantGets {
+				t.Errorf("store reads = %d, want %d", gets, tt.wantGets)
+			}
+		})
 	}
 }
 

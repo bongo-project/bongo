@@ -190,6 +190,54 @@ func TestCheckChunkedOverLimitRefused(t *testing.T) {
 	}
 }
 
+// spaceStream is a chunked body of a valid check request followed by
+// whitespace, far longer than the handler may read. It counts what was
+// consumed. The hard stop only keeps a broken handler from reading forever.
+type spaceStream struct {
+	prefix string
+	read   int64
+	stop   int64
+}
+
+func (s *spaceStream) Read(p []byte) (int, error) {
+	if s.read >= s.stop {
+		return 0, io.EOF
+	}
+	n := 0
+	for n < len(p) && s.read < s.stop {
+		if s.read < int64(len(s.prefix)) {
+			p[n] = s.prefix[s.read]
+		} else {
+			p[n] = ' '
+		}
+		n++
+		s.read++
+	}
+	return n, nil
+}
+
+// A chunked body is read only up to the limit: the handler must stop after
+// about maxBody+1 bytes, not buffer the whole stream before refusing it.
+func TestCheckChunkedEndlessBodyReadIsBounded(t *testing.T) {
+	h, st, _ := newTestHandler(goodConfig)
+	body := &spaceStream{prefix: checkBody("1.0.0", goodID), stop: 16 << 20}
+	req := httptest.NewRequest("POST", "/v1/check", io.NopCloser(body))
+	req.ContentLength = -1
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	if st.count() != 0 {
+		t.Errorf("counted %d rows for a refused body", st.count())
+	}
+	// MaxBytesReader asks for at most one byte past its limit per read, so
+	// anything near 2*maxBody means the body was not bounded.
+	if body.read > 2*maxBody {
+		t.Errorf("read %d bytes of the body, want at most about %d", body.read, maxBody+1)
+	}
+}
+
 func TestCheckDistinctCounting(t *testing.T) {
 	h, st, _ := newTestHandler(goodConfig)
 	other := strings.Repeat("f", 32)

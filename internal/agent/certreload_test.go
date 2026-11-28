@@ -11,6 +11,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/security"
+	bongosmtp "github.com/bongo-project/bongo/internal/smtp"
 )
 
 func certTestLogger() (*slog.Logger, *lockedBuffer) {
@@ -262,5 +263,35 @@ func TestShutdownAgentStopsCertReloadWorker(t *testing.T) {
 	}
 	if live := a.liveWorkers(); len(live) != 0 {
 		t.Fatalf("workers still live after shutdown: %v", live)
+	}
+}
+
+// The SMTP server's file-backed holder must be registered with the agent's
+// reloader, so a renewed pair reaches MX, submission and port 465 on SIGHUP and
+// the poll, as it does for web, IMAP and POP3.
+func TestNewSMTPServerRegistersCertHolder(t *testing.T) {
+	dir := t.TempDir()
+	cf, kf := filepath.Join(dir, "smtp.crt"), filepath.Join(dir, "smtp.key")
+	writeSelfSigned(t, cf, kf, time.Now().Add(-time.Hour))
+	logger, _ := certTestLogger()
+	cfg := config.Defaults()
+	isolatePorts(t, cfg)
+	cfg.SMTP.TLS.CertFile, cfg.SMTP.TLS.KeyFile = cf, kf
+	a := &Agent{Config: cfg, logger: logger}
+
+	srv := a.newSMTPServer(bongosmtp.NewBackend(nil, nil, testLogger()), false)
+	h := srv.CertHolder()
+	if h == nil {
+		t.Fatal("SMTP server has no certificate holder although smtp.tls is set")
+	}
+	if len(a.certs.holders) != 1 {
+		t.Fatalf("SMTP holder not registered for reload: %d holders", len(a.certs.holders))
+	}
+	first := serialOf(t, h)
+
+	writeSelfSigned(t, cf, kf, time.Now())
+	a.certs.reloadAll(logger)
+	if serialOf(t, h) == first {
+		t.Fatal("SMTP still serves the old certificate after a reload")
 	}
 }
